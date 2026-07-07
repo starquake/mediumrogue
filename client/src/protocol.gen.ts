@@ -96,12 +96,59 @@ export interface MapResponse {
  */
 export const EventTurn = "turn";
 /**
- * TurnEvent is the payload of an EventTurn frame. It will grow into the full
- * turn-result bundle (moves, attacks, deaths, chat) as the game develops.
+ * TurnEvent is the payload of an EventTurn frame: the world state after a
+ * resolved turn. A full entity snapshot every turn keeps clients trivially
+ * resyncable at this player count; deltas are a later optimization if ever
+ * needed. It will grow (attacks, deaths, chat) as the game develops.
  */
 export interface TurnEvent {
   /**
    * Turn is the monotonically increasing world-turn number.
    */
   turn: number /* int64 */;
+  /**
+   * Entities is every entity in the world, sorted by ID.
+   */
+  entities: Entity[];
+}
+/**
+ * Entity is one thing standing on the map. For now every entity is a player;
+ * kinds (monsters, NPCs) come with later milestones.
+ */
+export interface Entity {
+  id: number /* int64 */;
+  hex: Hex;
+}
+/**
+ * JoinRequest is the body of POST /api/join. A returning client sends its
+ * stored token to reclaim its entity; an empty token means "new player".
+ */
+export interface JoinRequest {
+  token: string;
+}
+/**
+ * JoinResponse identifies the caller's entity. The token is the bearer
+ * secret for submitting intents — the "name + secret link" auth of the plan,
+ * minus the name for now.
+ */
+export interface JoinResponse {
+  entityId: number /* int64 */;
+  token: string;
+  hex: Hex;
+}
+/**
+ * IntentRequest is the body of POST /api/intent: "on the next turn, step to
+ * Target". Target must be adjacent and walkable. One intent per entity per
+ * turn; a later submission in the same input window replaces the earlier one.
+ */
+export interface IntentRequest {
+  entityId: number /* int64 */;
+  token: string;
+  target: Hex;
+}
+/**
+ * ErrorResponse is the JSON body of every non-2xx API response.
+ */
+export interface ErrorResponse {
+  error: string;
 }

@@ -22,12 +22,12 @@ func startServer(t *testing.T, turnInterval, heartbeatInterval time.Duration) *h
 
 	ticks := hub.New()
 
-	clock := game.NewClock(turnInterval, ticks)
-	go clock.Run(t.Context())
+	world := game.NewWorld(turnInterval, ticks)
+	go world.Run(t.Context())
 
 	handler := server.New(server.Deps{
 		Logger:            slog.New(slog.DiscardHandler),
-		Clock:             clock,
+		World:             world,
 		Ticks:             ticks,
 		HeartbeatInterval: heartbeatInterval,
 	})

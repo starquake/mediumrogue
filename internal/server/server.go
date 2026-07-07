@@ -17,7 +17,7 @@ import (
 // travels as one argument and grows without widening every signature.
 type Deps struct {
 	Logger *slog.Logger
-	Clock  *game.Clock
+	World  *game.World
 	Ticks  *hub.Hub
 	// HeartbeatInterval is how often the SSE handlers emit a comment frame on
 	// an otherwise idle stream. Threaded through Deps (not read from config
