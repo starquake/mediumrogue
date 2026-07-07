@@ -19,11 +19,11 @@ var (
 	// ErrUnauthorized covers unknown entities and bad tokens alike, so a
 	// caller cannot probe which entity IDs exist.
 	ErrUnauthorized = errors.New("unknown entity or bad token")
-	// ErrNotAdjacent rejects a step target that is not one of the entity's
-	// six neighbor hexes.
-	ErrNotAdjacent = errors.New("target is not adjacent")
-	// ErrNotWalkable rejects water, rock, and off-map targets.
+	// ErrNotWalkable rejects water, rock, and off-map destinations.
 	ErrNotWalkable = errors.New("target is not walkable")
+	// ErrNoPath rejects a walkable destination with no route from the
+	// entity's current hex (walled off by impassable terrain).
+	ErrNoPath = errors.New("no path to target")
 	// ErrWorldFull means no walkable hex has room for another entity — only
 	// plausible if joins vastly outnumber the map's capacity.
 	ErrWorldFull = errors.New("world is full: no walkable hex with room left")
@@ -38,6 +38,9 @@ type entity struct {
 	id    int64
 	hex   protocol.Hex
 	token string
+	// path is the remaining route (steps excluding the current hex), consumed
+	// one hex per turn. Empty when the entity is idle.
+	path []protocol.Hex
 }
 
 // World is the authoritative game state: the map, every entity, and the
@@ -54,7 +57,6 @@ type World struct {
 	worldMap protocol.MapResponse
 	entities map[int64]*entity
 	byToken  map[string]*entity
-	intents  map[int64]protocol.Hex
 	nextID   int64
 }
 
@@ -75,7 +77,6 @@ func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
 		worldMap: worldMap,
 		entities: make(map[int64]*entity),
 		byToken:  make(map[string]*entity),
-		intents:  make(map[int64]protocol.Hex),
 	}
 }
 
@@ -131,9 +132,10 @@ func (w *World) Join(token string) (protocol.JoinResponse, error) {
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
 
-// SubmitIntent queues "step to target" for the next turn. Validation runs
-// against the entity's current position; the latest submission in an input
-// window wins.
+// SubmitIntent sets the entity's route to Target: any walkable, reachable
+// hex. The server pathfinds from the entity's current position; the walk
+// advances one hex per turn in resolveTurn. The latest submission in an input
+// window replaces the entity's route.
 func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -143,15 +145,16 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 		return ErrUnauthorized
 	}
 
-	if HexDistance(e.hex, req.Target) != 1 {
-		return ErrNotAdjacent
-	}
-
 	if !w.walkableLocked(req.Target) {
 		return ErrNotWalkable
 	}
 
-	w.intents[e.id] = req.Target
+	path := Pathfind(e.hex, req.Target, w.walkableLocked)
+	if path == nil {
+		return ErrNoPath
+	}
+
+	e.path = path
 
 	return nil
 }
@@ -169,38 +172,39 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 	slices.SortFunc(entities, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
 
-	return protocol.TurnEvent{Turn: w.turn, Entities: entities}
+	return protocol.TurnEvent{Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities}
 }
 
-// resolveTurn applies the input window's intents and advances the turn.
-// Moves apply in ascending entity-ID order with an occupancy re-check per
-// move — a placeholder ordering until milestone 6 lands the real phased
-// resolution (all moves simultaneously, seeded tie-break on overflow).
+// resolveTurn advances every entity one hex along its queued path, then bumps
+// the turn number. Entities apply in ascending-ID order with a per-move
+// occupancy re-check — a placeholder ordering until milestone 6 lands the real
+// phased resolution (all moves simultaneously, seeded tie-break on overflow).
+// A step onto a full hex is skipped this turn and retried next turn (the path
+// is retained).
 func (w *World) resolveTurn() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	ids := make([]int64, 0, len(w.intents))
-	for id := range w.intents {
+	ids := make([]int64, 0, len(w.entities))
+	for id := range w.entities {
 		ids = append(ids, id)
 	}
 
 	slices.Sort(ids)
 
 	for _, id := range ids {
-		target := w.intents[id]
-
-		e, ok := w.entities[id]
-		if !ok {
+		e := w.entities[id]
+		if len(e.path) == 0 {
 			continue
 		}
 
-		if w.occupancyLocked(target) < protocol.StackCap {
-			e.hex = target
+		next := e.path[0]
+		if w.occupancyLocked(next) < protocol.StackCap {
+			e.hex = next
+			e.path = e.path[1:]
 		}
 	}
 
-	clear(w.intents)
 	w.turn++
 }
 

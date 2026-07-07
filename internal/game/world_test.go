@@ -161,11 +161,6 @@ func TestIntentValidation(t *testing.T) {
 			protocol.IntentRequest{EntityID: 999, Token: me.Token, Target: walkableNeighbor(t, w, me.Hex)},
 			game.ErrUnauthorized,
 		},
-		{
-			"not adjacent",
-			protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: protocol.Hex{Q: me.Hex.Q + 5, R: me.Hex.R}},
-			game.ErrNotAdjacent,
-		},
 	}
 
 	for _, tc := range cases {
@@ -229,4 +224,57 @@ func isWalkable(w *game.World, h protocol.Hex) bool {
 
 func submitOK(w *game.World, me protocol.JoinResponse, target protocol.Hex) bool {
 	return w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}) == nil
+}
+
+func TestIntentWalksMultiStepPath(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	me, _ := w.Join("")
+
+	// A destination two hexes away: a walkable neighbor of a walkable neighbor
+	// that sits at distance 2 from spawn (geometry-independent discovery).
+	n1 := walkableNeighbor(t, w, me.Hex)
+
+	var dest protocol.Hex
+	for _, n2 := range game.HexNeighbors(n1) {
+		if n2 != me.Hex && game.HexDistance(me.Hex, n2) == 2 && isWalkable(w, n2) {
+			dest = n2
+
+			break
+		}
+	}
+	if dest == (protocol.Hex{}) {
+		t.Skip("spawn has no reachable distance-2 hex on this map")
+	}
+
+	if err := w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: dest}); err != nil {
+		t.Fatalf("SubmitIntent: %v", err)
+	}
+
+	// One hex per turn: after the first turn the entity is adjacent to spawn,
+	// not yet at the destination.
+	snap := step(t, w)
+	mid := snap.Entities[0].Hex
+	if game.HexDistance(me.Hex, mid) != 1 {
+		t.Fatalf("after turn 1: hex %v is not one step from spawn %v", mid, me.Hex)
+	}
+	if mid == dest {
+		t.Fatal("reached a distance-2 destination in a single turn")
+	}
+
+	// The second turn arrives.
+	snap = step(t, w)
+	if got := snap.Entities[0].Hex; got != dest {
+		t.Fatalf("after turn 2: hex = %v, want destination %v", got, dest)
+	}
+}
+
+func TestSnapshotCarriesInterval(t *testing.T) {
+	t.Parallel()
+
+	w := game.NewWorld(250*time.Millisecond, hub.New())
+	if got := w.Snapshot().IntervalMs; got != 250 {
+		t.Fatalf("IntervalMs = %d, want 250", got)
+	}
 }
