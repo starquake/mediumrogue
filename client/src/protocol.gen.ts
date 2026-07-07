@@ -107,6 +107,14 @@ export interface TurnEvent {
    */
   turn: number /* int64 */;
   /**
+   * IntervalMs is the runtime turn period in milliseconds (the configured
+   * TURN_INTERVAL). The client cannot derive this — TURN_INTERVAL is
+   * env-configurable while the cadence constants are fixed — so it rides
+   * each bundle and the client re-syncs its playback/input phase clock on
+   * every arrival.
+   */
+  intervalMs: number /* int64 */;
+  /**
    * Entities is every entity in the world, sorted by ID.
    */
   entities: Entity[];
@@ -137,9 +145,11 @@ export interface JoinResponse {
   hex: Hex;
 }
 /**
- * IntentRequest is the body of POST /api/intent: "on the next turn, step to
- * Target". Target must be adjacent and walkable. One intent per entity per
- * turn; a later submission in the same input window replaces the earlier one.
+ * IntentRequest is the body of POST /api/intent: "walk to Target". Target is
+ * any walkable hex, not just a neighbor — the server pathfinds from the
+ * entity's current position and walks the route one hex per turn. A keyboard
+ * step is simply a Target one hex away. One intent per entity per turn; a
+ * later submission in the same input window replaces the earlier route.
  */
 export interface IntentRequest {
   entityId: number /* int64 */;
