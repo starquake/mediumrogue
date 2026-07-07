@@ -26,11 +26,12 @@ func TestPathfindStraightLine(t *testing.T) {
 		t.Fatalf("path does not end at destination: %v", path)
 	}
 
-	// Every step is adjacent to the previous position.
+	// Every step is adjacent to the previous position. Report every offending
+	// step (t.Errorf, not t.Fatalf) so one bad step does not mask the rest.
 	prev := from
 	for _, step := range path {
 		if game.HexDistance(prev, step) != 1 {
-			t.Fatalf("non-adjacent step %v after %v", step, prev)
+			t.Errorf("non-adjacent step %v after %v", step, prev)
 		}
 
 		prev = step
@@ -62,8 +63,8 @@ func TestPathfindUnwalkableDestinationIsNil(t *testing.T) {
 func TestPathfindRoutesAroundAWall(t *testing.T) {
 	t.Parallel()
 
-	// A vertical wall at q==1 for r in [-2..2], with one gap at (1,3) forcing
-	// a detour south. from (0,0) to (2,0) cannot go straight through q==1.
+	// A vertical wall at q==1 for r in [-2..2]. from (0,0) to (2,0) cannot go
+	// straight through q==1 and must detour around an end of the wall.
 	wall := map[protocol.Hex]bool{
 		{Q: 1, R: -2}: true, {Q: 1, R: -1}: true, {Q: 1, R: 0}: true,
 		{Q: 1, R: 1}: true, {Q: 1, R: 2}: true,
@@ -77,7 +78,7 @@ func TestPathfindRoutesAroundAWall(t *testing.T) {
 
 	for _, step := range path {
 		if wall[step] {
-			t.Fatalf("path walked through the wall at %v", step)
+			t.Errorf("path walked through the wall at %v", step)
 		}
 	}
 

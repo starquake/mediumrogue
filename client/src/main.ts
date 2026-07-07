@@ -101,10 +101,17 @@ async function start(): Promise<void> {
   const identity = { entityId: me.entityId, token: me.token };
 
   // walkTo submits a destination and records it for the HUD/tests. The world's
-  // answer (movement) only ever arrives via turn bundles.
+  // answer (movement) only ever arrives via turn bundles. A rejected target
+  // (unwalkable / unreachable) never becomes a pending walk, so clear it —
+  // unless a newer walkTo has already replaced the destination in the meantime.
   const walkTo = (target: Hex): void => {
     window.game.destination = target;
-    void submitIntent(identity, target);
+    void submitIntent(identity, target).then((accepted) => {
+      const pending = window.game.destination;
+      if (!accepted && pending !== null && pending.q === target.q && pending.r === target.r) {
+        window.game.destination = null;
+      }
+    });
   };
 
   window.game.tapHex = (q, r): void => walkTo({ q, r });

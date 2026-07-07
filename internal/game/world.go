@@ -43,10 +43,9 @@ type entity struct {
 	path []protocol.Hex
 }
 
-// World is the authoritative game state: the map, every entity, and the
-// queued intents for the current input window. One World per process; all
-// access is serialized through its mutex (15 players — contention is not a
-// concern, simplicity is).
+// World is the authoritative game state: the map, every entity, and each
+// entity's queued walk path. One World per process; all access is serialized
+// through its mutex (15 players — contention is not a concern, simplicity is).
 type World struct {
 	interval time.Duration
 	ticks    *hub.Hub
