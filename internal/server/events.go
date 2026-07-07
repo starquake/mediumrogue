@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -38,9 +39,10 @@ func handleEvents(deps Deps) http.Handler {
 		ticks, unsubscribe := deps.Ticks.Subscribe()
 		defer unsubscribe()
 
-		// Send the current turn immediately so a fresh client paints without
-		// waiting for the next tick.
-		lastSent := int64(-1)
+		// Seed the watermark from Last-Event-ID so a reconnecting client is not
+		// re-sent a turn it already has. A fresh client (no header) or a
+		// malformed value defaults to -1 → current snapshot sent immediately.
+		lastSent := parseLastEventID(r)
 		lastSent = writeTurn(w, deps, flusher, lastSent)
 
 		heartbeat := time.NewTicker(deps.HeartbeatInterval)
@@ -64,6 +66,19 @@ func handleEvents(deps Deps) http.Handler {
 			}
 		}
 	})
+}
+
+// parseLastEventID reads the SSE reconnection header the browser's EventSource
+// sends automatically: the turn number the client last saw, used as the initial
+// "already sent" watermark. Missing or malformed values yield -1, which makes
+// the handler behave like a fresh connection (send the current snapshot).
+func parseLastEventID(r *http.Request) int64 {
+	id, err := strconv.ParseInt(r.Header.Get("Last-Event-ID"), 10, 64)
+	if err != nil {
+		return -1
+	}
+
+	return id
 }
 
 // writeTurn emits the latest turn bundle as an SSE frame, unless that turn
