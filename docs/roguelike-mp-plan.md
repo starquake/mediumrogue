@@ -177,11 +177,12 @@ The core of the design. Every 5 seconds, one world turn:
 **Grid & movement — DECIDED:**
 - **Flat-top hex grid, grid-locked movement,** axial coordinates. Each tile has N/S/NE/NW/SE/SW neighbors — six equidistant directions, no diagonal problem. Red Blob Games' hex guide is the reference for coordinates, distance, pathfinding, and line-of-sight.
 - **Primary input: click-to-move.** Click a hex → client sends the target → server pathfinds and the entity walks the path over subsequent turns (re-validated each turn; interrupted when hostiles appear).
-- **Keyboard: QWE / ASD + X** mapping onto the six hex directions, **S = stay/wait** in the center:
+- **Keyboard: QWE / ASD** mapping onto the six hex directions — two rows, no
+  modifier states. There is no wait key: standing still is simply not sending
+  an intent.
   ```
-   Q   W   E        Q=NW  W=N   E=NE
-     A   S   D      A=SW  S=wait D=SE
-         X           X=S
+   Q   W   E        Q=NW  W=N  E=NE
+   A   S   D        A=SW  S=S  D=SE
   ```
 - Show this layout in-game (onboarding overlay/help screen) so the group doesn't need explaining.
 - **Travel pace mitigation:** consider allowing movement of **multiple hexes per turn when no hostiles are in sight** (e.g. up to 3), dropping to 1 hex when enemies are near. Exploration stays brisk; proximity to danger — not a mode switch — is what makes things tactical.
@@ -228,7 +229,7 @@ The core of the design. Every 5 seconds, one world turn:
 1. **Skeleton:** Go server serving an embedded Vite-built page, bootstrapped from the topbanana chassis (Makefile, golangci, app bootstrap, server layer, SSE hub, CI); client opens an SSE stream and receives heartbeat events; `make dev` loop works; tygo generation + contract test wired into CI.
 2. **Static hex world render:** client renders a hardcoded hex map from a server-sent bundle. No movement yet.
 3. **The turn loop:** server runs the 5 s cadence (input window → resolve → broadcast); one client POSTs a move intent and sees its entity step on the next turn. **This is the heart of the game — everything after builds on it.**
-4. **Playback & feel:** turn results animate over the ~2 s playback window; visible turn timer; click-to-move with queued paths; QWE/ASD+X keys. First Playwright e2e: click a hex, assert the entity arrives.
+4. **Playback & feel:** turn results animate over the ~2 s playback window; visible turn timer; click-to-move with queued paths; QWE/ASD keys. First Playwright e2e: click a hex, assert the entity arrives.
 5. **Multiplayer:** two+ clients connected, intents resolving simultaneously, both watching the same playback; reconnect/resync via `Last-Event-ID` proven with a pulled-plug test. First test of conflict-resolution rules.
 6. **Combat, time bubbles & death:** bump-to-attack, deterministic resolution order. Local clock-stop bubbles: form on mutual LOS, action-gated turns with timeout, join-by-walking-in, merge, dissolve on flee. Death → respawn with fall-back-to-level-start XP penalty.
 6b. **Classes, species & progression:** rogue (dagger/bow by distance; high damage, squishy), fighter (melee only; medium damage, tank), mage (magic only; AoE, squishy); species passives (human +XP, elf +crit, dwarf +DR); ranged + AoE attack intents; XP from kills/quests; level-ups; first gear drops with weapon/magic variety.
@@ -241,7 +242,7 @@ The core of the design. Every 5 seconds, one world turn:
 
 - [x] ~~Language/stack~~ → **Decided: Go server + TypeScript/PixiJS browser client** (see §1; the "learn Rust" goal was retired when the design stopped needing Rust)
 - [x] ~~Transport~~ → **Decided: SSE down + HTTP POST up, JSON payloads** (see §4)
-- [x] ~~Grid-locked movement vs. free positioning~~ → **Decided: flat-top hex grid, grid-locked; click-to-move primary, QWE/ASD+X keyboard (S = wait)** (see §5)
+- [x] ~~Grid-locked movement vs. free positioning~~ → **Decided: flat-top hex grid, grid-locked; click-to-move primary, QWE/ASD keyboard (no wait key)** (see §5)
 - [x] ~~Tick rate~~ → **Decided: simultaneous 5 s turns (3 s input / ~2 s playback).** Keep the cadence a server config constant — feel-test 4 s vs 6 s with the group.
 - [x] ~~Snapshot vs. delta-based state replication~~ → **Mooted by the turn model:** one turn-result bundle per turn; replay buffer + full-resync endpoint for reconnects.
 - [x] ~~Stacking~~ → **Decided: `STACK_CAP = 5` (a full party fits on one hex); random-member hit distribution; count-badge rendering** (see §5)

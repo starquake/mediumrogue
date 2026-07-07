@@ -106,10 +106,6 @@ async function start(): Promise<void> {
       // queued; the world's answer arrives in the next turn bundle either way.
       void submitIntent(identity, neighbor(from, dir));
     },
-    onWait: (): void => {
-      // S = stay. No intent means wait — nothing to send (yet; an explicit
-      // wait intent becomes meaningful once combat time bubbles exist).
-    },
   });
 }
 
