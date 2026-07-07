@@ -45,3 +45,12 @@ Go may not be on PATH; the Makefile falls back to `/usr/local/go/bin/go`.
   precisely so tests can shrink them — thread new intervals the same way.
 - Game-rule constants (turn cadence, combat radius, stack cap) live in
   `internal/protocol` so both sides compile against the same numbers.
+
+## Maintenance reminders
+
+- **Periodically audit all `//nolint` suppressions**
+  (`grep -rn '//nolint' cmd internal test`): re-justify or remove each. Every
+  suppression must carry a reason comment; if the reason no longer holds (or
+  a disabled linter in `.golangci.yml` starts fitting the codebase), fix the
+  code instead. Also revisit the `disable:` list and test-file exclusions in
+  `.golangci.yml` — they were calibrated at milestone 1–2 scale.
