@@ -1,15 +1,14 @@
-# Distrobox definition for an immutable-host (Silverblue) dev environment.
-# Copy to distrobox.ini, then: distrobox assemble create
-#
-# Inside the box: git clone, `make check`, `make dev` — everything works
-# without touching the host image. Playwright browsers install with
-# `npx playwright install --with-deps chromium` (needs the deps flag inside
-# a fresh box).
-
-[mediumrogue]
-image=registry.fedoraproject.org/fedora:42
-additional_packages="git make curl golang nodejs npm"
-init=false
-nvidia=false
+[mediumrogue-dev]
+image=quay.io/toolbx/ubuntu-toolbox:24.04
+replace=true
 pull=true
-replace=false
+
+# libnss3 + libasound2t64: required by GoLand's JCEF/Chromium helper (markdown
+# preview, JCEF browser) — without them jcef_helper fails to load libnss3.so.
+additional_packages="git nodejs npm sqlite3 libgtk-3-0 libcairo-gobject2 libgdk-pixbuf-2.0-0 libdbus-glib-1-2 libpango-1.0-0 libxt6 libxcomposite1 libxdamage1 libxrandr2 libxcursor1 libgbm1 libnss3 libasound2t64"
+
+## Go: download the latest release and install to /usr/local/go, adding its bin dir to PATH via /etc/profile.d
+init_hooks=v=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1); curl -fsSL "https://go.dev/dl/${v}.linux-amd64.tar.gz" -o /tmp/go.tar.gz; rm -rf /usr/local/go; tar -C /usr/local -xzf /tmp/go.tar.gz; rm -f /tmp/go.tar.gz; echo "export PATH=\$PATH:/usr/local/go/bin" > /etc/profile.d/go.sh
+
+# Needed for Goland (uncomment if needed)
+#additional_packages="libxrender1 libxtst6 libxi6 libxext6 libxcomposite1 libxcursor1 libxdamage1 libxfixes3 libxrandr2 libgl1-mesa-glx libegl1-mesa freetype2-doc libfontconfig1 fonts-dejavu libwayland-client0 libwayland-cursor0 libwayland-egl1 gsettings-desktop-schemas libnss3 at-spi2-core libatk1.0-0 libcairo2 libpango-1.0-0 libcups2 libasound2t64 libxkbcommon0"
