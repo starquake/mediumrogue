@@ -7,110 +7,134 @@ const OTHER_COLOR = 0xc8b458;
 const ME_COLOR = 0x8fd0ff;
 const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
 
-interface Sprite {
+interface Dot {
   gfx: Graphics;
-  badge: Text;
   from: Point;
   to: Point;
   current: Point;
   elapsed: number;
   duration: number;
   mine: boolean;
-  count: number;
 }
 
 /**
- * The entity layer: one persistent Graphics per hex-stack, tweened between
- * turns. On each turn bundle we set every stack's tween target to its new
- * pixel position; the ticker interpolates over the playback window so moves
- * glide instead of snapping. The server snapshot is authoritative — a short or
- * dropped tween just means the sprite is already where the next bundle puts it.
+ * The entity layer: one persistent dot per entity (keyed by id) plus a count
+ * badge per stacked hex. On each turn bundle a dot's tween target is set to its
+ * new hex; the ticker interpolates from the dot's current position over the
+ * playback window, so a move glides instead of snapping. The server snapshot is
+ * authoritative — a short or dropped tween just lands the dot where the next
+ * bundle already puts it, never a desync. Badges are static, drawn at the
+ * final stacked-hex position; the moving dots underneath carry the motion.
  */
 export class EntityLayer {
   readonly container = new Container();
-  // Keyed by hex string "q,r": the entities standing there render as one
-  // stack (top marker + count badge), matching the STACK_CAP rendering rule.
-  private stacks = new Map<string, Sprite>();
+  private dots = new Map<number, Dot>();
+  private badges = new Map<string, Text>();
 
   constructor(ticker: Ticker) {
     ticker.add(this.tick);
   }
 
   update(entities: Entity[], myEntityID: number, playbackMs: number): void {
-    const byHex = new Map<string, Entity[]>();
+    const present = new Set<number>();
+
     for (const e of entities) {
-      const key = `${e.hex.q},${e.hex.r}`;
-      byHex.set(key, [...(byHex.get(key) ?? []), e]);
+      present.add(e.id);
+
+      const to = hexToPixel(e.hex);
+      const mine = e.id === myEntityID;
+      let dot = this.dots.get(e.id);
+
+      if (dot === undefined) {
+        // First sighting: appear in place, no tween.
+        const gfx = new Graphics();
+        this.container.addChild(gfx);
+        dot = { gfx, from: to, to, current: to, elapsed: 0, duration: 0, mine };
+        this.dots.set(e.id, dot);
+      } else {
+        // Retarget from wherever the dot is right now → the new hex.
+        dot.from = dot.current;
+        dot.to = to;
+        dot.elapsed = 0;
+        dot.duration = playbackMs;
+        dot.mine = mine;
+      }
+
+      this.drawDot(dot);
     }
 
-    // Retire stacks that no longer exist.
-    for (const [key, sprite] of this.stacks) {
-      if (!byHex.has(key)) {
-        sprite.gfx.destroy();
-        sprite.badge.destroy();
-        this.stacks.delete(key);
+    // Retire dots for entities no longer in the world.
+    for (const [id, dot] of this.dots) {
+      if (!present.has(id)) {
+        dot.gfx.destroy();
+        this.dots.delete(id);
       }
     }
 
-    for (const [key, stack] of byHex) {
-      const top = stack[0];
-      if (top === undefined) {
+    this.updateBadges(entities);
+  }
+
+  private updateBadges(entities: Entity[]): void {
+    const counts = new Map<string, { hex: Entity["hex"]; n: number }>();
+    for (const e of entities) {
+      const key = `${e.hex.q},${e.hex.r}`;
+      const entry = counts.get(key);
+      if (entry === undefined) {
+        counts.set(key, { hex: e.hex, n: 1 });
+      } else {
+        entry.n += 1;
+      }
+    }
+
+    // Drop badges whose hex is no longer a stack of 2+.
+    for (const [key, badge] of this.badges) {
+      const entry = counts.get(key);
+      if (entry === undefined || entry.n < 2) {
+        badge.destroy();
+        this.badges.delete(key);
+      }
+    }
+
+    for (const [key, entry] of counts) {
+      if (entry.n < 2) {
         continue;
       }
 
-      const to = hexToPixel(top.hex);
-      const mine = stack.some((e) => e.id === myEntityID);
-      let sprite = this.stacks.get(key);
-
-      if (sprite === undefined) {
-        const gfx = new Graphics();
-        const badge = new Text({ text: "", style: BADGE_STYLE });
-        this.container.addChild(gfx, badge);
-        // New stack: appear in place (no tween).
-        sprite = { gfx, badge, from: to, to, current: to, elapsed: 0, duration: 0, mine, count: stack.length };
-        this.stacks.set(key, sprite);
-      } else {
-        sprite.from = sprite.current;
-        sprite.to = to;
-        sprite.elapsed = 0;
-        sprite.duration = playbackMs;
-        sprite.mine = mine;
-        sprite.count = stack.length;
+      const center = hexToPixel(entry.hex);
+      let badge = this.badges.get(key);
+      if (badge === undefined) {
+        badge = new Text({ text: "", style: BADGE_STYLE });
+        this.container.addChild(badge);
+        this.badges.set(key, badge);
       }
 
-      this.draw(sprite);
+      badge.text = `×${entry.n}`;
+      badge.position.set(center.x + HEX_SIZE * 0.3, center.y - HEX_SIZE * 0.9);
     }
   }
 
   private tick = (ticker: Ticker): void => {
-    for (const sprite of this.stacks.values()) {
-      if (sprite.current.x === sprite.to.x && sprite.current.y === sprite.to.y) {
+    for (const dot of this.dots.values()) {
+      if (dot.current.x === dot.to.x && dot.current.y === dot.to.y) {
         continue;
       }
-      sprite.elapsed += ticker.deltaMS;
-      const f = sprite.duration > 0 ? Math.min(1, sprite.elapsed / sprite.duration) : 1;
-      sprite.current = {
-        x: sprite.from.x + (sprite.to.x - sprite.from.x) * f,
-        y: sprite.from.y + (sprite.to.y - sprite.from.y) * f,
+
+      dot.elapsed += ticker.deltaMS;
+      const f = dot.duration > 0 ? Math.min(1, dot.elapsed / dot.duration) : 1;
+      dot.current = {
+        x: dot.from.x + (dot.to.x - dot.from.x) * f,
+        y: dot.from.y + (dot.to.y - dot.from.y) * f,
       };
-      this.draw(sprite);
+      this.drawDot(dot);
     }
   };
 
-  private draw(sprite: Sprite): void {
-    const { x, y } = sprite.current;
-    sprite.gfx
+  private drawDot(dot: Dot): void {
+    const { x, y } = dot.current;
+    dot.gfx
       .clear()
       .circle(x, y, HEX_SIZE * 0.45)
-      .fill(sprite.mine ? ME_COLOR : OTHER_COLOR)
+      .fill(dot.mine ? ME_COLOR : OTHER_COLOR)
       .stroke({ width: 2, color: 0x0b0f0b });
-
-    if (sprite.count > 1) {
-      sprite.badge.text = `×${sprite.count}`;
-      sprite.badge.position.set(x + HEX_SIZE * 0.3, y - HEX_SIZE * 0.9);
-      sprite.badge.visible = true;
-    } else {
-      sprite.badge.visible = false;
-    }
   }
 }

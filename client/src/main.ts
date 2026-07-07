@@ -155,6 +155,10 @@ async function start(): Promise<void> {
   // Click-to-move: canvas point → world point (undo the centering translate) →
   // hex → destination.
   app.canvas.addEventListener("pointerdown", (ev: PointerEvent): void => {
+    if (ev.button !== 0) {
+      return;
+    }
+
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
