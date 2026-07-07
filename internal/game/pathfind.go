@@ -15,6 +15,7 @@ func Pathfind(from, to protocol.Hex, walkable func(protocol.Hex) bool) []protoco
 	if from == to {
 		return []protocol.Hex{}
 	}
+
 	if !walkable(to) {
 		return nil
 	}
@@ -34,6 +35,7 @@ func Pathfind(from, to protocol.Hex, walkable func(protocol.Hex) bool) []protoco
 			if _, seen := cameFrom[n]; seen || !walkable(n) {
 				continue
 			}
+
 			cameFrom[n] = cur
 			queue = append(queue, n)
 		}

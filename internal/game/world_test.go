@@ -245,6 +245,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 			break
 		}
 	}
+
 	if dest == (protocol.Hex{}) {
 		t.Skip("spawn has no reachable distance-2 hex on this map")
 	}
@@ -261,6 +262,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 	if game.HexDistance(me.Hex, mid) != 1 {
 		t.Fatalf("after turn 1: hex %v is not one step from spawn %v", mid, me.Hex)
 	}
+
 	if mid == dest {
 		t.Fatal("reached a distance-2 destination in a single turn")
 	}

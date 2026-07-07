@@ -21,6 +21,7 @@ func TestPathfindStraightLine(t *testing.T) {
 	if len(path) != 3 {
 		t.Fatalf("path length = %d, want 3 (%v)", len(path), path)
 	}
+
 	if path[len(path)-1] != to {
 		t.Fatalf("path does not end at destination: %v", path)
 	}
@@ -31,6 +32,7 @@ func TestPathfindStraightLine(t *testing.T) {
 		if game.HexDistance(prev, step) != 1 {
 			t.Fatalf("non-adjacent step %v after %v", step, prev)
 		}
+
 		prev = step
 	}
 }
@@ -72,11 +74,13 @@ func TestPathfindRoutesAroundAWall(t *testing.T) {
 	if path == nil {
 		t.Fatal("expected a detour path, got nil")
 	}
+
 	for _, step := range path {
 		if wall[step] {
 			t.Fatalf("path walked through the wall at %v", step)
 		}
 	}
+
 	if path[len(path)-1] != (protocol.Hex{Q: 2, R: 0}) {
 		t.Fatalf("path does not reach destination: %v", path)
 	}
@@ -91,6 +95,7 @@ func TestPathfindUnreachableIsNil(t *testing.T) {
 	for _, n := range game.HexNeighbors(protocol.Hex{Q: 0, R: 0}) {
 		ring[n] = true
 	}
+
 	walkable := func(h protocol.Hex) bool { return !ring[h] }
 
 	if path := game.Pathfind(protocol.Hex{Q: 0, R: 0}, protocol.Hex{Q: 5, R: 0}, walkable); path != nil {
