@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -148,97 +147,118 @@ func TestEventsHeartbeat(t *testing.T) {
 	}
 }
 
-// TestLastEventIDParses tests the parseLastEventID helper directly.
-func TestLastEventIDParses(t *testing.T) {
+// getWithLastEventID issues a GET with the SSE reconnection header set, the way
+// the browser's EventSource does automatically on reconnect.
+func getWithLastEventID(t *testing.T, ts *httptest.Server, path, lastEventID string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+path, nil)
+	if err != nil {
+		t.Fatalf("build request for %s: %v", path, err)
+	}
+
+	req.Header.Set("Last-Event-ID", lastEventID)
+
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	return resp
+}
+
+// readFrameWithin reads one SSE data frame, returning ok=false if none arrives
+// before timeout — used to assert a frame is deliberately withheld.
+func readFrameWithin(t *testing.T, r *bufio.Reader, timeout time.Duration) (sseFrame, bool) {
+	t.Helper()
+
+	type result struct {
+		frame sseFrame
+		ok    bool
+	}
+
+	ch := make(chan result, 1)
+
+	go func() {
+		var cur sseFrame
+
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				ch <- result{}
+
+				return
+			}
+
+			line = strings.TrimRight(line, "\n")
+			switch {
+			case line == "":
+				if cur.event != "" || cur.data != "" {
+					ch <- result{cur, true}
+
+					return
+				}
+
+				cur = sseFrame{}
+			case strings.HasPrefix(line, "id: "):
+				cur.id = strings.TrimPrefix(line, "id: ")
+			case strings.HasPrefix(line, "event: "):
+				cur.event = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				cur.data = strings.TrimPrefix(line, "data: ")
+			}
+		}
+	}()
+
+	select {
+	case res := <-ch:
+		return res.frame, res.ok
+	case <-time.After(timeout):
+		return sseFrame{}, false
+	}
+}
+
+// TestLastEventIDWithholdsAlreadySeenTurn: with a frozen clock the world stays
+// at turn 0, so a client reconnecting with Last-Event-ID: 0 must NOT be
+// re-sent turn 0 — it already has it.
+func TestLastEventIDWithholdsAlreadySeenTurn(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		header    string
-		wantValue int64
-	}{
-		{"valid turn 0", "0", 0},
-		{"valid turn 123", "123", 123},
-		{"missing header", "", -1},
-		{"invalid not a number", "not-a-number", -1},
-		{"invalid garbage", "xyz", -1},
+	ts := startServer(t, time.Hour, time.Hour) // frozen clock + heartbeat
+
+	fresh := get(t, ts, "/api/events")
+	frames := readFrames(t, bufio.NewReader(fresh.Body), 1, 5*time.Second)
+
+	if frames[0].id != "0" {
+		t.Fatalf("first frame id = %q, want 0", frames[0].id)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Simulate an HTTP request with Last-Event-ID header
-			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/events", nil)
-			if tt.header != "" {
-				req.Header.Set("Last-Event-ID", tt.header)
-			}
-
-			// Call parseLastEventID directly (from internal/server/events.go)
-			// We'll test through the handler behavior instead
-			got := parseTestLastEventID(req)
-			if got != tt.wantValue {
-				t.Errorf("got %d, want %d", got, tt.wantValue)
-			}
-		})
+	reconnect := getWithLastEventID(t, ts, "/api/events", "0")
+	if _, ok := readFrameWithin(t, bufio.NewReader(reconnect.Body), 300*time.Millisecond); ok {
+		t.Fatal("server re-sent an already-seen turn to a reconnecting client")
 	}
 }
 
-// parseTestLastEventID is a copy of parseLastEventID from events.go for direct testing.
-func parseTestLastEventID(r *http.Request) int64 {
-	id, err := strconv.ParseInt(r.Header.Get("Last-Event-ID"), 10, 64)
-	if err != nil {
-		return -1
-	}
-
-	return id
-}
-
-// TestLastEventIDFreshConnectionGetsSnapshot: fresh connection (no Last-Event-ID)
-// always gets the current snapshot, so watermark defaults to -1.
-func TestLastEventIDFreshConnectionGetsSnapshot(t *testing.T) {
+// TestLastEventIDSendsCurrentWhenMismatched: a Last-Event-ID that does not match
+// the current turn (ahead, as after a server restart, or garbage) still yields
+// the current snapshot — the watermark must not over-withhold.
+func TestLastEventIDSendsCurrentWhenMismatched(t *testing.T) {
 	t.Parallel()
 
 	ts := startServer(t, time.Hour, time.Hour)
 
-	// Fresh connection with no Last-Event-ID header: should get turn 0 immediately.
-	resp := get(t, ts, "/api/events")
-	frames := readFrames(t, bufio.NewReader(resp.Body), 1, 5*time.Second)
-	_ = resp.Body.Close()
+	for _, id := range []string{"999", "not-a-number"} {
+		resp := getWithLastEventID(t, ts, "/api/events", id)
 
-	if len(frames) == 0 {
-		t.Fatal("fresh connection: no snapshot delivered")
-	}
-
-	if frames[0].id != "0" {
-		t.Fatalf("fresh connection: frame id = %q, want 0", frames[0].id)
-	}
-}
-
-// TestLastEventIDInvalidHeaderDefaultsToFresh: invalid Last-Event-ID
-// values default to -1, yielding the current snapshot like a fresh connection.
-func TestLastEventIDInvalidHeaderDefaultsToFresh(t *testing.T) {
-	t.Parallel()
-
-	tests := []string{"not-a-number", "garbage", "-123abc"}
-
-	for _, invalidID := range tests {
-		ts := startServer(t, time.Hour, time.Hour)
-
-		// The implementation will parse the invalid header as -1,
-		// so the handler behaves like a fresh connection.
-		// This is verified by TestLastEventIDParses.
-		// Integration test: fresh connections always get current snapshot.
-		resp := get(t, ts, "/api/events")
-		frames := readFrames(t, bufio.NewReader(resp.Body), 1, 5*time.Second)
-		_ = resp.Body.Close()
-
-		if len(frames) == 0 {
-			t.Fatalf("invalid Last-Event-ID %q: no snapshot delivered", invalidID)
+		frame, ok := readFrameWithin(t, bufio.NewReader(resp.Body), 5*time.Second)
+		if !ok {
+			t.Fatalf("Last-Event-ID %q: no snapshot delivered", id)
 		}
 
-		if frames[0].id != "0" {
-			t.Fatalf("invalid Last-Event-ID %q: frame id = %q, want 0", invalidID, frames[0].id)
+		if frame.id != "0" {
+			t.Fatalf("Last-Event-ID %q: frame id = %q, want current turn 0", id, frame.id)
 		}
 	}
 }
