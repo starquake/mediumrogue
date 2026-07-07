@@ -14,31 +14,43 @@
       * {
         box-sizing: border-box;
       }
+      html,
       body {
         margin: 0;
-        min-height: 100vh;
+        height: 100%;
+        overflow: hidden;
         background: var(--bg);
         color: var(--fg);
         font-family: "Courier New", monospace;
-        display: grid;
-        place-items: center;
       }
+      canvas {
+        display: block;
+      }
+      /* HUD floats over the canvas: the HTML-over-WebGL split is the plan's
+         §6 design — social/status UI stays DOM, the world stays canvas. */
       #hud {
-        text-align: center;
+        position: fixed;
+        top: 0.75rem;
+        left: 1rem;
+        z-index: 10;
+        pointer-events: none;
+        text-shadow: 0 1px 2px #000;
       }
       #hud h1 {
+        margin: 0 0 0.25rem;
         font-weight: normal;
         letter-spacing: 0.3em;
         color: var(--dim);
-        font-size: 1rem;
+        font-size: 0.85rem;
         text-transform: uppercase;
       }
-      #turn {
-        font-size: 4rem;
+      #turn-row {
+        font-size: 1.1rem;
       }
       #status {
-        margin-top: 1rem;
+        margin-top: 0.25rem;
         color: var(--dim);
+        font-size: 0.85rem;
       }
       #status[data-connected="true"]::before {
         content: "● ";
@@ -50,11 +62,11 @@
     </style>
   </head>
   <body>
-    <main id="hud">
+    <header id="hud">
       <h1>Medium Rogue</h1>
-      <div id="turn" aria-label="world turn">—</div>
+      <div id="turn-row">turn <span id="turn">—</span></div>
       <div id="status" data-connected="false">connecting…</div>
-    </main>
+    </header>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
