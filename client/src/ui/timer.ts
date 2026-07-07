@@ -16,10 +16,7 @@ export class TurnTimer {
   private intervalMs = 0;
   private playbackMs = 0;
 
-  constructor(
-    ticker: Ticker,
-    private readonly onPhase: (phase: Phase, remainingMs: number) => void,
-  ) {
+  constructor(ticker: Ticker) {
     this.bar = this.mustGet("turn-timer");
     this.fill = this.mustGet("turn-timer-fill");
     ticker.add(this.tick);
@@ -45,14 +42,12 @@ export class TurnTimer {
       // Bar fills up while the move animates.
       const f = this.playbackMs > 0 ? this.elapsed / this.playbackMs : 1;
       this.fill.style.width = `${f * 100}%`;
-      this.onPhase("playback", this.playbackMs - this.elapsed);
     } else {
       // Bar drains over the input window.
       const inputMs = this.intervalMs - this.playbackMs;
       const left = this.intervalMs - this.elapsed;
       const f = inputMs > 0 ? left / inputMs : 0;
       this.fill.style.width = `${f * 100}%`;
-      this.onPhase("input", left);
     }
   };
 

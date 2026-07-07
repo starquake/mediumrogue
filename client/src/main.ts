@@ -57,6 +57,16 @@ function mustGet(id: string): HTMLElement {
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
 
+// Turn-phase timing, tracked from wall-clock (performance.now) and reset on
+// each turn bundle. window.game.phase is computed on read from these, so it
+// reports the true phase at any instant — independent of render-frame cadence,
+// which headless CI throttles hard enough that a tick-pushed snapshot could
+// miss the short playback window entirely. The DOM bar still animates on the
+// ticker (cosmetic); the observable state does not depend on it.
+let turnStartedAtMs = 0;
+let curIntervalMs = 0;
+let curPlaybackMs = 0;
+
 window.game = {
   turn: -1,
   connected: false,
@@ -64,8 +74,22 @@ window.game = {
   entities: 0,
   me: null,
   intervalMs: 0,
-  phase: "input",
-  phaseRemainingMs: 0,
+  get phase(): "playback" | "input" {
+    if (curIntervalMs === 0) {
+      return "input";
+    }
+
+    return performance.now() - turnStartedAtMs < curPlaybackMs ? "playback" : "input";
+  },
+  get phaseRemainingMs(): number {
+    if (curIntervalMs === 0) {
+      return 0;
+    }
+
+    const t = performance.now() - turnStartedAtMs;
+
+    return t < curPlaybackMs ? curPlaybackMs - t : Math.max(0, curIntervalMs - t);
+  },
   destination: null,
   tapHex: () => {},
 };
@@ -91,10 +115,7 @@ async function start(): Promise<void> {
   const entityLayer = new EntityLayer(app.ticker);
   world.addChild(entityLayer.container);
 
-  const timer = new TurnTimer(app.ticker, (phase, remainingMs) => {
-    window.game.phase = phase;
-    window.game.phaseRemainingMs = remainingMs;
-  });
+  const timer = new TurnTimer(app.ticker);
 
   const me = await join();
   window.game.me = { id: me.entityId, hex: me.hex };
@@ -124,6 +145,9 @@ async function start(): Promise<void> {
       turnEl.textContent = String(event.turn);
 
       const playbackMs = event.intervalMs * (PlaybackSeconds / TurnSeconds);
+      curIntervalMs = event.intervalMs;
+      curPlaybackMs = playbackMs;
+      turnStartedAtMs = performance.now();
 
       const mine = event.entities.find((e) => e.id === me.entityId);
       if (mine !== undefined && window.game.me !== null) {
