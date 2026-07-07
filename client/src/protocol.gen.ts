@@ -42,6 +42,51 @@ export interface Hex {
   r: number /* int */;
 }
 /**
+ * Terrain is a tile's ground type. Wire values are strings for a readable
+ * stream; the set is closed — the client renders unknown terrain as rock.
+ */
+export type Terrain = string;
+/**
+ * The terrain set. Rock is impassable and rings the world edge; water is
+ * impassable but open; grass and forest are walkable.
+ */
+export const TerrainGrass: Terrain = "grass";
+/**
+ * The terrain set. Rock is impassable and rings the world edge; water is
+ * impassable but open; grass and forest are walkable.
+ */
+export const TerrainForest: Terrain = "forest";
+/**
+ * The terrain set. Rock is impassable and rings the world edge; water is
+ * impassable but open; grass and forest are walkable.
+ */
+export const TerrainWater: Terrain = "water";
+/**
+ * The terrain set. Rock is impassable and rings the world edge; water is
+ * impassable but open; grass and forest are walkable.
+ */
+export const TerrainRock: Terrain = "rock";
+/**
+ * Tile is one hex of the world map.
+ */
+export interface Tile {
+  hex: Hex;
+  terrain: Terrain;
+}
+/**
+ * MapResponse is the payload of GET /api/map: the full static world map.
+ * Fetched once at client startup; entities move in turn bundles, the ground
+ * does not, so the map is not part of the SSE stream.
+ */
+export interface MapResponse {
+  /**
+   * Radius is the map's hex radius: every tile satisfies
+   * distance(origin, hex) <= Radius.
+   */
+  radius: number /* int */;
+  tiles: Tile[];
+}
+/**
  * SSE event names on the GET /api/events stream. The stream also carries
  * comment frames as heartbeats; those have no event name and no payload.
  */

@@ -33,6 +33,35 @@ type Hex struct {
 	R int `json:"r"`
 }
 
+// Terrain is a tile's ground type. Wire values are strings for a readable
+// stream; the set is closed — the client renders unknown terrain as rock.
+type Terrain string
+
+// The terrain set. Rock is impassable and rings the world edge; water is
+// impassable but open; grass and forest are walkable.
+const (
+	TerrainGrass  Terrain = "grass"
+	TerrainForest Terrain = "forest"
+	TerrainWater  Terrain = "water"
+	TerrainRock   Terrain = "rock"
+)
+
+// Tile is one hex of the world map.
+type Tile struct {
+	Hex     Hex     `json:"hex"`
+	Terrain Terrain `json:"terrain"`
+}
+
+// MapResponse is the payload of GET /api/map: the full static world map.
+// Fetched once at client startup; entities move in turn bundles, the ground
+// does not, so the map is not part of the SSE stream.
+type MapResponse struct {
+	// Radius is the map's hex radius: every tile satisfies
+	// distance(origin, hex) <= Radius.
+	Radius int    `json:"radius"`
+	Tiles  []Tile `json:"tiles"`
+}
+
 // SSE event names on the GET /api/events stream. The stream also carries
 // comment frames as heartbeats; those have no event name and no payload.
 const (
