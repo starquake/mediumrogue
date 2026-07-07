@@ -106,16 +106,11 @@ test("the turn timer bar exists and animates across a turn", async ({ page }) =>
 
   await expect.poll(() => page.evaluate(() => window.game.intervalMs)).toBeGreaterThan(0);
 
-  // The phase cycles through playback and input over successive turns.
-  const sawPlayback = await page.evaluate(async () => {
-    for (let i = 0; i < 200; i++) {
-      if (window.game.phase === "playback") {
-        return true;
-      }
-      await new Promise((res) => setTimeout(res, 10));
-    }
-
-    return false;
-  });
-  expect(sawPlayback).toBe(true);
+  // The phase clock cycles into "playback" for the first slice of every turn.
+  // Poll from the Node side (not an in-page setTimeout loop, which headless CI
+  // throttles hard enough to blow the test timeout) and sample often enough to
+  // catch the ~100ms playback window that recurs each 250ms turn.
+  await expect
+    .poll(() => page.evaluate(() => window.game.phase), { timeout: 10_000, intervals: [40] })
+    .toBe("playback");
 });
