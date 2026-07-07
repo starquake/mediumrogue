@@ -51,3 +51,35 @@ export function hexCorners(center: Point, size: number = HEX_SIZE): number[] {
 
   return points;
 }
+
+/**
+ * The hex containing a world-pixel point — the inverse of hexToPixel for the
+ * flat-top layout, via fractional axial → cube rounding (Red Blob Games).
+ * Used to turn a click into a destination hex; the server owns reachability.
+ */
+export function pixelToHex(point: Point): Hex {
+  const qf = ((2 / 3) * point.x) / HEX_SIZE;
+  const rf = (-point.x / 3 + (Math.sqrt(3) / 3) * point.y) / HEX_SIZE;
+
+  return cubeRound(qf, rf);
+}
+
+/** Rounds fractional axial coordinates to the nearest hex (cube rounding). */
+function cubeRound(qf: number, rf: number): Hex {
+  const sf = -qf - rf;
+  let q = Math.round(qf);
+  let r = Math.round(rf);
+  const s = Math.round(sf);
+
+  const dq = Math.abs(q - qf);
+  const dr = Math.abs(r - rf);
+  const ds = Math.abs(s - sf);
+
+  if (dq > dr && dq > ds) {
+    q = -r - s;
+  } else if (dr > ds) {
+    r = -q - s;
+  }
+
+  return { q: q + 0, r: r + 0 };
+}
