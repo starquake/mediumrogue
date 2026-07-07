@@ -20,9 +20,11 @@ type sseFrame struct {
 	data  string
 }
 
+const frameReadTimeout = 5 * time.Second
+
 // readFrames reads SSE frames (skipping comment-only frames) until count
 // frames arrive or the deadline hits.
-func readFrames(t *testing.T, r *bufio.Reader, count int, deadline time.Duration) []sseFrame {
+func readFrames(t *testing.T, r *bufio.Reader, count int) []sseFrame {
 	t.Helper()
 
 	frames := make([]sseFrame, 0, count)
@@ -59,7 +61,7 @@ func readFrames(t *testing.T, r *bufio.Reader, count int, deadline time.Duration
 
 	select {
 	case <-done:
-	case <-time.After(deadline):
+	case <-time.After(frameReadTimeout):
 		t.Fatalf("read %d/%d SSE frames before deadline", len(frames), count)
 	}
 
@@ -81,7 +83,7 @@ func TestEventsStreamsTurns(t *testing.T) {
 	}
 
 	// First frame is the immediate snapshot (turn may be 0), then live turns.
-	frames := readFrames(t, bufio.NewReader(resp.Body), 3, 5*time.Second)
+	frames := readFrames(t, bufio.NewReader(resp.Body), 3)
 
 	prev := int64(-1)
 
@@ -229,7 +231,7 @@ func TestLastEventIDWithholdsAlreadySeenTurn(t *testing.T) {
 	ts := startServer(t, time.Hour, time.Hour) // frozen clock + heartbeat
 
 	fresh := get(t, ts, "/api/events")
-	frames := readFrames(t, bufio.NewReader(fresh.Body), 1, 5*time.Second)
+	frames := readFrames(t, bufio.NewReader(fresh.Body), 1)
 
 	if frames[0].id != "0" {
 		t.Fatalf("first frame id = %q, want 0", frames[0].id)

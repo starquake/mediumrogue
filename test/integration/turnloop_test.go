@@ -106,7 +106,7 @@ func TestTurnLoopMovesEntity(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 
 	for time.Now().Before(deadline) {
-		frames := readFrames(t, reader, 1, 5*time.Second)
+		frames := readFrames(t, reader, 1)
 
 		var bundle protocol.TurnEvent
 		if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
@@ -234,7 +234,7 @@ func TestTurnLoopWalksToDistantHex(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 
 	for time.Now().Before(deadline) {
-		frames := readFrames(t, reader, 1, 5*time.Second)
+		frames := readFrames(t, reader, 1)
 
 		var bundle protocol.TurnEvent
 		if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
