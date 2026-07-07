@@ -5,6 +5,10 @@ A multiplayer roguelike for a ~15-friend group: shared hex world, simultaneous
 design — every decided rule and open question — lives in
 **`docs/roguelike-mp-plan.md`**; read it before making design-level choices.
 
+**Resuming work? Start with `docs/STATUS.md`** — current milestone state,
+next step, known placeholders, and environment gotchas. Keep it updated at
+the end of every session.
+
 ## Architecture
 
 - **Go server** (module root, standard go.dev server layout): authoritative
