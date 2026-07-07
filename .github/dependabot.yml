@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  # tools/ pins Go-built CLI tools (tygo). A bump here must be mirrored to any
+  # matching version pins in the Makefile — flag the manual step in the PR.
+  - package-ecosystem: gomod
+    directory: /tools
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

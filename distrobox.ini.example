@@ -1,0 +1,15 @@
+# Distrobox definition for an immutable-host (Silverblue) dev environment.
+# Copy to distrobox.ini, then: distrobox assemble create
+#
+# Inside the box: git clone, `make check`, `make dev` — everything works
+# without touching the host image. Playwright browsers install with
+# `npx playwright install --with-deps chromium` (needs the deps flag inside
+# a fresh box).
+
+[medium-rogue]
+image=registry.fedoraproject.org/fedora:42
+additional_packages="git make curl golang nodejs npm"
+init=false
+nvidia=false
+pull=true
+replace=false

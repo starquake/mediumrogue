@@ -1,0 +1,10 @@
+# Local container run / simple VPS deployment. Put Caddy (or any TLS proxy
+# with HTTP/2) in front for production — see plan §7.
+services:
+  rogue:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      TURN_INTERVAL: 5s
+    restart: unless-stopped
