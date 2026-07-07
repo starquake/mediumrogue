@@ -161,3 +161,96 @@ func neighborsOf(h protocol.Hex) []protocol.Hex {
 		{Q: h.Q - 1, R: h.R},
 	}
 }
+
+// TestTurnLoopWalksToDistantHex proves server-side pathing over real HTTP: a
+// single destination intent to a hex two steps away walks the entity there
+// across successive turn bundles.
+func TestTurnLoopWalksToDistantHex(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, 20*time.Millisecond, time.Hour)
+	me := join(t, ts, "")
+
+	var worldMap protocol.MapResponse
+	if err := json.NewDecoder(get(t, ts, "/api/map").Body).Decode(&worldMap); err != nil {
+		t.Fatalf("decode map: %v", err)
+	}
+
+	walkable := make(map[protocol.Hex]bool)
+
+	for _, tile := range worldMap.Tiles {
+		if tile.Terrain == protocol.TerrainGrass || tile.Terrain == protocol.TerrainForest {
+			walkable[tile.Hex] = true
+		}
+	}
+
+	// A reachable hex exactly two steps from spawn.
+	dist := func(a, b protocol.Hex) int {
+		dq, dr := a.Q-b.Q, a.R-b.R
+		ds := -dq - dr
+		abs := func(n int) int {
+			if n < 0 {
+				return -n
+			}
+
+			return n
+		}
+
+		return (abs(dq) + abs(dr) + abs(ds)) / 2
+	}
+
+	dest := protocol.Hex{}
+	found := false
+
+	for _, n1 := range neighborsOf(me.Hex) {
+		if !walkable[n1] {
+			continue
+		}
+
+		for _, n2 := range neighborsOf(n1) {
+			if walkable[n2] && dist(me.Hex, n2) == 2 {
+				dest, found = n2, true
+
+				break
+			}
+		}
+
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("spawn %v has no reachable distance-2 hex", me.Hex)
+	}
+
+	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: dest}
+	if resp := postJSON(t, ts, "/api/intent", intent); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("intent status = %d, want 202", resp.StatusCode)
+	}
+
+	events := get(t, ts, "/api/events")
+	reader := bufio.NewReader(events.Body)
+	deadline := time.Now().Add(5 * time.Second)
+
+	for time.Now().Before(deadline) {
+		frames := readFrames(t, reader, 1, 5*time.Second)
+
+		var bundle protocol.TurnEvent
+		if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
+			t.Fatalf("unmarshal bundle %q: %v", frames[0].data, err)
+		}
+
+		if bundle.IntervalMs != 20 {
+			t.Fatalf("IntervalMs = %d, want 20", bundle.IntervalMs)
+		}
+
+		for _, e := range bundle.Entities {
+			if e.ID == me.EntityID && e.Hex == dest {
+				return // walked the full path
+			}
+		}
+	}
+
+	t.Fatal("entity never reached the distance-2 destination via the turn stream")
+}
