@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/starquake/medium-rogue/internal/game"
-	"github.com/starquake/medium-rogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // handleJoin mints or returns the caller's entity. Idempotent for a client

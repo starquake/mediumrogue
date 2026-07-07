@@ -1,6 +1,6 @@
 package game
 
-import "github.com/starquake/medium-rogue/internal/protocol"
+import "github.com/starquake/mediumrogue/internal/protocol"
 
 // Hex math on axial coordinates, straight from Red Blob Games' hex guide
 // (flat-top orientation). The cube s-coordinate is implicit: s = -q-r.

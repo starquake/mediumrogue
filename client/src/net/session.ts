@@ -1,6 +1,6 @@
 import type { Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
 
-const STORAGE_KEY = "medium-rogue.identity";
+const STORAGE_KEY = "mediumrogue.identity";
 
 export interface Identity {
   entityId: number;

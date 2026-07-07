@@ -6,7 +6,7 @@
 # `npx playwright install --with-deps chromium` (needs the deps flag inside
 # a fresh box).
 
-[medium-rogue]
+[mediumrogue]
 image=registry.fedoraproject.org/fedora:42
 additional_packages="git make curl golang nodejs npm"
 init=false

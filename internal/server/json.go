@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/starquake/medium-rogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // maxJSONBodySize caps request bodies on the JSON API. Intents and joins are

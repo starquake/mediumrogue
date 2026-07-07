@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/hub"
+	"github.com/starquake/mediumrogue/internal/hub"
 )
 
 func TestPublishReachesSubscriber(t *testing.T) {

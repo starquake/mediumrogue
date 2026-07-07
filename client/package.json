@@ -1,7 +1,7 @@
 {
-  "name": "medium-rogue-client",
+  "name": "mediumrogue-client",
   "private": true,
-  "description": "Browser client for medium-rogue: PixiJS hex renderer + HTML social UI, built with Vite, served embedded from the Go binary.",
+  "description": "Browser client for mediumrogue: PixiJS hex renderer + HTML social UI, built with Vite, served embedded from the Go binary.",
   "type": "module",
   "scripts": {
     "dev": "vite",

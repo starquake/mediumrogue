@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // handleEvents is the SSE world stream. Every connected client holds one of

@@ -100,8 +100,8 @@ Go module at the repo root, per the official server-project layout
 (https://go.dev/doc/modules/layout#server-project) — no `server/` wrapper dir:
 
 ```
-medium-rogue/
-├── go.mod                   # module github.com/starquake/medium-rogue
+mediumrogue/
+├── go.mod                   # module github.com/starquake/mediumrogue
 ├── cmd/rogue/               # main + app: lifecycle, serves client, SSE, intents
 ├── internal/
 │   ├── protocol/            # wire types & game constants (single source of truth)

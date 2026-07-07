@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/config"
-	"github.com/starquake/medium-rogue/internal/game"
-	"github.com/starquake/medium-rogue/internal/hub"
-	"github.com/starquake/medium-rogue/internal/server"
+	"github.com/starquake/mediumrogue/internal/config"
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
+	"github.com/starquake/mediumrogue/internal/server"
 )
 
 // shutdownGrace is how long in-flight requests (including open SSE streams,

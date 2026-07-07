@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/game"
-	"github.com/starquake/medium-rogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 func TestMapEndpoint(t *testing.T) {

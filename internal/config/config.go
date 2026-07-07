@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // errNonPositiveDuration rejects zero and negative duration overrides — a

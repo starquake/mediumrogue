@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // sseFrame is one parsed server-sent event.

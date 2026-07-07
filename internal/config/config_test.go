@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/config"
+	"github.com/starquake/mediumrogue/internal/config"
 )
 
 //nolint:paralleltest // sibling tests mutate the process env via t.Setenv; parallel would race them.

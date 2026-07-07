@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/game"
-	"github.com/starquake/medium-rogue/internal/hub"
-	"github.com/starquake/medium-rogue/internal/server"
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
+	"github.com/starquake/mediumrogue/internal/server"
 )
 
 // startServer boots the full handler tree with a fast clock and returns the

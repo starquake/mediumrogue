@@ -16,7 +16,7 @@ var distFS embed.FS
 
 // notBuiltBody is served at / when the embedded dist holds no index.html —
 // i.e. the binary was built without running the client build first.
-const notBuiltBody = "medium-rogue: client bundle not built. Run `make client` and rebuild the server.\n"
+const notBuiltBody = "mediumrogue: client bundle not built. Run `make client` and rebuild the server.\n"
 
 // Handler serves the embedded client bundle. The root path serves
 // dist/index.html; other paths serve their file or 404. No SPA rewrite is

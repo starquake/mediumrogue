@@ -1,4 +1,4 @@
-module github.com/starquake/medium-rogue/tools
+module github.com/starquake/mediumrogue/tools
 
 go 1.26.4
 

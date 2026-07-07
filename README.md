@@ -1,4 +1,4 @@
-# medium-rogue
+# mediumrogue
 
 A multiplayer roguelike for our group: a shared hex world that moves in
 simultaneous 5-second turns — until you meet a monster, and time freezes

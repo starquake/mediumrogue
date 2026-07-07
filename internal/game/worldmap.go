@@ -1,6 +1,6 @@
 package game
 
-import "github.com/starquake/medium-rogue/internal/protocol"
+import "github.com/starquake/mediumrogue/internal/protocol"
 
 // MapRadius is the static world's hex radius. Milestone 7 replaces this
 // hand-shaped map with procedural generation.

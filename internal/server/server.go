@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/game"
-	"github.com/starquake/medium-rogue/internal/hub"
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
 )
 
 // Deps bundles what the HTTP layer needs from the rest of the app, so it

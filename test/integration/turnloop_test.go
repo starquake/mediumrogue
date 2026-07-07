@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/starquake/medium-rogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // postJSON posts body as JSON and registers response-body cleanup.

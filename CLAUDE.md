@@ -1,4 +1,4 @@
-# medium-rogue
+# mediumrogue
 
 A multiplayer roguelike for a ~15-friend group: shared hex world, simultaneous
 5-second turns (WeGo), local combat time bubbles, browser client. The full

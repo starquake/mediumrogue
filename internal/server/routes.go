@@ -3,7 +3,7 @@ package server
 import (
 	"net/http"
 
-	"github.com/starquake/medium-rogue/internal/web"
+	"github.com/starquake/mediumrogue/internal/web"
 )
 
 // addRoutes registers every route. Kept as one function while the surface is
