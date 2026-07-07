@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-07, after milestone 3. Update this file at the end of
+*Last updated: 2026-07-07, after milestone 4. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -20,37 +20,44 @@ Read in this order:
    reminders.
 3. This file — where work stopped and what comes next.
 
-## State: milestones 1–3 done, verified, committed
+## State: milestones 1–4 done, verified, committed
 
 | Commit | Milestone |
 |---|---|
 | `d15ff13` | 1 — Skeleton: Go server, SSE turn stream, embedded Vite/TS client, CI, tooling |
 | `e1e23fd` | 2 — Static hex world (radius-12, rock rim, lake, forest) rendered via PixiJS |
 | `e3e4bcb` | 3 — The turn loop: join + tokens, move intents, per-turn resolution, moving entities |
+| `milestone-4-playback-feel` (branch, not yet merged) | 4 — Playback & feel: `intervalMs` on turn bundles, server-side BFS path queues, per-entity playback tweens, click-to-move + unified keyboard, visible turn timer |
 
 What works right now (all covered by tests):
 
 - `make server` → world ticks every `TURN_INTERVAL` (default 5 s); SSE stream
-  `/api/events` broadcasts full entity snapshots with turn-number ids.
+  `/api/events` broadcasts full entity snapshots with turn-number ids and an
+  `intervalMs` field so the client can derive phase timing without a
+  separate `windowEndsAt` field.
 - Browser client: renders the map, joins (identity in localStorage, survives
-  reload), moves with QWE/ASD (Q/W/E = NW/N/NE, A/S/D = SW/S/SE), sees itself and
-  others move on turn bundles. `window.game` exposes state for tests.
+  reload), moves with QWE/ASD (Q/W/E = NW/N/NE, A/S/D = SW/S/SE) or by
+  clicking a hex (click-to-move) — both submit a destination intent that the
+  server resolves via BFS pathfinding into a per-entity path queue, walking
+  one hex per turn. Entities glide between hexes over the playback window
+  instead of snapping (per-entity playback tween). A DOM turn-timer bar shows
+  the playback/input phase clock live. `window.game` exposes `intervalMs`,
+  `phase`, `phaseRemainingMs`, `destination`, and `tapHex` for tests.
 - `POST /api/join` (token reclaim), `POST /api/intent` (202/401/422),
   `GET /api/map`, `GET /healthz`.
 
-## Next: milestone 4 — playback & feel
+## Next: milestone 5 — multiplayer polish
 
-From plan §8: turn results animate over the ~2 s playback window (tween
-moves instead of snapping); **visible turn timer** (countdown bar — needs the
-server to expose input-window timing, e.g. a `windowEndsAt`/server-time field
-in the turn bundle); **click-to-move** with queued paths (client sends target
-hex, server pathfinds — needs A* or BFS in `internal/game`, a path queue per
-entity that feeds one step per turn, re-validated per tick); first Playwright
-test asserting click → multi-turn walk → arrival.
+From plan §8: reconnect handling with a `Last-Event-ID` replay proof (the
+server currently accepts the header but keeps no replay buffer — this
+milestone adds one, plus a full-resync answer for clients too far behind);
+first conflict-resolution tests (concurrent moves onto the same hex,
+`STACK_CAP` overflow behavior) ahead of milestone 6's phased-resolution
+rewrite.
 
-After that (§8): 5 = multiplayer polish + reconnect/`Last-Event-ID` replay
-proof, 6 = combat + time bubbles + phased resolution, 6b = classes/species,
-7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = deploy.
+After that (§8): 6 = combat + time bubbles + phased resolution, 6b =
+classes/species, 7 = procgen, 8 = quests/parties/chat, 9 = shader filter,
+10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 
@@ -61,6 +68,16 @@ proof, 6 = combat + time bubbles + phased resolution, 6b = classes/species,
 - **`Last-Event-ID` replay not implemented**: SSE ids are turn numbers and
   ready for it; the server keeps no replay buffer yet (milestone 5, with a
   full-resync answer for clients too far behind).
+- **No server-side input-window enforcement**: intent acceptance stays
+  permissive (an intent is accepted whenever it arrives, regardless of the
+  client-visible timer phase); revisit once combat time bubbles (milestone 6)
+  need a hard cutoff.
+- **No re-pathing around a route blocked mid-walk**: if a queued path's next
+  step becomes unwalkable/occupied, the entity just waits at its current hex
+  rather than recomputing a detour.
+- **No multi-hex-per-turn travel**: destination intents always walk exactly
+  one hex per turn, even out of danger — deliberate for now, revisit for
+  combat/flee mechanics (milestone 6).
 - **No same-origin/CSRF guard on POSTs**: acceptable while auth is
   bearer-token-in-body (no ambient credentials). Revisit with real identity.
 - **Entities never leave the world**: no disconnect handling — every join
@@ -69,6 +86,9 @@ proof, 6 = combat + time bubbles + phased resolution, 6b = classes/species,
 - **No explicit wait input**: standing still = not sending an intent. An
   explicit wait intent may become useful inside combat time bubbles
   (milestone 6) — decide then.
+- **No combat-bubble "waiting for: …" timer state**: the turn timer shows
+  playback/input phases only; the milestone-6 combat time bubble will need a
+  distinct "paused, waiting on nearby players" state.
 - **nolint audit reminder** lives in CLAUDE.md (6 suppressions as of m3).
 
 ## Environment & gotchas (this repo, this machine)
