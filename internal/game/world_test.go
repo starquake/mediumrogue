@@ -237,6 +237,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 	n1 := walkableNeighbor(t, w, me.Hex)
 
 	var dest protocol.Hex
+
 	for _, n2 := range game.HexNeighbors(n1) {
 		if n2 != me.Hex && game.HexDistance(me.Hex, n2) == 2 && isWalkable(w, n2) {
 			dest = n2
@@ -256,6 +257,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 	// not yet at the destination.
 	snap := step(t, w)
 	mid := snap.Entities[0].Hex
+
 	if game.HexDistance(me.Hex, mid) != 1 {
 		t.Fatalf("after turn 1: hex %v is not one step from spawn %v", mid, me.Hex)
 	}
