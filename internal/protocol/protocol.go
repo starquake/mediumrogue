@@ -70,9 +70,49 @@ const (
 	EventTurn = "turn"
 )
 
-// TurnEvent is the payload of an EventTurn frame. It will grow into the full
-// turn-result bundle (moves, attacks, deaths, chat) as the game develops.
+// TurnEvent is the payload of an EventTurn frame: the world state after a
+// resolved turn. A full entity snapshot every turn keeps clients trivially
+// resyncable at this player count; deltas are a later optimization if ever
+// needed. It will grow (attacks, deaths, chat) as the game develops.
 type TurnEvent struct {
 	// Turn is the monotonically increasing world-turn number.
 	Turn int64 `json:"turn"`
+	// Entities is every entity in the world, sorted by ID.
+	Entities []Entity `json:"entities"`
+}
+
+// Entity is one thing standing on the map. For now every entity is a player;
+// kinds (monsters, NPCs) come with later milestones.
+type Entity struct {
+	ID  int64 `json:"id"`
+	Hex Hex   `json:"hex"`
+}
+
+// JoinRequest is the body of POST /api/join. A returning client sends its
+// stored token to reclaim its entity; an empty token means "new player".
+type JoinRequest struct {
+	Token string `json:"token"`
+}
+
+// JoinResponse identifies the caller's entity. The token is the bearer
+// secret for submitting intents — the "name + secret link" auth of the plan,
+// minus the name for now.
+type JoinResponse struct {
+	EntityID int64  `json:"entityId"`
+	Token    string `json:"token"`
+	Hex      Hex    `json:"hex"`
+}
+
+// IntentRequest is the body of POST /api/intent: "on the next turn, step to
+// Target". Target must be adjacent and walkable. One intent per entity per
+// turn; a later submission in the same input window replaces the earlier one.
+type IntentRequest struct {
+	EntityID int64  `json:"entityId"`
+	Token    string `json:"token"`
+	Target   Hex    `json:"target"`
+}
+
+// ErrorResponse is the JSON body of every non-2xx API response.
+type ErrorResponse struct {
+	Error string `json:"error"`
 }

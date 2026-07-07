@@ -58,10 +58,10 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 
 	ticks := hub.New()
-	clock := game.NewClock(cfg.TurnInterval, ticks)
+	world := game.NewWorld(cfg.TurnInterval, ticks)
 	handler := server.New(server.Deps{
 		Logger:            logger,
-		Clock:             clock,
+		World:             world,
 		Ticks:             ticks,
 		HeartbeatInterval: cfg.HeartbeatInterval,
 	})
@@ -72,7 +72,7 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 		return exitOK
 	}
 
-	if err := serve(ctx, logger, cfg, clock, handler); err != nil {
+	if err := serve(ctx, logger, cfg, world, handler); err != nil {
 		logger.Error("server", "err", err)
 
 		return exitErr
@@ -87,13 +87,13 @@ func serve(
 	ctx context.Context,
 	logger *slog.Logger,
 	cfg *config.Config,
-	clock *game.Clock,
+	world *game.World,
 	handler http.Handler,
 ) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go clock.Run(ctx)
+	go world.Run(ctx)
 
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,

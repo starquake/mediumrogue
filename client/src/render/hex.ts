@@ -19,6 +19,28 @@ export function hexToPixel(hex: Hex): Point {
   };
 }
 
+/**
+ * Flat-top axial neighbor offsets, in the same N, NE, SE, S, SW, NW order as
+ * the server's HexNeighbors — and as the movement keys W, E, D, X, A, Q.
+ */
+export const DIRECTIONS = {
+  n: { q: 0, r: -1 },
+  ne: { q: 1, r: -1 },
+  se: { q: 1, r: 0 },
+  s: { q: 0, r: 1 },
+  sw: { q: -1, r: 1 },
+  nw: { q: -1, r: 0 },
+} as const;
+
+export type Direction = keyof typeof DIRECTIONS;
+
+/** The hex one step from `from` in the given direction. */
+export function neighbor(from: Hex, dir: Direction): Hex {
+  const d = DIRECTIONS[dir];
+
+  return { q: from.q + d.q, r: from.r + d.r };
+}
+
 /** The six corner points of a hex, as a flat [x0, y0, x1, y1, …] array for PixiJS. */
 export function hexCorners(center: Point, size: number = HEX_SIZE): number[] {
   const points: number[] = [];

@@ -66,16 +66,18 @@ func handleEvents(deps Deps) http.Handler {
 	})
 }
 
-// writeTurn emits the latest turn as an SSE frame, unless that turn was
-// already sent (a coalesced wake-up with no new turn is a no-op). Returns the
-// turn number now on the wire.
+// writeTurn emits the latest turn bundle as an SSE frame, unless that turn
+// was already sent (a coalesced wake-up with no new turn is a no-op).
+// Returns the turn number now on the wire.
 func writeTurn(w http.ResponseWriter, deps Deps, flusher http.Flusher, lastSent int64) int64 {
-	turn := deps.Clock.Turn()
+	snapshot := deps.World.Snapshot()
+
+	turn := snapshot.Turn
 	if turn == lastSent {
 		return lastSent
 	}
 
-	payload, err := json.Marshal(protocol.TurnEvent{Turn: turn})
+	payload, err := json.Marshal(snapshot)
 	if err != nil {
 		// TurnEvent is a fixed struct of marshalable fields; reaching this
 		// means a programming error, not a runtime condition.

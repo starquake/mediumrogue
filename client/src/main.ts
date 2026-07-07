@@ -4,9 +4,13 @@ import "pixi.js/unsafe-eval";
 
 import { Application, Container } from "pixi.js";
 
+import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import { fetchMap } from "./net/map";
-import type { TurnEvent } from "./protocol.gen";
+import { join, submitIntent } from "./net/session";
+import type { Hex, TurnEvent } from "./protocol.gen";
+import { EntityLayer } from "./render/entities";
+import { neighbor } from "./render/hex";
 import { buildMapLayer } from "./render/map";
 
 // window.game is the debug/testing surface: Playwright (and a curious human
@@ -17,6 +21,10 @@ export interface GameDebug {
   connected: boolean;
   /** Number of map tiles rendered; 0 until the map layer is on stage. */
   tiles: number;
+  /** Entity count from the latest turn bundle. */
+  entities: number;
+  /** This client's entity, server-authoritative position. Null until joined. */
+  me: { id: number; hex: Hex } | null;
 }
 
 declare global {
@@ -37,19 +45,7 @@ function mustGet(id: string): HTMLElement {
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
 
-window.game = { turn: -1, connected: false, tiles: 0 };
-
-connectEvents({
-  onTurn: (event: TurnEvent): void => {
-    window.game.turn = event.turn;
-    turnEl.textContent = String(event.turn);
-  },
-  onConnectionChange: (connected: boolean): void => {
-    window.game.connected = connected;
-    statusEl.dataset["connected"] = String(connected);
-    statusEl.textContent = connected ? "connected" : "reconnecting…";
-  },
-});
+window.game = { turn: -1, connected: false, tiles: 0, entities: 0, me: null };
 
 async function start(): Promise<void> {
   const app = new Application();
@@ -71,6 +67,50 @@ async function start(): Promise<void> {
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
+
+  const entityLayer = new EntityLayer();
+  world.addChild(entityLayer.container);
+
+  const me = await join();
+  window.game.me = { id: me.entityId, hex: me.hex };
+
+  connectEvents({
+    onTurn: (event: TurnEvent): void => {
+      window.game.turn = event.turn;
+      window.game.entities = event.entities.length;
+      turnEl.textContent = String(event.turn);
+
+      const mine = event.entities.find((e) => e.id === me.entityId);
+      if (mine !== undefined && window.game.me !== null) {
+        window.game.me.hex = mine.hex;
+      }
+
+      entityLayer.update(event.entities, me.entityId);
+    },
+    onConnectionChange: (connected: boolean): void => {
+      window.game.connected = connected;
+      statusEl.dataset["connected"] = String(connected);
+      statusEl.textContent = connected ? "connected" : "reconnecting…";
+    },
+  });
+
+  const identity = { entityId: me.entityId, token: me.token };
+  bindMovementKeys({
+    onStep: (dir): void => {
+      const from = window.game.me?.hex;
+      if (from === undefined) {
+        return;
+      }
+
+      // Fire and forget: a rejection (wall, water) simply means no intent is
+      // queued; the world's answer arrives in the next turn bundle either way.
+      void submitIntent(identity, neighbor(from, dir));
+    },
+    onWait: (): void => {
+      // S = stay. No intent means wait — nothing to send (yet; an explicit
+      // wait intent becomes meaningful once combat time bubbles exist).
+    },
+  });
 }
 
 start().catch((err: unknown) => {
