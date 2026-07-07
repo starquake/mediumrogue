@@ -1,0 +1,20 @@
+{
+  "name": "medium-rogue-client",
+  "private": true,
+  "description": "Browser client for medium-rogue: PixiJS hex renderer + HTML social UI, built with Vite, served embedded from the Go binary.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "tsc --noEmit",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "pixi.js": "^8.14.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.4"
+  }
+}

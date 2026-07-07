@@ -1,0 +1,46 @@
+# Adapted from topbanana's config: the same strict posture, minus the linters
+# tied to machinery this repo does not have (sqlc, templates). The version
+# pin lives in the Makefile (GOLANGCI_VERSION) and .github/workflows/ci.yml.
+version: "2"
+linters:
+  default: all
+  disable:
+    # Deliberate omissions:
+    - depguard        # no import restrictions yet
+    - exhaustruct     # zero values are idiomatic for our option structs
+    - ireturn         # http.Handler constructors return interfaces by design
+    - varnamelen      # short names are fine at hex-math altitude
+    - wsl             # deprecated in favor of wsl_v5
+    - noinlineerr     # inline `if err :=` is house style here
+    - funcorder       # constructor-after-use ordering is fine in small files
+    - gomodguard      # deprecated; gomodguard_v2 (enabled via default: all) replaces it
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: false
+    cyclop:
+      max-complexity: 15
+    gocognit:
+      min-complexity: 20
+    lll:
+      line-length: 120
+  exclusions:
+    rules:
+      # Test files may use long funcs, magic numbers, and unwrapped errors.
+      # bodyclose: the shared get() helper closes bodies via t.Cleanup, which
+      # bodyclose cannot see across the call.
+      - path: _test\.go
+        linters:
+          - funlen
+          - gochecknoglobals
+          - err113
+          - mnd
+          - wrapcheck
+          - cyclop
+          - gocognit
+          - bodyclose
+formatters:
+  enable:
+    - gofmt
+    - goimports
