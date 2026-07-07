@@ -23,7 +23,7 @@ test("a keyboard step moves my entity on the next turn", async ({ page }) => {
 
   // Try each movement key: whichever direction is walkable from spawn gets
   // queued (latest valid intent wins server-side; rejected ones don't queue).
-  for (const key of ["KeyW", "KeyE", "KeyD", "KeyX", "KeyA", "KeyQ"]) {
+  for (const key of ["KeyW", "KeyE", "KeyD", "KeyS", "KeyA", "KeyQ"]) {
     await page.keyboard.press(key);
   }
 

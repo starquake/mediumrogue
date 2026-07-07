@@ -16,7 +16,7 @@ func HexDistance(a, b protocol.Hex) int {
 }
 
 // HexNeighbors returns the six adjacent hexes of h, in the flat-top
-// direction order N, NE, SE, S, SW, NW (matching the W/E/D/X/A/Q keys).
+// direction order N, NE, SE, S, SW, NW (matching the W/E/D/S/A/Q keys).
 func HexNeighbors(h protocol.Hex) [6]protocol.Hex {
 	return [6]protocol.Hex{
 		{Q: h.Q, R: h.R - 1},     // N

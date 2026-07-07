@@ -33,7 +33,7 @@ What works right now (all covered by tests):
 - `make server` → world ticks every `TURN_INTERVAL` (default 5 s); SSE stream
   `/api/events` broadcasts full entity snapshots with turn-number ids.
 - Browser client: renders the map, joins (identity in localStorage, survives
-  reload), moves with QWE/ASD+X (S = wait, currently no-op), sees itself and
+  reload), moves with QWE/ASD (Q/W/E = NW/N/NE, A/S/D = SW/S/SE), sees itself and
   others move on turn bundles. `window.game` exposes state for tests.
 - `POST /api/join` (token reclaim), `POST /api/intent` (202/401/422),
   `GET /api/map`, `GET /healthz`.
@@ -66,8 +66,9 @@ proof, 6 = combat + time bubbles + phased resolution, 6b = classes/species,
 - **Entities never leave the world**: no disconnect handling — every join
   without a token mints a new entity forever (offline-character policy is an
   open decision in plan §9).
-- **S key sends nothing**: explicit wait intents become meaningful with
-  combat time bubbles.
+- **No explicit wait input**: standing still = not sending an intent. An
+  explicit wait intent may become useful inside combat time bubbles
+  (milestone 6) — decide then.
 - **nolint audit reminder** lives in CLAUDE.md (6 suppressions as of m3).
 
 ## Environment & gotchas (this repo, this machine)
