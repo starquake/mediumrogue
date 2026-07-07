@@ -36,6 +36,13 @@ func handleEvents(deps Deps) http.Handler {
 		h.Set("Cache-Control", "no-cache")
 		w.WriteHeader(http.StatusOK)
 
+		// Establish the stream on the wire immediately. Without this, Go's
+		// server buffers the header block until the first body write, so a
+		// reconnecting client whose Last-Event-ID already matches the current
+		// turn (writeTurn below sends nothing) would see its connection hang
+		// with no bytes at all until the next turn or heartbeat.
+		flusher.Flush()
+
 		ticks, unsubscribe := deps.Ticks.Subscribe()
 		defer unsubscribe()
 
