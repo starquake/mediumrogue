@@ -110,11 +110,10 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 //
 // The retreating entity here is the monster; its path is set directly via
 // SetPathForTest and resolved with ResolveCombatOnlyForTest (skips
-// thinkMonstersLocked), because the real AI never voluntarily moves a
-// monster onto/away in reaction to an adjacent player — monster-initiated
-// movement in that situation is milestone 6.3 Task 3, not this task. This
-// test is about the combat *machinery* (moveAndBumpLocked's bump/re-check
-// logic), independent of which AI actually drives it.
+// thinkMonstersLocked), because the real AI never voluntarily retreats a
+// monster away from a player — it only ever holds or advances. This test is
+// about the combat *machinery* (moveAndBumpLocked's bump/re-check logic),
+// independent of which AI actually drives it.
 func TestBumpRetreatDodgesDamage(t *testing.T) {
 	t.Parallel()
 
@@ -180,9 +179,10 @@ func TestBumpRetreatDodgesDamage(t *testing.T) {
 // removed and the player, rather than vanishing, respawns at full HP.
 //
 // The monster's half of the mutual bump is driven via SetPathForTest +
-// ResolveCombatOnlyForTest for the same reason as the retreat test: the
-// current AI does not initiate attacks. This test targets the combat
-// resolution algorithm's simultaneity, not the AI.
+// ResolveCombatOnlyForTest rather than thinkMonstersLocked, to pin the exact
+// turn the bump lands independent of the AI's own targeting/pathfinding.
+// This test targets the combat resolution algorithm's simultaneity, not the
+// AI.
 func TestBumpMutualKill(t *testing.T) {
 	t.Parallel()
 
@@ -350,5 +350,44 @@ func TestBumpRandomVictimOnStackedHexIsReproducible(t *testing.T) {
 
 	if got, want := healthy2, healthy1; got != want {
 		t.Errorf("healthy id changed between runs for the same seed: first run %d, second run %d", want, got)
+	}
+}
+
+// TestMonsterAIAttacksAdjacentPlayer: with no player intent, a monster
+// already adjacent to the sole player now bumps into it (milestone 6.3 Task
+// 3) instead of holding position (6.2's behaviour) — thinkMonstersLocked
+// steps onto the player's hex, and the move phase converts that into an
+// attack. The player takes MonsterAttackDamage and the monster stays put.
+func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(6)
+
+	me, err := w.Join("")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	monsterHex := walkableNeighbor(t, w, me.Hex)
+	monsterID := w.PlaceMonsterForTest(monsterHex)
+
+	snap := step(t, w)
+
+	player, ok := entityOfSnap(snap, me.EntityID)
+	if !ok {
+		t.Fatalf("player %d missing from snapshot after a single monster attack", me.EntityID)
+	}
+
+	if got, want := player.HP, protocol.PlayerMaxHP-protocol.MonsterAttackDamage; got != want {
+		t.Errorf("player HP = %d, want %d", got, want)
+	}
+
+	if got, want := player.Hex, me.Hex; got != want {
+		t.Errorf("player hex = %v, want unchanged %v (a bump does not move the defender)", got, want)
+	}
+
+	if got, want := hexOfSnap(snap, monsterID), monsterHex; got != want {
+		t.Errorf("monster hex = %v, want unchanged %v (a bump does not move the attacker)", got, want)
 	}
 }

@@ -399,12 +399,6 @@ func (w *World) resolveDeathsLocked() {
 // per-turn move-shuffle stream (which uses the turn number).
 const spawnStream uint64 = 0x5EED
 
-// minPathWithApproachHex is the shortest Pathfind result (from, to] that
-// contains a hex strictly before the destination: one to approach into, one
-// that is the destination itself. A path shorter than this means the mover
-// is already adjacent (or at) the destination.
-const minPathWithApproachHex = 2
-
 // SpawnMonsters adds n monster entities at random walkable hexes, chosen with
 // the world seed so a given seed is reproducible. Skips hexes already at
 // StackCap. Intended for **startup, before any player joins** (server startup
@@ -454,13 +448,10 @@ func (w *World) SpawnMonsters(n int) {
 }
 
 // thinkMonstersLocked sets each monster's path to a single step toward its
-// nearest player, stopping when adjacent — moving onto a player is an attack,
-// which is milestone 6.3. Recomputed every turn (players move). Callers hold w.mu.
+// nearest player. Recomputed every turn (players move). Callers hold w.mu.
 //
-// Note for 6.3: this only prevents a monster from *stepping onto* a player. The
-// move phase has no hostile-anti-stacking rule yet, so a monster and a player
-// can still converge onto the same hex in one turn; 6.3's attack phase must
-// handle a monster already co-located with a player at turn start.
+// When adjacent, path[0] is the player's own hex, so the move phase converts
+// this into a bump-to-attack (6.3).
 func (w *World) thinkMonstersLocked() {
 	players := make([]*entity, 0, len(w.entities))
 
@@ -481,9 +472,9 @@ func (w *World) thinkMonstersLocked() {
 
 		target := nearestPlayer(m.hex, players)
 		path := Pathfind(m.hex, target.hex, w.walkableLocked)
-		// Pathfind ends at the player's hex; only advance if there's an approach
-		// hex before it. Adjacent or unreachable → hold this turn.
-		if len(path) >= minPathWithApproachHex {
+		// Step toward the nearest player; when adjacent, path[0] is the player's own
+		// hex, so the move phase converts this into a bump-to-attack (6.3).
+		if len(path) >= 1 {
 			m.path = []protocol.Hex{path[0]}
 		} else {
 			m.path = nil
