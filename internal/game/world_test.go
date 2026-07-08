@@ -383,3 +383,115 @@ func countAt(snap protocol.TurnEvent, hex protocol.Hex) int {
 
 	return n
 }
+
+// placeSixMoversIntoCenter places one entity on each of the six neighbours of
+// the origin, each queued to step onto the origin. With StackCap = 5 exactly
+// one loses the seeded overflow tie-break. Returns the entity ids in placement
+// (ascending-id) order.
+func placeSixMoversIntoCenter(t *testing.T, w *game.World, center protocol.Hex) []int64 {
+	t.Helper()
+
+	ids := make([]int64, 0, 6)
+
+	for _, n := range game.HexNeighbors(center) {
+		id, tok := w.PlaceEntityForTest(n)
+		mustSubmit(t, w, id, tok, center)
+		ids = append(ids, id)
+	}
+
+	return ids
+}
+
+// blockedMover returns the id of the entity NOT on center after one resolve, or
+// 0 if none (should not happen in a 6-into-5 overflow).
+func blockedMover(snap protocol.TurnEvent, ids []int64, center protocol.Hex) int64 {
+	for _, id := range ids {
+		if hexOfSnap(snap, id) != center {
+			return id
+		}
+	}
+
+	return 0
+}
+
+func TestPhasedOverflowAdmitsStackCapBlocksOne(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	ids := placeSixMoversIntoCenter(t, w, center)
+	w.ResolveTurnForTest()
+	snap := w.Snapshot()
+
+	if got, want := countAt(snap, center), protocol.StackCap; got != want {
+		t.Fatalf("center occupancy = %d, want StackCap %d", got, want)
+	}
+
+	if got := blockedMover(snap, ids, center); got == 0 {
+		t.Fatal("expected exactly one blocked mover, found none")
+	}
+}
+
+func TestPhasedTieBreakIsReproducible(t *testing.T) {
+	t.Parallel()
+
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(newWorld(), center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	blockedFor := func(seed int64) int64 {
+		w := newWorld()
+		w.SetSeedForTest(seed)
+		ids := placeSixMoversIntoCenter(t, w, center)
+		w.ResolveTurnForTest()
+
+		return blockedMover(w.Snapshot(), ids, center)
+	}
+
+	// Same seed + same board → same tie-break outcome.
+	if got, want := blockedFor(42), blockedFor(42); got != want {
+		t.Fatalf("same seed produced different blocked entities: %d vs %d", got, want)
+	}
+}
+
+func TestPhasedTieBreakIsNotIDFavoritism(t *testing.T) {
+	t.Parallel()
+
+	// The old placeholder always blocked the highest id (low ids moved first and
+	// filled the hex). Under the seeded shuffle the loser must depend on the
+	// seed — assert at least one seed (of 20) blocks a non-max id. Deterministic
+	// (fixed seeds), not flaky: P(all 20 block the max) = (1/6)^20 ≈ 0.
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(newWorld(), center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	var maxID int64
+
+	blockedNonMax := false
+
+	for seed := range int64(20) {
+		w := newWorld()
+		w.SetSeedForTest(seed)
+		ids := placeSixMoversIntoCenter(t, w, center)
+		maxID = ids[len(ids)-1] // PlaceEntityForTest assigns ascending ids
+
+		w.ResolveTurnForTest()
+
+		if b := blockedMover(w.Snapshot(), ids, center); b != 0 && b != maxID {
+			blockedNonMax = true
+
+			break
+		}
+	}
+
+	if !blockedNonMax {
+		t.Fatalf("across 20 seeds the blocked mover was always the max id %d — no seeded tie-break", maxID)
+	}
+}

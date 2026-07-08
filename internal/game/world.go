@@ -3,9 +3,11 @@ package game
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	mrand "math/rand/v2"
 	"slices"
 	"sync"
 	"time"
@@ -57,6 +59,11 @@ type World struct {
 	entities map[int64]*entity
 	byToken  map[string]*entity
 	nextID   int64
+	// seed is the world's tie-break RNG seed, minted once at construction. Each
+	// turn's move-resolution shuffle uses a PCG seeded from (seed, turn) — the
+	// turn selects the stream — so it's reproducible given the world + turn but
+	// unpredictable to players (they don't know the world seed).
+	seed int64
 }
 
 // NewWorld builds the world on the static map. Run must be started for turns
@@ -69,6 +76,12 @@ func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
 		terrain[t.Hex] = t.Terrain
 	}
 
+	var seedBuf [8]byte
+	// A failed crypto read leaves a zero seed — still valid, just less random.
+	_, _ = rand.Read(seedBuf[:])
+	//nolint:gosec // a random world seed can be any 64-bit value; the sign is irrelevant.
+	seed := int64(binary.BigEndian.Uint64(seedBuf[:]))
+
 	return &World{
 		interval: interval,
 		ticks:    ticks,
@@ -76,6 +89,7 @@ func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
 		worldMap: worldMap,
 		entities: make(map[int64]*entity),
 		byToken:  make(map[string]*entity),
+		seed:     seed,
 	}
 }
 
@@ -174,31 +188,41 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	return protocol.TurnEvent{Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities}
 }
 
-// resolveTurn advances every entity one hex along its queued path, then bumps
-// the turn number. Entities apply in ascending-ID order with a per-move
-// occupancy re-check — a placeholder ordering until milestone 6 lands the real
-// phased resolution (all moves simultaneously, seeded tie-break on overflow).
-// A step onto a full hex is skipped this turn and retried next turn (the path
-// is retained).
+// resolveTurn applies the move phase of the decided phased resolution: all moves
+// resolve simultaneously, then the turn advances. Occupancy starts at the
+// current board (every entity holds its own slot), so a mover leaving a hex
+// frees a slot and one moving in fills it. Movers resolve in a per-turn
+// seeded-shuffled order, so hex overflow past StackCap breaks fairly and
+// reproducibly — not by entity id. A blocked mover waits this turn (path
+// retained). The attack phase (bump-to-attack, damage) lands in milestone 6.3.
 func (w *World) resolveTurn() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	ids := make([]int64, 0, len(w.entities))
-	for id := range w.entities {
-		ids = append(ids, id)
+	occ := make(map[protocol.Hex]int, len(w.entities))
+	for _, e := range w.entities {
+		occ[e.hex]++
 	}
 
-	slices.Sort(ids)
-
-	for _, id := range ids {
-		e := w.entities[id]
-		if len(e.path) == 0 {
-			continue
+	movers := make([]*entity, 0, len(w.entities))
+	for _, e := range w.entities {
+		if len(e.path) > 0 {
+			movers = append(movers, e)
 		}
+	}
 
+	// Canonical order first, so the seed alone determines the permutation.
+	slices.SortFunc(movers, func(a, b *entity) int { return int(a.id - b.id) })
+
+	//nolint:gosec // deterministic game tie-break, not security-sensitive; reproducibility is required.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
+	rng.Shuffle(len(movers), func(i, j int) { movers[i], movers[j] = movers[j], movers[i] })
+
+	for _, e := range movers {
 		next := e.path[0]
-		if w.occupancyLocked(next) < protocol.StackCap {
+		if occ[next] < protocol.StackCap {
+			occ[e.hex]--
+			occ[next]++
 			e.hex = next
 			e.path = e.path[1:]
 		}
