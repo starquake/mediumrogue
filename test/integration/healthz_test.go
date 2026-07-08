@@ -13,8 +13,8 @@ func TestHealthz(t *testing.T) {
 	ts := startServer(t, time.Hour, time.Hour)
 
 	resp := get(t, ts, "/healthz")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		t.Fatalf("status = %d, want 200", got)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -22,8 +22,8 @@ func TestHealthz(t *testing.T) {
 		t.Fatalf("read body: %v", err)
 	}
 
-	if got := string(body); got != "ok\n" {
-		t.Fatalf("body = %q, want %q", got, "ok\n")
+	if got, want := string(body), "ok\n"; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
 	}
 }
 

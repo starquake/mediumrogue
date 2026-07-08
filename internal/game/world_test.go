@@ -37,12 +37,12 @@ func TestJoinCreatesEntityOnWalkableHex(t *testing.T) {
 	}
 
 	snap := w.Snapshot()
-	if len(snap.Entities) != 1 {
-		t.Fatalf("entities = %d, want 1", len(snap.Entities))
+	if got, want := len(snap.Entities), 1; got != want {
+		t.Fatalf("entities = %d, want 1", got)
 	}
 
-	if snap.Entities[0].Hex != resp.Hex {
-		t.Fatalf("snapshot hex %v != join hex %v", snap.Entities[0].Hex, resp.Hex)
+	if got, want := snap.Entities[0].Hex, resp.Hex; got != want {
+		t.Fatalf("snapshot hex %v != join hex %v", got, want)
 	}
 }
 
@@ -61,11 +61,11 @@ func TestJoinWithKnownTokenReturnsSameEntity(t *testing.T) {
 		t.Fatalf("re-Join: %v", err)
 	}
 
-	if again.EntityID != first.EntityID {
-		t.Fatalf("re-join created a new entity: %d != %d", again.EntityID, first.EntityID)
+	if got, want := again.EntityID, first.EntityID; got != want {
+		t.Fatalf("re-join created a new entity: %d != %d", got, want)
 	}
 
-	if len(w.Snapshot().Entities) != 1 {
+	if got, want := len(w.Snapshot().Entities), 1; got != want {
 		t.Fatal("re-join must not create a second entity")
 	}
 }
@@ -97,17 +97,17 @@ func TestIntentMovesEntityOnResolve(t *testing.T) {
 	}
 
 	// Not moved yet: intents apply at the tick, never immediately.
-	if got := w.Snapshot().Entities[0].Hex; got != me.Hex {
+	if got, want := w.Snapshot().Entities[0].Hex, me.Hex; got != want {
 		t.Fatalf("entity moved before resolve: %v", got)
 	}
 
 	snap := step(t, w)
-	if got := snap.Entities[0].Hex; got != target {
-		t.Fatalf("after resolve: hex = %v, want %v", got, target)
+	if got, want := snap.Entities[0].Hex, target; got != want {
+		t.Fatalf("after resolve: hex = %v, want %v", got, want)
 	}
 
-	if snap.Turn != 1 {
-		t.Fatalf("turn = %d, want 1", snap.Turn)
+	if got, want := snap.Turn, int64(1); got != want {
+		t.Fatalf("turn = %d, want 1", got)
 	}
 }
 
@@ -135,8 +135,8 @@ func TestLatestIntentWins(t *testing.T) {
 
 	// second was submitted last (submitOK submits), so it must win.
 	snap := step(t, w)
-	if got := snap.Entities[0].Hex; got != second {
-		t.Fatalf("hex = %v, want the latest intent target %v", got, second)
+	if got, want := snap.Entities[0].Hex, second; got != want {
+		t.Fatalf("hex = %v, want the latest intent target %v", got, want)
 	}
 }
 
@@ -167,8 +167,8 @@ func TestIntentValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if err := w.SubmitIntent(tc.req); !errors.Is(err, tc.want) {
-				t.Fatalf("err = %v, want %v", err, tc.want)
+			if got, want := w.SubmitIntent(tc.req), tc.want; !errors.Is(got, want) {
+				t.Fatalf("err = %v, want %v", got, want)
 			}
 		})
 	}
@@ -186,8 +186,8 @@ func TestIntentRejectsUnwalkableTarget(t *testing.T) {
 	for _, n := range game.HexNeighbors(me.Hex) {
 		if !isWalkable(w, n) {
 			err := w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: n})
-			if !errors.Is(err, game.ErrNotWalkable) {
-				t.Fatalf("err = %v, want ErrNotWalkable", err)
+			if got, want := err, game.ErrNotWalkable; !errors.Is(got, want) {
+				t.Fatalf("err = %v, want ErrNotWalkable", got)
 			}
 
 			return
@@ -259,7 +259,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 	snap := step(t, w)
 	mid := snap.Entities[0].Hex
 
-	if game.HexDistance(me.Hex, mid) != 1 {
+	if got, want := game.HexDistance(me.Hex, mid), 1; got != want {
 		t.Fatalf("after turn 1: hex %v is not one step from spawn %v", mid, me.Hex)
 	}
 
@@ -269,8 +269,8 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 
 	// The second turn arrives.
 	snap = step(t, w)
-	if got := snap.Entities[0].Hex; got != dest {
-		t.Fatalf("after turn 2: hex = %v, want destination %v", got, dest)
+	if got, want := snap.Entities[0].Hex, dest; got != want {
+		t.Fatalf("after turn 2: hex = %v, want destination %v", got, want)
 	}
 }
 
@@ -278,7 +278,108 @@ func TestSnapshotCarriesInterval(t *testing.T) {
 	t.Parallel()
 
 	w := game.NewWorld(250*time.Millisecond, hub.New())
-	if got := w.Snapshot().IntervalMs; got != 250 {
+	if got, want := w.Snapshot().IntervalMs, int64(250); got != want {
 		t.Fatalf("IntervalMs = %d, want 250", got)
 	}
+}
+
+// TestFriendlyStackingConverges: two entities on neighbouring hexes both step
+// onto one shared hex in a single turn and stack — friendly stacking under the
+// StackCap, resolved simultaneously.
+func TestFriendlyStackingConverges(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	ns := game.HexNeighbors(center)
+
+	idA, tokA := w.PlaceEntityForTest(ns[0])
+	idB, tokB := w.PlaceEntityForTest(ns[1])
+
+	mustSubmit(t, w, idA, tokA, center)
+	mustSubmit(t, w, idB, tokB, center)
+
+	w.ResolveTurnForTest()
+
+	snap := w.Snapshot()
+	if got, want := hexOfSnap(snap, idA), center; got != want {
+		t.Errorf("A at %v, want center %v", got, want)
+	}
+
+	if got, want := hexOfSnap(snap, idB), center; got != want {
+		t.Errorf("B at %v, want center %v", got, want)
+	}
+
+	if got, want := countAt(snap, center), 2; got != want {
+		t.Errorf("center occupancy = %d, want 2", got)
+	}
+}
+
+// TestStackCapBlocksOverflow: a hex already full at StackCap does not admit one
+// more mover — the overflow entity stays put and the hex still holds exactly
+// StackCap. Asserts the invariant, not which entity won a tie-break.
+func TestStackCapBlocksOverflow(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	ns := game.HexNeighbors(center)
+
+	for range protocol.StackCap {
+		w.PlaceEntityForTest(center)
+	}
+
+	sixth, tok := w.PlaceEntityForTest(ns[0])
+	mustSubmit(t, w, sixth, tok, center)
+
+	w.ResolveTurnForTest()
+
+	snap := w.Snapshot()
+	if got := hexOfSnap(snap, sixth); got == center {
+		t.Errorf("overflow entity entered a full hex; want it blocked at %v", ns[0])
+	}
+
+	if got, want := countAt(snap, center), protocol.StackCap; got != want {
+		t.Errorf("center occupancy = %d, want StackCap %d", got, want)
+	}
+}
+
+func mustSubmit(t *testing.T, w *game.World, id int64, token string, target protocol.Hex) {
+	t.Helper()
+
+	if err := w.SubmitIntent(protocol.IntentRequest{EntityID: id, Token: token, Target: target}); err != nil {
+		t.Fatalf("SubmitIntent(%d -> %v): %v", id, target, err)
+	}
+}
+
+func hexOfSnap(snap protocol.TurnEvent, id int64) protocol.Hex {
+	for _, e := range snap.Entities {
+		if e.ID == id {
+			return e.Hex
+		}
+	}
+
+	return protocol.Hex{Q: -999, R: -999}
+}
+
+func countAt(snap protocol.TurnEvent, hex protocol.Hex) int {
+	n := 0
+
+	for _, e := range snap.Entities {
+		if e.Hex == hex {
+			n++
+		}
+	}
+
+	return n
 }

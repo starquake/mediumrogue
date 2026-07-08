@@ -18,11 +18,11 @@ func TestPathfindStraightLine(t *testing.T) {
 
 	path := game.Pathfind(from, to, allWalkable)
 
-	if len(path) != 3 {
-		t.Fatalf("path length = %d, want 3 (%v)", len(path), path)
+	if got, want := len(path), 3; got != want {
+		t.Fatalf("path length = %d, want 3 (%v)", got, path)
 	}
 
-	if path[len(path)-1] != to {
+	if got, want := path[len(path)-1], to; got != want {
 		t.Fatalf("path does not end at destination: %v", path)
 	}
 
@@ -30,7 +30,7 @@ func TestPathfindStraightLine(t *testing.T) {
 	// step (t.Errorf, not t.Fatalf) so one bad step does not mask the rest.
 	prev := from
 	for _, step := range path {
-		if game.HexDistance(prev, step) != 1 {
+		if got, want := game.HexDistance(prev, step), 1; got != want {
 			t.Errorf("non-adjacent step %v after %v", step, prev)
 		}
 
@@ -82,7 +82,7 @@ func TestPathfindRoutesAroundAWall(t *testing.T) {
 		}
 	}
 
-	if path[len(path)-1] != (protocol.Hex{Q: 2, R: 0}) {
+	if got, want := path[len(path)-1], (protocol.Hex{Q: 2, R: 0}); got != want {
 		t.Fatalf("path does not reach destination: %v", path)
 	}
 }

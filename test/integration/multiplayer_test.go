@@ -69,8 +69,10 @@ func postIntent(t *testing.T, ts *httptest.Server, me protocol.JoinResponse, tar
 	t.Helper()
 
 	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}
-	if resp := postJSON(t, ts, "/api/intent", intent); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("intent status = %d, want 202", resp.StatusCode)
+
+	resp := postJSON(t, ts, "/api/intent", intent)
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("intent status = %d, want 202", got)
 	}
 }
 

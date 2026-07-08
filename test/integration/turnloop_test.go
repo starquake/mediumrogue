@@ -42,8 +42,8 @@ func join(t *testing.T, ts *httptest.Server, token string) protocol.JoinResponse
 	t.Helper()
 
 	resp := postJSON(t, ts, "/api/join", protocol.JoinRequest{Token: token})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("join status = %d, want 200", resp.StatusCode)
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		t.Fatalf("join status = %d, want 200", got)
 	}
 
 	var joined protocol.JoinResponse
@@ -96,8 +96,10 @@ func TestTurnLoopMovesEntity(t *testing.T) {
 	}
 
 	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}
-	if resp := postJSON(t, ts, "/api/intent", intent); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("intent status = %d, want 202", resp.StatusCode)
+
+	resp := postJSON(t, ts, "/api/intent", intent)
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("intent status = %d, want 202", got)
 	}
 
 	// Watch the stream until the entity stands on the target.
@@ -130,8 +132,10 @@ func TestIntentRejectsBadToken(t *testing.T) {
 	me := join(t, ts, "")
 
 	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: "forged", Target: me.Hex}
-	if resp := postJSON(t, ts, "/api/intent", intent); resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", resp.StatusCode)
+
+	resp := postJSON(t, ts, "/api/intent", intent)
+	if got, want := resp.StatusCode, http.StatusUnauthorized; got != want {
+		t.Fatalf("status = %d, want 401", got)
 	}
 }
 
@@ -143,8 +147,8 @@ func TestJoinReclaimsEntityByToken(t *testing.T) {
 	first := join(t, ts, "")
 	again := join(t, ts, first.Token)
 
-	if again.EntityID != first.EntityID {
-		t.Fatalf("re-join minted a new entity: %d != %d", again.EntityID, first.EntityID)
+	if got, want := again.EntityID, first.EntityID; got != want {
+		t.Fatalf("re-join minted a new entity: %d != %d", got, want)
 	}
 }
 
@@ -225,8 +229,10 @@ func TestTurnLoopWalksToDistantHex(t *testing.T) {
 	}
 
 	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: dest}
-	if resp := postJSON(t, ts, "/api/intent", intent); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("intent status = %d, want 202", resp.StatusCode)
+
+	resp := postJSON(t, ts, "/api/intent", intent)
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("intent status = %d, want 202", got)
 	}
 
 	events := get(t, ts, "/api/events")
@@ -241,8 +247,8 @@ func TestTurnLoopWalksToDistantHex(t *testing.T) {
 			t.Fatalf("unmarshal bundle %q: %v", frames[0].data, err)
 		}
 
-		if bundle.IntervalMs != 20 {
-			t.Fatalf("IntervalMs = %d, want 20", bundle.IntervalMs)
+		if got, want := bundle.IntervalMs, int64(20); got != want {
+			t.Fatalf("IntervalMs = %d, want 20", got)
 		}
 
 		for _, e := range bundle.Entities {

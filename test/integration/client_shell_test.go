@@ -26,12 +26,12 @@ func TestClientShell(t *testing.T) {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		if !strings.Contains(strings.ToLower(string(body)), "<!doctype html") {
+		if got, want := strings.ToLower(string(body)), "<!doctype html"; !strings.Contains(got, want) {
 			t.Fatalf("GET / returned 200 but not an HTML document: %.100q", string(body))
 		}
 	case http.StatusServiceUnavailable:
-		if !strings.Contains(string(body), "make client") {
-			t.Fatalf("GET / returned 503 without the build hint: %.100q", string(body))
+		if got, want := string(body), "make client"; !strings.Contains(got, want) {
+			t.Fatalf("GET / returned 503 without the build hint: %.100q", got)
 		}
 	default:
 		t.Fatalf("GET / status = %d, want 200 (built) or 503 (not built)", resp.StatusCode)

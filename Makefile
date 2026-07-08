@@ -124,6 +124,43 @@ lint: $(GOLANGCI_BIN)
 lint-fix: $(GOLANGCI_BIN)
 	$(GOLANGCI_BIN) run --fix
 
+# Advisory (from topbanana): flags server-implementation Go that names the
+# client layer ("frontend"/"client-side"). The server owns simulation, the
+# client owns rendering; they meet only at internal/protocol, which is exempt
+# as the shared wire contract (like topbanana exempts its generated db package).
+# Prints hits, never fails the build; not wired into `check`.
+.PHONY: lint-cross-refs
+lint-cross-refs:
+	@hits=$$(grep -rniE '\b(frontend|client-side)\b' \
+	    --include='*.go' --exclude='*_test.go' --exclude-dir=protocol \
+	    internal/ cmd/ 2>/dev/null || true); \
+	if [ -n "$$hits" ]; then \
+	    echo "lint-cross-refs: server implementation names the client layer (advisory):"; \
+	    echo "$$hits" | sed 's/^/  /'; \
+	else \
+	    echo "lint-cross-refs: no client-layer references in server implementation."; \
+	fi
+
+# Advisory (from topbanana): flags any *_test.go without a same-named *.go
+# (stdlib source/test pairing). Exempts export_test.go, testmain_test.go, and
+# any *_test.go with no Test/Benchmark/Example func (test-only helpers).
+# Prints offenders, never fails the build; not wired into `check`.
+.PHONY: lint-test-pairing
+lint-test-pairing:
+	@hits=$$(for t in $$(find internal cmd -name '*_test.go' 2>/dev/null); do \
+	    d=$$(dirname "$$t"); b=$$(basename "$$t" _test.go); \
+	    case "$$b" in export|testmain) continue;; esac; \
+	    [ -e "$$d/$$b.go" ] && continue; \
+	    grep -qE '^func (Test|Benchmark|Example)' "$$t" || continue; \
+	    echo "$$t"; \
+	  done); \
+	if [ -n "$$hits" ]; then \
+	    echo "lint-test-pairing: these test files have no same-named source file:"; \
+	    echo "$$hits" | sed 's/^/  /'; \
+	else \
+	    echo "lint-test-pairing: every test file pairs a source file."; \
+	fi
+
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR) client/node_modules client/test-results
