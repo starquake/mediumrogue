@@ -133,8 +133,10 @@ export const EventTurn = "turn";
  */
 export const EventHeartbeat = "heartbeat";
 /**
- * BubbleView is the acting client's window into a combat bubble: who's in it,
- * which members it's still waiting on, and how long until the patience timeout.
+ * BubbleView is a window into a combat bubble: who's in it, which members it's
+ * still waiting on, and how long until the patience timeout. Every bundle
+ * carries all active bubbles; a client picks the one whose MemberIDs include
+ * its own entity to drive its combat HUD.
  */
 export interface BubbleView {
   id: number /* int64 */;
@@ -150,7 +152,10 @@ export interface BubbleView {
  */
 export interface TurnEvent {
   /**
-   * Turn is the monotonically increasing world-turn number.
+   * Turn is a monotonically increasing resolution counter, incremented on
+   * every world-domain tick AND every combat-bubble resolution (they advance
+   * on independent clocks). Monotonic, so it still serves as the SSE id /
+   * Last-Event-ID watermark; it is not a pure world-turn count.
    */
   turn: number /* int64 */;
   /**
@@ -166,7 +171,8 @@ export interface TurnEvent {
    */
   entities: Entity[];
   /**
-   * Bubbles is every active combat time bubble the acting client is involved in.
+   * Bubbles is every active combat time bubble in the world; a client filters
+   * to the one containing its own entity.
    */
   bubbles: BubbleView[];
 }
