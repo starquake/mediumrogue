@@ -28,7 +28,9 @@ export interface GameDebug {
   /** Monster count from the latest turn bundle. */
   monsters: number;
   /** Every entity in the latest bundle, for cross-client observation in tests. */
-  positions: { id: number; hex: Hex }[];
+  positions: { id: number; hex: Hex; kind: string }[];
+  /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
+  hp: Record<number, number>;
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
   /** Runtime turn interval from the latest bundle, in ms. */
@@ -41,8 +43,13 @@ export interface GameDebug {
   phaseRemainingMs: number;
   /** The hex this client last asked to walk to; null once reached. */
   destination: Hex | null;
-  /** Submit a destination as if the hex were clicked (drives e2e). */
-  tapHex: (q: number, r: number) => void;
+  /**
+   * Submit a destination as if the hex were clicked (drives e2e). Returns a
+   * promise that resolves once the intent POST has settled, so tests can
+   * await a walk (e.g. a path-clearing tap) actually landing server-side
+   * before proceeding — callers that don't care are free to ignore it.
+   */
+  tapHex: (q: number, r: number) => Promise<void>;
 }
 
 declare global {
@@ -80,6 +87,7 @@ window.game = {
   entities: 0,
   monsters: 0,
   positions: [],
+  hp: {},
   me: null,
   intervalMs: 0,
   heartbeats: 0,
@@ -100,7 +108,7 @@ window.game = {
     return t < curPlaybackMs ? curPlaybackMs - t : Math.max(0, curIntervalMs - t);
   },
   destination: null,
-  tapHex: () => {},
+  tapHex: (): Promise<void> => Promise.resolve(),
 };
 
 async function start(): Promise<void> {
@@ -134,9 +142,10 @@ async function start(): Promise<void> {
   // answer (movement) only ever arrives via turn bundles. A rejected target
   // (unwalkable / unreachable) never becomes a pending walk, so clear it —
   // unless a newer walkTo has already replaced the destination in the meantime.
-  const walkTo = (target: Hex): void => {
+  const walkTo = (target: Hex): Promise<void> => {
     window.game.destination = target;
-    void submitIntent(identity, target).then((accepted) => {
+
+    return submitIntent(identity, target).then((accepted) => {
       const pending = window.game.destination;
       if (!accepted && pending !== null && pending.q === target.q && pending.r === target.r) {
         window.game.destination = null;
@@ -144,14 +153,15 @@ async function start(): Promise<void> {
     });
   };
 
-  window.game.tapHex = (q, r): void => walkTo({ q, r });
+  window.game.tapHex = (q, r): Promise<void> => walkTo({ q, r });
 
   connectEvents({
     onTurn: (event: TurnEvent): void => {
       window.game.turn = event.turn;
       window.game.entities = event.entities.length;
       window.game.monsters = event.entities.filter((e) => e.kind === EntityMonster).length;
-      window.game.positions = event.entities.map((e) => ({ id: e.id, hex: e.hex }));
+      window.game.positions = event.entities.map((e) => ({ id: e.id, hex: e.hex, kind: e.kind }));
+      window.game.hp = Object.fromEntries(event.entities.map((e) => [e.id, e.hp]));
       window.game.intervalMs = event.intervalMs;
       turnEl.textContent = String(event.turn);
 
