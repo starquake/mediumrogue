@@ -20,8 +20,10 @@ import (
 // sends Last-Event-ID and (in a later milestone) the server can replay the
 // missed turn bundles from its buffer.
 //
-// A comment frame goes out every HeartbeatInterval on an otherwise idle
-// stream so proxies and load balancers don't reap the connection.
+// A named `heartbeat` event goes out every HeartbeatInterval on a fixed
+// cadence (regardless of turns) so proxies don't reap the connection and the
+// client's liveness watchdog stays fed even when a frozen combat clock stops
+// turn frames.
 func handleEvents(deps Deps) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
@@ -61,11 +63,12 @@ func handleEvents(deps Deps) http.Handler {
 				return
 			case <-ticks:
 				lastSent = writeTurn(w, deps, flusher, lastSent)
-				heartbeat.Reset(deps.HeartbeatInterval)
 			case <-heartbeat.C:
-				// Comment frame: keeps the connection warm, invisible to
-				// EventSource listeners.
-				if _, err := fmt.Fprint(w, ": hb\n\n"); err != nil {
+				// Named keep-alive: fires on a fixed cadence regardless of turns,
+				// so the client's liveness watchdog stays fed even when a frozen
+				// combat clock stops turn frames. No id: — a heartbeat is not a
+				// turn and must not advance Last-Event-ID.
+				if _, err := fmt.Fprintf(w, "event: %s\ndata: {}\n\n", protocol.EventHeartbeat); err != nil {
 					return
 				}
 
