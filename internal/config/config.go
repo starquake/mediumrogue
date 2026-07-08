@@ -20,9 +20,22 @@ var errNonPositiveDuration = errors.New("duration must be positive")
 // has no meaning.
 var errNegativeInt = errors.New("value must not be negative")
 
+// errPollNotBelowInterval rejects a bubble poll that isn't strictly shorter
+// than the turn interval — the poll drives the control loop, so a poll at or
+// above the interval starves the world domain of prompt ticks.
+var errPollNotBelowInterval = errors.New("BUBBLE_POLL must be shorter than TURN_INTERVAL")
+
 // defaultHeartbeatInterval is the idle-stream comment-frame cadence; well
 // under common proxy idle timeouts (60s) with margin.
 const defaultHeartbeatInterval = 15 * time.Second
+
+// Bubble-clock defaults. Patience matches the plan's ~60s AFK fallback (§5);
+// the poll cadence is fine-grained enough that lock-in feels instant yet coarse
+// enough not to spin.
+const (
+	defaultCombatPatience = 60 * time.Second
+	defaultBubblePoll     = 100 * time.Millisecond
+)
 
 // Config is the fully resolved server configuration.
 type Config struct {
@@ -40,6 +53,13 @@ type Config struct {
 	// MONSTER_COUNT. Defaults to 0 (no monsters) so existing deployments and
 	// tests are unaffected until milestone 6.2 turns them on.
 	MonsterCount int
+	// CombatPatience is the AFK fallback: how long a combat time bubble waits
+	// for a straggler before resolving anyway, from COMBAT_PATIENCE.
+	CombatPatience time.Duration
+	// BubblePoll is the control-loop poll cadence — how often the world checks
+	// for elapsed turns and lock-ins, from BUBBLE_POLL. Must be shorter than
+	// TurnInterval.
+	BubblePoll time.Duration
 }
 
 // Load reads configuration from the environment.
@@ -48,6 +68,8 @@ func Load() (*Config, error) {
 		Addr:              envOr("LISTEN_ADDR", ":8080"),
 		TurnInterval:      protocol.TurnSeconds * time.Second,
 		HeartbeatInterval: defaultHeartbeatInterval,
+		CombatPatience:    defaultCombatPatience,
+		BubblePoll:        defaultBubblePoll,
 	}
 
 	if err := overrideDuration(&cfg.TurnInterval, "TURN_INTERVAL"); err != nil {
@@ -60,6 +82,19 @@ func Load() (*Config, error) {
 
 	if err := overrideInt(&cfg.MonsterCount, "MONSTER_COUNT"); err != nil {
 		return nil, err
+	}
+
+	if err := overrideDuration(&cfg.CombatPatience, "COMBAT_PATIENCE"); err != nil {
+		return nil, err
+	}
+
+	if err := overrideDuration(&cfg.BubblePoll, "BUBBLE_POLL"); err != nil {
+		return nil, err
+	}
+
+	if cfg.BubblePoll >= cfg.TurnInterval {
+		return nil, fmt.Errorf("BUBBLE_POLL = %s, TURN_INTERVAL = %s: %w",
+			cfg.BubblePoll, cfg.TurnInterval, errPollNotBelowInterval)
 	}
 
 	return cfg, nil

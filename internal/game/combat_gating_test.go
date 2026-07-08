@@ -39,7 +39,7 @@ func (c *fakeClock) advance(d time.Duration) {
 func newTimedWorld(t *testing.T) (*game.World, *fakeClock) {
 	t.Helper()
 
-	w := game.NewWorld(time.Second, hub.New())
+	w := game.NewWorld(time.Second, testCombatPatience, testBubblePoll, hub.New())
 	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
 	w.SetNowForTest(clk.now)
 	w.StartClockForTest()
@@ -387,7 +387,7 @@ func TestNoDoubleActionWalkingIntoExpiredBubble(t *testing.T) {
 func TestRunLoopSurvivesConcurrentIntents(t *testing.T) {
 	t.Parallel()
 
-	w := game.NewWorld(2*time.Millisecond, hub.New())
+	w := game.NewWorld(2*time.Millisecond, testCombatPatience, testBubblePoll, hub.New())
 	w.SetBubblePollForTest(time.Millisecond)
 
 	me, err := w.Join("")

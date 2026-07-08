@@ -29,6 +29,14 @@ func TestLoadDefaults(t *testing.T) {
 	if got, want := cfg.MonsterCount, 0; got != want {
 		t.Errorf("MonsterCount = %d, want 0", got)
 	}
+
+	if got, want := cfg.CombatPatience, 60*time.Second; got != want {
+		t.Errorf("CombatPatience = %s, want 60s", got)
+	}
+
+	if got, want := cfg.BubblePoll, 100*time.Millisecond; got != want {
+		t.Errorf("BubblePoll = %s, want 100ms", got)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -36,6 +44,8 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("TURN_INTERVAL", "250ms")
 	t.Setenv("HEARTBEAT_INTERVAL", "1s")
 	t.Setenv("MONSTER_COUNT", "7")
+	t.Setenv("COMBAT_PATIENCE", "30s")
+	t.Setenv("BUBBLE_POLL", "50ms")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -56,6 +66,14 @@ func TestLoadOverrides(t *testing.T) {
 
 	if got, want := cfg.MonsterCount, 7; got != want {
 		t.Errorf("MonsterCount = %d, want 7", got)
+	}
+
+	if got, want := cfg.CombatPatience, 30*time.Second; got != want {
+		t.Errorf("CombatPatience = %s, want 30s", got)
+	}
+
+	if got, want := cfg.BubblePoll, 50*time.Millisecond; got != want {
+		t.Errorf("BubblePoll = %s, want 50ms", got)
 	}
 }
 
@@ -88,5 +106,30 @@ func TestLoadRejectsNonNumericMonsterCount(t *testing.T) {
 
 	if _, err := config.Load(); err == nil {
 		t.Fatal("Load() accepted a non-numeric MONSTER_COUNT")
+	}
+}
+
+func TestLoadRejectsNonPositiveCombatPatience(t *testing.T) {
+	t.Setenv("COMBAT_PATIENCE", "0s")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a zero COMBAT_PATIENCE")
+	}
+}
+
+func TestLoadRejectsNonPositiveBubblePoll(t *testing.T) {
+	t.Setenv("BUBBLE_POLL", "-1ms")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a negative BUBBLE_POLL")
+	}
+}
+
+func TestLoadRejectsBubblePollNotBelowInterval(t *testing.T) {
+	t.Setenv("TURN_INTERVAL", "100ms")
+	t.Setenv("BUBBLE_POLL", "100ms")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted BUBBLE_POLL equal to TURN_INTERVAL")
 	}
 }

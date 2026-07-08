@@ -90,9 +90,10 @@ type World struct {
 	seed int64
 }
 
-// NewWorld builds the world on the static map. Run must be started for turns
-// to advance.
-func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
+// NewWorld builds the world on the static map. combatPatience is the AFK
+// fallback before a combat bubble resolves without a straggler; bubblePoll is
+// the control-loop cadence (see Run). Run must be started for turns to advance.
+func NewWorld(interval, combatPatience, bubblePoll time.Duration, ticks *hub.Hub) *World {
 	worldMap := StaticMap()
 
 	terrain := make(map[protocol.Hex]protocol.Terrain, len(worldMap.Tiles))
@@ -109,8 +110,8 @@ func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
 	return &World{
 		interval:       interval,
 		ticks:          ticks,
-		combatPatience: defaultCombatPatience,
-		bubblePoll:     defaultBubblePoll,
+		combatPatience: combatPatience,
+		bubblePoll:     bubblePoll,
 		now:            time.Now,
 		terrain:        terrain,
 		worldMap:       worldMap,
@@ -120,15 +121,6 @@ func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
 		seed:           seed,
 	}
 }
-
-// Bubble-clock defaults, used until milestone 6.4 Task 4 threads them from
-// config. Patience matches the plan's ~60 s AFK fallback (§5); the poll cadence
-// is fine-grained enough that lock-in feels instant yet coarse enough not to
-// spin.
-const (
-	defaultCombatPatience = 60 * time.Second
-	defaultBubblePoll     = 100 * time.Millisecond
-)
 
 // Map returns the immutable world map.
 func (w *World) Map() protocol.MapResponse {

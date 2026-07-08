@@ -34,7 +34,10 @@ func startServerWithMonsters(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, ticks)
+	// A fast poll (shorter than the smallest turn interval any test uses) keeps
+	// the control loop ticking promptly; a long patience keeps the AFK fallback
+	// out of the way so combat resolves on lock-ins.
+	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, ticks)
 
 	world.SpawnMonsters(monsterCount)
 	go world.Run(t.Context())
