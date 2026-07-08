@@ -6,6 +6,8 @@ import { hexToPixel, HEX_SIZE, type Point } from "./hex";
 const OTHER_COLOR = 0xc8b458;
 const ME_COLOR = 0x8fd0ff;
 const MONSTER_COLOR = 0xd6544f;
+const HP_BAR_BG = 0x1a1f1a;
+const HP_BAR_FG = 0x4fd66c;
 const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
 
 interface Dot {
@@ -17,6 +19,8 @@ interface Dot {
   duration: number;
   mine: boolean;
   hostile: boolean;
+  hp: number;
+  maxHp: number;
 }
 
 /**
@@ -54,7 +58,7 @@ export class EntityLayer {
         // First sighting: appear in place, no tween.
         const gfx = new Graphics();
         this.container.addChild(gfx);
-        dot = { gfx, from: to, to, current: to, elapsed: 0, duration: 0, mine, hostile };
+        dot = { gfx, from: to, to, current: to, elapsed: 0, duration: 0, mine, hostile, hp: e.hp, maxHp: e.maxHp };
         this.dots.set(e.id, dot);
       } else {
         // Retarget from wherever the dot is right now → the new hex.
@@ -64,6 +68,8 @@ export class EntityLayer {
         dot.duration = playbackMs;
         dot.mine = mine;
         dot.hostile = hostile;
+        dot.hp = e.hp;
+        dot.maxHp = e.maxHp;
       }
 
       this.drawDot(dot);
@@ -143,5 +149,20 @@ export class EntityLayer {
       .circle(x, y, HEX_SIZE * 0.45)
       .fill(color)
       .stroke({ width: 2, color: 0x0b0f0b });
+
+    // Damaged entities get a small HP bar above the dot; a full-HP entity
+    // shows none, so the battlefield stays uncluttered until something's hurt.
+    if (dot.maxHp > 0 && dot.hp < dot.maxHp) {
+      const barWidth = HEX_SIZE * 0.9;
+      const barHeight = HEX_SIZE * 0.16;
+      const barX = x - barWidth / 2;
+      const barY = y - HEX_SIZE * 0.85;
+      const frac = Math.max(0, Math.min(1, dot.hp / dot.maxHp));
+      dot.gfx
+        .rect(barX, barY, barWidth, barHeight)
+        .fill(HP_BAR_BG)
+        .rect(barX, barY, barWidth * frac, barHeight)
+        .fill(HP_BAR_FG);
+    }
   }
 }

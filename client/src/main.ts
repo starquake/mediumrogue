@@ -28,7 +28,9 @@ export interface GameDebug {
   /** Monster count from the latest turn bundle. */
   monsters: number;
   /** Every entity in the latest bundle, for cross-client observation in tests. */
-  positions: { id: number; hex: Hex }[];
+  positions: { id: number; hex: Hex; kind: string }[];
+  /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
+  hp: Record<number, number>;
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
   /** Runtime turn interval from the latest bundle, in ms. */
@@ -80,6 +82,7 @@ window.game = {
   entities: 0,
   monsters: 0,
   positions: [],
+  hp: {},
   me: null,
   intervalMs: 0,
   heartbeats: 0,
@@ -151,7 +154,8 @@ async function start(): Promise<void> {
       window.game.turn = event.turn;
       window.game.entities = event.entities.length;
       window.game.monsters = event.entities.filter((e) => e.kind === EntityMonster).length;
-      window.game.positions = event.entities.map((e) => ({ id: e.id, hex: e.hex }));
+      window.game.positions = event.entities.map((e) => ({ id: e.id, hex: e.hex, kind: e.kind }));
+      window.game.hp = Object.fromEntries(event.entities.map((e) => [e.id, e.hp]));
       window.game.intervalMs = event.intervalMs;
       turnEl.textContent = String(event.turn);
 
