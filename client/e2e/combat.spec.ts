@@ -104,3 +104,94 @@ test("bumping into a monster deals damage, observable via window.game.hp", async
   const screenshot = await page.screenshot();
   expect(screenshot.byteLength).toBeGreaterThan(10_000);
 });
+
+// Milestone 6.4's headline behavior: a combat time bubble freezes LOCALLY
+// while the WORLD clock keeps running. This test deliberately stops feeding
+// the client intents the moment it enters combat — the point is to observe
+// the freeze, not to fight — so unlike the damage test above it should not
+// consume the shared combat server's fixed (non-respawning) monster pool.
+test("entering a combat bubble freezes locally while window.game.turn keeps advancing", async ({ page }) => {
+  await page.goto("/");
+
+  await expect
+    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
+    .toBe(true);
+  await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
+
+  // Same re-targeting rationale as the damage test: monsters hunt back and
+  // spawn positions vary between runs, so retarget the nearest monster every
+  // poll rather than walking toward a single fixed destination.
+  const chaseNearestMonster = async (): Promise<void> => {
+    await page.evaluate((monsterKind) => {
+      const me = window.game.me;
+      if (me === null) {
+        return;
+      }
+
+      const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+      if (monsters.length === 0) {
+        return;
+      }
+
+      const dist = (a: Hex, b: Hex): number => {
+        const dq = a.q - b.q;
+        const dr = a.r - b.r;
+        const ds = -dq - dr;
+
+        return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
+      };
+
+      let nearest = monsters[0]!;
+      let bestDist = dist(me.hex, nearest.hex);
+      for (const m of monsters.slice(1)) {
+        const d = dist(me.hex, m.hex);
+        if (d < bestDist) {
+          nearest = m;
+          bestDist = d;
+        }
+      }
+
+      window.game.tapHex(nearest.hex.q, nearest.hex.r);
+    }, EntityMonster);
+  };
+
+  // Chase until the bubble forms (CombatRadius=6 is well clear of adjacency,
+  // so this converges before any bump-to-attack — no HP changes expected
+  // here). The instant inCombat flips, stop calling tapHex entirely: no more
+  // intents from this client for the rest of the test.
+  await expect
+    .poll(
+      async () => {
+        await chaseNearestMonster();
+
+        return page.evaluate(() => window.game.inCombat);
+      },
+      { timeout: 20_000, intervals: [200] },
+    )
+    .toBe(true);
+
+  // The combat panel takes over the WeGo timer's spot while frozen.
+  await expect(page.locator("#combat-panel")).toBeVisible();
+  await expect(page.locator("#turn-timer")).toBeHidden();
+
+  const turnAtFreeze = await page.evaluate(() => window.game.turn);
+  const hexAtFreeze = await page.evaluate(() => window.game.me?.hex ?? null);
+
+  // The headline: window.game.turn (the world clock) keeps climbing even
+  // though this client has stopped submitting anything — local time is
+  // frozen, world time is not.
+  await expect
+    .poll(() => page.evaluate(() => window.game.turn), { timeout: 5_000, intervals: [100] })
+    .toBeGreaterThan(turnAtFreeze);
+
+  // Best-effort: since this client never locked in, its own hex should still
+  // hold too. If this ever flakes under CI jitter (a slow tick between the
+  // two evaluate() calls letting a patience timeout land first), the turn-
+  // advance assertion above is the one that must hold — see task-6-report.md.
+  expect(await page.evaluate(() => window.game.me?.hex ?? null)).toEqual(hexAtFreeze);
+  expect(await page.evaluate(() => window.game.inCombat)).toBe(true);
+
+  // Visual smoke check: the combat panel actually painted.
+  const screenshot = await page.screenshot();
+  expect(screenshot.byteLength).toBeGreaterThan(10_000);
+});
