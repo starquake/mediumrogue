@@ -378,6 +378,10 @@ func (w *World) resolveDeathsLocked() {
 		}
 	}
 
+	// Sort by id so simultaneous respawns claim spawn hexes in a deterministic
+	// order (the map range above is unordered) — keeps a full turn reproducible.
+	slices.SortFunc(dead, func(a, b *entity) int { return int(a.id - b.id) })
+
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
 			delete(w.entities, e.id)
@@ -500,6 +504,13 @@ func nearestPlayer(from protocol.Hex, players []*entity) *entity {
 
 // spawnHexLocked finds the free walkable hex nearest the origin, spiraling
 // outward. Callers hold w.mu.
+//
+// Faction-blind by design (for now): Join and player respawn can land a player
+// on a monster-occupied hex (opposing co-occupancy, a §5 MUST). It is inert only
+// because a co-located monster's think step gets Pathfind(from==to)==∅ and holds
+// (never bumps) — the moment continuous/faction-aware spawning or monster-wander
+// logic lands (6b), that dormancy breaks and this must skip opposing-occupied
+// hexes. See docs/STATUS.md "known placeholders".
 func (w *World) spawnHexLocked() (protocol.Hex, error) {
 	origin := protocol.Hex{Q: 0, R: 0}
 
