@@ -67,6 +67,26 @@ export const TerrainWater: Terrain = "water";
  */
 export const TerrainRock: Terrain = "rock";
 /**
+ * Entity kinds. Players join; monsters are spawned hostiles. The set is closed;
+ * a client renders an unknown kind as a monster (safer than as a player).
+ */
+export const EntityPlayer = "player";
+/**
+ * Entity kinds. Players join; monsters are spawned hostiles. The set is closed;
+ * a client renders an unknown kind as a monster (safer than as a player).
+ */
+export const EntityMonster = "monster";
+/**
+ * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
+ * the client can show health bars once combat (6.3) starts changing it.
+ */
+export const PlayerMaxHP = 20;
+/**
+ * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
+ * the client can show health bars once combat (6.3) starts changing it.
+ */
+export const MonsterMaxHP = 10;
+/**
  * Tile is one hex of the world map.
  */
 export interface Tile {
@@ -123,12 +143,14 @@ export interface TurnEvent {
   entities: Entity[];
 }
 /**
- * Entity is one thing standing on the map. For now every entity is a player;
- * kinds (monsters, NPCs) come with later milestones.
+ * Entity is one thing standing on the map: a player or a monster.
  */
 export interface Entity {
   id: number /* int64 */;
   hex: Hex;
+  kind: string;
+  hp: number /* int */;
+  maxHp: number /* int */;
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its

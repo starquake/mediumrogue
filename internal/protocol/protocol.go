@@ -46,6 +46,20 @@ const (
 	TerrainRock   Terrain = "rock"
 )
 
+// Entity kinds. Players join; monsters are spawned hostiles. The set is closed;
+// a client renders an unknown kind as a monster (safer than as a player).
+const (
+	EntityPlayer  = "player"
+	EntityMonster = "monster"
+)
+
+// Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
+// the client can show health bars once combat (6.3) starts changing it.
+const (
+	PlayerMaxHP  = 20
+	MonsterMaxHP = 10
+)
+
 // Tile is one hex of the world map.
 type Tile struct {
 	Hex     Hex     `json:"hex"`
@@ -91,11 +105,13 @@ type TurnEvent struct {
 	Entities []Entity `json:"entities"`
 }
 
-// Entity is one thing standing on the map. For now every entity is a player;
-// kinds (monsters, NPCs) come with later milestones.
+// Entity is one thing standing on the map: a player or a monster.
 type Entity struct {
-	ID  int64 `json:"id"`
-	Hex Hex   `json:"hex"`
+	ID    int64  `json:"id"`
+	Hex   Hex    `json:"hex"`
+	Kind  string `json:"kind"`
+	HP    int    `json:"hp"`
+	MaxHP int    `json:"maxHp"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its
