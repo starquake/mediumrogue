@@ -69,6 +69,16 @@ const (
 	MonsterAttackDamage = 3
 )
 
+// XP & leveling (milestone 6b.1). Flat curve for now; per-class/species tuning
+// is 6b.2/6b.3.
+const (
+	// XPPerLevel is the XP needed to advance one level.
+	XPPerLevel = 100
+	// MonsterXP is awarded to every player in the fight when a monster dies —
+	// the full amount each, not divided.
+	MonsterXP = 20
+)
+
 // Tile is one hex of the world map.
 type Tile struct {
 	Hex     Hex     `json:"hex"`
@@ -139,6 +149,10 @@ type Entity struct {
 	HP       int    `json:"hp"`
 	MaxHP    int    `json:"maxHp"`
 	InCombat bool   `json:"inCombat"`
+	// XP is server-authoritative; monsters send 0, players send their actual XP.
+	XP int `json:"xp"`
+	// Level is server-authoritative; monsters send 1, players send their actual level.
+	Level int `json:"level"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its
