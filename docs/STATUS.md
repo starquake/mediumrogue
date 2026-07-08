@@ -123,7 +123,13 @@ After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
   bearer-token-in-body (no ambient credentials). Revisit with real identity.
 - **Entities never leave the world**: no disconnect handling — every join
   without a token mints a new entity forever (offline-character policy is an
-  open decision in plan §9).
+  open decision in plan §9). **E2e consequence:** the shared Playwright server
+  accumulates every spec's player for the whole run; monsters that hunt and
+  cluster on that pile can push a hex to `StackCap` and block an unrelated
+  movement spec. So `playwright.config.ts` runs two servers — a monster-free
+  **core** server and a **combat** server (`MONSTER_COUNT` set) — and specs
+  matching `/(monsters|combat)\.spec\.ts$/` run against the combat server (name
+  future combat e2e specs `*combat.spec.ts` so they land there).
 - **No explicit wait input**: standing still = not sending an intent. An
   explicit wait intent may become useful inside combat time bubbles
   (milestone 6) — decide then.
