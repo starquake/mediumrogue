@@ -25,12 +25,17 @@ func TestLoadDefaults(t *testing.T) {
 	if got, want := cfg.HeartbeatInterval, 15*time.Second; got != want {
 		t.Errorf("HeartbeatInterval = %s, want 15s", got)
 	}
+
+	if got, want := cfg.MonsterCount, 0; got != want {
+		t.Errorf("MonsterCount = %d, want 0", got)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
 	t.Setenv("LISTEN_ADDR", ":9999")
 	t.Setenv("TURN_INTERVAL", "250ms")
 	t.Setenv("HEARTBEAT_INTERVAL", "1s")
+	t.Setenv("MONSTER_COUNT", "7")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -48,6 +53,10 @@ func TestLoadOverrides(t *testing.T) {
 	if got, want := cfg.HeartbeatInterval, time.Second; got != want {
 		t.Errorf("HeartbeatInterval = %s, want 1s", got)
 	}
+
+	if got, want := cfg.MonsterCount, 7; got != want {
+		t.Errorf("MonsterCount = %d, want 7", got)
+	}
 }
 
 func TestLoadRejectsBadDuration(t *testing.T) {
@@ -63,5 +72,21 @@ func TestLoadRejectsNonPositiveDuration(t *testing.T) {
 
 	if _, err := config.Load(); err == nil {
 		t.Fatal("Load() accepted a negative TURN_INTERVAL")
+	}
+}
+
+func TestLoadRejectsNegativeMonsterCount(t *testing.T) {
+	t.Setenv("MONSTER_COUNT", "-1")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a negative MONSTER_COUNT")
+	}
+}
+
+func TestLoadRejectsNonNumericMonsterCount(t *testing.T) {
+	t.Setenv("MONSTER_COUNT", "not-a-number")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a non-numeric MONSTER_COUNT")
 	}
 }

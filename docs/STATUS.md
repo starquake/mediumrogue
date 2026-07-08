@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-08, after milestone-6 phased move resolution (6.1). Update this file at the end of
+*Last updated: 2026-07-08, after milestone-6 monsters & HP (6.2). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -58,6 +58,12 @@ What works right now (all covered by tests):
 - Client SSE liveness watchdog: if no data arrives within
   `max(3s, 4×intervalMs)`, the client reports disconnected and reconnects —
   covered by multi-client and reconnect e2e specs.
+- Monsters: `MONSTER_COUNT` (default 0) spawns that many monsters at startup
+  with seeded, reproducible placement; each turn a monster hunts the nearest
+  player and walks toward it, stopping adjacent (never entering the player's
+  hex — no combat yet). Entities carry `Kind` (`player`/`monster`) and
+  `HP`/`MaxHP` on the wire. The client colours monsters distinctly from
+  players and exposes `window.game.monsters` for tests.
 
 ## Milestone 6 — decomposed into slices (too large for one spec)
 
@@ -73,9 +79,14 @@ slices, each its own spec → plan → PR:
   on `STACK_CAP` overflow, replacing the ascending-entity-ID placeholder.
   Reproducible + no id favoritism (tests pin the seed). The *attack phase*
   (bump-to-attack, post-move-position attacks) is still pending in 6.3.
-- **6.2 monsters & HP — NEXT**: a hostile entity kind, spawning, HP, minimal AI.
-- **6.3 combat & death**: bump-to-attack, the attack phase (resolves against
+- **6.2 monsters & HP — DONE**: a hostile entity kind, seeded spawning
+  (`MONSTER_COUNT`), HP/MaxHP on the wire, minimal hunt-nearest-player AI
+  (stops adjacent, no combat yet), client rendering + `window.game.monsters`.
+- **6.3 combat & death — NEXT**: bump-to-attack, the attack phase (resolves against
   post-move positions), damage, HP→0 → respawn (XP-level fallback waits for 6b).
+  Also still pending: the "hostiles never share a hex" rule (§5) and
+  health-bar rendering. HP is on the wire but unchanged (no damage applied)
+  until 6.3 lands.
 - **6.4 time bubbles**: LOS, form/merge/dissolve, action-gated turns + the
   "waiting for…" timer state, join-by-walking-in, cross-domain absorption.
 
@@ -86,9 +97,18 @@ After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
 
 - **Attack phase not implemented**: `resolveTurn` (`internal/game/world.go`) now
   runs the decided **move phase** — all moves simultaneous, per-turn seeded-RNG
-  tie-break on `STACK_CAP` overflow (6.1, done). The **attack phase**
-  (bump-to-attack, attacks resolved against post-move positions) lands with
-  combat in 6.3, once hostiles exist (6.2).
+  tie-break on `STACK_CAP` overflow (6.1, done). Hostiles now exist (6.2:
+  monsters hunt the nearest player and stop adjacent), but the **attack phase**
+  itself (bump-to-attack, attacks resolved against post-move positions,
+  damage, HP→0 → death/respawn) is still pending — lands with 6.3. HP/MaxHP
+  are already on the wire (6.2) but nothing writes to them yet.
+- **Hostiles-share-a-hex rule not enforced (plan §5)**: monsters currently
+  stop one hex short of a player's hex rather than the decided "hostiles
+  never share a hex with each other or a player" rule being generally
+  enforced during move resolution; this lands with 6.3 combat.
+- **No health-bar rendering**: `HP`/`MaxHP` are on the wire on every entity,
+  but the client doesn't read or draw them yet (no health bar for players or
+  monsters); deferred to 6.3 alongside damage.
 - **No server-side input-window enforcement**: intent acceptance stays
   permissive (an intent is accepted whenever it arrives, regardless of the
   client-visible timer phase); revisit once combat time bubbles (milestone 6)

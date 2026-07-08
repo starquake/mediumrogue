@@ -40,6 +40,9 @@ type entity struct {
 	id    int64
 	hex   protocol.Hex
 	token string
+	kind  string
+	hp    int
+	maxHP int
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
@@ -138,7 +141,10 @@ func (w *World) Join(token string) (protocol.JoinResponse, error) {
 	}
 
 	w.nextID++
-	e := &entity{id: w.nextID, hex: spawn, token: hex.EncodeToString(buf)}
+	e := &entity{
+		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
+		kind: protocol.EntityPlayer, hp: protocol.PlayerMaxHP, maxHP: protocol.PlayerMaxHP,
+	}
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
 
@@ -180,7 +186,9 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 	entities := make([]protocol.Entity, 0, len(w.entities))
 	for _, e := range w.entities {
-		entities = append(entities, protocol.Entity{ID: e.id, Hex: e.hex})
+		entities = append(entities, protocol.Entity{
+			ID: e.id, Hex: e.hex, Kind: e.kind, HP: e.hp, MaxHP: e.maxHP,
+		})
 	}
 
 	slices.SortFunc(entities, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
@@ -198,6 +206,8 @@ func (w *World) Snapshot() protocol.TurnEvent {
 func (w *World) resolveTurn() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	w.thinkMonstersLocked()
 
 	occ := make(map[protocol.Hex]int, len(w.entities))
 	for _, e := range w.entities {
@@ -229,6 +239,118 @@ func (w *World) resolveTurn() {
 	}
 
 	w.turn++
+}
+
+// spawnStream is a fixed PCG stream for monster placement, distinct from the
+// per-turn move-shuffle stream (which uses the turn number).
+const spawnStream uint64 = 0x5EED
+
+// minPathWithApproachHex is the shortest Pathfind result (from, to] that
+// contains a hex strictly before the destination: one to approach into, one
+// that is the destination itself. A path shorter than this means the mover
+// is already adjacent (or at) the destination.
+const minPathWithApproachHex = 2
+
+// SpawnMonsters adds n monster entities at random walkable hexes, chosen with
+// the world seed so a given seed is reproducible. Skips hexes already at
+// StackCap. Intended for **startup, before any player joins** (server startup
+// via MONSTER_COUNT, or tests) — it does not avoid player-occupied hexes, so a
+// later caller (continuous spawning, respawn) must add that guard.
+func (w *World) SpawnMonsters(n int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	walkable := make([]protocol.Hex, 0, len(w.worldMap.Tiles))
+	for _, t := range w.worldMap.Tiles {
+		if w.walkableLocked(t.Hex) {
+			walkable = append(walkable, t.Hex)
+		}
+	}
+
+	slices.SortFunc(walkable, func(a, b protocol.Hex) int {
+		if a.Q != b.Q {
+			return a.Q - b.Q
+		}
+
+		return a.R - b.R
+	})
+
+	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
+	rng.Shuffle(len(walkable), func(i, j int) { walkable[i], walkable[j] = walkable[j], walkable[i] })
+
+	placed := 0
+
+	for _, h := range walkable {
+		if placed >= n {
+			break
+		}
+
+		if w.occupancyLocked(h) >= protocol.StackCap {
+			continue
+		}
+
+		w.nextID++
+		w.entities[w.nextID] = &entity{
+			id: w.nextID, hex: h,
+			kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+		}
+		placed++
+	}
+}
+
+// thinkMonstersLocked sets each monster's path to a single step toward its
+// nearest player, stopping when adjacent — moving onto a player is an attack,
+// which is milestone 6.3. Recomputed every turn (players move). Callers hold w.mu.
+//
+// Note for 6.3: this only prevents a monster from *stepping onto* a player. The
+// move phase has no hostile-anti-stacking rule yet, so a monster and a player
+// can still converge onto the same hex in one turn; 6.3's attack phase must
+// handle a monster already co-located with a player at turn start.
+func (w *World) thinkMonstersLocked() {
+	players := make([]*entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer {
+			players = append(players, e)
+		}
+	}
+
+	if len(players) == 0 {
+		return
+	}
+
+	for _, m := range w.entities {
+		if m.kind != protocol.EntityMonster {
+			continue
+		}
+
+		target := nearestPlayer(m.hex, players)
+		path := Pathfind(m.hex, target.hex, w.walkableLocked)
+		// Pathfind ends at the player's hex; only advance if there's an approach
+		// hex before it. Adjacent or unreachable → hold this turn.
+		if len(path) >= minPathWithApproachHex {
+			m.path = []protocol.Hex{path[0]}
+		} else {
+			m.path = nil
+		}
+	}
+}
+
+// nearestPlayer returns the player closest to `from` by hex distance, ties
+// broken by lowest id for determinism. `players` must be non-empty.
+func nearestPlayer(from protocol.Hex, players []*entity) *entity {
+	best := players[0]
+	bestDist := HexDistance(from, best.hex)
+
+	for _, p := range players[1:] {
+		d := HexDistance(from, p.hex)
+		if d < bestDist || (d == bestDist && p.id < best.id) {
+			best, bestDist = p, d
+		}
+	}
+
+	return best
 }
 
 // spawnHexLocked finds the free walkable hex nearest the origin, spiraling

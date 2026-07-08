@@ -16,13 +16,27 @@ import (
 )
 
 // startServer boots the full handler tree with a fast clock and returns the
-// test server. Everything shuts down via t.Cleanup / t.Context.
+// test server. Everything shuts down via t.Cleanup / t.Context. No monsters
+// are spawned, so existing tests that assert on entity counts/behavior are
+// unaffected — see startServerWithMonsters for milestone 6.2 tests.
 func startServer(t *testing.T, turnInterval, heartbeatInterval time.Duration) *httptest.Server {
+	t.Helper()
+
+	return startServerWithMonsters(t, turnInterval, heartbeatInterval, 0)
+}
+
+// startServerWithMonsters is startServer plus n monsters spawned before the
+// clock starts running.
+func startServerWithMonsters(
+	t *testing.T, turnInterval, heartbeatInterval time.Duration, monsterCount int,
+) *httptest.Server {
 	t.Helper()
 
 	ticks := hub.New()
 
 	world := game.NewWorld(turnInterval, ticks)
+
+	world.SpawnMonsters(monsterCount)
 	go world.Run(t.Context())
 
 	handler := server.New(server.Deps{

@@ -21,6 +21,9 @@ export default defineConfig({
       // Fast heartbeat so a browser test observes named heartbeat events within
       // its short run (default is 15s — never seen in a fast e2e).
       HEARTBEAT_INTERVAL: "500ms",
+      // A few monsters in the shared world so monsters.spec.ts (and the
+      // colour-by-kind rendering it checks) has something to observe.
+      MONSTER_COUNT: "3",
     },
   },
 });
