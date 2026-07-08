@@ -400,18 +400,35 @@ type pendingAttack struct {
 // the pass, so an entity that changes domain mid-pass (walks into a bubble, or
 // flees one) still acts exactly once, in the phase it belonged to when the pass
 // captured its members. Callers hold w.mu.
+//
+// The monsters-killed count from resolveCombatLocked is deliberately dropped:
+// kill XP is scoped to a real fight (a combat bubble), so a monster that dies in
+// the world domain — only possible via an anomalous faction-blind spawn/join
+// landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.resolveCombatLocked(members)
 	w.turn++
 }
 
 // resolveBubbleTurnLocked advances one combat bubble a single action-gated turn:
-// the phased combat pipeline over the given member set, then it clears the
-// bubble's lock-ins and restarts its patience deadline for the next turn. Like
-// resolveWorldTurnLocked it does NOT recompute — see that method. Callers hold
-// w.mu.
+// the phased combat pipeline over the given member set, then the shared kill-XP
+// award, then it clears the bubble's lock-ins and restarts its patience deadline
+// for the next turn. Like resolveWorldTurnLocked it does NOT recompute — see that
+// method. Callers hold w.mu.
 func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.Time) {
-	w.resolveCombatLocked(members)
+	killed := w.resolveCombatLocked(members)
+
+	// Kill XP belongs to the fight: every player who survived this bubble-turn
+	// earns the FULL MonsterXP for each monster that fell — no last-hit
+	// competition, helping always pays, and the award is not divided. A player who
+	// died this same turn is not surviving (hp<=0), so earns nothing.
+	if killed > 0 {
+		for _, e := range members {
+			if e.kind == protocol.EntityPlayer && e.hp > 0 {
+				e.xp += killed * protocol.MonsterXP
+			}
+		}
+	}
 
 	clear(b.ready)
 	b.deadline = now.Add(w.combatPatience)
@@ -424,9 +441,10 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 // post-move positions) → apply damage & deaths. The set is a whole
 // CombatRadius-connected domain (the world domain or one bubble), so no move,
 // bump, stack, or attack can reach an entity outside it. It does not recompute
-// bubbles or advance the turn — the two resolve callers own that. Callers hold
-// w.mu.
-func (w *World) resolveCombatLocked(members []*entity) {
+// bubbles or advance the turn — the two resolve callers own that. It returns the
+// number of monsters that died this resolution, which the bubble path turns into
+// the shared kill-XP award. Callers hold w.mu.
+func (w *World) resolveCombatLocked(members []*entity) int {
 	w.thinkMonstersLocked(members)
 
 	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
@@ -441,7 +459,7 @@ func (w *World) resolveCombatLocked(members []*entity) {
 	attacks := w.moveAndBumpLocked(rng, byHex, members)
 	w.attackLocked(rng, byHex, attacks)
 
-	w.resolveDeathsLocked(members)
+	return w.resolveDeathsLocked(members)
 }
 
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
@@ -604,10 +622,14 @@ func levelFor(xp int) int { return 1 + xp/protocol.XPPerLevel }
 // levelFloorXP returns the XP at the start of xp's current level.
 func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
 
-// resolveDeathsLocked awards shared kill XP, removes dead monsters, and respawns
-// dead players (full HP, fresh spawn hex, same id + token — the client stays
-// joined) among the given member set. Callers hold w.mu.
-func (w *World) resolveDeathsLocked(members []*entity) {
+// resolveDeathsLocked floors a dying player's XP to its level start, removes dead
+// monsters, and respawns dead players (full HP, fresh spawn hex, same id + token
+// — the client stays joined) among the given member set. It returns the number of
+// monsters that died; the kill-XP award lives in the bubble-resolution path
+// (resolveBubbleTurnLocked), so a kill only pays inside a real fight. The
+// death-floor here still applies to ANY player death, world or bubble. Callers
+// hold w.mu.
+func (w *World) resolveDeathsLocked(members []*entity) int {
 	var dead []*entity
 
 	monstersKilled := 0
@@ -618,17 +640,6 @@ func (w *World) resolveDeathsLocked(members []*entity) {
 
 			if e.kind == protocol.EntityMonster {
 				monstersKilled++
-			}
-		}
-	}
-
-	// Shared XP: every player who survived this fight gets the full MonsterXP for
-	// each monster that fell — no last-hit competition, helping always pays. A
-	// player who died this same turn is not surviving (hp<=0), so gets nothing.
-	if monstersKilled > 0 {
-		for _, e := range members {
-			if e.kind == protocol.EntityPlayer && e.hp > 0 {
-				e.xp += monstersKilled * protocol.MonsterXP
 			}
 		}
 	}
@@ -656,6 +667,8 @@ func (w *World) resolveDeathsLocked(members []*entity) {
 		e.hp = e.maxHP
 		e.path = nil
 	}
+
+	return monstersKilled
 }
 
 // spawnStream is a fixed PCG stream for monster placement, distinct from the

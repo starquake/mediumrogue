@@ -50,11 +50,16 @@ func TestKillGrantsXP(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage) // one bump is lethal
 
+	// Kill XP is only earned inside a combat bubble (a real fight). One world
+	// resolution with the monster adjacent forms that bubble around the idle
+	// player; the kill then lands inside it via the lock-in immediate resolution.
+	step(t, w)
+
 	if !submitOK(w, me, monsterHex) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")
 	}
 
-	snap := step(t, w)
+	snap := w.Snapshot()
 
 	if _, ok := entityOfSnap(snap, monsterID); ok {
 		t.Fatalf("monster %d should have been killed by the bump", monsterID)
@@ -98,12 +103,18 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(center)
 	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage) // dies to a single hit
 
-	// Both players bump the monster's hex on the same turn; the monster has no
-	// path set, so it never strikes back and both attackers survive to be paid.
+	// Kill XP is only earned inside a combat bubble (a real fight). One world
+	// resolution forms the bubble around the two idle players and the monster; the
+	// monster is not attacked this turn, so it survives to be killed in the bubble.
+	step(t, w)
+
+	// Both players bump the monster's hex on the same bubble-turn. The monster
+	// deals only 3 damage to one player per turn, so both attackers survive to be
+	// paid the full award.
 	w.SetPathForTest(idA, []protocol.Hex{center})
 	w.SetPathForTest(idB, []protocol.Hex{center})
 
-	w.ResolveCombatOnlyForTest()
+	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterID); ok {
 		t.Fatalf("monster %d should have died to the shared bumps", monsterID)
@@ -115,6 +126,58 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 
 	if got, want := w.XPForTest(idB), protocol.MonsterXP; got != want {
 		t.Errorf("player B XP = %d, want the full %d (not split)", got, want)
+	}
+}
+
+// TestTwoKillsInOneFightGrantTwoMonsterXP: a lone player who fells two monsters
+// in the same bubble is paid MonsterXP per kill — 2*MonsterXP cumulative, not a
+// single flat award. One player lands one attack per turn, so the two kills fall
+// on consecutive bubble-turns; the assertion is the cumulative total. A
+// regression to one fixed award, to no bubble award at all, or to a world-domain
+// award would all miss it.
+func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(15)
+
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	ns := game.HexNeighbors(center)
+
+	pid, _ := w.PlaceEntityForTest(center)
+
+	monsterA := w.PlaceMonsterForTest(ns[0])
+	monsterB := w.PlaceMonsterForTest(ns[1])
+	w.SetHPForTest(monsterA, 1) // each dies to a single bump
+	w.SetHPForTest(monsterB, 1)
+
+	// One world resolution with both monsters adjacent forms the combat bubble
+	// (kill XP is only earned inside a real fight). The player stays idle this
+	// turn, so neither monster dies here and nothing is credited in the world
+	// domain — proving the two later awards come from the bubble path.
+	step(t, w)
+
+	// Bump monster A, then monster B — one attack, one kill per bubble-turn.
+	w.SetPathForTest(pid, []protocol.Hex{ns[0]})
+	step(t, w)
+
+	if _, ok := entityOfSnap(w.Snapshot(), monsterA); ok {
+		t.Fatalf("monster A %d should have died to the first bump", monsterA)
+	}
+
+	w.SetPathForTest(pid, []protocol.Hex{ns[1]})
+	step(t, w)
+
+	if _, ok := entityOfSnap(w.Snapshot(), monsterB); ok {
+		t.Fatalf("monster B %d should have died to the second bump", monsterB)
+	}
+
+	if got, want := w.XPForTest(pid), 2*protocol.MonsterXP; got != want {
+		t.Errorf("player XP after two kills = %d, want %d (MonsterXP per kill)", got, want)
 	}
 }
 
@@ -147,11 +210,15 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage)
 
+	// Kill XP is only earned inside a combat bubble; form it with one world
+	// resolution (player idle, monster survives), then land the kill inside it.
+	step(t, w)
+
 	if !submitOK(w, me, monsterHex) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")
 	}
 
-	snap := step(t, w)
+	snap := w.Snapshot()
 
 	player, ok := entityOfSnap(snap, me.EntityID)
 	if !ok {
