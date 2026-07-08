@@ -87,6 +87,20 @@ export const PlayerMaxHP = 20;
  */
 export const MonsterMaxHP = 10;
 /**
+ * Melee damage per attack by attacker kind (milestone 6.3, flat — per-class
+ * and weapon damage arrives with classes in 6b). With PlayerMaxHP=20 /
+ * MonsterMaxHP=10: a player kills a monster in 2 hits; a monster downs a
+ * player in 7.
+ */
+export const PlayerAttackDamage = 5;
+/**
+ * Melee damage per attack by attacker kind (milestone 6.3, flat — per-class
+ * and weapon damage arrives with classes in 6b). With PlayerMaxHP=20 /
+ * MonsterMaxHP=10: a player kills a monster in 2 hits; a monster downs a
+ * player in 7.
+ */
+export const MonsterAttackDamage = 3;
+/**
  * Tile is one hex of the world map.
  */
 export interface Tile {
