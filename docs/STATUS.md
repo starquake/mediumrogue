@@ -69,7 +69,7 @@ slices, each its own spec → plan → PR:
   + client watchdog resets on it, so the liveness watchdog survives a frozen
   combat clock (see the resolved placeholder above). Closed the milestone-5 debt.
 - **6.1 phased resolution — DONE** (this PR): the move phase now resolves all
-  moves simultaneously with a per-turn seeded-RNG tie-break (`world seed ^ turn`)
+  moves simultaneously with a per-turn seeded-RNG tie-break (a PCG seeded from the world seed and the turn)
   on `STACK_CAP` overflow, replacing the ascending-entity-ID placeholder.
   Reproducible + no id favoritism (tests pin the seed). The *attack phase*
   (bump-to-attack, post-move-position attacks) is still pending in 6.3.

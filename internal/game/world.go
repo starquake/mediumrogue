@@ -60,8 +60,9 @@ type World struct {
 	byToken  map[string]*entity
 	nextID   int64
 	// seed is the world's tie-break RNG seed, minted once at construction. Each
-	// turn's move-resolution shuffle is seeded from seed ^ turn — reproducible
-	// given the world + turn, but unpredictable to players.
+	// turn's move-resolution shuffle uses a PCG seeded from (seed, turn) — the
+	// turn selects the stream — so it's reproducible given the world + turn but
+	// unpredictable to players (they don't know the world seed).
 	seed int64
 }
 
