@@ -234,7 +234,7 @@ The core of the design. Every 5 seconds, one world turn:
 6. **Combat, time bubbles & death:** bump-to-attack, deterministic resolution order. Local clock-stop bubbles: form on mutual LOS, action-gated turns with timeout, join-by-walking-in, merge, dissolve on flee. Death → respawn with fall-back-to-level-start XP penalty.
 6b. **Classes, species & progression:** rogue (dagger/bow by distance; high damage, squishy), fighter (melee only; medium damage, tank), mage (magic only; AoE, squishy); species passives (human +XP, elf +crit, dwarf +DR); ranged + AoE attack intents; XP from kills/quests; level-ups; first gear drops with weapon/magic variety.
 7. **Procedural generation:** server generates the world procedurally rather than a fixed map.
-8. **Quests, parties & chat:** player quests and party quests, quest invites ("join my quest"), party membership, quest log UI, in-game chat panel (chat is core to the input-window social loop).
+8. **Quests, parties & chat:** player quests and party quests, quest invites ("join my quest"), party membership, quest log UI, in-game chat panel (chat is core to the input-window social loop). The DOM social UI (chat, quest log, party roster, floating over the Pixi canvas) is built with **Lit** — see the §9 UI-toolkit decision.
 9. **Shader filter pass:** the WebGL post-processing filter for the retro look.
 10. **Polish & launch:** deploy to the VPS, send the URL to the group, playtest with everyone online.
 
@@ -264,6 +264,12 @@ The core of the design. Every 5 seconds, one world turn:
 - [ ] Combat math: base damage formula, crit multiplier (elf's bonus implies crits exist for everyone), how damage reduction applies (flat % is simplest), AoE templates (blast/line/cone) and whether player AoE hits allies
 - [ ] Does the world tick when nobody (or almost nobody) is online, or only during sessions?
 - [ ] Auth/identity: how players claim their character (name + secret link is probably enough for 15 friends)
+- [x] ~~Social-UI toolkit~~ → **Decided (for milestone 8): Lit.** The DOM social UI (chat, quest log, party roster) that floats over the Pixi canvas will be built with Lit. Rationale:
+  - **CSP fit (the deciding factor):** the server sends a strict `no unsafe-eval` CSP (the client already imports `pixi.js/unsafe-eval`). That rules out Alpine.js and Vue's runtime-template build (both compile expressions/templates with `new Function`). Lit renders via tagged template literals — eval-free — so it's CSP-clean by construction.
+  - **Minimal footprint:** ~5 KB runtime, and it's plain TypeScript, so the existing `tsc --noEmit` gate type-checks it with **no new build tooling** (no Vite plugin, no separate template type-checker). Keeps the "minimal deps, effort into the game not the framework" ethos and the single-`go:embed`-bundle model.
+  - **Incremental:** drops in beside today's hand-written HUD one component at a time; PixiJS keeps owning the WebGL layer and Lit never touches the render loop.
+  - **Gotcha to remember:** render Lit to **light DOM** (opt out of shadow DOM) so the global CRT/retro theme and Playwright selectors keep working.
+  - **Runner-up & reject:** Svelte was the DX runner-up but adds `@sveltejs/vite-plugin-svelte` + `svelte-check` to the `make check` gate. **SvelteKit was rejected** — it's a full-stack meta-framework, but the Go binary is already the server; at most you'd use `adapter-static`, which reduces it to plain Svelte + Vite anyway. If Svelte is ever chosen, use the Vite plugin, not SvelteKit.
 
 ---
 
