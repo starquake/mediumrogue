@@ -114,38 +114,49 @@ func TestEventsStreamsTurns(t *testing.T) {
 	}
 }
 
-func TestEventsHeartbeat(t *testing.T) {
+func TestEventsHeartbeatIsNamedEvent(t *testing.T) {
 	t.Parallel()
 
-	// Frozen clock, fast heartbeat: the stream must still carry comment
-	// frames so proxies keep the connection alive.
+	// Frozen turn clock, fast heartbeat: the stream must carry a named
+	// `heartbeat` event (not a comment) so EventSource can observe it, and it
+	// must NOT carry an id (heartbeats do not advance Last-Event-ID).
 	ts := startServer(t, time.Hour, 20*time.Millisecond)
 
 	resp := get(t, ts, "/api/events")
-
 	reader := bufio.NewReader(resp.Body)
 	deadline := time.After(5 * time.Second)
-	got := make(chan string, 1)
+	got := make(chan bool, 1)
 
 	go func() {
+		sawID := false
+
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
 				return
 			}
 
-			if strings.HasPrefix(line, ":") {
-				got <- line
+			line = strings.TrimRight(line, "\n")
+			switch {
+			case strings.HasPrefix(line, "id: "):
+				sawID = true
+			case line == "event: "+protocol.EventHeartbeat:
+				got <- !sawID // true only if no id preceded this heartbeat
 
 				return
+			case line == "":
+				sawID = false // frame boundary resets id tracking
 			}
 		}
 	}()
 
 	select {
-	case <-got:
+	case noID := <-got:
+		if !noID {
+			t.Fatal("heartbeat event carried an id; it must not advance Last-Event-ID")
+		}
 	case <-deadline:
-		t.Fatal("no heartbeat comment frame arrived on an idle stream")
+		t.Fatal("no named heartbeat event arrived on the stream")
 	}
 }
 

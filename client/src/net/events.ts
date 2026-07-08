@@ -4,11 +4,12 @@
 // client would keep believing it is connected. The watchdog treats "no data
 // within a turn-scaled window" as a dead stream: it reports disconnected and
 // opens a fresh EventSource, which resyncs to the latest snapshot on reconnect.
-import { EventTurn, type TurnEvent } from "../protocol.gen";
+import { EventHeartbeat, EventTurn, type TurnEvent } from "../protocol.gen";
 
 export interface EventsCallbacks {
   onTurn: (turn: TurnEvent) => void;
   onConnectionChange: (connected: boolean) => void;
+  onHeartbeat?: () => void;
 }
 
 // Liveness window: a stream is dead after this long with no data. Turn-scaled so
@@ -62,6 +63,14 @@ export function connectEvents(callbacks: EventsCallbacks): () => void {
     source.addEventListener("open", () => {
       callbacks.onConnectionChange(true);
       arm();
+    });
+
+    // A heartbeat proves liveness even when turns stop (frozen combat clock):
+    // report connected and re-arm the watchdog, same as a turn minus the payload.
+    source.addEventListener(EventHeartbeat, () => {
+      callbacks.onConnectionChange(true);
+      arm();
+      callbacks.onHeartbeat?.();
     });
 
     // EventSource retries on its own after an error it detects; just report the

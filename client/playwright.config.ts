@@ -18,6 +18,9 @@ export default defineConfig({
     env: {
       LISTEN_ADDR: `:${port}`,
       TURN_INTERVAL: "250ms",
+      // Fast heartbeat so a browser test observes named heartbeat events within
+      // its short run (default is 15s — never seen in a fast e2e).
+      HEARTBEAT_INTERVAL: "500ms",
     },
   },
 });

@@ -87,14 +87,17 @@ export interface MapResponse {
   tiles: Tile[];
 }
 /**
- * SSE event names on the GET /api/events stream. The stream also carries
- * comment frames as heartbeats; those have no event name and no payload.
- */
-/**
  * EventTurn announces a resolved world turn. Its SSE id is the turn
  * number so EventSource reconnection can resume via Last-Event-ID.
  */
 export const EventTurn = "turn";
+/**
+ * EventHeartbeat is a keep-alive frame. It carries no id (it is not a turn
+ * and must not advance Last-Event-ID) and fires on a fixed HeartbeatInterval
+ * so the client's liveness watchdog stays fed even when a frozen combat
+ * clock stops turn frames.
+ */
+export const EventHeartbeat = "heartbeat";
 /**
  * TurnEvent is the payload of an EventTurn frame: the world state after a
  * resolved turn. A full entity snapshot every turn keeps clients trivially
