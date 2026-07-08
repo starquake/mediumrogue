@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-08, after the milestone-6 heartbeat warmup (6.0). Update this file at the end of
+*Last updated: 2026-07-08, after milestone-6 phased move resolution (6.1). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -65,13 +65,15 @@ Combat needs hostiles (all entities are players today) and time bubbles are a
 whole subsystem, so M6 is being built as a sequence of independently-shippable
 slices, each its own spec → plan → PR:
 
-- **6.0 heartbeat warmup — DONE** (this PR): named always-on `event: heartbeat`
+- **6.0 heartbeat warmup — DONE**: named always-on `event: heartbeat`
   + client watchdog resets on it, so the liveness watchdog survives a frozen
   combat clock (see the resolved placeholder above). Closed the milestone-5 debt.
-- **6.1 phased resolution — NEXT**: replace the ascending-entity-ID placeholder
-  with simultaneous move resolution + seeded-RNG tie-break on `STACK_CAP`
-  overflow. Pure `internal/game` logic, testable with players now.
-- **6.2 monsters & HP**: a hostile entity kind, spawning, HP, minimal AI.
+- **6.1 phased resolution — DONE** (this PR): the move phase now resolves all
+  moves simultaneously with a per-turn seeded-RNG tie-break (`world seed ^ turn`)
+  on `STACK_CAP` overflow, replacing the ascending-entity-ID placeholder.
+  Reproducible + no id favoritism (tests pin the seed). The *attack phase*
+  (bump-to-attack, post-move-position attacks) is still pending in 6.3.
+- **6.2 monsters & HP — NEXT**: a hostile entity kind, spawning, HP, minimal AI.
 - **6.3 combat & death**: bump-to-attack, the attack phase (resolves against
   post-move positions), damage, HP→0 → respawn (XP-level fallback waits for 6b).
 - **6.4 time bubbles**: LOS, form/merge/dissolve, action-gated turns + the
@@ -82,10 +84,11 @@ After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
 
 ## Known placeholders / debt (all deliberate)
 
-- **Move resolution order**: ascending entity ID with per-move occupancy
-  check (`internal/game/world.go` resolveTurn). Milestone 6 replaces it with
-  the decided phased resolution (all moves simultaneously, seeded-RNG
-  tie-break on `STACK_CAP` overflow).
+- **Attack phase not implemented**: `resolveTurn` (`internal/game/world.go`) now
+  runs the decided **move phase** — all moves simultaneous, per-turn seeded-RNG
+  tie-break on `STACK_CAP` overflow (6.1, done). The **attack phase**
+  (bump-to-attack, attacks resolved against post-move positions) lands with
+  combat in 6.3, once hostiles exist (6.2).
 - **No server-side input-window enforcement**: intent acceptance stays
   permissive (an intent is accepted whenever it arrives, regardless of the
   client-visible timer phase); revisit once combat time bubbles (milestone 6)
