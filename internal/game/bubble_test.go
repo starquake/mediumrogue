@@ -128,6 +128,109 @@ func TestBubbleAbsorbsFriendlyInRange(t *testing.T) {
 	}
 }
 
+// TestBubbleKeepsIDAcrossRecomputes: a bubble that stays alive across several
+// world turns keeps the same id every recompute. recomputeBubblesLocked rebuilds
+// bubbles from scratch each turn, carrying the id forward by membership overlap;
+// Task 3's action-gating (ready/deadline) hangs off that id, so a regression that
+// minted a fresh id per recompute would silently reset the bubble's clock.
+func TestBubbleKeepsIDAcrossRecomputes(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	me, err := w.Join("")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.PlaceMonsterForTest(walkableNeighbor(t, w, me.Hex))
+
+	// Buffer the anchor's HP far above maxHP so the monster's per-turn chip damage
+	// never kills (and respawns) it — a respawn would relocate the player and
+	// dissolve the bubble, ending the run we want to observe.
+	w.SetHPForTest(me.EntityID, 100000)
+
+	snap := step(t, w)
+
+	if got, want := len(snap.Bubbles), 1; got != want {
+		t.Fatalf("bubble count = %d, want %d", got, want)
+	}
+
+	firstID := snap.Bubbles[0].ID
+	if firstID == 0 {
+		t.Fatalf("first bubble id = 0, want a real (non-world) id")
+	}
+
+	// Same physical bubble across several more recomputes: id must not change.
+	for turn := range 3 {
+		snap = step(t, w)
+
+		if got, want := len(snap.Bubbles), 1; got != want {
+			t.Fatalf("turn %d: bubble count = %d, want %d", turn, got, want)
+		}
+
+		if got, want := snap.Bubbles[0].ID, firstID; got != want {
+			t.Errorf("turn %d: bubble id = %d, want %d (id must persist across recomputes)", turn, got, want)
+		}
+	}
+}
+
+// TestBubbleKeepsIDWhenAbsorbingFriendly: pulling a new friendly member into an
+// existing bubble must not remint its id. The larger component still shares most
+// members with the old bubble, so it inherits that id — preserving any gating
+// state the bubble already held.
+func TestBubbleKeepsIDWhenAbsorbingFriendly(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	me, err := w.Join("")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	spots := walkableNeighborsN(t, w, me.Hex, 2)
+	w.PlaceMonsterForTest(spots[0])
+
+	// Keep the anchor alive so the bubble survives to the absorb turn.
+	w.SetHPForTest(me.EntityID, 100000)
+
+	snap := step(t, w)
+
+	if got, want := len(snap.Bubbles), 1; got != want {
+		t.Fatalf("bubble count = %d, want %d", got, want)
+	}
+
+	if got, want := len(snap.Bubbles[0].MemberIDs), 2; got != want {
+		t.Fatalf("bubble members = %d, want %d before the absorb", got, want)
+	}
+
+	beforeID := snap.Bubbles[0].ID
+	if beforeID == 0 {
+		t.Fatalf("bubble id = 0, want a real (non-world) id")
+	}
+
+	// Drop a second friendly one hex from the anchor: the next recompute folds it
+	// into the same connected component.
+	w.PlaceEntityForTest(spots[1])
+
+	snap = step(t, w)
+
+	if got, want := len(snap.Bubbles), 1; got != want {
+		t.Fatalf("bubble count = %d, want %d after the absorb", got, want)
+	}
+
+	if got, want := len(snap.Bubbles[0].MemberIDs), 3; got != want {
+		t.Fatalf("bubble members = %d, want %d (friendly must be absorbed)", got, want)
+	}
+
+	if got, want := snap.Bubbles[0].ID, beforeID; got != want {
+		t.Errorf("bubble id = %d, want %d (absorbing a member must not remint the id)", got, want)
+	}
+}
+
 // TestOutOfRangeStaysWorldDomain: a monster well beyond CombatRadius never
 // enters combat — a single step of its chase does not close the gap, so both
 // stay world-domain with no bubble on the wire.
