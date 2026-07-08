@@ -133,6 +133,16 @@ export const EventTurn = "turn";
  */
 export const EventHeartbeat = "heartbeat";
 /**
+ * BubbleView is the acting client's window into a combat bubble: who's in it,
+ * which members it's still waiting on, and how long until the patience timeout.
+ */
+export interface BubbleView {
+  id: number /* int64 */;
+  memberIds: number /* int64 */[];
+  waitingForIds: number /* int64 */[];
+  patienceRemainingMs: number /* int64 */;
+}
+/**
  * TurnEvent is the payload of an EventTurn frame: the world state after a
  * resolved turn. A full entity snapshot every turn keeps clients trivially
  * resyncable at this player count; deltas are a later optimization if ever
@@ -155,6 +165,10 @@ export interface TurnEvent {
    * Entities is every entity in the world, sorted by ID.
    */
   entities: Entity[];
+  /**
+   * Bubbles is every active combat time bubble the acting client is involved in.
+   */
+  bubbles: BubbleView[];
 }
 /**
  * Entity is one thing standing on the map: a player or a monster.
@@ -165,6 +179,7 @@ export interface Entity {
   kind: string;
   hp: number /* int */;
   maxHp: number /* int */;
+  inCombat: boolean;
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its

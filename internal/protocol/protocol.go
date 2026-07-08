@@ -97,6 +97,15 @@ const (
 	EventHeartbeat = "heartbeat"
 )
 
+// BubbleView is the acting client's window into a combat bubble: who's in it,
+// which members it's still waiting on, and how long until the patience timeout.
+type BubbleView struct {
+	ID                  int64   `json:"id"`
+	MemberIDs           []int64 `json:"memberIds"`
+	WaitingForIDs       []int64 `json:"waitingForIds"`
+	PatienceRemainingMs int64   `json:"patienceRemainingMs"`
+}
+
 // TurnEvent is the payload of an EventTurn frame: the world state after a
 // resolved turn. A full entity snapshot every turn keeps clients trivially
 // resyncable at this player count; deltas are a later optimization if ever
@@ -112,15 +121,18 @@ type TurnEvent struct {
 	IntervalMs int64 `json:"intervalMs"`
 	// Entities is every entity in the world, sorted by ID.
 	Entities []Entity `json:"entities"`
+	// Bubbles is every active combat time bubble the acting client is involved in.
+	Bubbles []BubbleView `json:"bubbles"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.
 type Entity struct {
-	ID    int64  `json:"id"`
-	Hex   Hex    `json:"hex"`
-	Kind  string `json:"kind"`
-	HP    int    `json:"hp"`
-	MaxHP int    `json:"maxHp"`
+	ID       int64  `json:"id"`
+	Hex      Hex    `json:"hex"`
+	Kind     string `json:"kind"`
+	HP       int    `json:"hp"`
+	MaxHP    int    `json:"maxHp"`
+	InCombat bool   `json:"inCombat"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its
