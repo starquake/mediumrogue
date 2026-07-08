@@ -1,6 +1,6 @@
 import { Container, Graphics, Text, type Ticker } from "pixi.js";
 
-import { EntityMonster, type Entity } from "../protocol.gen";
+import { EntityPlayer, type Entity } from "../protocol.gen";
 import { hexToPixel, HEX_SIZE, type Point } from "./hex";
 
 const OTHER_COLOR = 0xc8b458;
@@ -45,7 +45,9 @@ export class EntityLayer {
 
       const to = hexToPixel(e.hex);
       const mine = e.id === myEntityID;
-      const hostile = e.kind === EntityMonster;
+      // Anything not a player renders hostile — an unknown kind is safer shown
+      // as a monster than mistaken for a friendly player (per the protocol doc).
+      const hostile = e.kind !== EntityPlayer;
       let dot = this.dots.get(e.id);
 
       if (dot === undefined) {

@@ -252,15 +252,17 @@ const spawnStream uint64 = 0x5EED
 const minPathWithApproachHex = 2
 
 // SpawnMonsters adds n monster entities at random walkable hexes, chosen with
-// the world seed so a given seed is reproducible. Used by server startup
-// (MONSTER_COUNT) and tests. Skips hexes already at StackCap.
+// the world seed so a given seed is reproducible. Skips hexes already at
+// StackCap. Intended for **startup, before any player joins** (server startup
+// via MONSTER_COUNT, or tests) — it does not avoid player-occupied hexes, so a
+// later caller (continuous spawning, respawn) must add that guard.
 func (w *World) SpawnMonsters(n int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	walkable := make([]protocol.Hex, 0, len(w.worldMap.Tiles))
 	for _, t := range w.worldMap.Tiles {
-		if t.Terrain == protocol.TerrainGrass || t.Terrain == protocol.TerrainForest {
+		if w.walkableLocked(t.Hex) {
 			walkable = append(walkable, t.Hex)
 		}
 	}
@@ -300,6 +302,11 @@ func (w *World) SpawnMonsters(n int) {
 // thinkMonstersLocked sets each monster's path to a single step toward its
 // nearest player, stopping when adjacent — moving onto a player is an attack,
 // which is milestone 6.3. Recomputed every turn (players move). Callers hold w.mu.
+//
+// Note for 6.3: this only prevents a monster from *stepping onto* a player. The
+// move phase has no hostile-anti-stacking rule yet, so a monster and a player
+// can still converge onto the same hex in one turn; 6.3's attack phase must
+// handle a monster already co-located with a player at turn start.
 func (w *World) thinkMonstersLocked() {
 	players := make([]*entity, 0, len(w.entities))
 
