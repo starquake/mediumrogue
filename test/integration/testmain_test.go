@@ -26,15 +26,33 @@ func startServer(t *testing.T, turnInterval, heartbeatInterval time.Duration) *h
 }
 
 // startServerWithMonsters is startServer plus n monsters spawned before the
-// clock starts running.
+// clock starts running. A fast poll (shorter than the smallest turn interval
+// any test uses) keeps the control loop ticking promptly; a long patience
+// keeps the AFK fallback out of the way so combat resolves on lock-ins. Tests
+// that need to observe the freeze window itself (milestone 6.4) want a
+// shorter patience and use startServerWithBubbleTuning instead.
 func startServerWithMonsters(
 	t *testing.T, turnInterval, heartbeatInterval time.Duration, monsterCount int,
 ) *httptest.Server {
 	t.Helper()
 
+	return startServerWithBubbleTuning(t, turnInterval, heartbeatInterval, monsterCount, time.Minute, 5*time.Millisecond)
+}
+
+// startServerWithBubbleTuning is startServerWithMonsters plus explicit combat-
+// bubble patience/poll knobs, for tests that need the freeze window to stay
+// open for a controlled span (long enough to poll several turn bundles
+// without the AFK patience timeout auto-resolving the bubble out from under
+// the assertion).
+func startServerWithBubbleTuning(
+	t *testing.T, turnInterval, heartbeatInterval time.Duration, monsterCount int,
+	combatPatience, bubblePoll time.Duration,
+) *httptest.Server {
+	t.Helper()
+
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, ticks)
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, ticks)
 
 	world.SpawnMonsters(monsterCount)
 	go world.Run(t.Context())

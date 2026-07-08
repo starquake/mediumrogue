@@ -3,14 +3,94 @@ package game
 import (
 	"fmt"
 	mrand "math/rand/v2"
+	"slices"
+	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// ResolveTurnForTest drives one turn resolution synchronously, so tests can
-// step the world without running the ticker goroutine.
+// ResolveTurnForTest drives one full turn synchronously, so tests can step the
+// world without running the control-loop goroutine: it resolves the world
+// domain, then every combat bubble that already existed before that world
+// resolution (ungated — patience and lock-in are exercised via the dedicated
+// clock bridges). Resolving only pre-existing bubbles means a bubble that forms
+// during this same world resolution does not also act this step, so a single
+// step is exactly one action for every entity — the invariant the milestone
+// 6.1–6.3 tests were written against.
 func (w *World) ResolveTurnForTest() {
-	w.resolveTurn()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	now := w.now()
+
+	// Capture the pre-existing bubbles and their members before resolving the
+	// world domain, so a bubble that forms during this same world resolution
+	// does not also act this step, and defer the single recompute to the end
+	// (mirroring pollTick's one-action-per-entity guarantee).
+	ids := make([]int64, 0, len(w.bubbles))
+	for id := range w.bubbles {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	pre := make([]bubbleTurn, 0, len(ids))
+	for _, id := range ids {
+		b := w.bubbles[id]
+		pre = append(pre, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
+	}
+
+	w.resolveWorldTurnLocked(w.domainMembersLocked())
+
+	for _, bt := range pre {
+		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
+	}
+
+	w.recomputeBubblesLocked(now)
+}
+
+// PollTickForTest runs one control-loop pass at the injected clock (see
+// SetNowForTest) and reports whether anything resolved, so tests can drive the
+// two-clock gating deterministically without real time.
+func (w *World) PollTickForTest() bool {
+	return w.pollTick(w.now())
+}
+
+// SetNowForTest replaces the world clock. Call before starting any goroutine
+// that reads it (the production path never mutates it, so this is test-only).
+func (w *World) SetNowForTest(now func() time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.now = now
+}
+
+// StartClockForTest seeds the world-tick accounting to "now", the baseline the
+// Run loop establishes at startup, so the first world tick fires one interval
+// later under the injected clock.
+func (w *World) StartClockForTest() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.lastWorldTick = w.now()
+}
+
+// SetCombatPatienceForTest overrides the bubble patience timeout so a test can
+// force a timeout in a few clock steps instead of the 60 s default.
+func (w *World) SetCombatPatienceForTest(d time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.combatPatience = d
+}
+
+// SetBubblePollForTest overrides the control-loop poll cadence so the -race
+// concurrency test can drive many passes per millisecond.
+func (w *World) SetBubblePollForTest(d time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.bubblePoll = d
 }
 
 // SetSeedForTest pins the world's tie-break RNG seed so a test can assert exact,
@@ -86,8 +166,8 @@ func (w *World) SetPathForTest(id int64, path []protocol.Hex) {
 }
 
 // ResolveCombatOnlyForTest runs the move/bump/attack/death phases of a turn
-// without the monster-AI think phase, mirroring resolveTurn minus
-// thinkMonstersLocked. It exists so combat tests can pin an exact monster
+// over all entities without the monster-AI think phase, mirroring
+// resolveCombatLocked minus thinkMonstersLocked. It exists so combat tests can pin an exact monster
 // path via SetPathForTest (simulating a monster-initiated bump — attack or
 // retreat) without the AI recomputing and overriding it on the very same
 // turn.
@@ -95,17 +175,24 @@ func (w *World) ResolveCombatOnlyForTest() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; test-only, mirrors resolveTurn.
+	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; test-only, mirrors resolveCombatLocked.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
 
-	byHex := make(map[protocol.Hex][]*entity, len(w.entities))
+	members := make([]*entity, 0, len(w.entities))
 	for _, e := range w.entities {
+		members = append(members, e)
+	}
+
+	slices.SortFunc(members, func(a, b *entity) int { return int(a.id - b.id) })
+
+	byHex := make(map[protocol.Hex][]*entity, len(members))
+	for _, e := range members {
 		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
-	attacks := w.moveAndBumpLocked(rng, byHex)
+	attacks := w.moveAndBumpLocked(rng, byHex, members)
 	w.attackLocked(rng, byHex, attacks)
-	w.resolveDeathsLocked()
+	w.resolveDeathsLocked(members)
 
 	w.turn++
 }

@@ -97,12 +97,26 @@ const (
 	EventHeartbeat = "heartbeat"
 )
 
+// BubbleView is a window into a combat bubble: who's in it, which members it's
+// still waiting on, and how long until the patience timeout. Every bundle
+// carries all active bubbles; a client picks the one whose MemberIDs include
+// its own entity to drive its combat HUD.
+type BubbleView struct {
+	ID                  int64   `json:"id"`
+	MemberIDs           []int64 `json:"memberIds"`
+	WaitingForIDs       []int64 `json:"waitingForIds"`
+	PatienceRemainingMs int64   `json:"patienceRemainingMs"`
+}
+
 // TurnEvent is the payload of an EventTurn frame: the world state after a
 // resolved turn. A full entity snapshot every turn keeps clients trivially
 // resyncable at this player count; deltas are a later optimization if ever
 // needed. It will grow (attacks, deaths, chat) as the game develops.
 type TurnEvent struct {
-	// Turn is the monotonically increasing world-turn number.
+	// Turn is a monotonically increasing resolution counter, incremented on
+	// every world-domain tick AND every combat-bubble resolution (they advance
+	// on independent clocks). Monotonic, so it still serves as the SSE id /
+	// Last-Event-ID watermark; it is not a pure world-turn count.
 	Turn int64 `json:"turn"`
 	// IntervalMs is the runtime turn period in milliseconds (the configured
 	// TURN_INTERVAL). The client cannot derive this — TURN_INTERVAL is
@@ -112,15 +126,19 @@ type TurnEvent struct {
 	IntervalMs int64 `json:"intervalMs"`
 	// Entities is every entity in the world, sorted by ID.
 	Entities []Entity `json:"entities"`
+	// Bubbles is every active combat time bubble in the world; a client filters
+	// to the one containing its own entity.
+	Bubbles []BubbleView `json:"bubbles"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.
 type Entity struct {
-	ID    int64  `json:"id"`
-	Hex   Hex    `json:"hex"`
-	Kind  string `json:"kind"`
-	HP    int    `json:"hp"`
-	MaxHP int    `json:"maxHp"`
+	ID       int64  `json:"id"`
+	Hex      Hex    `json:"hex"`
+	Kind     string `json:"kind"`
+	HP       int    `json:"hp"`
+	MaxHP    int    `json:"maxHp"`
+	InCombat bool   `json:"inCombat"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its

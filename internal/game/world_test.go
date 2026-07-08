@@ -10,8 +10,16 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// Bubble-clock values for tests: a long patience keeps the AFK fallback out of
+// the way (tests that exercise it override via SetCombatPatienceForTest) and a
+// fast poll keeps any Run loop ticking promptly.
+const (
+	testCombatPatience = time.Minute
+	testBubblePoll     = time.Millisecond
+)
+
 func newWorld() *game.World {
-	return game.NewWorld(time.Hour, hub.New())
+	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, hub.New())
 }
 
 // step drives one turn without running the ticker goroutine.
@@ -277,7 +285,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 func TestSnapshotCarriesInterval(t *testing.T) {
 	t.Parallel()
 
-	w := game.NewWorld(250*time.Millisecond, hub.New())
+	w := game.NewWorld(250*time.Millisecond, testCombatPatience, testBubblePoll, hub.New())
 	if got, want := w.Snapshot().IntervalMs, int64(250); got != want {
 		t.Fatalf("IntervalMs = %d, want 250", got)
 	}

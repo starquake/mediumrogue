@@ -8,6 +8,7 @@ const ME_COLOR = 0x8fd0ff;
 const MONSTER_COLOR = 0xd6544f;
 const HP_BAR_BG = 0x1a1f1a;
 const HP_BAR_FG = 0x4fd66c;
+const COMBAT_RING_COLOR = 0xffcc33;
 const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
 
 interface Dot {
@@ -21,6 +22,7 @@ interface Dot {
   hostile: boolean;
   hp: number;
   maxHp: number;
+  inCombat: boolean;
 }
 
 /**
@@ -58,7 +60,19 @@ export class EntityLayer {
         // First sighting: appear in place, no tween.
         const gfx = new Graphics();
         this.container.addChild(gfx);
-        dot = { gfx, from: to, to, current: to, elapsed: 0, duration: 0, mine, hostile, hp: e.hp, maxHp: e.maxHp };
+        dot = {
+          gfx,
+          from: to,
+          to,
+          current: to,
+          elapsed: 0,
+          duration: 0,
+          mine,
+          hostile,
+          hp: e.hp,
+          maxHp: e.maxHp,
+          inCombat: e.inCombat,
+        };
         this.dots.set(e.id, dot);
       } else {
         // Retarget from wherever the dot is right now → the new hex.
@@ -70,6 +84,7 @@ export class EntityLayer {
         dot.hostile = hostile;
         dot.hp = e.hp;
         dot.maxHp = e.maxHp;
+        dot.inCombat = e.inCombat;
       }
 
       this.drawDot(dot);
@@ -149,6 +164,13 @@ export class EntityLayer {
       .circle(x, y, HEX_SIZE * 0.45)
       .fill(color)
       .stroke({ width: 2, color: 0x0b0f0b });
+
+    // A combat time bubble freezes its members — a ring around the dot lets
+    // world players see a frozen fight in progress, distinct from a stopped
+    // (but free) entity.
+    if (dot.inCombat) {
+      dot.gfx.circle(x, y, HEX_SIZE * 0.62).stroke({ width: 2, color: COMBAT_RING_COLOR });
+    }
 
     // Damaged entities get a small HP bar above the dot; a full-HP entity
     // shows none, so the battlefield stays uncluttered until something's hurt.

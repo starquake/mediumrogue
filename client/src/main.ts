@@ -43,6 +43,13 @@ export interface GameDebug {
   phaseRemainingMs: number;
   /** The hex this client last asked to walk to; null once reached. */
   destination: Hex | null;
+  /** Whether this client's entity is frozen in a combat time bubble right now. */
+  inCombat: boolean;
+  /**
+   * The combat bubble this client is a member of, or null when not in combat.
+   * `waitingFor` mirrors the bundle's `waitingForIds` for the bubble.
+   */
+  bubble: { waitingFor: number[]; patienceRemainingMs: number } | null;
   /**
    * Submit a destination as if the hex were clicked (drives e2e). Returns a
    * promise that resolves once the intent POST has settled, so tests can
@@ -69,6 +76,10 @@ function mustGet(id: string): HTMLElement {
 
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
+const turnTimerEl = mustGet("turn-timer");
+const combatPanelEl = mustGet("combat-panel");
+const combatWaitingEl = mustGet("combat-waiting");
+const combatPatienceEl = mustGet("combat-patience");
 
 // Turn-phase timing, tracked from wall-clock (performance.now) and reset on
 // each turn bundle. window.game.phase is computed on read from these, so it
@@ -108,6 +119,8 @@ window.game = {
     return t < curPlaybackMs ? curPlaybackMs - t : Math.max(0, curIntervalMs - t);
   },
   destination: null,
+  inCombat: false,
+  bubble: null,
   tapHex: (): Promise<void> => Promise.resolve(),
 };
 
@@ -181,6 +194,26 @@ async function start(): Promise<void> {
         ) {
           window.game.destination = null;
         }
+      }
+
+      // A combat bubble freezes this client's turn clock in place of the
+      // world's — swap the WeGo timer for a "waiting for…" panel while a
+      // member of one, using the bubble's own patience countdown.
+      const myBubble = event.bubbles.find((b) => b.memberIds.includes(me.entityId)) ?? null;
+      window.game.inCombat = (mine?.inCombat ?? false) || myBubble !== null;
+      window.game.bubble =
+        myBubble !== null
+          ? { waitingFor: myBubble.waitingForIds, patienceRemainingMs: myBubble.patienceRemainingMs }
+          : null;
+
+      if (myBubble !== null) {
+        turnTimerEl.hidden = true;
+        combatPanelEl.hidden = false;
+        combatWaitingEl.textContent = myBubble.waitingForIds.join(", ");
+        combatPatienceEl.textContent = (myBubble.patienceRemainingMs / 1000).toFixed(1);
+      } else {
+        combatPanelEl.hidden = true;
+        turnTimerEl.hidden = false;
       }
 
       entityLayer.update(event.entities, me.entityId, playbackMs);

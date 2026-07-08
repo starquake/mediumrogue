@@ -74,6 +74,17 @@
       #turn-timer[data-phase="playback"] #turn-timer-fill {
         background: var(--dim);
       }
+      /* Combat bubble panel: replaces the WeGo turn-timer while this client's
+         entity is frozen in a fight — the world clock isn't what's advancing
+         it anymore, patience is. */
+      #combat-panel {
+        margin-top: 0.4rem;
+        color: #ffcc33;
+        font-size: 0.85rem;
+      }
+      #combat-panel[hidden] {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -82,6 +93,9 @@
       <div id="turn-row">turn <span id="turn">—</span></div>
       <div id="status" data-connected="false">connecting…</div>
       <div id="turn-timer" data-phase="input"><div id="turn-timer-fill"></div></div>
+      <div id="combat-panel" hidden>
+        In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
+      </div>
     </header>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -46,6 +46,9 @@ type entity struct {
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
+	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
+	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
+	bubbleID int64
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -55,13 +58,31 @@ type World struct {
 	interval time.Duration
 	ticks    *hub.Hub
 
-	mu       sync.Mutex
-	turn     int64
-	terrain  map[protocol.Hex]protocol.Terrain
-	worldMap protocol.MapResponse
-	entities map[int64]*entity
-	byToken  map[string]*entity
-	nextID   int64
+	// combatPatience is how long a combat bubble waits for an unready player
+	// before auto-resolving its turn; bubblePoll is the control loop's polling
+	// cadence for checking bubble readiness and world-tick elapse. Both have
+	// sensible defaults set in NewWorld; milestone 6.4 Task 4 threads them from
+	// config (a clean seam — they are not yet in NewWorld's signature).
+	combatPatience time.Duration
+	bubblePoll     time.Duration
+	// now is the clock, injectable in tests so the two-clock gating can be driven
+	// deterministically without real time. Defaults to time.Now.
+	now func() time.Time
+
+	mu   sync.Mutex
+	turn int64
+	// lastWorldTick is when the world domain last resolved, for the control
+	// loop's world-tick accounting. Read/written only under mu.
+	lastWorldTick time.Time
+	terrain       map[protocol.Hex]protocol.Terrain
+	worldMap      protocol.MapResponse
+	entities      map[int64]*entity
+	byToken       map[string]*entity
+	nextID        int64
+	// bubbles are the active combat time bubbles, keyed by id. Rebuilt each turn
+	// by recomputeBubblesLocked; ids carry across recomputes for stable gating.
+	bubbles      map[int64]*bubble
+	nextBubbleID int64
 	// seed is the world's tie-break RNG seed, minted once at construction. Each
 	// turn's move-resolution shuffle uses a PCG seeded from (seed, turn) — the
 	// turn selects the stream — so it's reproducible given the world + turn but
@@ -69,9 +90,10 @@ type World struct {
 	seed int64
 }
 
-// NewWorld builds the world on the static map. Run must be started for turns
-// to advance.
-func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
+// NewWorld builds the world on the static map. combatPatience is the AFK
+// fallback before a combat bubble resolves without a straggler; bubblePoll is
+// the control-loop cadence (see Run). Run must be started for turns to advance.
+func NewWorld(interval, combatPatience, bubblePoll time.Duration, ticks *hub.Hub) *World {
 	worldMap := StaticMap()
 
 	terrain := make(map[protocol.Hex]protocol.Terrain, len(worldMap.Tiles))
@@ -86,13 +108,17 @@ func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
 	seed := int64(binary.BigEndian.Uint64(seedBuf[:]))
 
 	return &World{
-		interval: interval,
-		ticks:    ticks,
-		terrain:  terrain,
-		worldMap: worldMap,
-		entities: make(map[int64]*entity),
-		byToken:  make(map[string]*entity),
-		seed:     seed,
+		interval:       interval,
+		ticks:          ticks,
+		combatPatience: combatPatience,
+		bubblePoll:     bubblePoll,
+		now:            time.Now,
+		terrain:        terrain,
+		worldMap:       worldMap,
+		entities:       make(map[int64]*entity),
+		byToken:        make(map[string]*entity),
+		bubbles:        make(map[int64]*bubble),
+		seed:           seed,
 	}
 }
 
@@ -101,21 +127,100 @@ func (w *World) Map() protocol.MapResponse {
 	return w.worldMap
 }
 
-// Run advances the world until ctx is canceled: one resolved turn per
-// interval, each announced on the tick hub. Blocks; run in a goroutine.
+// Run advances the world until ctx is canceled, on a single control loop that
+// runs both clocks (see the two-clock model in docs). Every bubblePoll it (a)
+// resolves the world domain if a full interval has elapsed and (b) resolves any
+// combat bubble whose players have all locked in or whose patience has expired.
+// A resolution announces on the tick hub. Blocks; run in a goroutine.
 func (w *World) Run(ctx context.Context) {
-	ticker := time.NewTicker(w.interval)
-	defer ticker.Stop()
+	// Snapshot the clock and cadence under the lock at startup: the loop then
+	// reads neither field again, so a test (or a future config reload) that
+	// mutates them under the lock cannot race this goroutine.
+	w.mu.Lock()
+	now := w.now
+	poll := time.NewTicker(w.bubblePoll)
+	w.lastWorldTick = now()
+	w.mu.Unlock()
+
+	defer poll.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			w.resolveTurn()
-			w.ticks.Publish()
+		case <-poll.C:
+			if w.pollTick(now()) {
+				w.ticks.Publish()
+			}
 		}
 	}
+}
+
+// pollTick runs one control-loop pass under w.mu: a world resolution if the
+// interval has elapsed since lastWorldTick, plus every ready-or-expired bubble.
+//
+// It decides what resolves, and captures each resolution's member set, from the
+// state at the START of the pass — before any resolution mutates positions or
+// membership. That ordering is load-bearing: a world resolution can walk an
+// entity into an existing bubble, and a bubble resolution can let one flee into
+// the world; capturing member sets up front (and recomputing bubbles only once,
+// at the end) guarantees every entity acts exactly once, never twice and never
+// zero times, regardless of how the pass reshuffles domains. Bubbles resolve in
+// sorted-id order for reproducibility. Returns whether anything resolved.
+func (w *World) pollTick(now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	doWorld := now.Sub(w.lastWorldTick) >= w.interval
+
+	turns := w.readyBubbleTurnsLocked(now)
+
+	if !doWorld && len(turns) == 0 {
+		return false
+	}
+
+	if doWorld {
+		w.resolveWorldTurnLocked(w.domainMembersLocked())
+		w.lastWorldTick = now
+	}
+
+	for _, bt := range turns {
+		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
+	}
+
+	w.recomputeBubblesLocked(now)
+
+	return true
+}
+
+// bubbleTurn is one bubble's scheduled resolution: the bubble and the member
+// snapshot to resolve it over, both captured before the pass mutates anything.
+type bubbleTurn struct {
+	bubble  *bubble
+	members []*entity
+}
+
+// readyBubbleTurnsLocked collects, in sorted-id order, the bubbles that should
+// resolve this pass (all players locked in, or patience expired) together with a
+// snapshot of each one's members. Callers hold w.mu.
+func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
+	ids := make([]int64, 0, len(w.bubbles))
+	for id := range w.bubbles {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	var turns []bubbleTurn
+
+	for _, id := range ids {
+		b := w.bubbles[id]
+		if w.bubbleReadyOrExpiredLocked(b, now) {
+			turns = append(turns, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
+		}
+	}
+
+	return turns
 }
 
 // Join returns the entity for token, creating a new one (empty or unknown
@@ -153,8 +258,10 @@ func (w *World) Join(token string) (protocol.JoinResponse, error) {
 
 // SubmitIntent sets the entity's route to Target: any walkable, reachable
 // hex. The server pathfinds from the entity's current position; the walk
-// advances one hex per turn in resolveTurn. The latest submission in an input
-// window replaces the entity's route.
+// advances one hex per resolved turn. For an entity inside a combat bubble the
+// submission also counts as a lock-in for the bubble's action-gated turn, and
+// once every player member has locked in the bubble resolves immediately. The
+// latest submission in an input window replaces the entity's route.
 func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -175,6 +282,23 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 
 	e.path = path
 
+	// Lock-in: inside a combat bubble, submitting an intent commits this player
+	// for the bubble's action-gated turn. Once every player member has locked
+	// in, the bubble resolves immediately (rather than waiting for the poll or
+	// the patience timeout) and the tick hub is notified.
+	if e.bubbleID != 0 {
+		if b, ok := w.bubbles[e.bubbleID]; ok {
+			b.ready[e.id] = struct{}{}
+
+			if w.allPlayersReadyLocked(b) {
+				now := w.now()
+				w.resolveBubbleTurnLocked(b, w.bubbleMembersLocked(b), now)
+				w.recomputeBubblesLocked(now)
+				w.ticks.Publish()
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -188,12 +312,24 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, HP: e.hp, MaxHP: e.maxHP,
+			InCombat: e.bubbleID != 0,
 		})
 	}
 
 	slices.SortFunc(entities, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
 
-	return protocol.TurnEvent{Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities}
+	now := w.now()
+
+	bubbles := make([]protocol.BubbleView, 0, len(w.bubbles))
+	for _, b := range w.bubbles {
+		bubbles = append(bubbles, w.bubbleViewLocked(b, now))
+	}
+
+	slices.SortFunc(bubbles, func(a, b protocol.BubbleView) int { return int(a.ID - b.ID) })
+
+	return protocol.TurnEvent{
+		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
+	}
 }
 
 // opposing reports whether a and b are of different factions (player vs
@@ -254,30 +390,119 @@ type pendingAttack struct {
 	target   protocol.Hex
 }
 
-// resolveTurn runs one full turn of the decided phased resolution:
-// think → move (faction-aware, with bump deferral) → attack (simultaneous,
-// post-move positions) → apply damage & deaths. Under w.mu.
-func (w *World) resolveTurn() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+// resolveWorldTurnLocked advances the world domain one turn: the phased combat
+// pipeline over the given world-domain member set, then a turn bump. It does
+// NOT recompute bubbles — the caller recomputes once, after every resolution of
+// the pass, so an entity that changes domain mid-pass (walks into a bubble, or
+// flees one) still acts exactly once, in the phase it belonged to when the pass
+// captured its members. Callers hold w.mu.
+func (w *World) resolveWorldTurnLocked(members []*entity) {
+	w.resolveCombatLocked(members)
+	w.turn++
+}
 
-	w.thinkMonstersLocked()
+// resolveBubbleTurnLocked advances one combat bubble a single action-gated turn:
+// the phased combat pipeline over the given member set, then it clears the
+// bubble's lock-ins and restarts its patience deadline for the next turn. Like
+// resolveWorldTurnLocked it does NOT recompute — see that method. Callers hold
+// w.mu.
+func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.Time) {
+	w.resolveCombatLocked(members)
+
+	clear(b.ready)
+	b.deadline = now.Add(w.combatPatience)
+
+	w.turn++
+}
+
+// resolveCombatLocked runs the decided phased resolution over a given entity
+// set: think → move (faction-aware, with bump deferral) → attack (simultaneous,
+// post-move positions) → apply damage & deaths. The set is a whole
+// CombatRadius-connected domain (the world domain or one bubble), so no move,
+// bump, stack, or attack can reach an entity outside it. It does not recompute
+// bubbles or advance the turn — the two resolve callers own that. Callers hold
+// w.mu.
+func (w *World) resolveCombatLocked(members []*entity) {
+	w.thinkMonstersLocked(members)
 
 	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
 
 	// Evolving board: who is on each hex as moves resolve.
-	byHex := make(map[protocol.Hex][]*entity, len(w.entities))
-	for _, e := range w.entities {
+	byHex := make(map[protocol.Hex][]*entity, len(members))
+	for _, e := range members {
 		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
-	attacks := w.moveAndBumpLocked(rng, byHex)
+	attacks := w.moveAndBumpLocked(rng, byHex, members)
 	w.attackLocked(rng, byHex, attacks)
 
-	w.resolveDeathsLocked()
+	w.resolveDeathsLocked(members)
+}
 
-	w.turn++
+// domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
+// by id for deterministic resolution. Callers hold w.mu.
+func (w *World) domainMembersLocked() []*entity {
+	out := make([]*entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		if e.bubbleID == 0 {
+			out = append(out, e)
+		}
+	}
+
+	slices.SortFunc(out, func(a, b *entity) int { return int(a.id - b.id) })
+
+	return out
+}
+
+// bubbleMembersLocked returns bubble b's live members, sorted by id for
+// deterministic resolution. A member id with no live entity (removed since the
+// last recompute) is skipped. Callers hold w.mu.
+func (w *World) bubbleMembersLocked(b *bubble) []*entity {
+	out := make([]*entity, 0, len(b.members))
+
+	for id := range b.members {
+		if e, ok := w.entities[id]; ok {
+			out = append(out, e)
+		}
+	}
+
+	slices.SortFunc(out, func(a, b *entity) int { return int(a.id - b.id) })
+
+	return out
+}
+
+// allPlayersReadyLocked reports whether every player member of b has locked in
+// this bubble-turn. False for a bubble with no live player member (it can only
+// advance by patience timeout). Callers hold w.mu.
+func (w *World) allPlayersReadyLocked(b *bubble) bool {
+	hasPlayer := false
+
+	for id := range b.members {
+		e, ok := w.entities[id]
+		if !ok || e.kind != protocol.EntityPlayer {
+			continue
+		}
+
+		hasPlayer = true
+
+		if _, ready := b.ready[id]; !ready {
+			return false
+		}
+	}
+
+	return hasPlayer
+}
+
+// bubbleReadyOrExpiredLocked reports whether b should resolve now: every player
+// has locked in, or its patience deadline has passed. Callers hold w.mu.
+func (w *World) bubbleReadyOrExpiredLocked(b *bubble, now time.Time) bool {
+	if !b.deadline.IsZero() && now.After(b.deadline) {
+		return true
+	}
+
+	return w.allPlayersReadyLocked(b)
 }
 
 // moveAndBumpLocked resolves the move phase: movers advance one hex from
@@ -288,9 +513,11 @@ func (w *World) resolveTurn() {
 // out this turn (the defender retreated) completes as a normal move instead
 // of an attack. Returns the bumps that are still opposing-held after that
 // re-check, i.e. the attacks to resolve this turn. Callers hold w.mu.
-func (w *World) moveAndBumpLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity) []pendingAttack {
-	movers := make([]*entity, 0, len(w.entities))
-	for _, e := range w.entities {
+func (w *World) moveAndBumpLocked(
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity,
+) []pendingAttack {
+	movers := make([]*entity, 0, len(members))
+	for _, e := range members {
 		if len(e.path) > 0 {
 			movers = append(movers, e)
 		}
@@ -368,11 +595,12 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 }
 
 // resolveDeathsLocked removes dead monsters and respawns dead players (full HP,
-// fresh spawn hex, same id + token — the client stays joined). Callers hold w.mu.
-func (w *World) resolveDeathsLocked() {
+// fresh spawn hex, same id + token — the client stays joined) among the given
+// member set. Callers hold w.mu.
+func (w *World) resolveDeathsLocked(members []*entity) {
 	var dead []*entity
 
-	for _, e := range w.entities {
+	for _, e := range members {
 		if e.hp <= 0 {
 			dead = append(dead, e)
 		}
@@ -451,15 +679,17 @@ func (w *World) SpawnMonsters(n int) {
 	}
 }
 
-// thinkMonstersLocked sets each monster's path to a single step toward its
-// nearest player. Recomputed every turn (players move). Callers hold w.mu.
+// thinkMonstersLocked sets each monster in the member set to a single step
+// toward its nearest player in that same set. Recomputed every turn (players
+// move). Scoping the target search to the set keeps a bubble's monsters chasing
+// bubble players and world monsters chasing world players. Callers hold w.mu.
 //
 // When adjacent, path[0] is the player's own hex, so the move phase converts
 // this into a bump-to-attack (6.3).
-func (w *World) thinkMonstersLocked() {
-	players := make([]*entity, 0, len(w.entities))
+func (w *World) thinkMonstersLocked(members []*entity) {
+	players := make([]*entity, 0, len(members))
 
-	for _, e := range w.entities {
+	for _, e := range members {
 		if e.kind == protocol.EntityPlayer {
 			players = append(players, e)
 		}
@@ -469,7 +699,7 @@ func (w *World) thinkMonstersLocked() {
 		return
 	}
 
-	for _, m := range w.entities {
+	for _, m := range members {
 		if m.kind != protocol.EntityMonster {
 			continue
 		}
