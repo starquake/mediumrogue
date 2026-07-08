@@ -1,10 +1,11 @@
 import { Container, Graphics, Text, type Ticker } from "pixi.js";
 
-import type { Entity } from "../protocol.gen";
+import { EntityMonster, type Entity } from "../protocol.gen";
 import { hexToPixel, HEX_SIZE, type Point } from "./hex";
 
 const OTHER_COLOR = 0xc8b458;
 const ME_COLOR = 0x8fd0ff;
+const MONSTER_COLOR = 0xd6544f;
 const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
 
 interface Dot {
@@ -15,6 +16,7 @@ interface Dot {
   elapsed: number;
   duration: number;
   mine: boolean;
+  hostile: boolean;
 }
 
 /**
@@ -43,13 +45,14 @@ export class EntityLayer {
 
       const to = hexToPixel(e.hex);
       const mine = e.id === myEntityID;
+      const hostile = e.kind === EntityMonster;
       let dot = this.dots.get(e.id);
 
       if (dot === undefined) {
         // First sighting: appear in place, no tween.
         const gfx = new Graphics();
         this.container.addChild(gfx);
-        dot = { gfx, from: to, to, current: to, elapsed: 0, duration: 0, mine };
+        dot = { gfx, from: to, to, current: to, elapsed: 0, duration: 0, mine, hostile };
         this.dots.set(e.id, dot);
       } else {
         // Retarget from wherever the dot is right now → the new hex.
@@ -58,6 +61,7 @@ export class EntityLayer {
         dot.elapsed = 0;
         dot.duration = playbackMs;
         dot.mine = mine;
+        dot.hostile = hostile;
       }
 
       this.drawDot(dot);
@@ -131,10 +135,11 @@ export class EntityLayer {
 
   private drawDot(dot: Dot): void {
     const { x, y } = dot.current;
+    const color = dot.hostile ? MONSTER_COLOR : dot.mine ? ME_COLOR : OTHER_COLOR;
     dot.gfx
       .clear()
       .circle(x, y, HEX_SIZE * 0.45)
-      .fill(dot.mine ? ME_COLOR : OTHER_COLOR)
+      .fill(color)
       .stroke({ width: 2, color: 0x0b0f0b });
   }
 }
