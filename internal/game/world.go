@@ -46,6 +46,9 @@ type entity struct {
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
+	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
+	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
+	bubbleID int64
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -62,6 +65,10 @@ type World struct {
 	entities map[int64]*entity
 	byToken  map[string]*entity
 	nextID   int64
+	// bubbles are the active combat time bubbles, keyed by id. Rebuilt each turn
+	// by recomputeBubblesLocked; ids carry across recomputes for stable gating.
+	bubbles      map[int64]*bubble
+	nextBubbleID int64
 	// seed is the world's tie-break RNG seed, minted once at construction. Each
 	// turn's move-resolution shuffle uses a PCG seeded from (seed, turn) — the
 	// turn selects the stream — so it's reproducible given the world + turn but
@@ -92,6 +99,7 @@ func NewWorld(interval time.Duration, ticks *hub.Hub) *World {
 		worldMap: worldMap,
 		entities: make(map[int64]*entity),
 		byToken:  make(map[string]*entity),
+		bubbles:  make(map[int64]*bubble),
 		seed:     seed,
 	}
 }
@@ -188,12 +196,22 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, HP: e.hp, MaxHP: e.maxHP,
+			InCombat: e.bubbleID != 0,
 		})
 	}
 
 	slices.SortFunc(entities, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
 
-	return protocol.TurnEvent{Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities}
+	bubbles := make([]protocol.BubbleView, 0, len(w.bubbles))
+	for _, b := range w.bubbles {
+		bubbles = append(bubbles, w.bubbleViewLocked(b))
+	}
+
+	slices.SortFunc(bubbles, func(a, b protocol.BubbleView) int { return int(a.ID - b.ID) })
+
+	return protocol.TurnEvent{
+		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
+	}
 }
 
 // opposing reports whether a and b are of different factions (player vs
@@ -276,6 +294,11 @@ func (w *World) resolveTurn() {
 	w.attackLocked(rng, byHex, attacks)
 
 	w.resolveDeathsLocked()
+
+	// Temporary hook: keep bubble membership (and InCombat) in sync with the
+	// resolved positions each world turn. Task 3 relocates this into the split
+	// world/bubble clocks.
+	w.recomputeBubblesLocked()
 
 	w.turn++
 }
