@@ -150,6 +150,8 @@ The wire carries one small intent up per ≤5 s and one turn bundle down per 5 s
 - Turn bundles get monotonically increasing event IDs = turn numbers; the server keeps a short replay buffer for reconnecting clients, and a full-state resync endpoint covers clients that fall too far behind.
 - Serve behind HTTP/2 (Caddy) so SSE connections don't eat the browser's HTTP/1.1 per-domain connection limit.
 
+**Milestone 5 update:** with full-snapshot turn bundles and a coalescing hub, a reconnecting client only needs the current snapshot, so the replay buffer and separate resync endpoint above were **not** built — reconnect is resync-to-latest, and `Last-Event-ID` is honoured only as a watermark to avoid re-painting an already-seen turn.
+
 ## 5. World & Simulation Model — Simultaneous Turns (WeGo)
 
 The core of the design. Every 5 seconds, one world turn:
@@ -244,7 +246,8 @@ The core of the design. Every 5 seconds, one world turn:
 - [x] ~~Transport~~ → **Decided: SSE down + HTTP POST up, JSON payloads** (see §4)
 - [x] ~~Grid-locked movement vs. free positioning~~ → **Decided: flat-top hex grid, grid-locked; click-to-move primary, QWE/ASD keyboard (no wait key)** (see §5)
 - [x] ~~Tick rate~~ → **Decided: simultaneous 5 s turns (3 s input / ~2 s playback).** Keep the cadence a server config constant — feel-test 4 s vs 6 s with the group.
-- [x] ~~Snapshot vs. delta-based state replication~~ → **Mooted by the turn model:** one turn-result bundle per turn; replay buffer + full-resync endpoint for reconnects.
+- [x] ~~Snapshot vs. delta-based state replication~~ → **Mooted by the turn model:** one turn-result bundle per turn.
+- [x] ~~Reconnect/resync~~ → **Decided (milestone 5): resync-to-latest** — full-snapshot turn bundles + a coalescing hub mean a reconnecting client just needs the current snapshot; `Last-Event-ID` is honoured only as a watermark, no replay buffer or separate resync endpoint (see §4).
 - [x] ~~Stacking~~ → **Decided: `STACK_CAP = 5` (a full party fits on one hex); random-member hit distribution; count-badge rendering** (see §5)
 - [x] ~~Combat pacing~~ → **Decided: local combat time bubbles** — clock stops locally on mutual LOS within `COMBAT_RADIUS = 6`; action-gated turns; the surrounding world keeps ticking so friends can walk in and help (see §5)
 - [x] ~~Conflict-resolution rules~~ → **Decided: phased — all moves, then all attacks; seeded-RNG tie-break on hex overflow; attacks resolve against post-move positions** (see §5)

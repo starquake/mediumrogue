@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-07, after milestone 4. Update this file at the end of
+*Last updated: 2026-07-08, after milestone 5. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -20,7 +20,7 @@ Read in this order:
    reminders.
 3. This file — where work stopped and what comes next.
 
-## State: milestones 1–4 done, verified, committed
+## State: milestones 1–5 done, verified, committed
 
 | Commit | Milestone |
 |---|---|
@@ -28,6 +28,7 @@ Read in this order:
 | `e1e23fd` | 2 — Static hex world (radius-12, rock rim, lake, forest) rendered via PixiJS |
 | `e3e4bcb` | 3 — The turn loop: join + tokens, move intents, per-turn resolution, moving entities |
 | `milestone-4-playback-feel` (branch, not yet merged) | 4 — Playback & feel: `intervalMs` on turn bundles, server-side BFS path queues, per-entity playback tweens, click-to-move + unified keyboard, visible turn timer |
+| `milestone-5-multiplayer-reconnect` (branch) | 5 — Multiplayer & reconnect: `Last-Event-ID` honoured as a resync watermark (resync-to-latest, no replay buffer) + SSE header-flush fix, simultaneous-resolution integration tests, first conflict-resolution tests (friendly stacking, `STACK_CAP` overflow) with a `PlaceEntityForTest` bridge, `window.game.positions`, client SSE liveness watchdog with reconnect |
 
 What works right now (all covered by tests):
 
@@ -42,22 +43,35 @@ What works right now (all covered by tests):
   one hex per turn. Entities glide between hexes over the playback window
   instead of snapping (per-entity playback tween). A DOM turn-timer bar shows
   the playback/input phase clock live. `window.game` exposes `intervalMs`,
-  `phase`, `phaseRemainingMs`, `destination`, and `tapHex` for tests.
+  `phase`, `phaseRemainingMs`, `destination`, `tapHex`, and `positions` (all
+  entity ids + hexes, for multi-client test assertions) for tests.
 - `POST /api/join` (token reclaim), `POST /api/intent` (202/401/422),
   `GET /api/map`, `GET /healthz`.
+- Multiple clients share one world with simultaneous per-turn resolution
+  (covered by an integration test posting intents from two clients and
+  reading one shared turn bundle back).
+- Reconnect/resync: the server honours `Last-Event-ID` only as a
+  watermark — a resuming client is coalesced straight to the latest turn
+  bundle (resync-to-latest), no replay buffer or separate resync endpoint
+  (see plan §4, §9). An SSE header-flush fix ensures the stream opens
+  promptly on reconnect.
+- Client SSE liveness watchdog: if no data arrives within
+  `max(3s, 4×intervalMs)`, the client reports disconnected and reconnects —
+  covered by multi-client and reconnect e2e specs.
 
-## Next: milestone 5 — multiplayer polish
+## Next: milestone 6 — combat, time bubbles, phased resolution & death
 
-From plan §8: reconnect handling with a `Last-Event-ID` replay proof (the
-server currently accepts the header but keeps no replay buffer — this
-milestone adds one, plus a full-resync answer for clients too far behind);
-first conflict-resolution tests (concurrent moves onto the same hex,
-`STACK_CAP` overflow behavior) ahead of milestone 6's phased-resolution
-rewrite.
+From plan §5, §8: bump-to-attack (moving onto a hostile-held hex resolves as
+an attack); phased resolution — all moves resolve simultaneously with a
+seeded-RNG tie-break on `STACK_CAP` overflow, then all attacks resolve
+against post-move positions — replacing the milestone-3 ascending-entity-ID
+placeholder; local combat time bubbles (clock stops locally on mutual LOS
+within `COMBAT_RADIUS`, action-gated turns, rest of the world keeps ticking);
+death → fall back to the start of the current XP level. Also fold in the
+heartbeat-as-event watchdog upgrade noted below.
 
-After that (§8): 6 = combat + time bubbles + phased resolution, 6b =
-classes/species, 7 = procgen, 8 = quests/parties/chat, 9 = shader filter,
-10 = deploy.
+After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
+9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 
@@ -65,9 +79,6 @@ classes/species, 7 = procgen, 8 = quests/parties/chat, 9 = shader filter,
   check (`internal/game/world.go` resolveTurn). Milestone 6 replaces it with
   the decided phased resolution (all moves simultaneously, seeded-RNG
   tie-break on `STACK_CAP` overflow).
-- **`Last-Event-ID` replay not implemented**: SSE ids are turn numbers and
-  ready for it; the server keeps no replay buffer yet (milestone 5, with a
-  full-resync answer for clients too far behind).
 - **No server-side input-window enforcement**: intent acceptance stays
   permissive (an intent is accepted whenever it arrives, regardless of the
   client-visible timer phase); revisit once combat time bubbles (milestone 6)
@@ -89,6 +100,23 @@ classes/species, 7 = procgen, 8 = quests/parties/chat, 9 = shader filter,
 - **No combat-bubble "waiting for: …" timer state**: the turn timer shows
   playback/input phases only; the milestone-6 combat time bubble will need a
   distinct "paused, waiting on nearby players" state.
+- **Reconnect/resync model is resync-to-latest, not replay**: with
+  full-snapshot turn bundles and a coalescing hub, `Last-Event-ID` is honoured
+  only as a watermark to avoid re-painting an already-seen turn — a
+  reconnecting client is simply coalesced to the current snapshot. There is
+  no replay buffer and no separate resync endpoint (deliberately; see plan
+  §4, §9).
+- **Mid-session SSE drop isn't e2e-reproducible in the sandbox**: Playwright's
+  `setOffline` doesn't sever an already-open stream, so the reconnect e2e
+  instead blocks `/api/events` with `route.abort()` and later restores it to
+  simulate a drop/reconnect cycle.
+- **Watchdog liveness is turn-based, not heartbeat-based**: the client's SSE
+  liveness watchdog currently treats "no turn bundle within
+  `max(3s, 4×intervalMs)`" as disconnected. Once milestone 6's combat time
+  bubbles can legitimately freeze the world clock (no turn bundles for a
+  while during a fight is expected, not a disconnect), this needs to key off
+  a dedicated `event: heartbeat` frame instead of turn cadence — promote the
+  existing heartbeat comment to a named SSE event.
 - **nolint audit reminder** lives in CLAUDE.md (6 suppressions as of m3).
 
 ## Environment & gotchas (this repo, this machine)

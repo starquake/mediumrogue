@@ -25,6 +25,8 @@ export interface GameDebug {
   tiles: number;
   /** Entity count from the latest turn bundle. */
   entities: number;
+  /** Every entity in the latest bundle, for cross-client observation in tests. */
+  positions: { id: number; hex: Hex }[];
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
   /** Runtime turn interval from the latest bundle, in ms. */
@@ -72,6 +74,7 @@ window.game = {
   connected: false,
   tiles: 0,
   entities: 0,
+  positions: [],
   me: null,
   intervalMs: 0,
   get phase(): "playback" | "input" {
@@ -141,6 +144,7 @@ async function start(): Promise<void> {
     onTurn: (event: TurnEvent): void => {
       window.game.turn = event.turn;
       window.game.entities = event.entities.length;
+      window.game.positions = event.entities.map((e) => ({ id: e.id, hex: e.hex }));
       window.game.intervalMs = event.intervalMs;
       turnEl.textContent = String(event.turn);
 

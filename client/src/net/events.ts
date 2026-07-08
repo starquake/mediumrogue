@@ -1,6 +1,9 @@
-// SSE world stream. EventSource handles reconnection itself (sending
-// Last-Event-ID, which the server will use for turn replay in a later
-// milestone); this module only parses frames into typed callbacks.
+// SSE world stream with a liveness watchdog. EventSource auto-reconnects on
+// errors it *detects*, but a silently half-open connection (network away, socket
+// not reset) can leave the stream stalled without ever firing `error` — the
+// client would keep believing it is connected. The watchdog treats "no data
+// within a turn-scaled window" as a dead stream: it reports disconnected and
+// opens a fresh EventSource, which resyncs to the latest snapshot on reconnect.
 import { EventTurn, type TurnEvent } from "../protocol.gen";
 
 export interface EventsCallbacks {
@@ -8,16 +11,74 @@ export interface EventsCallbacks {
   onConnectionChange: (connected: boolean) => void;
 }
 
-export function connectEvents(callbacks: EventsCallbacks): EventSource {
-  const source = new EventSource("/api/events");
+// Liveness window: a stream is dead after this long with no data. Turn-scaled so
+// a slow production cadence (5s turns → 20s window) is never mistaken for a
+// drop; floored for the pre-first-bundle window.
+const LIVENESS_FLOOR_MS = 3_000;
+const LIVENESS_TURNS = 4;
 
-  source.addEventListener(EventTurn, (event: MessageEvent<string>) => {
-    callbacks.onTurn(JSON.parse(event.data) as TurnEvent);
-  });
-  source.addEventListener("open", () => callbacks.onConnectionChange(true));
-  // EventSource fires "error" on any drop, then retries on its own; report
-  // the state so the UI can show "reconnecting".
-  source.addEventListener("error", () => callbacks.onConnectionChange(false));
+function livenessWindow(intervalMs: number): number {
+  return Math.max(LIVENESS_FLOOR_MS, intervalMs * LIVENESS_TURNS);
+}
 
-  return source;
+/**
+ * Opens the world stream. Returns a teardown that stops the watchdog and closes
+ * the stream. EventSource handles Last-Event-ID on its own auto-retry; a
+ * watchdog-driven reconnect is a fresh connection that resyncs to latest.
+ */
+export function connectEvents(callbacks: EventsCallbacks): () => void {
+  let source: EventSource;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  let windowMs = LIVENESS_FLOOR_MS;
+  let torndown = false;
+
+  const arm = (): void => {
+    if (watchdog !== undefined) {
+      clearTimeout(watchdog);
+    }
+
+    watchdog = setTimeout(() => {
+      // No data in the window: the stream is dead even if EventSource has not
+      // noticed. Report disconnected and reconnect from scratch.
+      callbacks.onConnectionChange(false);
+      source.close();
+      if (!torndown) {
+        connect();
+      }
+    }, windowMs);
+  };
+
+  const connect = (): void => {
+    source = new EventSource("/api/events");
+
+    source.addEventListener(EventTurn, (event: MessageEvent<string>) => {
+      const turn = JSON.parse(event.data) as TurnEvent;
+      windowMs = livenessWindow(turn.intervalMs);
+      callbacks.onConnectionChange(true);
+      arm();
+      callbacks.onTurn(turn);
+    });
+
+    source.addEventListener("open", () => {
+      callbacks.onConnectionChange(true);
+      arm();
+    });
+
+    // EventSource retries on its own after an error it detects; just report the
+    // state. The watchdog covers the errors it never detects.
+    source.addEventListener("error", () => callbacks.onConnectionChange(false));
+
+    arm();
+  };
+
+  connect();
+
+  return (): void => {
+    torndown = true;
+    if (watchdog !== undefined) {
+      clearTimeout(watchdog);
+    }
+
+    source.close();
+  };
 }
