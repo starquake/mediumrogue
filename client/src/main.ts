@@ -31,6 +31,8 @@ export interface GameDebug {
   me: { id: number; hex: Hex } | null;
   /** Runtime turn interval from the latest bundle, in ms. */
   intervalMs: number;
+  /** Count of named heartbeat frames received — proves the keep-alive is observable. */
+  heartbeats: number;
   /** Current turn phase: animating the last result, or awaiting input. */
   phase: "playback" | "input";
   /** Milliseconds left in the current phase. */
@@ -77,6 +79,7 @@ window.game = {
   positions: [],
   me: null,
   intervalMs: 0,
+  heartbeats: 0,
   get phase(): "playback" | "input" {
     if (curIntervalMs === 0) {
       return "input";
@@ -173,6 +176,9 @@ async function start(): Promise<void> {
       window.game.connected = connected;
       statusEl.dataset["connected"] = String(connected);
       statusEl.textContent = connected ? "connected" : "reconnecting…";
+    },
+    onHeartbeat: (): void => {
+      window.game.heartbeats += 1;
     },
   });
 
