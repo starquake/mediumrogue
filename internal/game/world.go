@@ -43,6 +43,10 @@ type entity struct {
 	kind  string
 	hp    int
 	maxHP int
+	// xp is the entity's cumulative experience (players only; monsters stay 0).
+	// Level is derived from it via levelFor; on death it falls to the current
+	// level's floor (levelFloorXP).
+	xp int
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
@@ -312,7 +316,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, HP: e.hp, MaxHP: e.maxHP,
-			InCombat: e.bubbleID != 0,
+			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp),
 		})
 	}
 
@@ -594,15 +598,38 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	}
 }
 
-// resolveDeathsLocked removes dead monsters and respawns dead players (full HP,
-// fresh spawn hex, same id + token — the client stays joined) among the given
-// member set. Callers hold w.mu.
+// levelFor returns the 1-based level for a cumulative XP total.
+func levelFor(xp int) int { return 1 + xp/protocol.XPPerLevel }
+
+// levelFloorXP returns the XP at the start of xp's current level.
+func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
+
+// resolveDeathsLocked awards shared kill XP, removes dead monsters, and respawns
+// dead players (full HP, fresh spawn hex, same id + token — the client stays
+// joined) among the given member set. Callers hold w.mu.
 func (w *World) resolveDeathsLocked(members []*entity) {
 	var dead []*entity
+
+	monstersKilled := 0
 
 	for _, e := range members {
 		if e.hp <= 0 {
 			dead = append(dead, e)
+
+			if e.kind == protocol.EntityMonster {
+				monstersKilled++
+			}
+		}
+	}
+
+	// Shared XP: every player who survived this fight gets the full MonsterXP for
+	// each monster that fell — no last-hit competition, helping always pays. A
+	// player who died this same turn is not surviving (hp<=0), so gets nothing.
+	if monstersKilled > 0 {
+		for _, e := range members {
+			if e.kind == protocol.EntityPlayer && e.hp > 0 {
+				e.xp += monstersKilled * protocol.MonsterXP
+			}
 		}
 	}
 
@@ -617,7 +644,11 @@ func (w *World) resolveDeathsLocked(members []*entity) {
 			continue
 		}
 
-		// Player: respawn in place of a re-join.
+		// Player: fall back to the start of the XP level you were in — keep the
+		// level, lose the within-level progress — then respawn in place of a
+		// re-join.
+		e.xp = levelFloorXP(e.xp)
+
 		if spawn, err := w.spawnHexLocked(); err == nil {
 			e.hex = spawn
 		}

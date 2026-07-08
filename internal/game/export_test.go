@@ -149,6 +149,30 @@ func (w *World) SetHPForTest(id int64, hp int) {
 	}
 }
 
+// XPForTest returns an entity's current cumulative XP, so tests can assert kill
+// awards and death floors without going through Snapshot.
+func (w *World) XPForTest(id int64) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.xp
+	}
+
+	return 0
+}
+
+// SetXPForTest overwrites an entity's cumulative XP directly, so tests can place
+// a player near a level boundary without grinding out kills.
+func (w *World) SetXPForTest(id int64, xp int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.xp = xp
+	}
+}
+
 // SetPathForTest overwrites an entity's queued path directly. A monster's path
 // is normally computed fresh by thinkMonstersLocked every turn (which holds a
 // monster in place whenever it's adjacent to a player — attacking is
