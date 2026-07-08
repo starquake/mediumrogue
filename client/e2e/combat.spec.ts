@@ -191,6 +191,24 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   expect(await page.evaluate(() => window.game.me?.hex ?? null)).toEqual(hexAtFreeze);
   expect(await page.evaluate(() => window.game.inCombat)).toBe(true);
 
+  // Stop this entity's walk immediately: the chase loop above left a queued
+  // path aimed at the monster. moveAndBumpLocked unconditionally consumes a
+  // non-empty e.path when the bubble resolves — lock-in gating only controls
+  // *when* the bubble resolves, not whether a queued path gets walked. If
+  // this bubble ever resolves (e.g. via the e2e server's COMBAT_PATIENCE
+  // timeout), the residual path would walk this entity toward the monster
+  // and could bump-attack it, draining the shared combat server's fixed
+  // (non-respawning) monster pool that monsters.spec.ts also depends on —
+  // the same failure class fixed in 84f1471. Retarget to our own current
+  // hex: Pathfind(from == to) sets an empty path. Awaited: tapHex resolves
+  // only once its intent POST has landed server-side.
+  await page.evaluate(async () => {
+    const me = window.game.me;
+    if (me !== null) {
+      await window.game.tapHex(me.hex.q, me.hex.r);
+    }
+  });
+
   // Visual smoke check: the combat panel actually painted.
   const screenshot = await page.screenshot();
   expect(screenshot.byteLength).toBeGreaterThan(10_000);
