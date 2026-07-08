@@ -76,9 +76,35 @@ non-breaking field to `GameDebug` and populate it from each turn bundle:
 - `positions: { id: number; hex: Hex }[]` — every entity in the latest bundle.
 
 Keep the existing `entities` count field unchanged so current tests are
-untouched. No other client changes: `EventSource` handles `Last-Event-ID`
-transparently, multiplayer rendering already distinguishes self (blue) from
-others (gold), and the connection-status HUD already exists.
+untouched. Multiplayer rendering already distinguishes self (blue) from others
+(gold), and the connection-status HUD already exists.
+
+## Client change — SSE liveness watchdog (`client/src/net/events.ts`)
+
+*Added during implementation (2026-07-08).* The original plan assumed the
+pulled-plug reconnect e2e could sever an open SSE stream with
+`context.setOffline(true)`. It cannot: in the sandboxed Chromium, `setOffline`
+does not tear down an already-open streaming connection, so `EventSource` never
+fires `error` and `window.game.connected` stays `true`. This is also a real
+product gap — a genuinely half-open connection (network away, socket not reset)
+leaves the client believing it is connected.
+
+Fix: a **liveness watchdog** in `connectEvents`. Any data on the stream (a turn
+frame or the `open` event) re-arms a timer; if the timer expires with no data,
+the stream is treated as dead — the client reports `connected=false` and opens
+a fresh `EventSource` (which resyncs to the latest snapshot, resync-to-latest).
+The window is turn-scaled — `max(3s floor, 4 × intervalMs)` — so a slow
+production cadence (5s turns → 20s window) is never mistaken for a drop, while
+the e2e's 250ms turns give a ~3s detection.
+
+**Known limitation (revisit at milestone 6):** the only liveness signal
+`EventSource` exposes to JS is turn frames — heartbeat *comment* frames keep the
+socket warm but are invisible to JS. So this watchdog assumes turns keep
+arriving. When combat time bubbles (M6) freeze the world clock, a healthy
+connection legitimately stops delivering turns; at that point the watchdog must
+switch to a real liveness signal — promote the server heartbeat from an SSE
+*comment* to a named `event: heartbeat` frame the client can observe and reset
+the watchdog on. Recorded as an M6 task; not built now.
 
 ## Tests
 

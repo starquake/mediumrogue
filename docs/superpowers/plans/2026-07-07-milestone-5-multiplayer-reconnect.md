@@ -540,15 +540,18 @@ git commit -m "game: first conflict-resolution tests — friendly stacking, Stac
 
 ---
 
-## Task 4: Client — expose positions + multi-client & reconnect e2e
+## Task 4: Client — positions + SSE liveness watchdog + multi-client & reconnect e2e
 
 **Files:**
 - Modify: `client/src/main.ts`
+- Modify: `client/src/net/events.ts` (SSE liveness watchdog — added 2026-07-08)
 - Create: `client/e2e/multiplayer.spec.ts`
 
 **Interfaces:**
 - Consumes: existing `window.game` fields (`me`, `entities`, `turn`, `connected`, `tapHex`).
-- Produces: `GameDebug.positions: { id: number; hex: Hex }[]`.
+- Produces: `GameDebug.positions: { id: number; hex: Hex }[]`; `connectEvents` returns a teardown `() => void` (was `EventSource`; `main.ts` ignores the return either way).
+
+> **Scope note (2026-07-08):** the reconnect e2e as first written could not sever an open SSE stream via `context.setOffline` in the sandbox, so `window.game.connected` never flipped. Resolution (design decision C): add a real **SSE liveness watchdog** to `events.ts` — no data within a turn-scaled window ⇒ report disconnected + reconnect. That both fixes the test and closes a genuine half-open-connection gap. See the spec's "SSE liveness watchdog" section, including the milestone-6 caveat (turn-based liveness must become heartbeat-based once combat bubbles freeze the clock).
 
 - [ ] **Step 1: Add `positions` to `GameDebug`**
 
@@ -572,10 +575,101 @@ And populate it in the `onTurn` handler, alongside the existing `window.game.ent
       window.game.positions = event.entities.map((e) => ({ id: e.id, hex: e.hex }));
 ```
 
-- [ ] **Step 2: Typecheck**
+- [ ] **Step 2: Implement the SSE liveness watchdog**
+
+Replace `client/src/net/events.ts` with:
+
+```ts
+// SSE world stream with a liveness watchdog. EventSource auto-reconnects on
+// errors it *detects*, but a silently half-open connection (network away, socket
+// not reset) can leave the stream stalled without ever firing `error` — the
+// client would keep believing it is connected. The watchdog treats "no data
+// within a turn-scaled window" as a dead stream: it reports disconnected and
+// opens a fresh EventSource, which resyncs to the latest snapshot on reconnect.
+import { EventTurn, type TurnEvent } from "../protocol.gen";
+
+export interface EventsCallbacks {
+  onTurn: (turn: TurnEvent) => void;
+  onConnectionChange: (connected: boolean) => void;
+}
+
+// Liveness window: a stream is dead after this long with no data. Turn-scaled so
+// a slow production cadence (5s turns → 20s window) is never mistaken for a
+// drop; floored for the pre-first-bundle window.
+const LIVENESS_FLOOR_MS = 3_000;
+const LIVENESS_TURNS = 4;
+
+function livenessWindow(intervalMs: number): number {
+  return Math.max(LIVENESS_FLOOR_MS, intervalMs * LIVENESS_TURNS);
+}
+
+/**
+ * Opens the world stream. Returns a teardown that stops the watchdog and closes
+ * the stream. EventSource handles Last-Event-ID on its own auto-retry; a
+ * watchdog-driven reconnect is a fresh connection that resyncs to latest.
+ */
+export function connectEvents(callbacks: EventsCallbacks): () => void {
+  let source: EventSource;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  let windowMs = LIVENESS_FLOOR_MS;
+  let torndown = false;
+
+  const arm = (): void => {
+    if (watchdog !== undefined) {
+      clearTimeout(watchdog);
+    }
+
+    watchdog = setTimeout(() => {
+      // No data in the window: the stream is dead even if EventSource has not
+      // noticed. Report disconnected and reconnect from scratch.
+      callbacks.onConnectionChange(false);
+      source.close();
+      if (!torndown) {
+        connect();
+      }
+    }, windowMs);
+  };
+
+  const connect = (): void => {
+    source = new EventSource("/api/events");
+
+    source.addEventListener(EventTurn, (event: MessageEvent<string>) => {
+      const turn = JSON.parse(event.data) as TurnEvent;
+      windowMs = livenessWindow(turn.intervalMs);
+      callbacks.onConnectionChange(true);
+      arm();
+      callbacks.onTurn(turn);
+    });
+
+    source.addEventListener("open", () => {
+      callbacks.onConnectionChange(true);
+      arm();
+    });
+
+    // EventSource retries on its own after an error it detects; just report the
+    // state. The watchdog covers the errors it never detects.
+    source.addEventListener("error", () => callbacks.onConnectionChange(false));
+
+    arm();
+  };
+
+  connect();
+
+  return (): void => {
+    torndown = true;
+    if (watchdog !== undefined) {
+      clearTimeout(watchdog);
+    }
+
+    source.close();
+  };
+}
+```
+
+- [ ] **Step 2b: Typecheck**
 
 Run: `cd client && npm run check`
-Expected: clean (tsc --noEmit).
+Expected: clean (tsc --noEmit). `main.ts` ignores `connectEvents`'s return value, so the changed return type is fine.
 
 - [ ] **Step 3: Write the multiplayer e2e**
 
@@ -679,8 +773,8 @@ Expected: all specs PASS — the two new `multiplayer.spec.ts` tests plus the un
 - [ ] **Step 5: Commit**
 
 ```bash
-git add client/src/main.ts client/e2e/multiplayer.spec.ts
-git commit -m "client: expose entity positions; e2e multi-client visibility + reconnect"
+git add client/src/main.ts client/src/net/events.ts client/e2e/multiplayer.spec.ts
+git commit -m "client: entity positions + SSE liveness watchdog; e2e multi-client + reconnect"
 ```
 
 ---
