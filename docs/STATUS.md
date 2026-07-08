@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-08, after milestone 5. Update this file at the end of
+*Last updated: 2026-07-08, after the milestone-6 heartbeat warmup (6.0). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -59,16 +59,23 @@ What works right now (all covered by tests):
   `max(3s, 4×intervalMs)`, the client reports disconnected and reconnects —
   covered by multi-client and reconnect e2e specs.
 
-## Next: milestone 6 — combat, time bubbles, phased resolution & death
+## Milestone 6 — decomposed into slices (too large for one spec)
 
-From plan §5, §8: bump-to-attack (moving onto a hostile-held hex resolves as
-an attack); phased resolution — all moves resolve simultaneously with a
-seeded-RNG tie-break on `STACK_CAP` overflow, then all attacks resolve
-against post-move positions — replacing the milestone-3 ascending-entity-ID
-placeholder; local combat time bubbles (clock stops locally on mutual LOS
-within `COMBAT_RADIUS`, action-gated turns, rest of the world keeps ticking);
-death → fall back to the start of the current XP level. Also fold in the
-heartbeat-as-event watchdog upgrade noted below.
+Combat needs hostiles (all entities are players today) and time bubbles are a
+whole subsystem, so M6 is being built as a sequence of independently-shippable
+slices, each its own spec → plan → PR:
+
+- **6.0 heartbeat warmup — DONE** (this PR): named always-on `event: heartbeat`
+  + client watchdog resets on it, so the liveness watchdog survives a frozen
+  combat clock (see the resolved placeholder above). Closed the milestone-5 debt.
+- **6.1 phased resolution — NEXT**: replace the ascending-entity-ID placeholder
+  with simultaneous move resolution + seeded-RNG tie-break on `STACK_CAP`
+  overflow. Pure `internal/game` logic, testable with players now.
+- **6.2 monsters & HP**: a hostile entity kind, spawning, HP, minimal AI.
+- **6.3 combat & death**: bump-to-attack, the attack phase (resolves against
+  post-move positions), damage, HP→0 → respawn (XP-level fallback waits for 6b).
+- **6.4 time bubbles**: LOS, form/merge/dissolve, action-gated turns + the
+  "waiting for…" timer state, join-by-walking-in, cross-domain absorption.
 
 After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
 9 = shader filter, 10 = deploy.
@@ -110,13 +117,14 @@ After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
   `setOffline` doesn't sever an already-open stream, so the reconnect e2e
   instead blocks `/api/events` with `route.abort()` and later restores it to
   simulate a drop/reconnect cycle.
-- **Watchdog liveness is turn-based, not heartbeat-based**: the client's SSE
-  liveness watchdog currently treats "no turn bundle within
-  `max(3s, 4×intervalMs)`" as disconnected. Once milestone 6's combat time
-  bubbles can legitimately freeze the world clock (no turn bundles for a
-  while during a fight is expected, not a disconnect), this needs to key off
-  a dedicated `event: heartbeat` frame instead of turn cadence — promote the
-  existing heartbeat comment to a named SSE event.
+- **Watchdog now resets on named heartbeats** (m6 warmup, done): the server
+  emits a named `event: heartbeat` frame (no id) on a fixed always-on
+  `HeartbeatInterval`, and the client's liveness watchdog re-arms on it as well
+  as on turns. So a frozen world clock (no turns) still feeds the watchdog. The
+  full "watchdog survives a frozen clock" scenario is only end-to-end testable
+  once combat time bubbles (6.4) can actually freeze it; this warmup wired the
+  mechanism and proved the client observes heartbeats (`window.game.heartbeats`,
+  `client/e2e/heartbeat.spec.ts`).
 - **nolint audit reminder** lives in CLAUDE.md (6 suppressions as of m3).
 
 ## Environment & gotchas (this repo, this machine)
