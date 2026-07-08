@@ -23,8 +23,9 @@ type bubble struct {
 // least one opposing (player vs monster) pair become bubbles. Each entity's
 // bubbleID is set (0 = world domain). Bubble ids carry across recomputes by max
 // membership overlap so a bubble's gating state survives a member joining,
-// leaving, or two bubbles merging. Callers hold w.mu.
-func (w *World) recomputeBubblesLocked() {
+// leaving, or two bubbles merging. A freshly formed bubble (no deadline carried
+// over) starts its patience clock at now + combatPatience. Callers hold w.mu.
+func (w *World) recomputeBubblesLocked(now time.Time) {
 	var comps [][]*entity
 
 	for _, comp := range connectedComponents(w.entitiesSlice()) {
@@ -49,6 +50,13 @@ func (w *World) recomputeBubblesLocked() {
 		for _, e := range comp {
 			e.bubbleID = b.id
 			b.members[e.id] = struct{}{}
+		}
+
+		// A fresh bubble has no patience clock yet; start it. A carried bubble
+		// keeps its running deadline so waiting time is not reset by a member
+		// merely moving, joining, or leaving mid-wait.
+		if b.deadline.IsZero() {
+			b.deadline = now.Add(w.combatPatience)
 		}
 
 		next[b.id] = b
@@ -207,9 +215,9 @@ func (w *World) carryBubbleLocked(id int64) *bubble {
 }
 
 // bubbleViewLocked renders a bubble for the wire: member ids sorted, the player
-// members not yet locked in (WaitingForIDs), and patience remaining (0 until
-// Task 3 wires the bubble clock). Callers hold w.mu.
-func (w *World) bubbleViewLocked(b *bubble) protocol.BubbleView {
+// members not yet locked in (WaitingForIDs), and patience remaining relative to
+// now. Callers hold w.mu.
+func (w *World) bubbleViewLocked(b *bubble, now time.Time) protocol.BubbleView {
 	memberIDs := make([]int64, 0, len(b.members))
 
 	var waiting []int64
@@ -232,18 +240,18 @@ func (w *World) bubbleViewLocked(b *bubble) protocol.BubbleView {
 
 	return protocol.BubbleView{
 		ID: b.id, MemberIDs: memberIDs, WaitingForIDs: waiting,
-		PatienceRemainingMs: patienceRemainingMs(b.deadline),
+		PatienceRemainingMs: patienceRemainingMs(b.deadline, now),
 	}
 }
 
-// patienceRemainingMs is the time left until a bubble's patience deadline. It is
-// 0 whenever the deadline is unset (every bubble this task — Task 3 sets it).
-func patienceRemainingMs(deadline time.Time) int64 {
+// patienceRemainingMs is the time left, at now, until a bubble's patience
+// deadline. It is 0 whenever the deadline is unset or already passed.
+func patienceRemainingMs(deadline, now time.Time) int64 {
 	if deadline.IsZero() {
 		return 0
 	}
 
-	return max(0, time.Until(deadline).Milliseconds())
+	return max(0, deadline.Sub(now).Milliseconds())
 }
 
 // unionFind is a tiny disjoint-set over entity indices, used to find combat
