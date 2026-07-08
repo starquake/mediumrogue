@@ -196,24 +196,99 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	return protocol.TurnEvent{Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities}
 }
 
-// resolveTurn applies the move phase of the decided phased resolution: all moves
-// resolve simultaneously, then the turn advances. Occupancy starts at the
-// current board (every entity holds its own slot), so a mover leaving a hex
-// frees a slot and one moving in fills it. Movers resolve in a per-turn
-// seeded-shuffled order, so hex overflow past StackCap breaks fairly and
-// reproducibly — not by entity id. A blocked mover waits this turn (path
-// retained). The attack phase (bump-to-attack, damage) lands in milestone 6.3.
+// opposing reports whether a and b are of different factions (player vs
+// monster). Same-faction entities stack; opposing ones can't share a hex.
+func opposing(a, b *entity) bool { return a.kind != b.kind }
+
+func hasOpposing(occs []*entity, m *entity) bool {
+	for _, o := range occs {
+		if opposing(o, m) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func opposingOccupants(occs []*entity, m *entity) []*entity {
+	var out []*entity
+
+	for _, o := range occs {
+		if opposing(o, m) {
+			out = append(out, o)
+		}
+	}
+
+	return out
+}
+
+// removeEntity drops m from an occupant slice (by identity).
+func removeEntity(occs []*entity, m *entity) []*entity {
+	for i, o := range occs {
+		if o == m {
+			return append(occs[:i], occs[i+1:]...)
+		}
+	}
+
+	return occs
+}
+
+func attackDamage(e *entity) int {
+	if e.kind == protocol.EntityMonster {
+		return protocol.MonsterAttackDamage
+	}
+
+	return protocol.PlayerAttackDamage
+}
+
+// pendingBump is a move onto an opposing-held hex, re-checked post-move.
+type pendingBump struct {
+	m      *entity
+	target protocol.Hex
+}
+
+// pendingAttack is a bump that is still opposing-held after the move phase
+// completes, and therefore lands as an attack.
+type pendingAttack struct {
+	attacker *entity
+	target   protocol.Hex
+}
+
+// resolveTurn runs one full turn of the decided phased resolution:
+// think → move (faction-aware, with bump deferral) → attack (simultaneous,
+// post-move positions) → apply damage & deaths. Under w.mu.
 func (w *World) resolveTurn() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	w.thinkMonstersLocked()
 
-	occ := make(map[protocol.Hex]int, len(w.entities))
+	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
+
+	// Evolving board: who is on each hex as moves resolve.
+	byHex := make(map[protocol.Hex][]*entity, len(w.entities))
 	for _, e := range w.entities {
-		occ[e.hex]++
+		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
+	attacks := w.moveAndBumpLocked(rng, byHex)
+	w.attackLocked(rng, byHex, attacks)
+
+	w.resolveDeathsLocked()
+
+	w.turn++
+}
+
+// moveAndBumpLocked resolves the move phase: movers advance one hex from
+// their path in seeded-shuffled order, unless the destination is
+// opposing-held (deferred as a bump) or the destination hex is at StackCap
+// for a same-faction move (waits, path retained). Deferred bumps are
+// re-checked once every other move has landed — a bump target that emptied
+// out this turn (the defender retreated) completes as a normal move instead
+// of an attack. Returns the bumps that are still opposing-held after that
+// re-check, i.e. the attacks to resolve this turn. Callers hold w.mu.
+func (w *World) moveAndBumpLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity) []pendingAttack {
 	movers := make([]*entity, 0, len(w.entities))
 	for _, e := range w.entities {
 		if len(e.path) > 0 {
@@ -221,24 +296,103 @@ func (w *World) resolveTurn() {
 		}
 	}
 
-	// Canonical order first, so the seed alone determines the permutation.
 	slices.SortFunc(movers, func(a, b *entity) int { return int(a.id - b.id) })
-
-	//nolint:gosec // deterministic game tie-break, not security-sensitive; reproducibility is required.
-	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
 	rng.Shuffle(len(movers), func(i, j int) { movers[i], movers[j] = movers[j], movers[i] })
 
-	for _, e := range movers {
-		next := e.path[0]
-		if occ[next] < protocol.StackCap {
-			occ[e.hex]--
-			occ[next]++
-			e.hex = next
-			e.path = e.path[1:]
+	var bumps []pendingBump
+
+	for _, m := range movers {
+		next := m.path[0]
+		occs := byHex[next]
+
+		switch {
+		case hasOpposing(occs, m):
+			bumps = append(bumps, pendingBump{m, next}) // stay; resolve after move phase
+		case len(occs) < protocol.StackCap:
+			byHex[m.hex] = removeEntity(byHex[m.hex], m)
+			byHex[next] = append(byHex[next], m)
+			m.hex = next
+			m.path = m.path[1:]
+		}
+		// else: same-faction hex full → wait (path retained).
+	}
+
+	// Post-move bump re-check: still opposing-held → attack; vacated → complete
+	// the move (retreat dodge / follow into the empty hex).
+	var attacks []pendingAttack
+
+	for _, b := range bumps {
+		occs := byHex[b.target]
+
+		switch {
+		case hasOpposing(occs, b.m):
+			attacks = append(attacks, pendingAttack{b.m, b.target})
+		case len(occs) < protocol.StackCap:
+			byHex[b.m.hex] = removeEntity(byHex[b.m.hex], b.m)
+			byHex[b.target] = append(byHex[b.target], b.m)
+			b.m.hex = b.target
+			b.m.path = b.m.path[1:]
 		}
 	}
 
-	w.turn++
+	return attacks
+}
+
+// attackLocked resolves the attack phase: each attack accumulates damage
+// against pre-attack HP (nothing applied yet), so order is irrelevant and
+// mutual kills work, then applies it all at once. A stacked defending hex
+// picks its victim with rng, so a bump against a stack damages exactly one
+// occupant. Callers hold w.mu.
+func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacks []pendingAttack) {
+	damage := make(map[int64]int)
+
+	for _, a := range attacks {
+		victims := opposingOccupants(byHex[a.target], a.attacker)
+		if len(victims) == 0 {
+			continue // guard; the re-check ensured at least one
+		}
+
+		// Canonical order first, like the movers shuffle above: byHex was
+		// populated by ranging w.entities (a map), whose iteration order is
+		// unspecified and varies per range — without this sort, victim choice
+		// would depend on that incidental order instead of the seed alone.
+		slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
+
+		victim := victims[rng.IntN(len(victims))]
+		damage[victim.id] += attackDamage(a.attacker)
+	}
+
+	for id, dmg := range damage {
+		w.entities[id].hp -= dmg
+	}
+}
+
+// resolveDeathsLocked removes dead monsters and respawns dead players (full HP,
+// fresh spawn hex, same id + token — the client stays joined). Callers hold w.mu.
+func (w *World) resolveDeathsLocked() {
+	var dead []*entity
+
+	for _, e := range w.entities {
+		if e.hp <= 0 {
+			dead = append(dead, e)
+		}
+	}
+
+	for _, e := range dead {
+		if e.kind == protocol.EntityMonster {
+			delete(w.entities, e.id)
+
+			continue
+		}
+
+		// Player: respawn in place of a re-join.
+		if spawn, err := w.spawnHexLocked(); err == nil {
+			e.hex = spawn
+		}
+
+		e.hp = e.maxHP
+		e.path = nil
+	}
 }
 
 // spawnStream is a fixed PCG stream for monster placement, distinct from the
