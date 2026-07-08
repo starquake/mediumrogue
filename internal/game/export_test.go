@@ -12,6 +12,15 @@ func (w *World) ResolveTurnForTest() {
 	w.resolveTurn()
 }
 
+// SetSeedForTest pins the world's tie-break RNG seed so a test can assert exact,
+// reproducible move-resolution outcomes.
+func (w *World) SetSeedForTest(seed int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.seed = seed
+}
+
 // PlaceEntityForTest injects an entity at a specific hex and returns its id and
 // bearer token, so conflict tests can build exact board states instead of
 // depending on spawn geometry.
