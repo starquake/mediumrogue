@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-08, after milestone-6 combat & death (6.3). Update this file at the end of
+*Last updated: 2026-07-08, after milestone-6 time bubbles (6.4) — **milestone 6 complete**. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -88,10 +88,18 @@ slices, each its own spec → plan → PR:
   monster death (removed) and player death (respawn full HP, **same id/token**,
   **no XP penalty yet — that's 6b**). Monster AI now attacks when adjacent.
   Client draws HP bars over damaged entities; `window.game.hp` exposed.
-- **6.4 time bubbles — NEXT**: LOS, form/merge/dissolve, action-gated turns + the
-  "waiting for…" timer state, join-by-walking-in, cross-domain absorption.
+- **6.4 time bubbles — DONE**: local combat time domains. A combat **bubble**
+  forms when a player and monster are within `CombatRadius=6` (distance-based) —
+  computed as connected components with an opposing pair, which yields
+  form/grow/**merge**/**dissolve**/**walk-in reinforce**/**escape** from one
+  rule. A bubble **freezes** and advances on its own **action-gated** clock
+  (all its players lock in an intent, or `COMBAT_PATIENCE` (default 60s) elapses)
+  while the world keeps ticking every `TURN_INTERVAL` around it. Wire:
+  `Entity.InCombat` + `TurnEvent.Bubbles` (`waitingForIds`, `patienceRemainingMs`).
+  Client: an in-combat marker + a "waiting for… · Ns" combat panel;
+  `window.game.inCombat`/`bubble`. **Milestone 6 complete.**
 
-After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
+After that (§8): **6b = classes/species (NEXT)**, 7 = procgen, 8 = quests/parties/chat,
 9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
@@ -106,10 +114,21 @@ After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
   player can spawn co-located with a monster (opposing co-occupancy). Inert
   (only *movers* bump-attack, so co-located entities just sit until one moves,
   then resolve normally) but technically violates the §5 "hostiles never share
-  a hex" invariant — add a faction-aware spawn guard when it matters.
-- **E2e reconnect spec (`multiplayer.spec.ts`) is timing-flaky**: the M5
-  reconnect test (SSE `route.abort()` in the sandbox) occasionally times out on
-  the monster-free core server, independent of combat. Harden separately.
+  a hex" invariant — add a faction-aware spawn guard when it matters. **6.4
+  note:** with time-bubble domain scoping, a joiner/respawn near an active
+  bubble is also invisible to that bubble's scoped resolution for one pass
+  (self-heals at the pass-end recompute) — the domain split now leans on the
+  post-recompute separation invariant, so fix this when continuous spawning lands.
+- **Terrain-blocked line-of-sight not implemented (6.4)**: combat bubbles form
+  by pure hex **distance** (`≤ CombatRadius`), not mutual line-of-sight — rock
+  doesn't block "spotting" yet. Deferred follow-up (adds a hex raycast).
+- **E2e on shared stateful servers is timing-flaky**: both `multiplayer.spec.ts`
+  (M5 reconnect via SSE `route.abort()`) and the `combat.spec.ts` damage test
+  occasionally time out under parallel-worker contention — the shared Playwright
+  servers accumulate every spec's players (no disconnect cleanup, below), so
+  monsters can chase a lingering player and starve a chase, or reconnect timing
+  drifts. Not milestone-specific; the real fix is per-test isolation / disconnect
+  cleanup. Harden separately (re-run on a spurious CI red for now).
 - **No server-side input-window enforcement**: intent acceptance stays
   permissive (an intent is accepted whenever it arrives, regardless of the
   client-visible timer phase); revisit once combat time bubbles (milestone 6)
