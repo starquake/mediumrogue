@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-08, after milestone-6 monsters & HP (6.2). Update this file at the end of
+*Last updated: 2026-07-08, after milestone-6 combat & death (6.3). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -82,12 +82,13 @@ slices, each its own spec → plan → PR:
 - **6.2 monsters & HP — DONE**: a hostile entity kind, seeded spawning
   (`MONSTER_COUNT`), HP/MaxHP on the wire, minimal hunt-nearest-player AI
   (stops adjacent, no combat yet), client rendering + `window.game.monsters`.
-- **6.3 combat & death — NEXT**: bump-to-attack, the attack phase (resolves against
-  post-move positions), damage, HP→0 → respawn (XP-level fallback waits for 6b).
-  Also still pending: the "hostiles never share a hex" rule (§5) and
-  health-bar rendering. HP is on the wire but unchanged (no damage applied)
-  until 6.3 lands.
-- **6.4 time bubbles**: LOS, form/merge/dissolve, action-gated turns + the
+- **6.3 combat & death — DONE**: bump-to-attack (walk onto a hostile to fight),
+  the simultaneous attack phase against post-move positions (retreat dodges,
+  mutual kills), damage (`PlayerAttackDamage=5`/`MonsterAttackDamage=3`),
+  monster death (removed) and player death (respawn full HP, **same id/token**,
+  **no XP penalty yet — that's 6b**). Monster AI now attacks when adjacent.
+  Client draws HP bars over damaged entities; `window.game.hp` exposed.
+- **6.4 time bubbles — NEXT**: LOS, form/merge/dissolve, action-gated turns + the
   "waiting for…" timer state, join-by-walking-in, cross-domain absorption.
 
 After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
@@ -95,20 +96,20 @@ After that (§8): 6b = classes/species, 7 = procgen, 8 = quests/parties/chat,
 
 ## Known placeholders / debt (all deliberate)
 
-- **Attack phase not implemented**: `resolveTurn` (`internal/game/world.go`) now
-  runs the decided **move phase** — all moves simultaneous, per-turn seeded-RNG
-  tie-break on `STACK_CAP` overflow (6.1, done). Hostiles now exist (6.2:
-  monsters hunt the nearest player and stop adjacent), but the **attack phase**
-  itself (bump-to-attack, attacks resolved against post-move positions,
-  damage, HP→0 → death/respawn) is still pending — lands with 6.3. HP/MaxHP
-  are already on the wire (6.2) but nothing writes to them yet.
-- **Hostiles-share-a-hex rule not enforced (plan §5)**: monsters currently
-  stop one hex short of a player's hex rather than the decided "hostiles
-  never share a hex with each other or a player" rule being generally
-  enforced during move resolution; this lands with 6.3 combat.
-- **No health-bar rendering**: `HP`/`MaxHP` are on the wire on every entity,
-  but the client doesn't read or draw them yet (no health bar for players or
-  monsters); deferred to 6.3 alongside damage.
+- **Combat is flat melee, no XP**: bump-to-attack does a single flat damage per
+  attacker kind (`PlayerAttackDamage`/`MonsterAttackDamage`); no classes,
+  weapons, ranged, or AoE (6b), and player death respawns with **no XP-level
+  penalty** (XP itself is 6b). Killed monsters are removed and **do not
+  respawn** (fixed pool depletes; continuous spawning is a later tuning pass).
+- **`spawnHexLocked` is faction-blind**: `Join` and player respawn pick the
+  nearest free walkable hex without avoiding monster-occupied hexes, so a
+  player can spawn co-located with a monster (opposing co-occupancy). Inert
+  (only *movers* bump-attack, so co-located entities just sit until one moves,
+  then resolve normally) but technically violates the §5 "hostiles never share
+  a hex" invariant — add a faction-aware spawn guard when it matters.
+- **E2e reconnect spec (`multiplayer.spec.ts`) is timing-flaky**: the M5
+  reconnect test (SSE `route.abort()` in the sandbox) occasionally times out on
+  the monster-free core server, independent of combat. Harden separately.
 - **No server-side input-window enforcement**: intent acceptance stays
   permissive (an intent is accepted whenever it arrives, regardless of the
   client-visible timer phase); revisit once combat time bubbles (milestone 6)
