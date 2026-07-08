@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -14,6 +15,10 @@ import (
 // errNonPositiveDuration rejects zero and negative duration overrides — a
 // zero turn interval would spin the clock, a negative one panics the ticker.
 var errNonPositiveDuration = errors.New("duration must be positive")
+
+// errNegativeInt rejects negative int overrides — a negative monster count
+// has no meaning.
+var errNegativeInt = errors.New("value must not be negative")
 
 // defaultHeartbeatInterval is the idle-stream comment-frame cadence; well
 // under common proxy idle timeouts (60s) with margin.
@@ -31,6 +36,10 @@ type Config struct {
 	// an otherwise idle stream, from HEARTBEAT_INTERVAL. Keeps proxies from
 	// reaping the connection; shrunk in tests.
 	HeartbeatInterval time.Duration
+	// MonsterCount is how many monsters to spawn at startup, from
+	// MONSTER_COUNT. Defaults to 0 (no monsters) so existing deployments and
+	// tests are unaffected until milestone 6.2 turns them on.
+	MonsterCount int
 }
 
 // Load reads configuration from the environment.
@@ -46,6 +55,10 @@ func Load() (*Config, error) {
 	}
 
 	if err := overrideDuration(&cfg.HeartbeatInterval, "HEARTBEAT_INTERVAL"); err != nil {
+		return nil, err
+	}
+
+	if err := overrideInt(&cfg.MonsterCount, "MONSTER_COUNT"); err != nil {
 		return nil, err
 	}
 
@@ -76,6 +89,26 @@ func overrideDuration(dst *time.Duration, key string) error {
 	}
 
 	*dst = d
+
+	return nil
+}
+
+func overrideInt(dst *int, key string) error {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", key, err)
+	}
+
+	if n < 0 {
+		return fmt.Errorf("%s = %d: %w", key, n, errNegativeInt)
+	}
+
+	*dst = n
 
 	return nil
 }
