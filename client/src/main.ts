@@ -43,8 +43,13 @@ export interface GameDebug {
   phaseRemainingMs: number;
   /** The hex this client last asked to walk to; null once reached. */
   destination: Hex | null;
-  /** Submit a destination as if the hex were clicked (drives e2e). */
-  tapHex: (q: number, r: number) => void;
+  /**
+   * Submit a destination as if the hex were clicked (drives e2e). Returns a
+   * promise that resolves once the intent POST has settled, so tests can
+   * await a walk (e.g. a path-clearing tap) actually landing server-side
+   * before proceeding — callers that don't care are free to ignore it.
+   */
+  tapHex: (q: number, r: number) => Promise<void>;
 }
 
 declare global {
@@ -103,7 +108,7 @@ window.game = {
     return t < curPlaybackMs ? curPlaybackMs - t : Math.max(0, curIntervalMs - t);
   },
   destination: null,
-  tapHex: () => {},
+  tapHex: (): Promise<void> => Promise.resolve(),
 };
 
 async function start(): Promise<void> {
@@ -137,9 +142,10 @@ async function start(): Promise<void> {
   // answer (movement) only ever arrives via turn bundles. A rejected target
   // (unwalkable / unreachable) never becomes a pending walk, so clear it —
   // unless a newer walkTo has already replaced the destination in the meantime.
-  const walkTo = (target: Hex): void => {
+  const walkTo = (target: Hex): Promise<void> => {
     window.game.destination = target;
-    void submitIntent(identity, target).then((accepted) => {
+
+    return submitIntent(identity, target).then((accepted) => {
       const pending = window.game.destination;
       if (!accepted && pending !== null && pending.q === target.q && pending.r === target.r) {
         window.game.destination = null;
@@ -147,7 +153,7 @@ async function start(): Promise<void> {
     });
   };
 
-  window.game.tapHex = (q, r): void => walkTo({ q, r });
+  window.game.tapHex = (q, r): Promise<void> => walkTo({ q, r });
 
   connectEvents({
     onTurn: (event: TurnEvent): void => {

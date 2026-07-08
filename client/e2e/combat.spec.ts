@@ -88,10 +88,14 @@ test("bumping into a monster deals damage, observable via window.game.hp", async
   // (see playwright.config.ts), and could grind through the fixed monster
   // population that the sibling monsters.spec test also depends on. Retarget
   // to our own current hex: Pathfind(from == to) sets an empty path.
-  await page.evaluate(() => {
+  // Awaited: page.evaluate waits for a returned promise to settle, and
+  // tapHex now resolves only once its intent POST has landed — so the
+  // browser context can't close (and the test can't move on) before the
+  // clear is confirmed server-side.
+  await page.evaluate(async () => {
     const me = window.game.me;
     if (me !== null) {
-      window.game.tapHex(me.hex.q, me.hex.r);
+      await window.game.tapHex(me.hex.q, me.hex.r);
     }
   });
 
