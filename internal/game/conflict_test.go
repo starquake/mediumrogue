@@ -31,16 +31,16 @@ func TestFriendlyStackingConverges(t *testing.T) {
 	w.ResolveTurnForTest()
 
 	snap := w.Snapshot()
-	if got := hexOfSnap(snap, idA); got != center {
-		t.Errorf("A at %v, want center %v", got, center)
+	if got, want := hexOfSnap(snap, idA), center; got != want {
+		t.Errorf("A at %v, want center %v", got, want)
 	}
 
-	if got := hexOfSnap(snap, idB); got != center {
-		t.Errorf("B at %v, want center %v", got, center)
+	if got, want := hexOfSnap(snap, idB), center; got != want {
+		t.Errorf("B at %v, want center %v", got, want)
 	}
 
-	if n := countAt(snap, center); n != 2 {
-		t.Errorf("center occupancy = %d, want 2", n)
+	if got, want := countAt(snap, center), 2; got != want {
+		t.Errorf("center occupancy = %d, want 2", got)
 	}
 }
 
@@ -73,8 +73,8 @@ func TestStackCapBlocksOverflow(t *testing.T) {
 		t.Errorf("overflow entity entered a full hex; want it blocked at %v", ns[0])
 	}
 
-	if n := countAt(snap, center); n != protocol.StackCap {
-		t.Errorf("center occupancy = %d, want StackCap %d", n, protocol.StackCap)
+	if got, want := countAt(snap, center), protocol.StackCap; got != want {
+		t.Errorf("center occupancy = %d, want StackCap %d", got, want)
 	}
 }
 

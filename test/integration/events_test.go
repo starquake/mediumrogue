@@ -74,11 +74,11 @@ func TestEventsStreamsTurns(t *testing.T) {
 	ts := startServer(t, 20*time.Millisecond, time.Hour)
 
 	resp := get(t, ts, "/api/events")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		t.Fatalf("status = %d, want 200", got)
 	}
 
-	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+	if got, want := resp.Header.Get("Content-Type"), "text/event-stream"; got != want {
 		t.Fatalf("Content-Type = %q, want text/event-stream", got)
 	}
 
@@ -88,8 +88,8 @@ func TestEventsStreamsTurns(t *testing.T) {
 	prev := int64(-1)
 
 	for _, f := range frames {
-		if f.event != protocol.EventTurn {
-			t.Fatalf("event = %q, want %q", f.event, protocol.EventTurn)
+		if got, want := f.event, protocol.EventTurn; got != want {
+			t.Fatalf("event = %q, want %q", got, want)
 		}
 
 		var payload protocol.TurnEvent
@@ -102,8 +102,8 @@ func TestEventsStreamsTurns(t *testing.T) {
 			t.Fatalf("frame id %q is not a number: %v", f.id, err)
 		}
 
-		if id != payload.Turn {
-			t.Fatalf("frame id %d != payload turn %d (id must be the turn for Last-Event-ID resume)", id, payload.Turn)
+		if got, want := id, payload.Turn; got != want {
+			t.Fatalf("frame id %d != payload turn %d (id must be the turn for Last-Event-ID resume)", got, want)
 		}
 
 		if payload.Turn <= prev {
@@ -233,8 +233,8 @@ func TestLastEventIDWithholdsAlreadySeenTurn(t *testing.T) {
 	fresh := get(t, ts, "/api/events")
 	frames := readFrames(t, bufio.NewReader(fresh.Body), 1)
 
-	if frames[0].id != "0" {
-		t.Fatalf("first frame id = %q, want 0", frames[0].id)
+	if got, want := frames[0].id, "0"; got != want {
+		t.Fatalf("first frame id = %q, want 0", got)
 	}
 
 	reconnect := getWithLastEventID(t, ts, "/api/events", "0")
@@ -259,8 +259,8 @@ func TestLastEventIDSendsCurrentWhenMismatched(t *testing.T) {
 			t.Fatalf("Last-Event-ID %q: no snapshot delivered", id)
 		}
 
-		if frame.id != "0" {
-			t.Fatalf("Last-Event-ID %q: frame id = %q, want current turn 0", id, frame.id)
+		if got, want := frame.id, "0"; got != want {
+			t.Fatalf("Last-Event-ID %q: frame id = %q, want current turn 0", id, got)
 		}
 	}
 }

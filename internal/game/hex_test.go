@@ -28,12 +28,12 @@ func TestHexDistance(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := game.HexDistance(tc.a, tc.b); got != tc.want {
-				t.Fatalf("HexDistance(%v, %v) = %d, want %d", tc.a, tc.b, got, tc.want)
+			if got, want := game.HexDistance(tc.a, tc.b), tc.want; got != want {
+				t.Fatalf("HexDistance(%v, %v) = %d, want %d", tc.a, tc.b, got, want)
 			}
 
-			if got := game.HexDistance(tc.b, tc.a); got != tc.want {
-				t.Fatalf("HexDistance(%v, %v) = %d, want %d (must be symmetric)", tc.b, tc.a, got, tc.want)
+			if got, want := game.HexDistance(tc.b, tc.a), tc.want; got != want {
+				t.Fatalf("HexDistance(%v, %v) = %d, want %d (must be symmetric)", tc.b, tc.a, got, want)
 			}
 		})
 	}
@@ -47,8 +47,8 @@ func TestHexNeighborsAreAllAtDistanceOne(t *testing.T) {
 	seen := make(map[protocol.Hex]bool)
 
 	for _, n := range game.HexNeighbors(h) {
-		if d := game.HexDistance(h, n); d != 1 {
-			t.Errorf("neighbor %v at distance %d, want 1", n, d)
+		if got, want := game.HexDistance(h, n), 1; got != want {
+			t.Errorf("neighbor %v at distance %d, want 1", n, got)
 		}
 
 		if seen[n] {

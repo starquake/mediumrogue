@@ -13,12 +13,12 @@ func TestStaticMapShape(t *testing.T) {
 	m := game.StaticMap()
 
 	wantTiles := 3*game.MapRadius*(game.MapRadius+1) + 1
-	if len(m.Tiles) != wantTiles {
-		t.Fatalf("len(Tiles) = %d, want %d (hexagon of radius %d)", len(m.Tiles), wantTiles, game.MapRadius)
+	if got, want := len(m.Tiles), wantTiles; got != want {
+		t.Fatalf("len(Tiles) = %d, want %d (hexagon of radius %d)", got, want, game.MapRadius)
 	}
 
-	if m.Radius != game.MapRadius {
-		t.Fatalf("Radius = %d, want %d", m.Radius, game.MapRadius)
+	if got, want := m.Radius, game.MapRadius; got != want {
+		t.Fatalf("Radius = %d, want %d", got, want)
 	}
 
 	origin := protocol.Hex{Q: 0, R: 0}
@@ -70,13 +70,13 @@ func TestStaticMapIsDeterministic(t *testing.T) {
 	first := game.StaticMap()
 	second := game.StaticMap()
 
-	if len(first.Tiles) != len(second.Tiles) {
-		t.Fatalf("tile counts differ: %d vs %d", len(first.Tiles), len(second.Tiles))
+	if got, want := len(first.Tiles), len(second.Tiles); got != want {
+		t.Fatalf("tile counts differ: %d vs %d", got, want)
 	}
 
 	for i := range first.Tiles {
-		if first.Tiles[i] != second.Tiles[i] {
-			t.Fatalf("tile %d differs between calls: %+v vs %+v", i, first.Tiles[i], second.Tiles[i])
+		if got, want := first.Tiles[i], second.Tiles[i]; got != want {
+			t.Fatalf("tile %d differs between calls: %+v vs %+v", i, got, want)
 		}
 	}
 }

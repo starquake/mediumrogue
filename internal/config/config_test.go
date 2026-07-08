@@ -14,16 +14,16 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if cfg.Addr != ":8080" {
-		t.Errorf("Addr = %q, want :8080", cfg.Addr)
+	if got, want := cfg.Addr, ":8080"; got != want {
+		t.Errorf("Addr = %q, want :8080", got)
 	}
 
-	if cfg.TurnInterval != 5*time.Second {
-		t.Errorf("TurnInterval = %s, want 5s", cfg.TurnInterval)
+	if got, want := cfg.TurnInterval, 5*time.Second; got != want {
+		t.Errorf("TurnInterval = %s, want 5s", got)
 	}
 
-	if cfg.HeartbeatInterval != 15*time.Second {
-		t.Errorf("HeartbeatInterval = %s, want 15s", cfg.HeartbeatInterval)
+	if got, want := cfg.HeartbeatInterval, 15*time.Second; got != want {
+		t.Errorf("HeartbeatInterval = %s, want 15s", got)
 	}
 }
 
@@ -37,16 +37,16 @@ func TestLoadOverrides(t *testing.T) {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if cfg.Addr != ":9999" {
-		t.Errorf("Addr = %q, want :9999", cfg.Addr)
+	if got, want := cfg.Addr, ":9999"; got != want {
+		t.Errorf("Addr = %q, want :9999", got)
 	}
 
-	if cfg.TurnInterval != 250*time.Millisecond {
-		t.Errorf("TurnInterval = %s, want 250ms", cfg.TurnInterval)
+	if got, want := cfg.TurnInterval, 250*time.Millisecond; got != want {
+		t.Errorf("TurnInterval = %s, want 250ms", got)
 	}
 
-	if cfg.HeartbeatInterval != time.Second {
-		t.Errorf("HeartbeatInterval = %s, want 1s", cfg.HeartbeatInterval)
+	if got, want := cfg.HeartbeatInterval, time.Second; got != want {
+		t.Errorf("HeartbeatInterval = %s, want 1s", got)
 	}
 }
 
