@@ -175,6 +175,19 @@ func (w *World) SetXPForTest(id int64, xp int) {
 	}
 }
 
+// SetClassForTest overwrites a player entity's class directly and resyncs its
+// max HP to the new class/level, so a melee test can pit different classes'
+// close weapons against the same board without going through Join.
+func (w *World) SetClassForTest(id int64, class string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.class = class
+		syncMaxHPLocked(e)
+	}
+}
+
 // SetPathForTest overwrites an entity's queued path directly. A monster's path
 // is normally computed fresh by thinkMonstersLocked every turn (which holds a
 // monster in place whenever it's adjacent to a player — attacking is

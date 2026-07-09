@@ -382,12 +382,16 @@ func removeEntity(occs []*entity, m *entity) []*entity {
 	return occs
 }
 
+// attackDamage is the melee/bump damage an attacker deals. A monster deals the
+// flat MonsterAttackDamage; a player deals its class close-weapon damage,
+// level-scaled (fighter = sword, rogue = dagger, mage = staff bonk, unarmed =
+// fists) via the class.go single source of truth.
 func attackDamage(e *entity) int {
 	if e.kind == protocol.EntityMonster {
 		return protocol.MonsterAttackDamage
 	}
 
-	return protocol.PlayerAttackDamage
+	return weaponDamage(closeWeapon(e.class), levelFor(e.xp))
 }
 
 // pendingBump is a move onto an opposing-held hex, re-checked post-move.

@@ -154,7 +154,7 @@ func TestBubbleAdvancesOnLockIn(t *testing.T) {
 
 	snap := w.Snapshot()
 
-	if got, want := entityHP(t, snap, monsterID), monsterHP-protocol.PlayerAttackDamage; got != want {
+	if got, want := entityHP(t, snap, monsterID), monsterHP-protocol.SwordDamage; got != want {
 		t.Errorf("monster HP = %d, want %d (lock-in must run the combat turn)", got, want)
 	}
 

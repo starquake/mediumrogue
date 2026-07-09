@@ -48,7 +48,7 @@ func TestBumpDealsDamageAttackerStays(t *testing.T) {
 		t.Fatalf("monster %d missing from snapshot after a single bump", monsterID)
 	}
 
-	if got, want := monster.HP, protocol.MonsterMaxHP-protocol.PlayerAttackDamage; got != want {
+	if got, want := monster.HP, protocol.MonsterMaxHP-protocol.SwordDamage; got != want {
 		t.Errorf("monster HP = %d, want %d", got, want)
 	}
 
@@ -83,7 +83,7 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")
 	}
 
-	// MonsterMaxHP=10, PlayerAttackDamage=5: two bumps kill it.
+	// MonsterMaxHP=10, a Fighter's sword bump = SwordDamage=4: three bumps kill it.
 	firstHit := step(t, w)
 
 	monster, ok := entityOfSnap(firstHit, monsterID)
@@ -91,13 +91,24 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 		t.Fatalf("monster %d should survive the first hit", monsterID)
 	}
 
-	if got, want := monster.HP, protocol.MonsterMaxHP-protocol.PlayerAttackDamage; got != want {
+	if got, want := monster.HP, protocol.MonsterMaxHP-protocol.SwordDamage; got != want {
 		t.Fatalf("monster HP after first hit = %d, want %d", got, want)
 	}
 
 	secondHit := step(t, w)
 
-	if _, ok := entityOfSnap(secondHit, monsterID); ok {
+	monster, ok = entityOfSnap(secondHit, monsterID)
+	if !ok {
+		t.Fatalf("monster %d should survive the second hit", monsterID)
+	}
+
+	if got, want := monster.HP, protocol.MonsterMaxHP-2*protocol.SwordDamage; got != want {
+		t.Fatalf("monster HP after second hit = %d, want %d", got, want)
+	}
+
+	thirdHit := step(t, w)
+
+	if _, ok := entityOfSnap(thirdHit, monsterID); ok {
 		t.Fatalf("monster %d should have been removed once its HP reached 0", monsterID)
 	}
 }
@@ -198,7 +209,7 @@ func TestBumpMutualKill(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
 	// One hit each is lethal in both directions.
-	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage)
+	w.SetHPForTest(monsterID, protocol.SwordDamage)
 	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage)
 
 	if !submitOK(w, me, monsterHex) {
