@@ -24,6 +24,10 @@ const (
 	// StackCap is the maximum number of friendly entities on one hex — sized
 	// so a full party fits.
 	StackCap = 5
+	// MaxChatLen caps a chat message length in runes (defence-in-depth; the
+	// client also caps input). MaxNameLen caps a player's display name.
+	MaxChatLen = 500
+	MaxNameLen = 24
 )
 
 // Hex is an axial coordinate on the flat-top hex grid. See Red Blob Games'
@@ -169,6 +173,9 @@ const (
 	// so the client's liveness watchdog stays fed even when a frozen combat
 	// clock stops turn frames.
 	EventHeartbeat = "heartbeat"
+	// EventChat announces a chat message. It carries NO id (chat is not a turn
+	// and must not advance Last-Event-ID); its data is a JSON ChatMessage.
+	EventChat = "chat"
 )
 
 // BubbleView is a window into a combat bubble: who's in it, which members it's
@@ -219,12 +226,18 @@ type Entity struct {
 	XP int `json:"xp"`
 	// Level is server-authoritative; monsters send 1, players send their actual level.
 	Level int `json:"level"`
+	// Name is the player's display name; empty for monsters.
+	Name string `json:"name"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its
 // stored token to reclaim its entity; an empty token means "new player".
 type JoinRequest struct {
 	Token string `json:"token"`
+	// Name is the player's display name (chat sender label). Required for a
+	// new player (non-empty after trim, at most MaxNameLen runes); ignored on
+	// a reclaim (known token) — an existing entity already has its name.
+	Name string `json:"name"`
 	// Class is the player's chosen class. Required for a new player (empty
 	// token or unknown token): must be ClassFighter, ClassRogue, or
 	// ClassMage. Ignored on a reclaim (known token) — an existing entity
@@ -259,6 +272,23 @@ type IntentRequest struct {
 	// IntentAttack ("attack").
 	Kind   string `json:"kind"`
 	Target Hex    `json:"target"`
+}
+
+// ChatMessage is the payload of an EventChat frame: one line in the global
+// channel. Seq is a server-assigned monotonic sequence (a stable client key
+// and ordering aid — not a timestamp). Sender is the author's display name.
+type ChatMessage struct {
+	Seq    int64  `json:"seq"`
+	Sender string `json:"sender"`
+	Text   string `json:"text"`
+}
+
+// ChatRequest is the body of POST /api/chat. Token authenticates the sender;
+// Text is the message (or a "/command"). The server resolves the sender's
+// name and position from the token — the client cannot set them.
+type ChatRequest struct {
+	Token string `json:"token"`
+	Text  string `json:"text"`
 }
 
 // ErrorResponse is the JSON body of every non-2xx API response.
