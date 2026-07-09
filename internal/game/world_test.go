@@ -35,7 +35,7 @@ func TestJoinCreatesEntityOnWalkableHex(t *testing.T) {
 
 	w := newWorld()
 
-	resp, err := w.Join("")
+	resp, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -59,12 +59,12 @@ func TestJoinWithKnownTokenReturnsSameEntity(t *testing.T) {
 
 	w := newWorld()
 
-	first, err := w.Join("")
+	first, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
-	again, err := w.Join(first.Token)
+	again, err := w.Join(first.Token, "")
 	if err != nil {
 		t.Fatalf("re-Join: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestJoinWithUnknownTokenCreatesNewEntity(t *testing.T) {
 
 	w := newWorld()
 
-	resp, err := w.Join("stale-token-from-before-a-restart")
+	resp, err := w.Join("stale-token-from-before-a-restart", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestIntentMovesEntityOnResolve(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("")
+	me, _ := w.Join("", "")
 
 	target := walkableNeighbor(t, w, me.Hex)
 	if err := w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}); err != nil {
@@ -123,7 +123,7 @@ func TestLatestIntentWins(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("")
+	me, _ := w.Join("", "")
 
 	first := walkableNeighbor(t, w, me.Hex)
 
@@ -152,7 +152,7 @@ func TestIntentValidation(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("")
+	me, _ := w.Join("", "")
 
 	cases := []struct {
 		name string
@@ -186,7 +186,7 @@ func TestIntentRejectsUnwalkableTarget(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("")
+	me, _ := w.Join("", "")
 
 	// Find an adjacent unwalkable hex if the spawn has one; otherwise walk a
 	// probe entity to the lake shore... which milestone 3 cannot do without
@@ -238,7 +238,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("")
+	me, _ := w.Join("", "")
 
 	// A destination two hexes away: a walkable neighbor of a walkable neighbor
 	// that sits at distance 2 from spawn (geometry-independent discovery).

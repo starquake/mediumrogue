@@ -14,7 +14,7 @@ func TestFreshPlayerHasZeroXPLevelOne(t *testing.T) {
 
 	w := newWorld()
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestKillGrantsXP(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(10)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(12)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestDeathFloorsXPKeepsLevel(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(13)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(14)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

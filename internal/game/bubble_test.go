@@ -64,7 +64,7 @@ func TestBubbleFormsOnOpposingProximity(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestBubbleAbsorbsFriendlyInRange(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestBubbleKeepsIDAcrossRecomputes(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestBubbleKeepsIDWhenAbsorbingFriendly(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestOutOfRangeStaysWorldDomain(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestBubblesMergeWhenClustersOverlap(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestMonstersDoNotExtendBubbleReach(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -386,7 +386,7 @@ func TestPlayersExtendBubbleReach(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	p1, err := w.Join("")
+	p1, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestBubbleDissolvesWhenMonsterDies(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -470,7 +470,7 @@ func TestBubbleMemberEscapesWhenLeavingRange(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

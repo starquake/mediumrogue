@@ -25,7 +25,9 @@ function storedIdentity(): Identity | null {
  * stale token after a server restart just becomes a fresh entity).
  */
 export async function join(): Promise<JoinResponse> {
-  const body: JoinRequest = { token: storedIdentity()?.token ?? "" };
+  // class "" lets the server pick the backward-compatible default (Fighter);
+  // the class-picker UX that sends a real choice lands in the client task.
+  const body: JoinRequest = { token: storedIdentity()?.token ?? "", class: "" };
   const resp = await fetch("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,7 +51,9 @@ export async function join(): Promise<JoinResponse> {
  * bundle — the client never moves an entity locally.
  */
 export async function submitIntent(identity: Identity, target: Hex): Promise<boolean> {
-  const body: IntentRequest = { entityId: identity.entityId, token: identity.token, target };
+  // kind "" defaults to "move" server-side; the ranged-attack intent UX lands
+  // in the client task.
+  const body: IntentRequest = { entityId: identity.entityId, token: identity.token, target, kind: "" };
   const resp = await fetch("/api/intent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

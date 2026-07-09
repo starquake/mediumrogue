@@ -41,6 +41,10 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
+	// class is the player's class (protocol.ClassFighter/Rogue/Mage), set at
+	// Join and normalized there; empty for monsters. It selects the entity's
+	// weapon loadout and base HP via the class.go helpers.
+	class string
 	hp    int
 	maxHP int
 	// xp is the entity's cumulative experience (players only; monsters stay 0).
@@ -228,10 +232,12 @@ func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
 }
 
 // Join returns the entity for token, creating a new one (empty or unknown
-// token) at a free spawn hex. An unknown token quietly becomes a new player
-// rather than an error: the stored identity of a restarted server is gone,
-// and the client's right move is always "then give me a fresh entity".
-func (w *World) Join(token string) (protocol.JoinResponse, error) {
+// token) at a free spawn hex with the given class. An empty or unknown class
+// normalizes to ClassFighter (backward-compatible with clients that don't send
+// one). An unknown token quietly becomes a new player rather than an error: the
+// stored identity of a restarted server is gone, and the client's right move is
+// always "then give me a fresh entity".
+func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -249,10 +255,13 @@ func (w *World) Join(token string) (protocol.JoinResponse, error) {
 		return protocol.JoinResponse{}, fmt.Errorf("generate token: %w", err)
 	}
 
+	class = normalizeClass(class)
+	maxHP := maxHPFor(class, 1)
+
 	w.nextID++
 	e := &entity{
 		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
-		kind: protocol.EntityPlayer, hp: protocol.PlayerMaxHP, maxHP: protocol.PlayerMaxHP,
+		kind: protocol.EntityPlayer, class: class, hp: maxHP, maxHP: maxHP,
 	}
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
@@ -315,7 +324,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, HP: e.hp, MaxHP: e.maxHP,
+			ID: e.id, Hex: e.hex, Kind: e.kind, Class: e.class, HP: e.hp, MaxHP: e.maxHP,
 			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp),
 		})
 	}
@@ -426,6 +435,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 		for _, e := range members {
 			if e.kind == protocol.EntityPlayer && e.hp > 0 {
 				e.xp += killed * protocol.MonsterXP
+				syncMaxHPLocked(e)
 			}
 		}
 	}
@@ -619,6 +629,18 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 // levelFor returns the 1-based level for a cumulative XP total.
 func levelFor(xp int) int { return 1 + xp/protocol.XPPerLevel }
 
+// syncMaxHPLocked recalibrates a player's maxHP to its class and current level
+// (via maxHPFor) after an XP change, clamping current HP to the new max. It does
+// not heal: a level-up raises the ceiling but keeps current HP (respawn resets
+// hp=maxHP separately). Callers hold w.mu; call only for players (a monster's
+// empty class would resolve to the fallback base).
+func syncMaxHPLocked(e *entity) {
+	e.maxHP = maxHPFor(e.class, levelFor(e.xp))
+	if e.hp > e.maxHP {
+		e.hp = e.maxHP
+	}
+}
+
 // levelFloorXP returns the XP at the start of xp's current level.
 func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
 
@@ -664,6 +686,9 @@ func (w *World) resolveDeathsLocked(members []*entity) int {
 			e.hex = spawn
 		}
 
+		// Recompute maxHP from the class and post-floor level so a leveled player
+		// respawns with its full, level-scaled bar (via the same maxHPFor source).
+		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
 		e.hp = e.maxHP
 		e.path = nil
 	}

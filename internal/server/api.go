@@ -18,7 +18,7 @@ func handleJoin(deps Deps) http.Handler {
 			return
 		}
 
-		resp, err := deps.World.Join(req.Token)
+		resp, err := deps.World.Join(req.Token, req.Class)
 		if err != nil {
 			deps.Logger.Error("join", "err", err)
 			respondError(w, deps.Logger, http.StatusServiceUnavailable, "no room in the world")

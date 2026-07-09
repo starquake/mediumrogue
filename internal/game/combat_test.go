@@ -29,7 +29,7 @@ func TestBumpDealsDamageAttackerStays(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(2)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestBumpRetreatDodgesDamage(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(3)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestBumpMutualKill(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(4)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestBumpMutualKill(t *testing.T) {
 		t.Fatalf("player %d should respawn, not vanish", me.EntityID)
 	}
 
-	if got, want := player.HP, protocol.PlayerMaxHP; got != want {
+	if got, want := player.HP, protocol.FighterMaxHP; got != want {
 		t.Errorf("respawned player HP = %d, want %d (full)", got, want)
 	}
 
@@ -242,7 +242,7 @@ func TestBumpPlayerDeathRespawns(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(5)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestBumpPlayerDeathRespawns(t *testing.T) {
 		t.Fatalf("player %d should respawn, not vanish", me.EntityID)
 	}
 
-	if got, want := player.HP, protocol.PlayerMaxHP; got != want {
+	if got, want := player.HP, protocol.FighterMaxHP; got != want {
 		t.Errorf("respawned player HP = %d, want %d (full)", got, want)
 	}
 
@@ -330,9 +330,9 @@ func TestBumpRandomVictimOnStackedHexIsReproducible(t *testing.T) {
 		}
 
 		switch {
-		case a.HP < protocol.PlayerMaxHP && b.HP == protocol.PlayerMaxHP:
+		case a.HP < protocol.FighterMaxHP && b.HP == protocol.FighterMaxHP:
 			return idA, idB
-		case b.HP < protocol.PlayerMaxHP && a.HP == protocol.PlayerMaxHP:
+		case b.HP < protocol.FighterMaxHP && a.HP == protocol.FighterMaxHP:
 			return idB, idA
 		default:
 			t.Fatalf("expected exactly one stacked player damaged; got HPs %d and %d", a.HP, b.HP)
@@ -364,7 +364,7 @@ func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(6)
 
-	me, err := w.Join("")
+	me, err := w.Join("", "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 		t.Fatalf("player %d missing from snapshot after a single monster attack", me.EntityID)
 	}
 
-	if got, want := player.HP, protocol.PlayerMaxHP-protocol.MonsterAttackDamage; got != want {
+	if got, want := player.HP, protocol.FighterMaxHP-protocol.MonsterAttackDamage; got != want {
 		t.Errorf("player HP = %d, want %d", got, want)
 	}
 

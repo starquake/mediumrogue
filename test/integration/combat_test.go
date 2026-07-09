@@ -141,7 +141,9 @@ func TestCombatOverHTTP(t *testing.T) {
 		}
 
 		for _, e := range bundle.Entities {
-			if e.ID == me.EntityID && e.HP < protocol.PlayerMaxHP {
+			// The joined player is a Fighter by default (empty class in join);
+			// compare against its reported max, not the retired flat PlayerMaxHP.
+			if e.ID == me.EntityID && e.HP < e.MaxHP {
 				playerDamaged = true
 			}
 		}
