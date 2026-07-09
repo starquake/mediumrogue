@@ -914,6 +914,32 @@ func (w *World) SpawnMonsters(n int) {
 	}
 }
 
+// SpawnMonsterAt spawns a single monster at h, returning whether it spawned. It
+// refuses a non-walkable hex or one already at StackCap. Unlike SpawnMonsters
+// (random, world-seeded placement) it puts a monster at a caller-chosen hex, so
+// a caller can seed a known-position monster — e.g. an integration test that
+// needs a monster a couple hexes from where players spawn, for a short,
+// deterministic chase. It mirrors SpawnMonsters' entity shape (kind monster,
+// MonsterMaxHP). Like SpawnMonsters it is a startup primitive meant to run
+// before Run: it does not recompute bubbles (Run does that each tick) and does
+// not avoid opposing occupants. Holds w.mu.
+func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.walkableLocked(h) || w.occupancyLocked(h) >= protocol.StackCap {
+		return false
+	}
+
+	w.nextID++
+	w.entities[w.nextID] = &entity{
+		id: w.nextID, hex: h,
+		kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+	}
+
+	return true
+}
+
 // thinkMonstersLocked sets each monster in the member set to a single step
 // toward its nearest player in that same set. Recomputed every turn (players
 // move). Scoping the target search to the set keeps a bubble's monsters chasing

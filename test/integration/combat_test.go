@@ -53,25 +53,25 @@ func nearestMonster(bundle protocol.TurnEvent, from protocol.Hex) (protocol.Hex,
 
 // TestCombatOverHTTP exercises milestone 6.3 combat over real HTTP/SSE: a
 // joined player is driven turn by turn toward whichever monster is nearest
-// (recomputed from the latest bundle every turn, since monster spawn hexes
-// are seeded from crypto/rand and monsters hunt the player too — a fixed
-// target could go stale as the board evolves). It asserts two independent
-// TRENDS rather than exact hexes or HP values:
+// (recomputed from the latest bundle every turn, since monsters hunt the player
+// too — a fixed target could go stale as the board evolves). It asserts two
+// independent TRENDS rather than exact hexes or HP values:
 //
 //  1. some monster's HP falls below its starting value, or it disappears
 //     from the snapshot entirely (killed) — the player's bump attack lands.
 //  2. the player's own HP drops below max at some point — a monster's
 //     hunting AI closes distance and bumps back, unprompted by the test.
 //
-// A generous turn budget (fast clock, long deadline) and a loud t.Fatalf
-// keep this from being flaky if the initial spawn distances are large; see
-// task-4-report.md for the flakiness runs.
+// The monster is seeded one hex from the origin (where the player spawns), so
+// both combat directions land within a couple of bubble-turns resolved on the
+// player's own lock-ins, rather than after a long crypto-random chase gated on
+// the background tick loop — deterministic and robust even under a CPU-starved
+// runner (#22). The test is not parallel so its tick loop is not starved by
+// sibling servers.
+//
+//nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestCombatOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	const monsterCount = 8
-
-	ts := startServerWithMonsters(t, 15*time.Millisecond, time.Hour, monsterCount)
+	ts := startServerWithMonstersAt(t, 15*time.Millisecond, protocol.Hex{Q: 1, R: 0})
 
 	me := join(t, ts, "")
 

@@ -70,6 +70,73 @@ func TestSpawnMonstersPlacesWalkableMonsters(t *testing.T) {
 	}
 }
 
+// TestSpawnMonsterAtPlacesAndRejects pins SpawnMonsterAt's contract: it spawns
+// a full-HP monster on a walkable, sub-StackCap hex and reports true; it refuses
+// a non-walkable hex and a hex already at StackCap, reporting false and leaving
+// occupancy untouched.
+func TestSpawnMonsterAtPlacesAndRejects(t *testing.T) {
+	t.Parallel()
+
+	walkable := protocol.Hex{Q: 1, R: 0}
+	water := protocol.Hex{Q: 5, R: -2} // lake center — TerrainWater, not walkable
+	full := protocol.Hex{Q: -1, R: 0}
+
+	w := newWorld()
+
+	if !isWalkable(w, walkable) {
+		t.Fatalf("fixture hex %v is not walkable; pick another", walkable)
+	}
+
+	if isWalkable(w, water) {
+		t.Fatalf("fixture hex %v is walkable; expected water", water)
+	}
+
+	// Walkable, empty hex → spawns a full-HP monster.
+	if got, want := w.SpawnMonsterAt(walkable), true; got != want {
+		t.Fatalf("SpawnMonsterAt(%v) = %v, want %v", walkable, got, want)
+	}
+
+	snap := w.Snapshot()
+
+	var spawned *protocol.Entity
+
+	for i, e := range snap.Entities {
+		if e.Kind == protocol.EntityMonster && e.Hex == walkable {
+			spawned = &snap.Entities[i]
+		}
+	}
+
+	if spawned == nil {
+		t.Fatalf("no monster at %v after SpawnMonsterAt", walkable)
+	}
+
+	if got, want := spawned.HP, protocol.MonsterMaxHP; got != want {
+		t.Errorf("spawned monster HP = %d, want %d", got, want)
+	}
+
+	if got, want := spawned.MaxHP, protocol.MonsterMaxHP; got != want {
+		t.Errorf("spawned monster MaxHP = %d, want %d", got, want)
+	}
+
+	// Non-walkable hex → refused.
+	if got, want := w.SpawnMonsterAt(water), false; got != want {
+		t.Errorf("SpawnMonsterAt(water %v) = %v, want %v", water, got, want)
+	}
+
+	// Hex already at StackCap → refused, occupancy unchanged.
+	for range protocol.StackCap {
+		w.PlaceEntityForTest(full)
+	}
+
+	if got, want := w.SpawnMonsterAt(full), false; got != want {
+		t.Errorf("SpawnMonsterAt(full %v) = %v, want %v", full, got, want)
+	}
+
+	if got, want := countAt(w.Snapshot(), full), protocol.StackCap; got != want {
+		t.Errorf("occupancy at %v = %d, want unchanged StackCap %d", full, got, want)
+	}
+}
+
 func TestSpawnMonstersIsReproducibleForSameSeed(t *testing.T) {
 	t.Parallel()
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/hub"
+	"github.com/starquake/mediumrogue/internal/protocol"
 	"github.com/starquake/mediumrogue/internal/server"
 )
 
@@ -62,6 +63,61 @@ func startServerWithBubbleTuning(
 		World:             world,
 		Ticks:             ticks,
 		HeartbeatInterval: heartbeatInterval,
+	})
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	return ts
+}
+
+// startServerWithMonstersAt is startServerWithMonsters but places monsters at
+// caller-chosen hexes (via world.SpawnMonsterAt) instead of random world-seeded
+// positions. A chase test that seeds a monster at a KNOWN hex a couple steps
+// from the origin (where players spawn) gets a short, deterministic chase — one
+// that no longer depends on how far crypto/rand scattered the monster, and so
+// resolves in a handful of turns even when the tick loop is CPU-starved (the #22
+// chase-timing flake). Uses the same long patience / fast poll as
+// startServerWithMonsters. The heartbeat is pinned far out (time.Hour): these
+// timing-sensitive tests assert on turn bundles, never on heartbeat comments.
+func startServerWithMonstersAt(
+	t *testing.T, turnInterval time.Duration, hexes ...protocol.Hex,
+) *httptest.Server {
+	t.Helper()
+
+	return startServerWithBubbleTuningAt(t, turnInterval, time.Minute, 5*time.Millisecond, hexes...)
+}
+
+// startServerWithBubbleTuningAt is startServerWithBubbleTuning but places
+// monsters at caller-chosen hexes (see startServerWithMonstersAt) rather than a
+// random count, for freeze-window tests that also need explicit combat-bubble
+// patience/poll knobs. Fails the test if any hex is not walkable or is already
+// at StackCap, so a bad fixture hex surfaces loudly instead of silently
+// spawning nothing. The heartbeat is pinned far out (time.Hour) — see
+// startServerWithMonstersAt.
+func startServerWithBubbleTuningAt(
+	t *testing.T, turnInterval, combatPatience, bubblePoll time.Duration,
+	hexes ...protocol.Hex,
+) *httptest.Server {
+	t.Helper()
+
+	ticks := hub.New()
+
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, ticks)
+
+	for _, h := range hexes {
+		if !world.SpawnMonsterAt(h) {
+			t.Fatalf("SpawnMonsterAt(%v) = false, want a monster (not walkable or over StackCap)", h)
+		}
+	}
+
+	go world.Run(t.Context())
+
+	handler := server.New(server.Deps{
+		Logger:            slog.New(slog.DiscardHandler),
+		World:             world,
+		Ticks:             ticks,
+		HeartbeatInterval: time.Hour,
 	})
 
 	ts := httptest.NewServer(handler)

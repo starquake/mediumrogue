@@ -151,23 +151,26 @@ func fireBowOrChase(
 }
 
 // TestRogueBowKillsAtRange exercises the rogue's ranged bow attack over real
-// HTTP/SSE: a joined rogue chases whichever monster is nearest (recomputed
-// every bundle, exactly like TestCombatOverHTTP, since monsters hunt back and
-// a fixed target can go stale) and, once within BowRange, fires an "attack"
-// intent instead of moving.
+// HTTP/SSE: a joined rogue targets whichever monster is nearest (recomputed
+// every bundle, since monsters hunt back and a fixed target can go stale) and,
+// once within BowRange, fires an "attack" intent instead of moving.
 //
 // Because an attack intent clears the rogue's route (queueAttackLocked), the
 // rogue never bumps while it is firing — so any monster HP drop observed on a
 // turn where the rogue fired is attributable solely to the ranged shot
 // (resolveBowLocked), proving the bow path lands over real HTTP, not just a
-// disguised bump. A generous turn budget and a loud t.Fatalf keep this robust
-// to spawn-distance variation, matching TestCombatOverHTTP's approach.
+// disguised bump.
+//
+// The monster is seeded two hexes from the origin (where the rogue spawns) —
+// already inside BowRange, so the rogue fires from range on its first bubble
+// lock-in rather than after a long crypto-random chase gated on the background
+// tick loop. That makes the ranged kill deterministic and robust even under a
+// CPU-starved runner (#22). The test is not parallel so its tick loop is not
+// starved by sibling servers.
+//
+//nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestRogueBowKillsAtRange(t *testing.T) {
-	t.Parallel()
-
-	const monsterCount = 8
-
-	ts := startServerWithMonsters(t, 15*time.Millisecond, time.Hour, monsterCount)
+	ts := startServerWithMonstersAt(t, 15*time.Millisecond, protocol.Hex{Q: 0, R: -2})
 
 	me := joinClass(t, ts, "", protocol.ClassRogue)
 
@@ -324,22 +327,26 @@ func fireAoEOrChase(
 //
 // It requires TWO OR MORE monsters to take damage in the SAME turn (a bump or
 // a bow always resolves to exactly one victim, so a same-turn multi-drop is
-// only possible via the AoE) — not just the single-hit trend. Getting >=2
-// monsters to converge onto the same hex/neighbourhood on the same bubble-turn
-// depends on where the crypto/rand-seeded monster spawn places them relative
-// to the mage (see bubble.go: every monster within CombatRadius of the mage
-// joins one bubble and beelines for it), but at monsterCount=16 this is not a
-// coin flip: 40/40 local runs hit >=2 monsters simultaneously, most within the
-// first few resolved turns (see task-7-report.md for the run log) — so it is
-// asserted as a hard requirement, matching the unit-level "2 monsters in
-// radius, both take damage, no friendly fire" case pinned deterministically in
-// internal/game's ranged_test.go.
+// only possible via the AoE) — not just the single-hit trend, matching the
+// unit-level "2 monsters in radius, both take damage, no friendly fire" case
+// pinned deterministically in internal/game's ranged_test.go.
+//
+// Two monsters are seeded on adjacent hexes two steps from the origin (where
+// the mage spawns). They beeline for the mage as one cluster (bubble.go: every
+// monster within CombatRadius joins one bubble), so on an early bubble-turn
+// they sit within a single MageAoERadius footprint the mage can reach — the
+// mage fires at the hex covering the most hostiles (bestAoETarget, recomputed
+// every bundle) and drops both at once. Seeding a known cluster next to the
+// spawn makes the same-turn multi-hit deterministic and robust even under a
+// CPU-starved runner (#22), rather than depending on where crypto/rand
+// scattered 16 monsters. The test is not parallel so its tick loop is not
+// starved by sibling servers.
+//
+//nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestMageAoEDamagesMonsters(t *testing.T) {
-	t.Parallel()
-
-	const monsterCount = 16
-
-	ts := startServerWithMonsters(t, 10*time.Millisecond, time.Hour, monsterCount)
+	ts := startServerWithMonstersAt(
+		t, 10*time.Millisecond, protocol.Hex{Q: 0, R: -2}, protocol.Hex{Q: 1, R: -2},
+	)
 
 	me := joinClass(t, ts, "", protocol.ClassMage)
 

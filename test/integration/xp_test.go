@@ -9,27 +9,28 @@ import (
 )
 
 // TestXPRisesOnMonsterKillOverHTTP exercises milestone 6b.1's headline
-// behavior over real HTTP/SSE: a joined player chases whichever monster is
-// nearest (re-targeted every bundle — same rationale as TestCombatOverHTTP,
-// since monster spawn hexes are seeded from crypto/rand and monsters hunt the
-// player back) until it lands a killing blow. It asserts the player's own
-// XP, as carried on the wire, rises by at least protocol.MonsterXP, and that
-// Level tracks the server's flat curve (1 + xp/XPPerLevel) at every
-// observation — not just the final one.
+// behavior over real HTTP/SSE: a joined player drives the nearest monster
+// (re-targeted every bundle, since monsters hunt back and can shift the board)
+// until it lands a killing blow. It asserts the player's own XP, as carried on
+// the wire, rises by at least protocol.MonsterXP, and that Level tracks the
+// server's flat curve (1 + xp/XPPerLevel) at every observation — not just the
+// final one.
 //
 // A player starts at XP 0 / Level 1 and one kill awards the full
 // protocol.MonsterXP, so "xp reaches >= MonsterXP" is a clean, one-directional
 // signal: it cannot happen without at least one kill, and it is robust to
-// exactly which monster dies or how many turns the chase takes. A generous
-// turn budget (fast clock, long deadline) and a loud t.Fatalf keep this from
-// being flaky if the initial spawn distance is large; see task-3-report.md
-// for the multi-run results.
+// exactly which monster dies or how many turns the fight takes.
+//
+// The monster is seeded one hex from the origin (where the player spawns), so
+// the fight is a 1–3 turn bubble brawl resolved on the player's own lock-ins
+// (each intent POST resolves a bubble-turn synchronously) rather than a long
+// crypto-random chase gated on the background tick loop — deterministic and
+// robust even under a CPU-starved runner (#22). The test is not parallel so its
+// tick loop is not starved by sibling servers.
+//
+//nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestXPRisesOnMonsterKillOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	const monsterCount = 8
-
-	ts := startServerWithMonsters(t, 15*time.Millisecond, time.Hour, monsterCount)
+	ts := startServerWithMonstersAt(t, 15*time.Millisecond, protocol.Hex{Q: 1, R: 0})
 
 	me := join(t, ts, "")
 
