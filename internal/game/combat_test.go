@@ -29,7 +29,7 @@ func TestBumpDealsDamageAttackerStays(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(1)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(2)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestBumpRetreatDodgesDamage(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(3)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestBumpMutualKill(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(4)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestBumpPlayerDeathRespawns(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(5)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(6)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

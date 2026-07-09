@@ -73,7 +73,8 @@ func TestEventsTokenTracksPresence(t *testing.T) {
 func joinTest(t *testing.T, ts *httptest.Server) protocol.JoinResponse {
 	t.Helper()
 
-	body, err := json.Marshal(protocol.JoinRequest{Class: protocol.ClassFighter, Species: protocol.SpeciesHuman})
+	body, err := json.Marshal(
+		protocol.JoinRequest{Name: "tester", Class: protocol.ClassFighter, Species: protocol.SpeciesHuman})
 	if err != nil {
 		t.Fatalf("marshal join request: %v", err)
 	}

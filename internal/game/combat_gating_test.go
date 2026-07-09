@@ -56,7 +56,7 @@ func newTimedWorld(t *testing.T) (*game.World, *fakeClock) {
 func formBubble(t *testing.T, w *game.World, clk *fakeClock) (protocol.JoinResponse, int64, protocol.TurnEvent) {
 	t.Helper()
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestRunLoopSurvivesConcurrentIntents(t *testing.T) {
 	)
 	w.SetBubblePollForTest(time.Millisecond)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

@@ -18,9 +18,10 @@ func handleJoin(deps Deps) http.Handler {
 			return
 		}
 
-		resp, err := deps.World.Join(req.Token, req.Class, req.Species)
+		resp, err := deps.World.Join(req.Token, req.Name, req.Class, req.Species)
 		switch {
-		case errors.Is(err, game.ErrInvalidClass), errors.Is(err, game.ErrInvalidSpecies):
+		case errors.Is(err, game.ErrInvalidClass), errors.Is(err, game.ErrInvalidSpecies),
+			errors.Is(err, game.ErrInvalidName):
 			respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
 		case err != nil:
 			deps.Logger.Error("join", "err", err)
