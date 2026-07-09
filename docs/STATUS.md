@@ -92,7 +92,10 @@ slices, each its own spec → plan → PR:
   forms when a player and monster are within `CombatRadius=6` (distance-based) —
   computed as connected components with an opposing pair, which yields
   form/grow/**merge**/**dissolve**/**walk-in reinforce**/**escape** from one
-  rule. A bubble **freezes** and advances on its own **action-gated** clock
+  rule. **Only players extend a bubble's reach**: a component edge needs a
+  player endpoint (monster↔monster edges are dropped), so reinforcing players
+  chain the frozen area outward while an enemy walking in joins the fight
+  without enlarging it. A bubble **freezes** and advances on its own **action-gated** clock
   (all its players lock in an intent, or `COMBAT_PATIENCE` (default 60s) elapses)
   while the world keeps ticking every `TURN_INTERVAL` around it. Wire:
   `Entity.InCombat` + `TurnEvent.Bubbles` (`waitingForIds`, `patienceRemainingMs`).
@@ -131,6 +134,13 @@ After that (§8): 7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = 
   bubble is also invisible to that bubble's scoped resolution for one pass
   (self-heals at the pass-end recompute) — the domain split now leans on the
   post-recompute separation invariant, so fix this when continuous spawning lands.
+- **Monsters don't extend bubble reach (6.4, deliberate)**: bubble-graph edges
+  require a player endpoint, so a wandering monster within `CombatRadius` of a
+  *bubble monster* but far from every bubble player stays world-domain. Harmless:
+  two same-faction monsters can momentarily co-locate across the world/bubble
+  boundary, but monsters don't fight monsters, and player↔monster domain scoping
+  is unaffected (a monster adjacent to a bubble player is still always linked in
+  via a player↔monster edge).
 - **Terrain-blocked line-of-sight not implemented (6.4)**: combat bubbles form
   by pure hex **distance** (`≤ CombatRadius`), not mutual line-of-sight — rock
   doesn't block "spotting" yet. Deferred follow-up (adds a hex raycast).

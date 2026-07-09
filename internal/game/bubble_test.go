@@ -305,6 +305,123 @@ func TestBubblesMergeWhenClustersOverlap(t *testing.T) {
 	}
 }
 
+// TestMonstersDoNotExtendBubbleReach: only players extend a bubble's reach. A
+// bubble forms from player P and adjacent monster M1. A second monster M2 sits
+// within CombatRadius of M1 but more than CombatRadius from P (the only player),
+// so with monster↔monster edges dropped it is never linked in — it stays
+// world-domain while P and M1 hold the bubble. Under the old any-member-extends
+// rule the M1↔M2 edge would have pulled M2 into the frozen area.
+func TestMonstersDoNotExtendBubbleReach(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	me, err := w.Join("")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// Keep the anchor well-fed so a chip hit never respawns (and relocates) it.
+	w.SetHPForTest(me.EntityID, 100000)
+
+	// West axis, clear of the lake around {5,-2} (mirrors TestPlayersExtendBubbleReach;
+	// the east axis threads water at ~{2,0}..{6,0} and would detour the chase). P at
+	// the origin, M1 one hex west (the seed bubble). M2 starts at {-8,0}; its lone
+	// chase step toward its nearest (only) player P lands it on {-7,0}: distance 6
+	// from M1 (a dropped monster↔monster edge) but 7 from P, so it must stay
+	// world-domain. The post-resolve distances are asserted below so the geometry
+	// self-verifies and can't silently rot if the map or chase logic changes.
+	m1Hex := mustWalkable(t, w, protocol.Hex{Q: -1, R: 0})
+	m1ID := w.PlaceMonsterForTest(m1Hex)
+	m2ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: -8, R: 0}))
+
+	snap := step(t, w)
+
+	// Verify the actual resolved geometry: M2 landed within CombatRadius of the
+	// bubble monster M1 (the dropped edge) but beyond CombatRadius of player P.
+	// If either fails the test no longer exercises the monster↔monster edge.
+	m2Hex := hexOfSnap(snap, m2ID)
+	if got, want := game.HexDistance(m2Hex, m1Hex), protocol.CombatRadius; got > want {
+		t.Fatalf("HexDistance(M2, M1) = %d, want <= %d (M2 must be in reach of the bubble monster)", got, want)
+	}
+
+	if got, want := game.HexDistance(m2Hex, me.Hex), protocol.CombatRadius; got <= want {
+		t.Fatalf("HexDistance(M2, P) = %d, want > %d (M2 must be out of reach of every player)", got, want)
+	}
+
+	if !inCombat(t, snap, me.EntityID) {
+		t.Errorf("player InCombat = false, want true")
+	}
+
+	if !inCombat(t, snap, m1ID) {
+		t.Errorf("bubble monster M1 InCombat = false, want true")
+	}
+
+	if inCombat(t, snap, m2ID) {
+		t.Errorf("far monster M2 InCombat = true, want false (monsters must not extend the bubble)")
+	}
+
+	if got, want := len(snap.Bubbles), 1; got != want {
+		t.Fatalf("bubble count = %d, want %d", got, want)
+	}
+
+	want := []int64{me.EntityID, m1ID}
+	slices.Sort(want)
+
+	if got := snap.Bubbles[0].MemberIDs; !slices.Equal(got, want) {
+		t.Errorf("bubble members = %v, want %v (M2 must not be a member)", got, want)
+	}
+}
+
+// TestPlayersExtendBubbleReach: the positive counterpart — players still chain
+// the bubble outward. P1 + adjacent monster M1 form a bubble. A second player P2
+// stands within CombatRadius of P1 (a player↔player edge), and monster M2 sits
+// within CombatRadius of P2 but more than CombatRadius from P1 and M1. P2's
+// player↔monster edge pulls M2 into the frozen area, proving a reinforcing
+// player extends the reach to enemies no existing member could reach.
+func TestPlayersExtendBubbleReach(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	p1, err := w.Join("")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.SetHPForTest(p1.EntityID, 100000)
+
+	// West axis, clear of the lake around {5,-2}. P1 at origin, M1 one hex west
+	// (the seed bubble). P2 at {-5,0} — distance 5 from P1, so a player↔player edge
+	// folds it in. M2 starts at {-11,0}; its chase step toward its nearest player
+	// (P2) lands it on {-10,0}: distance 5 from P2 but 10 from P1 and 9 from M1, so
+	// only P2's reach can pull it in.
+	m1ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: -1, R: 0}))
+	p2ID, _ := w.PlaceEntityForTest(mustWalkable(t, w, protocol.Hex{Q: -5, R: 0}))
+	m2ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: -11, R: 0}))
+
+	snap := step(t, w)
+
+	for _, id := range []int64{p1.EntityID, m1ID, p2ID, m2ID} {
+		if !inCombat(t, snap, id) {
+			t.Errorf("entity %d InCombat = false, want true", id)
+		}
+	}
+
+	if got, want := len(snap.Bubbles), 1; got != want {
+		t.Fatalf("bubble count = %d, want %d (a reinforcing player must extend the reach)", got, want)
+	}
+
+	want := []int64{p1.EntityID, m1ID, p2ID, m2ID}
+	slices.Sort(want)
+
+	if got := snap.Bubbles[0].MemberIDs; !slices.Equal(got, want) {
+		t.Errorf("bubble members = %v, want %v (P2 must pull M2 in)", got, want)
+	}
+}
+
 // TestBubbleDissolvesWhenMonsterDies: killing the only monster drops the
 // component below an opposing pair, so the surviving player returns to the
 // world domain and the bubble disappears.

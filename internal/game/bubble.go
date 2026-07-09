@@ -19,7 +19,8 @@ type bubble struct {
 }
 
 // recomputeBubblesLocked rebuilds w.bubbles as a pure function of entity
-// positions: connected components under CombatRadius adjacency that contain at
+// positions: connected components under player-anchored CombatRadius adjacency
+// (an edge needs a player endpoint — see connectedComponents) that contain at
 // least one opposing (player vs monster) pair become bubbles. Each entity's
 // bubbleID is set (0 = world domain). Bubble ids carry across recomputes by max
 // membership overlap so a bubble's gating state survives a member joining,
@@ -79,15 +80,31 @@ func (w *World) entitiesSlice() []*entity {
 }
 
 // connectedComponents groups entities into maximal sets connected by
-// CombatRadius adjacency (an edge iff HexDistance <= CombatRadius). Input must
-// be sorted by id; each component preserves that order, and components come out
-// ordered by their lowest member id, so downstream id assignment is stable.
+// player-anchored CombatRadius adjacency: an edge iff HexDistance <=
+// CombatRadius AND at least one endpoint is a player. Only players extend a
+// bubble's reach — monsters attach to players (a player↔monster edge) but never
+// chain the bubble through each other, so an enemy walking in joins the fight
+// without enlarging the frozen (combat) area, while reinforcing players still
+// grow it. Input must be sorted by id; each component preserves that order, and
+// components come out ordered by their lowest member id, so downstream id
+// assignment is stable.
+//
+// Dropping monster↔monster edges introduces one harmless boundary case: a
+// wandering monster within CombatRadius of a *bubble monster* but far from every
+// bubble player stays world-domain, so two same-faction monsters can momentarily
+// co-locate across the world/bubble boundary. That is inert — monsters don't
+// fight monsters, and player↔monster domain scoping is unaffected because any
+// monster adjacent to a bubble player is still linked in via a player↔monster
+// edge.
 func connectedComponents(ents []*entity) [][]*entity {
 	uf := newUnionFind(len(ents))
 
 	for i := range ents {
 		for j := i + 1; j < len(ents); j++ {
-			if HexDistance(ents[i].hex, ents[j].hex) <= protocol.CombatRadius {
+			// Only players extend a bubble's reach: require a player endpoint, so
+			// monster↔monster proximity never links two entities.
+			if HexDistance(ents[i].hex, ents[j].hex) <= protocol.CombatRadius &&
+				(ents[i].kind == protocol.EntityPlayer || ents[j].kind == protocol.EntityPlayer) {
 				uf.union(i, j)
 			}
 		}
