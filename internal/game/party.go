@@ -73,6 +73,7 @@ func (w *World) PartyAccept(token string) (string, error) {
 	}
 
 	w.leavePartyLocked(accepter)
+	w.abandonPersonalQuestLocked(accepter)
 
 	if inviter.partyID == 0 {
 		w.nextPartyID++
@@ -132,6 +133,8 @@ func (w *World) leavePartyLocked(e *entity) {
 		for _, o := range members {
 			o.partyID = 0
 		}
+
+		w.returnPartyQuestLocked(pid)
 	}
 }
 
