@@ -7,6 +7,8 @@ export interface Identity {
   token: string;
   /** The class this identity joined as. */
   class: string;
+  /** The species this identity joined as. */
+  species: string;
 }
 
 /**
@@ -36,7 +38,11 @@ export function loadIdentity(): Identity | null {
  */
 export async function join(chosenClass: string): Promise<JoinResponse> {
   const stored = loadIdentity();
-  const body: JoinRequest = { token: stored?.token ?? "", class: stored?.class ?? chosenClass };
+  const body: JoinRequest = {
+    token: stored?.token ?? "",
+    class: stored?.class ?? chosenClass,
+    species: stored?.species ?? "",
+  };
   const resp = await fetch("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,6 +57,7 @@ export async function join(chosenClass: string): Promise<JoinResponse> {
     entityId: joined.entityId,
     token: joined.token,
     class: stored?.class ?? chosenClass,
+    species: stored?.species ?? "",
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
 
