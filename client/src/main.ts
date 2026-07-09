@@ -259,23 +259,26 @@ async function start(): Promise<void> {
   const world = new Container();
   app.stage.addChild(world);
 
-  // Camera: keep my entity centred on screen by offsetting the world container
-  // by -hexToPixel(myHex). Falls back to the origin before my hex is known.
-  let camHex: Hex = { q: 0, r: 0 };
-  const centerCamera = (): void => {
-    const p = hexToPixel(camHex);
-    world.position.set(app.screen.width / 2 - p.x, app.screen.height / 2 - p.y);
-    window.game.camera = { x: world.position.x, y: world.position.y };
-  };
-  centerCamera();
-  app.renderer.on("resize", centerCamera);
-
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
 
   const entityLayer = new EntityLayer(app.ticker);
   world.addChild(entityLayer.container);
+
+  // Camera follows my entity's *live* (per-frame interpolated) position rather
+  // than snapping to its hex once per turn, so the pan is as smooth as the
+  // sprite's own movement. Runs every frame after EntityLayer's tick (added
+  // first, so dot.current is already advanced this frame); reading app.screen
+  // each frame also keeps it centred across window resizes. Falls back to the
+  // origin until my dot exists (pre-join).
+  const updateCamera = (): void => {
+    const p = entityLayer.myPixel() ?? hexToPixel({ q: 0, r: 0 });
+    world.position.set(app.screen.width / 2 - p.x, app.screen.height / 2 - p.y);
+    window.game.camera = { x: world.position.x, y: world.position.y };
+  };
+  updateCamera();
+  app.ticker.add(updateCamera);
 
   const timer = new TurnTimer(app.ticker);
 
@@ -377,8 +380,6 @@ async function start(): Promise<void> {
       const mine = event.entities.find((e) => e.id === me.entityId);
       if (mine !== undefined && window.game.me !== null) {
         window.game.me.hex = mine.hex;
-        camHex = mine.hex;
-        centerCamera();
         // Arrived at the destination → clear it.
         if (
           window.game.destination !== null &&

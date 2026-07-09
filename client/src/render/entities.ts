@@ -162,6 +162,21 @@ export class EntityLayer {
     }
   }
 
+  /**
+   * My entity's current (per-frame interpolated) pixel position, or null before
+   * my dot exists. The camera reads this each frame to follow the animating
+   * sprite smoothly rather than snapping to its hex once per turn.
+   */
+  myPixel(): Point | null {
+    for (const dot of this.dots.values()) {
+      if (dot.mine) {
+        return dot.current;
+      }
+    }
+
+    return null;
+  }
+
   private tick = (ticker: Ticker): void => {
     for (const dot of this.dots.values()) {
       if (dot.current.x === dot.to.x && dot.current.y === dot.to.y) {
