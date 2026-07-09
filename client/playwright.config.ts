@@ -27,6 +27,7 @@ const specs: { name: string; monsters?: number }[] = [
   { name: "heartbeat" },
   { name: "multiplayer" },
   { name: "class" },
+  { name: "species" },
   { name: "combat", monsters: 3 },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },
