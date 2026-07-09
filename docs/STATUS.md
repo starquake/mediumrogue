@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-09, after milestone 8.2 parties (invite/accept/leave party commands, `Entity.PartyID`, SolidJS `<RosterPanel>`, on-map partymate color). Update this file at the end of
+*Last updated: 2026-07-09, after milestone 8.2 parties **merged to `main` (PR #28)** — invite/accept/leave party commands, `Entity.PartyID`, SolidJS `<RosterPanel>`, on-map partymate color. See the "Handoff note" below for the resume point. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -207,7 +207,19 @@ slices, each its own spec → plan → PR:
   gone).
 
 Next: **8.3 quests** (quest log UI, quest invites building on the party
-channel). After that: 9 = shader filter, 10 = deploy.
+membership + the `/`-command registry). After that: 9 = shader filter,
+10 = deploy; then late tooling **11 = live admin/difficulty console** and
+**12 = combat/move analytics log** (see plan §8.11–12).
+
+**Handoff note (2026-07-09):** 8.1 (PR #26) and 8.2 (PR #28) are **merged to
+`main`**; working tree clean, on `main`. **8.3 quests has NOT been designed
+yet** — the next session should *brainstorm → spec → plan → build* per the
+milestone-slice workflow (see the `milestone-slice-workflow` memory). The open
+quest decisions to settle first are in plan §9: does a late joiner get full
+party-quest progress/rewards, what happens to a quest when members leave/die,
+and can one player run multiple quests at once. Also recorded but not built:
+the two tooling milestones above, and a **selected-path preview** render item
+(plan §6 — show my own route: goal + every hex, local-only).
 
 ## Known placeholders / debt (all deliberate)
 
@@ -239,13 +251,15 @@ channel). After that: 9 = shader filter, 10 = deploy.
 - **Terrain-blocked line-of-sight not implemented (6.4)**: combat bubbles form
   by pure hex **distance** (`≤ CombatRadius`), not mutual line-of-sight — rock
   doesn't block "spotting" yet. Deferred follow-up (adds a hex raycast).
-- **E2e on shared stateful servers is timing-flaky**: both `multiplayer.spec.ts`
-  (M5 reconnect via SSE `route.abort()`) and the `combat.spec.ts` damage test
-  occasionally time out under parallel-worker contention — the shared Playwright
-  servers accumulate every spec's players (no disconnect cleanup, below), so
-  monsters can chase a lingering player and starve a chase, or reconnect timing
-  drifts. Not milestone-specific; the real fix is per-test isolation / disconnect
-  cleanup. Harden separately (re-run on a spurious CI red for now).
+- **E2e on shared stateful servers is timing-flaky** (ticketed **#27**): both
+  `multiplayer.spec.ts` (M5 reconnect via SSE `route.abort()`) and the
+  `combat.spec.ts` damage test occasionally time out under parallel-worker
+  contention — the shared Playwright servers accumulate every spec's players (no
+  disconnect cleanup, below), so monsters can chase a lingering player and starve
+  a chase, or reconnect timing drifts. One `make e2e` run during the 8.2 build hit
+  the `multiplayer.spec` flake (2nd/3rd runs were clean). Not milestone-specific;
+  the real fix is per-test isolation / disconnect cleanup. Harden separately
+  (re-run on a spurious CI red for now).
 - **No server-side input-window enforcement**: intent acceptance stays
   permissive (an intent is accepted whenever it arrives, regardless of the
   client-visible timer phase); revisit once combat time bubbles (milestone 6)
