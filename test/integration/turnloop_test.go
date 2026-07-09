@@ -41,13 +41,13 @@ func postJSON(t *testing.T, ts *httptest.Server, path string, body any) *http.Re
 func join(t *testing.T, ts *httptest.Server, token string) protocol.JoinResponse {
 	t.Helper()
 
-	return joinClass(t, ts, token, "")
+	return joinClass(t, ts, token, protocol.ClassFighter)
 }
 
-// joinClass is join plus an explicit class (protocol.ClassFighter/Rogue/Mage,
-// or "" for the backward-compatible default). Milestone 6b.2 tests use this to
-// join as a specific class; join keeps its old signature/behavior (empty class
-// -> Fighter) for every pre-existing caller.
+// joinClass is join plus an explicit class (protocol.ClassFighter/Rogue/Mage).
+// Class is required on the wire (server rejects anything else for a new
+// entity); join defaults to Fighter for every caller that doesn't care which
+// class it joins as.
 func joinClass(t *testing.T, ts *httptest.Server, token, class string) protocol.JoinResponse {
 	t.Helper()
 
@@ -105,7 +105,7 @@ func TestTurnLoopMovesEntity(t *testing.T) {
 		t.Fatalf("spawn %v has no walkable neighbor", me.Hex)
 	}
 
-	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}
+	intent := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: target}
 
 	resp := postJSON(t, ts, "/api/intent", intent)
 	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
@@ -141,7 +141,7 @@ func TestIntentRejectsBadToken(t *testing.T) {
 	ts := startServer(t, time.Hour, time.Hour)
 	me := join(t, ts, "")
 
-	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: "forged", Target: me.Hex}
+	intent := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: "forged", Target: me.Hex}
 
 	resp := postJSON(t, ts, "/api/intent", intent)
 	if got, want := resp.StatusCode, http.StatusUnauthorized; got != want {
@@ -238,7 +238,7 @@ func TestTurnLoopWalksToDistantHex(t *testing.T) {
 		t.Fatalf("spawn %v has no reachable distance-2 hex", me.Hex)
 	}
 
-	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: dest}
+	intent := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: dest}
 
 	resp := postJSON(t, ts, "/api/intent", intent)
 	if got, want := resp.StatusCode, http.StatusAccepted; got != want {

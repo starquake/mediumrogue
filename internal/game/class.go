@@ -14,8 +14,9 @@ type weapon struct {
 }
 
 // closeWeapon returns a class's default close (bump) weapon. An empty or unknown
-// class falls back to fists — the unarmed default that also guards a non-player
-// entity or a not-yet-normalized class.
+// class falls back to fists — the unarmed default that guards a non-player
+// entity (monsters have no class) since a joined player's class is always one
+// of the three valid ones (enforced by Join, see validClass).
 func closeWeapon(class string) weapon {
 	switch class {
 	case protocol.ClassFighter:
@@ -48,8 +49,9 @@ func rangedWeapon(class string) (weapon, bool) {
 }
 
 // baseMaxHP returns a class's level-1 max HP. An empty or unknown class falls
-// back to RogueMaxHP (the squishy baseline); joined players are normalized to a
-// real class by Join, so this fallback only guards test fixtures.
+// back to RogueMaxHP (the squishy baseline); a joined player's class is always
+// valid (enforced by Join, see validClass), so this fallback only guards
+// non-player entities and test fixtures.
 func baseMaxHP(class string) int {
 	switch class {
 	case protocol.ClassFighter:
@@ -77,13 +79,13 @@ func weaponDamage(w weapon, level int) int {
 	return w.damage + protocol.DamagePerLevel*(level-1)
 }
 
-// normalizeClass maps an empty or unknown class to ClassFighter, the
-// backward-compatible default, and passes a known class through unchanged.
-func normalizeClass(class string) string {
+// validClass reports whether class is one of the three playable classes.
+// Class is required at Join time for a new entity — there is no default.
+func validClass(class string) bool {
 	switch class {
 	case protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage:
-		return class
+		return true
 	default:
-		return protocol.ClassFighter
+		return false
 	}
 }

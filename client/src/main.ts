@@ -7,7 +7,7 @@ import { Application, Container } from "pixi.js";
 import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import { fetchMap } from "./net/map";
-import { join, loadIdentity, persistConfirmedClass, submitIntent } from "./net/session";
+import { join, loadIdentity, submitIntent } from "./net/session";
 import type { Hex, TurnEvent } from "./protocol.gen";
 import {
   BowRange,
@@ -307,7 +307,6 @@ async function start(): Promise<void> {
         window.game.xp = mine.xp;
         window.game.level = mine.level;
         window.game.class = mine.class;
-        persistConfirmedClass(mine.class);
         const xpIntoLevel = mine.xp % XPPerLevel;
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
       }

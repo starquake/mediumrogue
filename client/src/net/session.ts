@@ -5,7 +5,7 @@ const STORAGE_KEY = "mediumrogue.identity";
 export interface Identity {
   entityId: number;
   token: string;
-  /** The class this identity joined/rejoined as — "" for identities stored before 6b.2. */
+  /** The class this identity joined as. */
   class: string;
 }
 
@@ -55,21 +55,6 @@ export async function join(chosenClass: string): Promise<JoinResponse> {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
 
   return joined;
-}
-
-/**
- * Reconciles the persisted identity's class against the server's own answer
- * (an entity's `class` in the turn bundle — the true, normalized value). A
- * no-op once they agree; only writes localStorage when they don't, which
- * covers pre-6b.2 stored identities (no `class` field at all) and guards
- * against the client and server ever disagreeing on what was actually joined.
- */
-export function persistConfirmedClass(cls: string): void {
-  const stored = loadIdentity();
-  if (stored === null || cls === "" || stored.class === cls) {
-    return;
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, class: cls }));
 }
 
 /**

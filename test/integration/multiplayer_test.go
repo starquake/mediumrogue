@@ -68,7 +68,7 @@ func TestSimultaneousResolutionMovesBothEntities(t *testing.T) {
 func postIntent(t *testing.T, ts *httptest.Server, me protocol.JoinResponse, target protocol.Hex) {
 	t.Helper()
 
-	intent := protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}
+	intent := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: target}
 
 	resp := postJSON(t, ts, "/api/intent", intent)
 	if got, want := resp.StatusCode, http.StatusAccepted; got != want {

@@ -35,7 +35,7 @@ func TestJoinCreatesEntityOnWalkableHex(t *testing.T) {
 
 	w := newWorld()
 
-	resp, err := w.Join("", "")
+	resp, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -59,11 +59,13 @@ func TestJoinWithKnownTokenReturnsSameEntity(t *testing.T) {
 
 	w := newWorld()
 
-	first, err := w.Join("", "")
+	first, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
+	// Class is ignored on a reclaim (known token) — an empty class here must
+	// still succeed and return the existing entity.
 	again, err := w.Join(first.Token, "")
 	if err != nil {
 		t.Fatalf("re-Join: %v", err)
@@ -83,7 +85,7 @@ func TestJoinWithUnknownTokenCreatesNewEntity(t *testing.T) {
 
 	w := newWorld()
 
-	resp, err := w.Join("stale-token-from-before-a-restart", "")
+	resp, err := w.Join("stale-token-from-before-a-restart", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -97,10 +99,12 @@ func TestIntentMovesEntityOnResolve(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", "")
+	me, _ := w.Join("", protocol.ClassFighter)
 
 	target := walkableNeighbor(t, w, me.Hex)
-	if err := w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}); err != nil {
+
+	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: target}
+	if err := w.SubmitIntent(req); err != nil {
 		t.Fatalf("SubmitIntent: %v", err)
 	}
 
@@ -123,7 +127,7 @@ func TestLatestIntentWins(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", "")
+	me, _ := w.Join("", protocol.ClassFighter)
 
 	first := walkableNeighbor(t, w, me.Hex)
 
@@ -152,7 +156,8 @@ func TestIntentValidation(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", "")
+	me, _ := w.Join("", protocol.ClassFighter)
+	target := walkableNeighbor(t, w, me.Hex)
 
 	cases := []struct {
 		name string
@@ -161,13 +166,23 @@ func TestIntentValidation(t *testing.T) {
 	}{
 		{
 			"bad token",
-			protocol.IntentRequest{EntityID: me.EntityID, Token: "wrong", Target: walkableNeighbor(t, w, me.Hex)},
+			protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: "wrong", Target: target},
 			game.ErrUnauthorized,
 		},
 		{
 			"unknown entity",
-			protocol.IntentRequest{EntityID: 999, Token: me.Token, Target: walkableNeighbor(t, w, me.Hex)},
+			protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: 999, Token: me.Token, Target: target},
 			game.ErrUnauthorized,
+		},
+		{
+			"empty kind",
+			protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target},
+			game.ErrInvalidIntentKind,
+		},
+		{
+			"unknown kind",
+			protocol.IntentRequest{Kind: "teleport", EntityID: me.EntityID, Token: me.Token, Target: target},
+			game.ErrInvalidIntentKind,
 		},
 	}
 
@@ -186,15 +201,15 @@ func TestIntentRejectsUnwalkableTarget(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", "")
+	me, _ := w.Join("", protocol.ClassFighter)
 
 	// Find an adjacent unwalkable hex if the spawn has one; otherwise walk a
 	// probe entity to the lake shore... which milestone 3 cannot do without
 	// pathfinding, so settle for the direct check against the map.
 	for _, n := range game.HexNeighbors(me.Hex) {
 		if !isWalkable(w, n) {
-			err := w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: n})
-			if got, want := err, game.ErrNotWalkable; !errors.Is(got, want) {
+			req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: n}
+			if got, want := w.SubmitIntent(req), game.ErrNotWalkable; !errors.Is(got, want) {
 				t.Fatalf("err = %v, want ErrNotWalkable", got)
 			}
 
@@ -231,14 +246,16 @@ func isWalkable(w *game.World, h protocol.Hex) bool {
 }
 
 func submitOK(w *game.World, me protocol.JoinResponse, target protocol.Hex) bool {
-	return w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target}) == nil
+	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: target}
+
+	return w.SubmitIntent(req) == nil
 }
 
 func TestIntentWalksMultiStepPath(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", "")
+	me, _ := w.Join("", protocol.ClassFighter)
 
 	// A destination two hexes away: a walkable neighbor of a walkable neighbor
 	// that sits at distance 2 from spawn (geometry-independent discovery).
@@ -258,7 +275,8 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 		t.Skip("spawn has no reachable distance-2 hex on this map")
 	}
 
-	if err := w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: dest}); err != nil {
+	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: dest}
+	if err := w.SubmitIntent(req); err != nil {
 		t.Fatalf("SubmitIntent: %v", err)
 	}
 
@@ -365,7 +383,8 @@ func TestStackCapBlocksOverflow(t *testing.T) {
 func mustSubmit(t *testing.T, w *game.World, id int64, token string, target protocol.Hex) {
 	t.Helper()
 
-	if err := w.SubmitIntent(protocol.IntentRequest{EntityID: id, Token: token, Target: target}); err != nil {
+	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: id, Token: token, Target: target}
+	if err := w.SubmitIntent(req); err != nil {
 		t.Fatalf("SubmitIntent(%d -> %v): %v", id, target, err)
 	}
 }

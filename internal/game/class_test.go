@@ -1,6 +1,7 @@
 package game_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/game"
@@ -25,8 +26,8 @@ func snapshotClassAndMaxHP(t *testing.T, w *game.World, class string) (string, i
 	return e.Class, e.MaxHP
 }
 
-// TestJoinClassSetsWireClassAndMaxHP: joining with a class reports that class on
-// the wire with its per-class MaxHP; an empty class defaults to Fighter.
+// TestJoinClassSetsWireClassAndMaxHP: joining with a valid class reports that
+// class on the wire with its per-class MaxHP.
 func TestJoinClassSetsWireClassAndMaxHP(t *testing.T) {
 	t.Parallel()
 
@@ -39,8 +40,6 @@ func TestJoinClassSetsWireClassAndMaxHP(t *testing.T) {
 		{"fighter", protocol.ClassFighter, protocol.ClassFighter, protocol.FighterMaxHP},
 		{"rogue", protocol.ClassRogue, protocol.ClassRogue, protocol.RogueMaxHP},
 		{"mage", protocol.ClassMage, protocol.ClassMage, protocol.MageMaxHP},
-		{"empty defaults to fighter", "", protocol.ClassFighter, protocol.FighterMaxHP},
-		{"unknown defaults to fighter", "necromancer", protocol.ClassFighter, protocol.FighterMaxHP},
 	}
 
 	for _, tc := range cases {
@@ -57,6 +56,34 @@ func TestJoinClassSetsWireClassAndMaxHP(t *testing.T) {
 
 			if got, want := gotMaxHP, tc.wantMaxHP; got != want {
 				t.Errorf("joined MaxHP = %d, want %d", got, want)
+			}
+		})
+	}
+}
+
+// TestJoinRejectsInvalidClass: a new entity (no known token) must supply a
+// valid class — empty or unknown is rejected with ErrInvalidClass, not
+// defaulted.
+func TestJoinRejectsInvalidClass(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		class string
+	}{
+		{"empty", ""},
+		{"unknown", "necromancer"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newWorld()
+
+			_, err := w.Join("", tc.class)
+			if got, want := err, game.ErrInvalidClass; !errors.Is(got, want) {
+				t.Fatalf("Join(%q) err = %v, want %v", tc.class, got, want)
 			}
 		})
 	}

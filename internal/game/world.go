@@ -35,6 +35,12 @@ var (
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
 	ErrOutOfRange = errors.New("target is out of range")
+	// ErrInvalidClass rejects a Join for a new entity whose Class is not one of
+	// ClassFighter, ClassRogue, ClassMage.
+	ErrInvalidClass = errors.New("invalid class")
+	// ErrInvalidIntentKind rejects a SubmitIntent whose Kind is not
+	// IntentMove or IntentAttack.
+	ErrInvalidIntentKind = errors.New("invalid intent kind")
 )
 
 // tokenBytes sizes the bearer token: 16 random bytes = 128 bits.
@@ -47,9 +53,9 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
-	// class is the player's class (protocol.ClassFighter/Rogue/Mage), set at
-	// Join and normalized there; empty for monsters. It selects the entity's
-	// weapon loadout and base HP via the class.go helpers.
+	// class is the player's class (protocol.ClassFighter/Rogue/Mage), validated
+	// and set at Join; empty for monsters. It selects the entity's weapon
+	// loadout and base HP via the class.go helpers.
 	class string
 	hp    int
 	maxHP int
@@ -242,17 +248,23 @@ func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
 }
 
 // Join returns the entity for token, creating a new one (empty or unknown
-// token) at a free spawn hex with the given class. An empty or unknown class
-// normalizes to ClassFighter (backward-compatible with clients that don't send
-// one). An unknown token quietly becomes a new player rather than an error: the
-// stored identity of a restarted server is gone, and the client's right move is
-// always "then give me a fresh entity".
+// token) at a free spawn hex with the given class. For a new entity, class is
+// required — it must be ClassFighter, ClassRogue, or ClassMage, else Join
+// returns ErrInvalidClass. An unknown token quietly becomes a new player
+// rather than an error: the stored identity of a restarted server is gone, and
+// the client's right move is always "then give me a fresh entity". For a
+// reclaim (known token) class is ignored — the existing entity already has
+// its class.
 func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if e, ok := w.byToken[token]; ok && token != "" {
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+	}
+
+	if !validClass(class) {
+		return protocol.JoinResponse{}, ErrInvalidClass
 	}
 
 	spawn, err := w.spawnHexLocked()
@@ -265,7 +277,6 @@ func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 		return protocol.JoinResponse{}, fmt.Errorf("generate token: %w", err)
 	}
 
-	class = normalizeClass(class)
 	maxHP := maxHPFor(class, 1)
 
 	w.nextID++
@@ -279,15 +290,16 @@ func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
 
-// SubmitIntent applies one player intent for the next turn. A "move" intent
-// (the default for an empty Kind) sets the entity's route to Target: any
-// walkable, reachable hex — the server pathfinds from the entity's current
-// position and the walk advances one hex per resolved turn. An "attack" intent
-// queues a ranged attack at Target (bow single-target or mage AoE) and clears
-// the route — you shoot, you don't move. For an entity inside a combat bubble
-// the submission also counts as a lock-in for the bubble's action-gated turn,
-// and once every player member has locked in the bubble resolves immediately.
-// The latest submission in an input window replaces the entity's queued action.
+// SubmitIntent applies one player intent for the next turn. Kind is required:
+// a "move" intent sets the entity's route to Target: any walkable, reachable
+// hex — the server pathfinds from the entity's current position and the walk
+// advances one hex per resolved turn. An "attack" intent queues a ranged
+// attack at Target (bow single-target or mage AoE) and clears the route — you
+// shoot, you don't move. Any other Kind (including empty) is rejected with
+// ErrInvalidIntentKind. For an entity inside a combat bubble the submission
+// also counts as a lock-in for the bubble's action-gated turn, and once every
+// player member has locked in the bubble resolves immediately. The latest
+// submission in an input window replaces the entity's queued action.
 func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -298,14 +310,16 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	}
 
 	switch req.Kind {
+	case protocol.IntentMove:
+		if err := w.queueMoveLocked(e, req.Target); err != nil {
+			return err
+		}
 	case protocol.IntentAttack:
 		if err := w.queueAttackLocked(e, req.Target); err != nil {
 			return err
 		}
-	default: // IntentMove or empty (backward compatible)
-		if err := w.queueMoveLocked(e, req.Target); err != nil {
-			return err
-		}
+	default:
+		return ErrInvalidIntentKind
 	}
 
 	// Lock-in: inside a combat bubble, submitting an intent commits this player

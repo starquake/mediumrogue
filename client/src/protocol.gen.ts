@@ -89,13 +89,13 @@ export const ClassRogue = "rogue";
  */
 export const ClassMage = "mage";
 /**
- * Intent kinds: the type of an IntentRequest. An empty Kind is treated as
- * IntentMove for backward compatibility.
+ * Intent kinds: the type of an IntentRequest. Kind is required — it must be
+ * IntentMove or IntentAttack.
  */
 export const IntentMove = "move";
 /**
- * Intent kinds: the type of an IntentRequest. An empty Kind is treated as
- * IntentMove for backward compatibility.
+ * Intent kinds: the type of an IntentRequest. Kind is required — it must be
+ * IntentMove or IntentAttack.
  */
 export const IntentAttack = "attack";
 /**
@@ -281,8 +281,10 @@ export interface Entity {
 export interface JoinRequest {
   token: string;
   /**
-   * Class is the player's chosen class (ClassFighter, ClassRogue, ClassMage).
-   * Empty/unknown defaults to ClassFighter for backward compatibility.
+   * Class is the player's chosen class. Required for a new player (empty
+   * token or unknown token): must be ClassFighter, ClassRogue, or
+   * ClassMage. Ignored on a reclaim (known token) — an existing entity
+   * already has its class.
    */
   class: string;
 }
@@ -308,8 +310,8 @@ export interface IntentRequest {
   entityId: number /* int64 */;
   token: string;
   /**
-   * Kind is the intent type: "move" (default/empty) or "attack" (ranged).
-   * Empty defaults to "move" for backward compatibility.
+   * Kind is the intent type. Required: must be IntentMove ("move") or
+   * IntentAttack ("attack").
    */
   kind: string;
   target: Hex;

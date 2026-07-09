@@ -182,7 +182,7 @@ func TestRangedIntentIsLockIn(t *testing.T) {
 	w, clk := newTimedWorld(t)
 	w.SetCombatPatienceForTest(time.Hour) // never times out during this test
 
-	me, err := w.Join("", "")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
