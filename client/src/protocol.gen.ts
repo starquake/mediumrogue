@@ -101,6 +101,15 @@ export const PlayerAttackDamage = 5;
  */
 export const MonsterAttackDamage = 3;
 /**
+ * XPPerLevel is the XP needed to advance one level.
+ */
+export const XPPerLevel = 100;
+/**
+ * MonsterXP is awarded to every player in the fight when a monster dies —
+ * the full amount each, not divided.
+ */
+export const MonsterXP = 20;
+/**
  * Tile is one hex of the world map.
  */
 export interface Tile {
@@ -186,6 +195,14 @@ export interface Entity {
   hp: number /* int */;
   maxHp: number /* int */;
   inCombat: boolean;
+  /**
+   * XP is server-authoritative; monsters send 0, players send their actual XP.
+   */
+  xp: number /* int */;
+  /**
+   * Level is server-authoritative; monsters send 1, players send their actual level.
+   */
+  level: number /* int */;
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its

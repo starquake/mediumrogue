@@ -9,7 +9,7 @@ import { connectEvents } from "./net/events";
 import { fetchMap } from "./net/map";
 import { join, submitIntent } from "./net/session";
 import type { Hex, TurnEvent } from "./protocol.gen";
-import { EntityMonster, PlaybackSeconds, TurnSeconds } from "./protocol.gen";
+import { EntityMonster, PlaybackSeconds, TurnSeconds, XPPerLevel } from "./protocol.gen";
 import { EntityLayer } from "./render/entities";
 import { neighbor, pixelToHex } from "./render/hex";
 import { buildMapLayer } from "./render/map";
@@ -31,6 +31,10 @@ export interface GameDebug {
   positions: { id: number; hex: Hex; kind: string }[];
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;
+  /** This client's entity's XP, from the latest bundle. 0 until joined. */
+  xp: number;
+  /** This client's entity's level, from the latest bundle. 1 until joined. */
+  level: number;
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
   /** Runtime turn interval from the latest bundle, in ms. */
@@ -76,6 +80,7 @@ function mustGet(id: string): HTMLElement {
 
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
+const statsEl = mustGet("stats");
 const turnTimerEl = mustGet("turn-timer");
 const combatPanelEl = mustGet("combat-panel");
 const combatWaitingEl = mustGet("combat-waiting");
@@ -99,6 +104,8 @@ window.game = {
   monsters: 0,
   positions: [],
   hp: {},
+  xp: 0,
+  level: 1,
   me: null,
   intervalMs: 0,
   heartbeats: 0,
@@ -194,6 +201,11 @@ async function start(): Promise<void> {
         ) {
           window.game.destination = null;
         }
+
+        window.game.xp = mine.xp;
+        window.game.level = mine.level;
+        const xpIntoLevel = mine.xp % XPPerLevel;
+        statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
       }
 
       // A combat bubble freezes this client's turn clock in place of the

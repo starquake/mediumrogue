@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-08, after milestone-6 time bubbles (6.4) — **milestone 6 complete**. Update this file at the end of
+*Last updated: 2026-07-08, after milestone-6b.1 XP & leveling. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -99,15 +99,27 @@ slices, each its own spec → plan → PR:
   Client: an in-combat marker + a "waiting for… · Ns" combat panel;
   `window.game.inCombat`/`bubble`. **Milestone 6 complete.**
 
-After that (§8): **6b = classes/species (NEXT)**, 7 = procgen, 8 = quests/parties/chat,
-9 = shader filter, 10 = deploy.
+## Milestone 6b — classes/species + XP (decomposed like M6)
+
+- **6b.1 XP & leveling — DONE** (this PR): players earn **shared XP** on a kill
+  (every player in the fight/bubble gets the full `MonsterXP`, no last-hit
+  competition), **level is derived** from XP (`1 + xp/XPPerLevel`), and death
+  **floors XP to the current level's start** (keep the level, lose within-level
+  progress) — resolving the 6.3 "no XP penalty yet" debt. Wire: `Entity.XP`/
+  `Level`; client: a level/XP stats HUD + `window.game.xp`/`level`. A level
+  grants **no mechanical bonus yet** — that arrives with classes/species.
+- **6b.2 classes — NEXT**: rogue/fighter/mage combat identities.
+- **6b.3 species**: human (learns faster → XP multiplier), elf (crits), dwarf (soak).
+
+After that (§8): 7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 
-- **Combat is flat melee, no XP**: bump-to-attack does a single flat damage per
-  attacker kind (`PlayerAttackDamage`/`MonsterAttackDamage`); no classes,
-  weapons, ranged, or AoE (6b), and player death respawns with **no XP-level
-  penalty** (XP itself is 6b). Killed monsters are removed and **do not
+- **Combat is flat melee, no classes**: bump-to-attack does a single flat damage
+  per attacker kind (`PlayerAttackDamage`/`MonsterAttackDamage`); no classes,
+  weapons, ranged, or AoE — that's 6b.2/6b.3. XP & the XP-level death penalty
+  now exist (6b.1), but a level grants **no mechanical bonus yet** (levels feed
+  class/species scaling in 6b.2/6b.3). Killed monsters are removed and **do not
   respawn** (fixed pool depletes; continuous spawning is a later tuning pass).
 - **`spawnHexLocked` is faction-blind**: `Join` and player respawn pick the
   nearest free walkable hex without avoiding monster-occupied hexes, so a
