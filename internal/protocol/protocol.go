@@ -131,7 +131,7 @@ const (
 	DamagePerLevel = 1
 )
 
-// Per-species passive bonuses (tunable, applied per-class in 6b.3+).
+// Per-species passive bonuses (tunable, applied per-species in 6b.3+).
 const (
 	// HumanXPBonusPercent is the XP gain multiplier for Human species (e.g. +50%).
 	HumanXPBonusPercent = 50
