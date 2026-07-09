@@ -325,13 +325,30 @@ func TestMonstersDoNotExtendBubbleReach(t *testing.T) {
 	// Keep the anchor well-fed so a chip hit never respawns (and relocates) it.
 	w.SetHPForTest(me.EntityID, 100000)
 
-	// P spawns at the origin. M1 one hex east (in the bubble). M2 starts at {8,0};
-	// its lone chase step this turn lands it on {7,0} — distance 6 from M1 (a
-	// dropped monster↔monster edge) but 7 from P, so it must stay world-domain.
-	m1ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: 1, R: 0}))
-	m2ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: 8, R: 0}))
+	// West axis, clear of the lake around {5,-2} (mirrors TestPlayersExtendBubbleReach;
+	// the east axis threads water at ~{2,0}..{6,0} and would detour the chase). P at
+	// the origin, M1 one hex west (the seed bubble). M2 starts at {-8,0}; its lone
+	// chase step toward its nearest (only) player P lands it on {-7,0}: distance 6
+	// from M1 (a dropped monster↔monster edge) but 7 from P, so it must stay
+	// world-domain. The post-resolve distances are asserted below so the geometry
+	// self-verifies and can't silently rot if the map or chase logic changes.
+	m1Hex := mustWalkable(t, w, protocol.Hex{Q: -1, R: 0})
+	m1ID := w.PlaceMonsterForTest(m1Hex)
+	m2ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: -8, R: 0}))
 
 	snap := step(t, w)
+
+	// Verify the actual resolved geometry: M2 landed within CombatRadius of the
+	// bubble monster M1 (the dropped edge) but beyond CombatRadius of player P.
+	// If either fails the test no longer exercises the monster↔monster edge.
+	m2Hex := hexOfSnap(snap, m2ID)
+	if got, want := game.HexDistance(m2Hex, m1Hex), protocol.CombatRadius; got > want {
+		t.Fatalf("HexDistance(M2, M1) = %d, want <= %d (M2 must be in reach of the bubble monster)", got, want)
+	}
+
+	if got, want := game.HexDistance(m2Hex, me.Hex), protocol.CombatRadius; got <= want {
+		t.Fatalf("HexDistance(M2, P) = %d, want > %d (M2 must be out of reach of every player)", got, want)
+	}
 
 	if !inCombat(t, snap, me.EntityID) {
 		t.Errorf("player InCombat = false, want true")
