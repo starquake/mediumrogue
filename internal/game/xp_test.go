@@ -14,7 +14,7 @@ func TestFreshPlayerHasZeroXPLevelOne(t *testing.T) {
 
 	w := newWorld()
 
-	me, err := w.Join("")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -41,14 +41,14 @@ func TestKillGrantsXP(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(10)
 
-	me, err := w.Join("")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage) // one bump is lethal
+	w.SetHPForTest(monsterID, protocol.SwordDamage) // one bump is lethal
 
 	// Kill XP is only earned inside a combat bubble (a real fight). One world
 	// resolution with the monster adjacent forms that bubble around the idle
@@ -101,7 +101,7 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	idB, _ := w.PlaceEntityForTest(ns[1])
 
 	monsterID := w.PlaceMonsterForTest(center)
-	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage) // dies to a single hit
+	w.SetHPForTest(monsterID, protocol.SwordDamage) // dies to a single hit
 
 	// Kill XP is only earned inside a combat bubble (a real fight). One world
 	// resolution forms the bubble around the two idle players and the monster; the
@@ -189,7 +189,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(12)
 
-	me, err := w.Join("")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage)
+	w.SetHPForTest(monsterID, protocol.SwordDamage)
 
 	// Kill XP is only earned inside a combat bubble; form it with one world
 	// resolution (player idle, monster survives), then land the kill inside it.
@@ -242,7 +242,7 @@ func TestDeathFloorsXPKeepsLevel(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(13)
 
-	me, err := w.Join("")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(14)
 
-	me, err := w.Join("")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
 	// One hit each is lethal in both directions: a mutual kill.
-	w.SetHPForTest(monsterID, protocol.PlayerAttackDamage)
+	w.SetHPForTest(monsterID, protocol.SwordDamage)
 	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage)
 
 	if !submitOK(w, me, monsterHex) {

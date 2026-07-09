@@ -18,15 +18,16 @@ func handleJoin(deps Deps) http.Handler {
 			return
 		}
 
-		resp, err := deps.World.Join(req.Token)
-		if err != nil {
+		resp, err := deps.World.Join(req.Token, req.Class)
+		switch {
+		case errors.Is(err, game.ErrInvalidClass):
+			respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
+		case err != nil:
 			deps.Logger.Error("join", "err", err)
 			respondError(w, deps.Logger, http.StatusServiceUnavailable, "no room in the world")
-
-			return
+		default:
+			respondJSON(w, deps.Logger, resp)
 		}
-
-		respondJSON(w, deps.Logger, resp)
 	})
 }
 
@@ -44,7 +45,9 @@ func handleIntent(deps Deps) http.Handler {
 		switch {
 		case errors.Is(err, game.ErrUnauthorized):
 			respondError(w, deps.Logger, http.StatusUnauthorized, err.Error())
-		case errors.Is(err, game.ErrNotWalkable), errors.Is(err, game.ErrNoPath):
+		case errors.Is(err, game.ErrNotWalkable), errors.Is(err, game.ErrNoPath),
+			errors.Is(err, game.ErrNoRangedWeapon), errors.Is(err, game.ErrOutOfRange),
+			errors.Is(err, game.ErrInvalidIntentKind):
 			respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
 		case err != nil:
 			deps.Logger.Error("submit intent", "err", err)

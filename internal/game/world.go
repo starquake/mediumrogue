@@ -29,6 +29,18 @@ var (
 	// ErrWorldFull means no walkable hex has room for another entity — only
 	// plausible if joins vastly outnumber the map's capacity.
 	ErrWorldFull = errors.New("world is full: no walkable hex with room left")
+	// ErrNoRangedWeapon rejects an attack intent from a class with no ranged
+	// weapon (the Fighter, or any classless entity).
+	ErrNoRangedWeapon = errors.New("class has no ranged weapon")
+	// ErrOutOfRange rejects an attack intent whose target is farther than the
+	// entity's ranged-weapon reach.
+	ErrOutOfRange = errors.New("target is out of range")
+	// ErrInvalidClass rejects a Join for a new entity whose Class is not one of
+	// ClassFighter, ClassRogue, ClassMage.
+	ErrInvalidClass = errors.New("invalid class")
+	// ErrInvalidIntentKind rejects a SubmitIntent whose Kind is not
+	// IntentMove or IntentAttack.
+	ErrInvalidIntentKind = errors.New("invalid intent kind")
 )
 
 // tokenBytes sizes the bearer token: 16 random bytes = 128 bits.
@@ -41,6 +53,10 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
+	// class is the player's class (protocol.ClassFighter/Rogue/Mage), validated
+	// and set at Join; empty for monsters. It selects the entity's weapon
+	// loadout and base HP via the class.go helpers.
+	class string
 	hp    int
 	maxHP int
 	// xp is the entity's cumulative experience (players only; monsters stay 0).
@@ -50,6 +66,10 @@ type entity struct {
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
+	// attackTarget is a pending ranged-attack target hex for this turn, or nil
+	// for none. Set by an "attack" intent (which clears path — you shoot, you
+	// don't move), resolved and cleared in the attack phase.
+	attackTarget *protocol.Hex
 	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
 	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
 	bubbleID int64
@@ -228,15 +248,23 @@ func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
 }
 
 // Join returns the entity for token, creating a new one (empty or unknown
-// token) at a free spawn hex. An unknown token quietly becomes a new player
-// rather than an error: the stored identity of a restarted server is gone,
-// and the client's right move is always "then give me a fresh entity".
-func (w *World) Join(token string) (protocol.JoinResponse, error) {
+// token) at a free spawn hex with the given class. For a new entity, class is
+// required — it must be ClassFighter, ClassRogue, or ClassMage, else Join
+// returns ErrInvalidClass. An unknown token quietly becomes a new player
+// rather than an error: the stored identity of a restarted server is gone, and
+// the client's right move is always "then give me a fresh entity". For a
+// reclaim (known token) class is ignored — the existing entity already has
+// its class.
+func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if e, ok := w.byToken[token]; ok && token != "" {
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+	}
+
+	if !validClass(class) {
+		return protocol.JoinResponse{}, ErrInvalidClass
 	}
 
 	spawn, err := w.spawnHexLocked()
@@ -249,10 +277,12 @@ func (w *World) Join(token string) (protocol.JoinResponse, error) {
 		return protocol.JoinResponse{}, fmt.Errorf("generate token: %w", err)
 	}
 
+	maxHP := maxHPFor(class, 1)
+
 	w.nextID++
 	e := &entity{
 		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
-		kind: protocol.EntityPlayer, hp: protocol.PlayerMaxHP, maxHP: protocol.PlayerMaxHP,
+		kind: protocol.EntityPlayer, class: class, hp: maxHP, maxHP: maxHP,
 	}
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
@@ -260,12 +290,16 @@ func (w *World) Join(token string) (protocol.JoinResponse, error) {
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
 
-// SubmitIntent sets the entity's route to Target: any walkable, reachable
-// hex. The server pathfinds from the entity's current position; the walk
-// advances one hex per resolved turn. For an entity inside a combat bubble the
-// submission also counts as a lock-in for the bubble's action-gated turn, and
-// once every player member has locked in the bubble resolves immediately. The
-// latest submission in an input window replaces the entity's route.
+// SubmitIntent applies one player intent for the next turn. Kind is required:
+// a "move" intent sets the entity's route to Target: any walkable, reachable
+// hex — the server pathfinds from the entity's current position and the walk
+// advances one hex per resolved turn. An "attack" intent queues a ranged
+// attack at Target (bow single-target or mage AoE) and clears the route — you
+// shoot, you don't move. Any other Kind (including empty) is rejected with
+// ErrInvalidIntentKind. For an entity inside a combat bubble the submission
+// also counts as a lock-in for the bubble's action-gated turn, and once every
+// player member has locked in the bubble resolves immediately. The latest
+// submission in an input window replaces the entity's queued action.
 func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -275,16 +309,18 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 		return ErrUnauthorized
 	}
 
-	if !w.walkableLocked(req.Target) {
-		return ErrNotWalkable
+	switch req.Kind {
+	case protocol.IntentMove:
+		if err := w.queueMoveLocked(e, req.Target); err != nil {
+			return err
+		}
+	case protocol.IntentAttack:
+		if err := w.queueAttackLocked(e, req.Target); err != nil {
+			return err
+		}
+	default:
+		return ErrInvalidIntentKind
 	}
-
-	path := Pathfind(e.hex, req.Target, w.walkableLocked)
-	if path == nil {
-		return ErrNoPath
-	}
-
-	e.path = path
 
 	// Lock-in: inside a combat bubble, submitting an intent commits this player
 	// for the bubble's action-gated turn. Once every player member has locked
@@ -306,6 +342,54 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	return nil
 }
 
+// queueMoveLocked validates a move intent and sets the entity's route to a
+// walkable, reachable target, clearing any pending ranged attack (the latest
+// intent in the window wins). Callers hold w.mu.
+func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
+	if !w.walkableLocked(target) {
+		return ErrNotWalkable
+	}
+
+	path := Pathfind(e.hex, target, w.walkableLocked)
+	if path == nil {
+		return ErrNoPath
+	}
+
+	e.path = path
+	e.attackTarget = nil
+
+	return nil
+}
+
+// queueAttackLocked validates a ranged attack intent and queues it: the entity
+// must have a ranged weapon (else ErrNoRangedWeapon) and the target must be
+// within its reach at submit time (else ErrOutOfRange). On success it records
+// the target and clears the route — a ranged attack replaces the move for this
+// turn. The resolution-time re-check is defensive (nothing relocates a shooter
+// mid-turn today; it guards a future knockback/forced-move mechanic).
+//
+// INVARIANT: max(BowRange, MageRange+MageAoERadius) must stay <= CombatRadius, so
+// any entity a ranged attack can reach is always already in the shooter's combat
+// bubble. If a longer-reach weapon is ever added, a monster could be ranged-killed
+// in the WORLD domain (where resolveWorldTurnLocked awards no kill-XP) — add an
+// in-bubble/target-in-member-set guard here then. Callers hold w.mu.
+func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
+	wpn, ok := rangedWeapon(e.class)
+	if !ok {
+		return ErrNoRangedWeapon
+	}
+
+	if HexDistance(e.hex, target) > wpn.rangeHex {
+		return ErrOutOfRange
+	}
+
+	t := target
+	e.attackTarget = &t
+	e.path = nil
+
+	return nil
+}
+
 // Snapshot is the current turn bundle: turn number plus every entity,
 // sorted by ID for a deterministic wire shape.
 func (w *World) Snapshot() protocol.TurnEvent {
@@ -315,7 +399,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, HP: e.hp, MaxHP: e.maxHP,
+			ID: e.id, Hex: e.hex, Kind: e.kind, Class: e.class, HP: e.hp, MaxHP: e.maxHP,
 			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp),
 		})
 	}
@@ -373,12 +457,16 @@ func removeEntity(occs []*entity, m *entity) []*entity {
 	return occs
 }
 
+// attackDamage is the melee/bump damage an attacker deals. A monster deals the
+// flat MonsterAttackDamage; a player deals its class close-weapon damage,
+// level-scaled (fighter = sword, rogue = dagger, mage = staff bonk, unarmed =
+// fists) via the class.go single source of truth.
 func attackDamage(e *entity) int {
 	if e.kind == protocol.EntityMonster {
 		return protocol.MonsterAttackDamage
 	}
 
-	return protocol.PlayerAttackDamage
+	return weaponDamage(closeWeapon(e.class), levelFor(e.xp))
 }
 
 // pendingBump is a move onto an opposing-held hex, re-checked post-move.
@@ -426,6 +514,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 		for _, e := range members {
 			if e.kind == protocol.EntityPlayer && e.hp > 0 {
 				e.xp += killed * protocol.MonsterXP
+				syncMaxHPLocked(e)
 			}
 		}
 	}
@@ -587,11 +676,13 @@ func (w *World) moveAndBumpLocked(
 	return attacks
 }
 
-// attackLocked resolves the attack phase: each attack accumulates damage
-// against pre-attack HP (nothing applied yet), so order is irrelevant and
-// mutual kills work, then applies it all at once. A stacked defending hex
-// picks its victim with rng, so a bump against a stack damages exactly one
-// occupant. Callers hold w.mu.
+// attackLocked resolves the attack phase: each bump attack and each pending
+// ranged attack accumulates damage against pre-attack HP (nothing applied yet)
+// into one shared map, so order is irrelevant and mutual kills work, then
+// applies it all at once. A stacked defending hex picks its victim with rng, so
+// a bump against a stack damages exactly one occupant. Ranged attacks resolve in
+// the same map (resolveRangedLocked) so a bow shot and a bump land
+// simultaneously. Callers hold w.mu.
 func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacks []pendingAttack) {
 	damage := make(map[int64]int)
 
@@ -611,13 +702,110 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		damage[victim.id] += attackDamage(a.attacker)
 	}
 
+	w.resolveRangedLocked(rng, byHex, damage)
+
 	for id, dmg := range damage {
 		w.entities[id].hp -= dmg
 	}
 }
 
+// resolveRangedLocked folds every pending ranged attack into the shared damage
+// map (against pre-attack HP, so a bow shot lands simultaneously with bumps).
+// Shooters are processed in id order so the seeded single-target victim pick is
+// reproducible regardless of map iteration order. Range is re-checked against
+// post-move positions in byHex: a shot that is now out of range fizzles. A bow
+// (aoeRadius 0) damages one opposing occupant at the target hex — a stack picks
+// one hostile with rng, mirroring the bump victim pick. Magic (aoeRadius > 0)
+// damages every opposing-faction entity within aoeRadius of the target hex — no
+// friendly fire. Every shooter's pending target is cleared, hit or fizzle.
+// byHex holds exactly the resolving member set, so targets outside the domain
+// are naturally unreachable. Callers hold w.mu.
+func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int) {
+	var shooters []*entity
+
+	for _, occs := range byHex {
+		for _, e := range occs {
+			if e.attackTarget != nil {
+				shooters = append(shooters, e)
+			}
+		}
+	}
+
+	slices.SortFunc(shooters, func(a, b *entity) int { return int(a.id - b.id) })
+
+	for _, e := range shooters {
+		target := *e.attackTarget
+		e.attackTarget = nil // resolved, whether it hits or fizzles
+
+		wpn, ok := rangedWeapon(e.class)
+		if !ok {
+			continue
+		}
+
+		if HexDistance(e.hex, target) > wpn.rangeHex {
+			continue // moved out of range this turn → fizzle
+		}
+
+		dmg := weaponDamage(wpn, levelFor(e.xp))
+
+		if wpn.aoeRadius == 0 {
+			w.resolveBowLocked(rng, byHex, e, target, dmg, damage)
+
+			continue
+		}
+
+		w.resolveAoELocked(byHex, e, target, wpn.aoeRadius, dmg, damage)
+	}
+}
+
+// resolveBowLocked accumulates single-target ranged damage: the opposing-faction
+// occupant at the target hex, or one seeded-random hostile if the hex holds a
+// stack. An empty or friendly-only target hex deals nothing. Callers hold w.mu.
+func (w *World) resolveBowLocked(
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
+	attacker *entity, target protocol.Hex, dmg int, damage map[int64]int,
+) {
+	victims := opposingOccupants(byHex[target], attacker)
+	if len(victims) == 0 {
+		return
+	}
+
+	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
+
+	victim := victims[rng.IntN(len(victims))]
+	damage[victim.id] += dmg
+}
+
+// resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
+// entity within aoeRadius of the target hex. Same-faction entities (the caster
+// and friendly players) are skipped — no friendly fire. Callers hold w.mu.
+func (w *World) resolveAoELocked(
+	byHex map[protocol.Hex][]*entity,
+	attacker *entity, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
+) {
+	for _, occs := range byHex {
+		for _, o := range occs {
+			if opposing(attacker, o) && HexDistance(target, o.hex) <= aoeRadius {
+				damage[o.id] += dmg
+			}
+		}
+	}
+}
+
 // levelFor returns the 1-based level for a cumulative XP total.
 func levelFor(xp int) int { return 1 + xp/protocol.XPPerLevel }
+
+// syncMaxHPLocked recalibrates a player's maxHP to its class and current level
+// (via maxHPFor) after an XP change, clamping current HP to the new max. It does
+// not heal: a level-up raises the ceiling but keeps current HP (respawn resets
+// hp=maxHP separately). Callers hold w.mu; call only for players (a monster's
+// empty class would resolve to the fallback base).
+func syncMaxHPLocked(e *entity) {
+	e.maxHP = maxHPFor(e.class, levelFor(e.xp))
+	if e.hp > e.maxHP {
+		e.hp = e.maxHP
+	}
+}
 
 // levelFloorXP returns the XP at the start of xp's current level.
 func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
@@ -664,6 +852,9 @@ func (w *World) resolveDeathsLocked(members []*entity) int {
 			e.hex = spawn
 		}
 
+		// Recompute maxHP from the class and post-floor level so a leveled player
+		// respawns with its full, level-scaled bar (via the same maxHPFor source).
+		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
 		e.hp = e.maxHP
 		e.path = nil
 	}
@@ -721,6 +912,32 @@ func (w *World) SpawnMonsters(n int) {
 		}
 		placed++
 	}
+}
+
+// SpawnMonsterAt spawns a single monster at h, returning whether it spawned. It
+// refuses a non-walkable hex or one already at StackCap. Unlike SpawnMonsters
+// (random, world-seeded placement) it puts a monster at a caller-chosen hex, so
+// a caller can seed a known-position monster — e.g. an integration test that
+// needs a monster a couple hexes from where players spawn, for a short,
+// deterministic chase. It mirrors SpawnMonsters' entity shape (kind monster,
+// MonsterMaxHP). Like SpawnMonsters it is a startup primitive meant to run
+// before Run: it does not recompute bubbles (Run does that each tick) and does
+// not avoid opposing occupants. Holds w.mu.
+func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.walkableLocked(h) || w.occupancyLocked(h) >= protocol.StackCap {
+		return false
+	}
+
+	w.nextID++
+	w.entities[w.nextID] = &entity{
+		id: w.nextID, hex: h,
+		kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+	}
+
+	return true
 }
 
 // thinkMonstersLocked sets each monster in the member set to a single step

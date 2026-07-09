@@ -48,29 +48,34 @@ func decodeBundle(t *testing.T, r *bufio.Reader) protocol.TurnEvent {
 }
 
 // TestCombatBubbleFreezesOverHTTP exercises milestone 6.4's headline behavior
-// over real HTTP/SSE: a joined player chasing the nearest monster (re-targeted
-// every bundle, same rationale as TestCombatOverHTTP — monsters hunt back and
-// seeded spawn positions vary) eventually lands inside a combat time bubble
-// (InCombat + a Bubbles entry naming it). From that point the player submits
-// NO further intents, yet several more world turns resolve — proving the
-// world clock and the bubble's local clock are independent: every bubble
-// member's hex must hold exactly (the freeze) while the world Turn counter
-// keeps climbing underneath it (the world does not wait).
+// over real HTTP/SSE: a joined player next to the nearest monster (re-targeted
+// every bundle, same rationale as TestCombatOverHTTP — monsters hunt back)
+// lands inside a combat time bubble (InCombat + a Bubbles entry naming it).
+// From that point the player submits NO further intents, yet several more world
+// turns resolve — proving the world clock and the bubble's local clock are
+// independent: every bubble member's hex must hold exactly (the freeze) while
+// the world Turn counter keeps climbing underneath it (the world does not wait).
 //
 // A short TurnInterval/BubblePoll keeps the suite fast; a CombatPatience far
 // longer than the whole observation window keeps the AFK fallback from firing
 // mid-assertion and masking the freeze as a timeout resolution instead.
+//
+// The monster is seeded one hex from the origin (where the player spawns), so
+// the bubble forms within a tick or two regardless of the seed — deterministic
+// and robust even under a CPU-starved runner (#22). The test is not parallel so
+// its tick loop is not starved by sibling servers.
+//
+//nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestCombatBubbleFreezesOverHTTP(t *testing.T) {
-	t.Parallel()
-
 	const (
-		monsterCount   = 8
 		turnInterval   = 20 * time.Millisecond
 		bubblePoll     = 5 * time.Millisecond
 		combatPatience = 5 * time.Second
 	)
 
-	ts := startServerWithBubbleTuning(t, turnInterval, time.Hour, monsterCount, combatPatience, bubblePoll)
+	ts := startServerWithBubbleTuningAt(
+		t, turnInterval, combatPatience, bubblePoll, protocol.Hex{Q: 1, R: 0},
+	)
 
 	me := join(t, ts, "")
 

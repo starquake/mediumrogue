@@ -56,7 +56,7 @@ func newTimedWorld(t *testing.T) (*game.World, *fakeClock) {
 func formBubble(t *testing.T, w *game.World, clk *fakeClock) (protocol.JoinResponse, int64, protocol.TurnEvent) {
 	t.Helper()
 
-	me, err := w.Join("")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestBubbleAdvancesOnLockIn(t *testing.T) {
 
 	snap := w.Snapshot()
 
-	if got, want := entityHP(t, snap, monsterID), monsterHP-protocol.PlayerAttackDamage; got != want {
+	if got, want := entityHP(t, snap, monsterID), monsterHP-protocol.SwordDamage; got != want {
 		t.Errorf("monster HP = %d, want %d (lock-in must run the combat turn)", got, want)
 	}
 
@@ -390,7 +390,7 @@ func TestRunLoopSurvivesConcurrentIntents(t *testing.T) {
 	w := game.NewWorld(2*time.Millisecond, testCombatPatience, testBubblePoll, hub.New())
 	w.SetBubblePollForTest(time.Millisecond)
 
-	me, err := w.Join("")
+	me, err := w.Join("", protocol.ClassFighter)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -398,6 +398,7 @@ func TestRunLoopSurvivesConcurrentIntents(t *testing.T) {
 	w.PlaceMonsterForTest(walkableNeighbor(t, w, me.Hex))
 
 	target := walkableNeighbor(t, w, me.Hex)
+	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: target}
 
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -410,7 +411,7 @@ func TestRunLoopSurvivesConcurrentIntents(t *testing.T) {
 	for range 4 {
 		wg.Go(func() {
 			for range 200 {
-				_ = w.SubmitIntent(protocol.IntentRequest{EntityID: me.EntityID, Token: me.Token, Target: target})
+				_ = w.SubmitIntent(req)
 				_ = w.Snapshot()
 			}
 		})

@@ -104,16 +104,18 @@ func (w *World) SetSeedForTest(seed int64) {
 
 // PlaceEntityForTest injects a player entity at a specific hex and returns its
 // id and bearer token, so conflict and AI tests can build exact board states
-// instead of depending on spawn geometry.
+// instead of depending on spawn geometry. The player is a level-1 Fighter (the
+// Join default), so its HP matches a plainly-joined player.
 func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	w.nextID++
 	token := fmt.Sprintf("test-token-%d", w.nextID)
+	maxHP := maxHPFor(protocol.ClassFighter, 1)
 	e := &entity{
 		id: w.nextID, hex: hex, token: token,
-		kind: protocol.EntityPlayer, hp: protocol.PlayerMaxHP, maxHP: protocol.PlayerMaxHP,
+		kind: protocol.EntityPlayer, class: protocol.ClassFighter, hp: maxHP, maxHP: maxHP,
 	}
 	w.entities[e.id] = e
 	w.byToken[token] = e
@@ -173,6 +175,19 @@ func (w *World) SetXPForTest(id int64, xp int) {
 	}
 }
 
+// SetClassForTest overwrites a player entity's class directly and resyncs its
+// max HP to the new class/level, so a melee test can pit different classes'
+// close weapons against the same board without going through Join.
+func (w *World) SetClassForTest(id int64, class string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.class = class
+		syncMaxHPLocked(e)
+	}
+}
+
 // SetPathForTest overwrites an entity's queued path directly. A monster's path
 // is normally computed fresh by thinkMonstersLocked every turn (which holds a
 // monster in place whenever it's adjacent to a player — attacking is
@@ -219,4 +234,23 @@ func (w *World) ResolveCombatOnlyForTest() {
 	w.resolveDeathsLocked(members)
 
 	w.turn++
+}
+
+// MaxHPForTest exposes the class/level max-HP helper so a test can assert the
+// scaling curve directly, independent of a live entity.
+func MaxHPForTest(class string, level int) int { return maxHPFor(class, level) }
+
+// CloseWeaponDamageForTest exposes a class's default close-weapon damage at a
+// given level (the melee/bump path Tasks 3/4 will read).
+func CloseWeaponDamageForTest(class string, level int) int {
+	return weaponDamage(closeWeapon(class), level)
+}
+
+// RangedWeaponForTest exposes a class's default ranged weapon. It returns, in
+// order, the level-scaled damage, range in hexes, AoE radius, and whether the
+// class has a ranged attack at all (false for Fighter and any classless entity).
+func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
+	w, ok := rangedWeapon(class)
+
+	return weaponDamage(w, level), w.rangeHex, w.aoeRadius, ok
 }

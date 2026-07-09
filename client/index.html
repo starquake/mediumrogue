@@ -90,6 +90,47 @@
       #combat-panel[hidden] {
         display: none;
       }
+      /* Class picker: shown only for a brand-new player (no stored identity)
+         while the map/engine load, so there's a real window to choose before
+         the join fires — a returning player's token already fixes their
+         class server-side, so this never appears for them. Unlike #hud it
+         takes pointer events (the buttons must be clickable). */
+      #class-picker {
+        position: fixed;
+        top: 0.75rem;
+        right: 1rem;
+        z-index: 11;
+        background: rgba(11, 15, 11, 0.85);
+        border: 1px solid var(--dim);
+        padding: 0.5rem 0.75rem;
+        text-align: center;
+        text-shadow: 0 1px 2px #000;
+      }
+      #class-picker[hidden] {
+        display: none;
+      }
+      #class-picker-label {
+        margin-bottom: 0.35rem;
+        color: var(--dim);
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      #class-picker button {
+        margin: 0 0.15rem;
+        padding: 0.3rem 0.6rem;
+        font-family: inherit;
+        font-size: 0.85rem;
+        color: var(--fg);
+        background: #16201a;
+        border: 1px solid var(--dim);
+        cursor: pointer;
+      }
+      #class-picker button.selected,
+      #class-picker button:hover {
+        background: #2a3d2b;
+        border-color: #7cb342;
+      }
     </style>
   </head>
   <body>
@@ -103,6 +144,12 @@
         In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
       </div>
     </header>
+    <div id="class-picker" hidden>
+      <div id="class-picker-label">Choose your class</div>
+      <button type="button" data-class="fighter">Fighter</button>
+      <button type="button" data-class="rogue">Rogue</button>
+      <button type="button" data-class="mage">Mage</button>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

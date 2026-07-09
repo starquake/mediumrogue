@@ -1,6 +1,9 @@
 // Flat-top hex geometry, straight from Red Blob Games' hex guide. The server
-// owns all game-rule hex math (distance, neighbors); the client only ever
-// converts axial coordinates to pixels for drawing.
+// owns all game-rule hex math (distance, neighbors); the client mostly only
+// converts axial coordinates to pixels for drawing, plus the one exception
+// below: a client-side distance check to gate the ranged-attack click UX
+// (is a clicked hex within my class's weapon range). The server remains the
+// sole authority on whether an attack actually lands.
 import type { Hex } from "../protocol.gen";
 
 /** Distance from a hex's center to any of its six corners, in pixels. */
@@ -39,6 +42,20 @@ export function neighbor(from: Hex, dir: Direction): Hex {
   const d = DIRECTIONS[dir];
 
   return { q: from.q + d.q, r: from.r + d.r };
+}
+
+/**
+ * Axial hex distance between two hexes, via the cube-coordinate conversion
+ * (mirrors internal/game's server-side distance and the duplicate used in
+ * client/e2e specs). Used only to decide move-vs-attack on a click; the
+ * server independently re-checks range when an attack intent lands.
+ */
+export function hexDistance(a: Hex, b: Hex): number {
+  const dq = a.q - b.q;
+  const dr = a.r - b.r;
+  const ds = -dq - dr;
+
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
 }
 
 /** The six corner points of a hex, as a flat [x0, y0, x1, y1, …] array for PixiJS. */

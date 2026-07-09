@@ -260,7 +260,7 @@ The core of the design. Every 5 seconds, one world turn:
 - [x] ~~Classes~~ → **Decided: rogue (dagger/bow by distance; high damage, squishy), fighter (melee; medium damage, tank), mage (magic; AoE, squishy); variety within each weapon/magic lane** (see §0)
 - [ ] What happens to a character when its player goes offline (despawn, safe-log, or vulnerable)
 - [ ] Death details: where do you respawn, and does gear survive death, drop on the spot (corpse run), or something in between?
-- [ ] Ranged combat rules: bow/magic range in hexes, line-of-sight requirements, and friendly fire into occupied stacks (random-member rule applies?)
+- [x] ~~Ranged combat rules~~ → **Decided (6b.2):** bow & magic **range = 4 hexes**; **distance-only, no line-of-sight** requirement (terrain-blocked LOS deferred); **no friendly fire** (ranged hits opposing faction only) — a bow into a mixed stack hits a random *hostile* member (the 6.3 random-member rule); mage magic is **AoE** (radius 1) hitting all hostiles in the area. Ranged resolves inside a combat bubble, simultaneous with melee.
 - [x] ~~Species~~ → **Decided: human (+% XP gain), elf (+% crit chance), dwarf (% damage reduction); percentages are config constants for playtest balancing** (see §0)
 - [x] ~~XP distribution~~ → **Decided: per kill, at the moment it happens — every player in the time bubble gets the same full amount; no damage split, no kill credit, no battle-end payout** (see §5)
 - [ ] Weapon/magic variety design: which weapon types (speed/damage/reach) and magic types (damage, control, support) exist at launch
