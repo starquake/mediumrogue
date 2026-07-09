@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-09, after issue #21 disconnect cleanup (entities despawn after a grace). Update this file at the end of
+*Last updated: 2026-07-09, after milestone-6b.3 species (human/elf/dwarf passives) — **milestone 6b complete**. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -121,9 +121,18 @@ slices, each its own spec → plan → PR:
   + `window.game.class`. Ranged rules: `BowRange`/`MageRange=4`, AoE radius 1,
   distance-only (no terrain LOS). **Gear inventory/equip/drops deferred** (see
   the `gear-equipment-system` note — 6b.2 uses class defaults + unarmed fallback).
-- **6b.3 species — NEXT**: human (learns faster → XP multiplier), elf (crits), dwarf (soak).
+- **6b.3 species — DONE** (this PR): three species passives chosen at join
+  alongside class — **human** +50% XP, **elf** 20% crit for 2× damage, **dwarf**
+  −1 damage-reduction per hit (floored ≥1). Elf crit uses the seeded per-turn RNG
+  (deterministic; no draws for non-elves) at all three damage sites (bump, bow,
+  AoE — a crit AoE crits its whole splash); human XP bonus at the kill award.
+  Wire: `Entity.Species` + `JoinRequest.Species` (required); client species picker
+  beside the class picker; `window.game.species`. All numbers are tunable
+  `internal/protocol` constants. Passives are per-trait helpers for now — a
+  scalable **combat modifier/rule pipeline** is planned with the gear slice (see
+  §8 / the `combat-modifier-pipeline` note). **Milestone 6b complete.**
 
-After that (§8): 7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = deploy.
+After that (§8): **7 = procgen (NEXT)**, 8 = quests/parties/chat, 9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 
