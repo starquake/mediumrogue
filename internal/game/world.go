@@ -63,6 +63,10 @@ type entity struct {
 	// name is the player's display name (chat sender label), validated and set
 	// at Join; empty for monsters.
 	name string
+	// partyID is the party this entity belongs to, or 0 for none. Assigned by
+	// PartyAccept, cleared by PartyLeave (or the disconnect sweep); a party of
+	// fewer than two members dissolves (see leavePartyLocked).
+	partyID int64
 	// class is the player's class (protocol.ClassFighter/Rogue/Mage), validated
 	// and set at Join; empty for monsters. It selects the entity's weapon
 	// loadout and base HP via the class.go helpers.
@@ -137,6 +141,13 @@ type World struct {
 	entities  map[int64]*entity
 	byToken   map[string]*entity
 	nextID    int64
+	// pendingInvites maps an invitee entity id to the inviter's entity id, set by
+	// PartyInvite and consumed (or purged by the disconnect sweep) before it is
+	// acted on. At most one pending invite per invitee — a second invite
+	// overwrites the first.
+	pendingInvites map[int64]int64
+	// nextPartyID mints party ids; 0 is reserved for "no party".
+	nextPartyID int64
 	// bubbles are the active combat time bubbles, keyed by id. Rebuilt each turn
 	// by recomputeBubblesLocked; ids carry across recomputes for stable gating.
 	bubbles      map[int64]*bubble
@@ -184,6 +195,7 @@ func NewWorld(
 		spawnable:       reachableWalkable(worldMap),
 		entities:        make(map[int64]*entity),
 		byToken:         make(map[string]*entity),
+		pendingInvites:  make(map[int64]int64),
 		bubbles:         make(map[int64]*bubble),
 		seed:            seed,
 	}
@@ -448,6 +460,16 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 
 	for _, id := range gone {
 		e := w.entities[id]
+
+		w.leavePartyLocked(e)
+		delete(w.pendingInvites, id)
+
+		for invitee, inviter := range w.pendingInvites {
+			if inviter == id {
+				delete(w.pendingInvites, invitee)
+			}
+		}
+
 		delete(w.entities, id)
 		delete(w.byToken, e.token)
 	}
@@ -567,7 +589,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: e.name, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
-			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp),
+			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
 		})
 	}
 
