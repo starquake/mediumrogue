@@ -49,7 +49,7 @@ func mustWalkable(t *testing.T, w *game.World, h protocol.Hex) protocol.Hex {
 	t.Helper()
 
 	if !isWalkable(w, h) {
-		t.Fatalf("hex %v is not walkable on the static map", h)
+		t.Fatalf("hex %v is not walkable on the generated map", h)
 	}
 
 	return h
@@ -279,9 +279,9 @@ func TestBubblesMergeWhenClustersOverlap(t *testing.T) {
 
 	m1ID := w.PlaceMonsterForTest(walkableNeighbor(t, w, me.Hex))
 
-	// A second cluster 4 hexes west of spawn — within CombatRadius of the first,
-	// so the two opposing pairs merge into one bubble.
-	bHex := mustWalkable(t, w, protocol.Hex{Q: -4, R: 0})
+	// A second cluster 4 hexes south of spawn — within CombatRadius of the
+	// first, so the two opposing pairs merge into one bubble.
+	bHex := mustWalkable(t, w, protocol.Hex{Q: 0, R: 4})
 	bID, _ := w.PlaceEntityForTest(bHex)
 	m2ID := w.PlaceMonsterForTest(walkableNeighbor(t, w, bHex))
 
@@ -325,9 +325,10 @@ func TestMonstersDoNotExtendBubbleReach(t *testing.T) {
 	// Keep the anchor well-fed so a chip hit never respawns (and relocates) it.
 	w.SetHPForTest(me.EntityID, 100000)
 
-	// West axis, clear of the lake around {5,-2} (mirrors TestPlayersExtendBubbleReach;
-	// the east axis threads water at ~{2,0}..{6,0} and would detour the chase). P at
-	// the origin, M1 one hex west (the seed bubble). M2 starts at {-8,0}; its lone
+	// West axis (mirrors TestPlayersExtendBubbleReach's south axis; the east
+	// axis threads generated water a few hexes out and would detour the
+	// chase). P at the origin, M1 one hex west (the seed bubble). M2 starts at
+	// {-8,0}; its lone
 	// chase step toward its nearest (only) player P lands it on {-7,0}: distance 6
 	// from M1 (a dropped monster↔monster edge) but 7 from P, so it must stay
 	// world-domain. The post-resolve distances are asserted below so the geometry
@@ -393,14 +394,14 @@ func TestPlayersExtendBubbleReach(t *testing.T) {
 
 	w.SetHPForTest(p1.EntityID, 100000)
 
-	// West axis, clear of the lake around {5,-2}. P1 at origin, M1 one hex west
-	// (the seed bubble). P2 at {-5,0} — distance 5 from P1, so a player↔player edge
-	// folds it in. M2 starts at {-11,0}; its chase step toward its nearest player
-	// (P2) lands it on {-10,0}: distance 5 from P2 but 10 from P1 and 9 from M1, so
-	// only P2's reach can pull it in.
-	m1ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: -1, R: 0}))
-	p2ID, _ := w.PlaceEntityForTest(mustWalkable(t, w, protocol.Hex{Q: -5, R: 0}))
-	m2ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: -11, R: 0}))
+	// South axis (an unbroken grass corridor on the generated map). P1 at
+	// origin, M1 one hex south (the seed bubble). P2 at {0,5} — distance 5 from
+	// P1, so a player↔player edge folds it in. M2 starts at {0,11}; its chase
+	// step toward its nearest player (P2) lands it on {0,10}: distance 5 from
+	// P2 but 10 from P1 and 9 from M1, so only P2's reach can pull it in.
+	m1ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: 0, R: 1}))
+	p2ID, _ := w.PlaceEntityForTest(mustWalkable(t, w, protocol.Hex{Q: 0, R: 5}))
+	m2ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: 0, R: 11}))
 
 	snap := step(t, w)
 

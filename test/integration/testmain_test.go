@@ -58,7 +58,7 @@ func startServerWithBubbleTuning(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, ticks)
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, 0xC0FFEE, 12, ticks)
 
 	world.SpawnMonsters(monsterCount)
 	go world.Run(t.Context())
@@ -89,7 +89,7 @@ func startServerWithGrace(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, disconnectGrace, ticks)
+	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, disconnectGrace, 0xC0FFEE, 12, ticks)
 
 	go world.Run(t.Context())
 
@@ -138,7 +138,7 @@ func startServerWithBubbleTuningAt(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, ticks)
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, 0xC0FFEE, 12, ticks)
 
 	for _, h := range hexes {
 		if !world.SpawnMonsterAt(h) {

@@ -58,7 +58,10 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 
 	ticks := hub.New()
-	world := game.NewWorld(cfg.TurnInterval, cfg.CombatPatience, cfg.BubblePoll, cfg.DisconnectGrace, ticks)
+	world := game.NewWorld(
+		cfg.TurnInterval, cfg.CombatPatience, cfg.BubblePoll, cfg.DisconnectGrace,
+		cfg.WorldSeed, cfg.WorldRadius, ticks,
+	)
 	world.SpawnMonsters(cfg.MonsterCount)
 
 	handler := server.New(server.Deps{

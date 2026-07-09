@@ -25,7 +25,7 @@ import {
   XPPerLevel,
 } from "./protocol.gen";
 import { EntityLayer } from "./render/entities";
-import { hexDistance, neighbor, pixelToHex } from "./render/hex";
+import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { buildMapLayer } from "./render/map";
 import { TurnTimer } from "./ui/timer";
 
@@ -55,6 +55,8 @@ export interface GameDebug {
   species: string;
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
+  /** The world container's screen offset — follows `me` so it stays centred. */
+  camera: { x: number; y: number };
   /** Runtime turn interval from the latest bundle, in ms. */
   intervalMs: number;
   /** Count of named heartbeat frames received — proves the keep-alive is observable. */
@@ -177,6 +179,7 @@ window.game = {
   class: "",
   species: "",
   me: null,
+  camera: { x: 0, y: 0 },
   intervalMs: 0,
   heartbeats: 0,
   get phase(): "playback" | "input" {
@@ -256,18 +259,26 @@ async function start(): Promise<void> {
   const world = new Container();
   app.stage.addChild(world);
 
-  const center = (): void => {
-    world.position.set(app.screen.width / 2, app.screen.height / 2);
-  };
-  center();
-  app.renderer.on("resize", center);
-
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
 
   const entityLayer = new EntityLayer(app.ticker);
   world.addChild(entityLayer.container);
+
+  // Camera follows my entity's *live* (per-frame interpolated) position rather
+  // than snapping to its hex once per turn, so the pan is as smooth as the
+  // sprite's own movement. Runs every frame after EntityLayer's tick (added
+  // first, so dot.current is already advanced this frame); reading app.screen
+  // each frame also keeps it centred across window resizes. Falls back to the
+  // origin until my dot exists (pre-join).
+  const updateCamera = (): void => {
+    const p = entityLayer.myPixel() ?? hexToPixel({ q: 0, r: 0 });
+    world.position.set(app.screen.width / 2 - p.x, app.screen.height / 2 - p.y);
+    window.game.camera = { x: world.position.x, y: world.position.y };
+  };
+  updateCamera();
+  app.ticker.add(updateCamera);
 
   const timer = new TurnTimer(app.ticker);
 

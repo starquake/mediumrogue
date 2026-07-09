@@ -43,6 +43,18 @@ const (
 // combat.
 const defaultDisconnectGrace = 20 * time.Second
 
+// World-generation defaults. A fixed seed regenerates the same world on every
+// restart (so planned homes stay put and tests reproduce); radius 24 ≈ 1,801
+// tiles — a roomy shared world for ~15 players.
+const (
+	defaultWorldSeed   = 0xC0FFEE
+	defaultWorldRadius = 24
+)
+
+// ErrNonPositiveRadius rejects a world radius below 1 — a zero/negative world
+// has no interior to spawn in.
+var ErrNonPositiveRadius = errors.New("WORLD_RADIUS must be positive")
+
 // Config is the fully resolved server configuration.
 type Config struct {
 	// Addr is the listen address, from LISTEN_ADDR.
@@ -69,6 +81,11 @@ type Config struct {
 	// DisconnectGrace is how long a disconnected player's entity lingers before
 	// the world sweeps it, from DISCONNECT_GRACE.
 	DisconnectGrace time.Duration
+	// WorldSeed seeds procedural map generation, from WORLD_SEED (accepts
+	// 0x… hex). A fixed default gives the same world across restarts.
+	WorldSeed uint64
+	// WorldRadius is the generated world's hex radius, from WORLD_RADIUS.
+	WorldRadius int
 }
 
 // Load reads configuration from the environment.
@@ -80,6 +97,8 @@ func Load() (*Config, error) {
 		CombatPatience:    defaultCombatPatience,
 		BubblePoll:        defaultBubblePoll,
 		DisconnectGrace:   defaultDisconnectGrace,
+		WorldSeed:         defaultWorldSeed,
+		WorldRadius:       defaultWorldRadius,
 	}
 
 	if err := overrideDuration(&cfg.TurnInterval, "TURN_INTERVAL"); err != nil {
@@ -104,6 +123,18 @@ func Load() (*Config, error) {
 
 	if err := overrideDuration(&cfg.DisconnectGrace, "DISCONNECT_GRACE"); err != nil {
 		return nil, err
+	}
+
+	if err := overrideUint64(&cfg.WorldSeed, "WORLD_SEED"); err != nil {
+		return nil, err
+	}
+
+	if err := overrideInt(&cfg.WorldRadius, "WORLD_RADIUS"); err != nil {
+		return nil, err
+	}
+
+	if cfg.WorldRadius < 1 {
+		return nil, fmt.Errorf("WORLD_RADIUS = %d: %w", cfg.WorldRadius, ErrNonPositiveRadius)
 	}
 
 	if cfg.BubblePoll >= cfg.TurnInterval {
@@ -138,6 +169,23 @@ func overrideDuration(dst *time.Duration, key string) error {
 	}
 
 	*dst = d
+
+	return nil
+}
+
+func overrideUint64(dst *uint64, key string) error {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+
+	// base 0 → accept decimal and 0x… hex seeds.
+	n, err := strconv.ParseUint(v, 0, 64)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", key, err)
+	}
+
+	*dst = n
 
 	return nil
 }

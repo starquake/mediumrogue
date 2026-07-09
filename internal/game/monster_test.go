@@ -22,6 +22,24 @@ func monsterHexes(snap protocol.TurnEvent) []protocol.Hex {
 	return hexes
 }
 
+// waterHex scans w's generated map for a TerrainWater tile and returns its
+// hex, failing the test if the map has none — the generator's biome mix is
+// tuned to always include water, so an empty scan means the map or tuning
+// changed underneath this test.
+func waterHex(t *testing.T, w *game.World) protocol.Hex {
+	t.Helper()
+
+	for _, tile := range w.Map().Tiles {
+		if tile.Terrain == protocol.TerrainWater {
+			return tile.Hex
+		}
+	}
+
+	t.Fatal("generated map has no TerrainWater tile")
+
+	return protocol.Hex{}
+}
+
 func sortedHexes(hexes []protocol.Hex) []protocol.Hex {
 	out := slices.Clone(hexes)
 	slices.SortFunc(out, func(a, b protocol.Hex) int {
@@ -78,10 +96,10 @@ func TestSpawnMonsterAtPlacesAndRejects(t *testing.T) {
 	t.Parallel()
 
 	walkable := protocol.Hex{Q: 1, R: 0}
-	water := protocol.Hex{Q: 5, R: -2} // lake center — TerrainWater, not walkable
 	full := protocol.Hex{Q: -1, R: 0}
 
 	w := newWorld()
+	water := waterHex(t, w) // a real TerrainWater hex on the generated map, not walkable
 
 	if !isWalkable(w, walkable) {
 		t.Fatalf("fixture hex %v is not walkable; pick another", walkable)

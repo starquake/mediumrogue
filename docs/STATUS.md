@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-09, after milestone-6b.3 species (human/elf/dwarf passives) — **milestone 6b complete**. Update this file at the end of
+*Last updated: 2026-07-09, after milestone-7 procgen (seeded noise-biome world, radius 24, camera-follow) — **milestone 6 era complete**. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -131,8 +131,22 @@ slices, each its own spec → plan → PR:
   `internal/protocol` constants. Passives are per-trait helpers for now — a
   scalable **combat modifier/rule pipeline** is planned with the gear slice (see
   §8 / the `combat-modifier-pipeline` note). **Milestone 6b complete.**
+- **7 procgen — DONE** (this PR): the static hand-shaped radius-12 map is replaced
+  by a **seeded procedural generator** (`GenerateMap(seed, radius)` in
+  `internal/game/worldgen.go`). Terrain comes from two deterministic **value-noise**
+  fields (elevation → water/land/mountain, moisture → forest/grass; no external
+  deps), on a larger **radius-24** world (~1,801 tiles), with a **rock rim** and a
+  **forced grass clearing at the origin**. Spawns are restricted to the origin's
+  **connected walkable region** (`reachableWalkable` BFS) so a player is never
+  stranded on an island/in water. `WORLD_SEED` (default `0xC0FFEE`) + `WORLD_RADIUS`
+  (default 24) are env knobs (threaded like `TURN_INTERVAL`); a fixed seed
+  regenerates the **same world every restart**. No protocol change — reuses
+  `MapResponse`. Client: the camera now **follows the player** (`world` container
+  pans to keep my entity centred; `window.game.camera`). Tunable constants:
+  `noiseScale`, `waterLevel` (0.30), `mountainLevel` (0.78), `forestLevel`,
+  `clearingRadius`. **Milestone 7 complete → milestone 6 era done.**
 
-After that (§8): **7 = procgen (NEXT)**, 8 = quests/parties/chat, 9 = shader filter, 10 = deploy.
+After that (§8): 8 = quests/parties/chat (**NEXT**), 9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 

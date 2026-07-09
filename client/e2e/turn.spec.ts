@@ -55,11 +55,11 @@ test("the hex world renders from server map data", async ({ page }) => {
   // The WebGL canvas is on the page.
   await expect(page.locator("canvas")).toBeVisible();
 
-  // The map arrived and every tile of the radius-12 hexagon is on stage:
-  // 3·r·(r+1)+1 = 469.
+  // The map arrived and every tile of the generated radius-24 hexagon (the
+  // default WORLD_RADIUS) is on stage: 3·r·(r+1)+1 = 1801.
   await expect
     .poll(() => page.evaluate(() => window.game.tiles), { timeout: 10_000 })
-    .toBe(469);
+    .toBe(1801);
 
   // Visual smoke check: the stage actually painted terrain, not a black
   // void — sample the screenshot for non-background pixels.
