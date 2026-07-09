@@ -40,19 +40,71 @@ func handleChat(deps Deps) http.Handler {
 			return
 		}
 
-		broadcast := text
-		if strings.HasPrefix(text, "/") {
-			out, err := chat.RunCommand(text, chat.Sender{Name: name, Hex: senderHex})
-			if err != nil {
-				respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
+		sender, broadcast := name, text
 
+		if strings.HasPrefix(text, "/") {
+			sender, broadcast, ok = routeChatCommand(w, deps, req, name, senderHex, text)
+			if !ok {
 				return
 			}
-
-			broadcast = out
 		}
 
-		deps.Chat.Publish(name, broadcast)
+		deps.Chat.Publish(sender, broadcast)
 		w.WriteHeader(http.StatusAccepted)
 	})
+}
+
+// systemSender labels chat announcements the server generates itself (party
+// invite/accept/leave), as opposed to a line a player typed.
+const systemSender = "system"
+
+// routeChatCommand runs a "/command" and returns the sender label to publish
+// under (systemSender for party ops, the player's own name otherwise) and the
+// text to broadcast. Party verbs (invite/accept/leave) go straight to World;
+// every other command runs through chat.RunCommand under the player's own
+// name. On failure it writes the error response itself and returns ok=false.
+func routeChatCommand(
+	w http.ResponseWriter, deps Deps, req protocol.ChatRequest, name string, senderHex protocol.Hex, text string,
+) (string, string, bool) {
+	verb, rest := cutVerb(text)
+
+	var (
+		sender string
+		out    string
+		err    error
+	)
+
+	switch verb {
+	case "invite":
+		sender = systemSender
+		out, err = deps.World.PartyInvite(req.Token, rest)
+	case "accept":
+		sender = systemSender
+		out, err = deps.World.PartyAccept(req.Token)
+	case "leave":
+		sender = systemSender
+		out, err = deps.World.PartyLeave(req.Token)
+	default:
+		sender = name
+		out, err = chat.RunCommand(text, chat.Sender{Name: name, Hex: senderHex})
+	}
+
+	if err != nil {
+		respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
+
+		return "", "", false
+	}
+
+	return sender, out, true
+}
+
+// cutVerb splits a "/verb rest…" chat command into a lower-cased verb and the
+// trimmed remainder (the remainder may contain spaces, e.g. a multi-word name).
+func cutVerb(text string) (string, string) {
+	body := strings.TrimSpace(strings.TrimPrefix(text, "/"))
+	if i := strings.IndexAny(body, " \t"); i >= 0 {
+		return strings.ToLower(body[:i]), strings.TrimSpace(body[i+1:])
+	}
+
+	return strings.ToLower(body), ""
 }
