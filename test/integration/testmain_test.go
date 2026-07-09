@@ -76,6 +76,36 @@ func startServerWithBubbleTuning(
 	return ts
 }
 
+// startServerWithGrace boots the handler tree with an explicit (short)
+// disconnectGrace so the disconnect sweep fires within a test — the rest of the
+// suite keeps the long testDisconnectGrace default and is never swept
+// mid-test. No monsters are spawned; a fast bubblePoll keeps the sweep (which
+// rides the control loop) checking promptly, and a long combatPatience stays
+// out of the way. Used by disconnect_test.go.
+func startServerWithGrace(
+	t *testing.T, turnInterval, heartbeatInterval, disconnectGrace time.Duration,
+) *httptest.Server {
+	t.Helper()
+
+	ticks := hub.New()
+
+	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, disconnectGrace, ticks)
+
+	go world.Run(t.Context())
+
+	handler := server.New(server.Deps{
+		Logger:            slog.New(slog.DiscardHandler),
+		World:             world,
+		Ticks:             ticks,
+		HeartbeatInterval: heartbeatInterval,
+	})
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	return ts
+}
+
 // startServerWithMonstersAt is startServerWithMonsters but places monsters at
 // caller-chosen hexes (via world.SpawnMonsterAt) instead of random world-seeded
 // positions. A chase test that seeds a monster at a KNOWN hex a couple steps
