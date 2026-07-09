@@ -22,6 +22,20 @@ import (
 // Task 5 adds sweep tests that thread a short grace explicitly.
 const testDisconnectGrace = time.Hour
 
+// newAnnouncingChatBroker builds a chat broker and wires it as world's
+// announce hook for in-resolution quest/party events, mirroring app.go's
+// production wiring (chat.NewBroker + World.SetAnnounce). Callers must call
+// this BEFORE world.Run: SetAnnounce's contract requires installing the hook
+// before the clock starts, so no early resolution's announcement can be lost
+// to the default no-op.
+func newAnnouncingChatBroker(world *game.World) *chat.Broker {
+	broker := chat.NewBroker()
+
+	world.SetAnnounce(func(sender, text string) { broker.Publish(sender, text) })
+
+	return broker
+}
+
 // startServer boots the full handler tree with a fast clock and returns the
 // test server. Everything shuts down via t.Cleanup / t.Context. No monsters
 // are spawned, so existing tests that assert on entity counts/behavior are
@@ -62,13 +76,15 @@ func startServerWithBubbleTuning(
 	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, 0xC0FFEE, 12, ticks)
 
 	world.SpawnMonsters(monsterCount)
+
+	chatBroker := newAnnouncingChatBroker(world)
 	go world.Run(t.Context())
 
 	handler := server.New(server.Deps{
 		Logger:            slog.New(slog.DiscardHandler),
 		World:             world,
 		Ticks:             ticks,
-		Chat:              chat.NewBroker(),
+		Chat:              chatBroker,
 		HeartbeatInterval: heartbeatInterval,
 	})
 
@@ -93,13 +109,14 @@ func startServerWithGrace(
 
 	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, disconnectGrace, 0xC0FFEE, 12, ticks)
 
+	chatBroker := newAnnouncingChatBroker(world)
 	go world.Run(t.Context())
 
 	handler := server.New(server.Deps{
 		Logger:            slog.New(slog.DiscardHandler),
 		World:             world,
 		Ticks:             ticks,
-		Chat:              chat.NewBroker(),
+		Chat:              chatBroker,
 		HeartbeatInterval: heartbeatInterval,
 	})
 
@@ -149,13 +166,14 @@ func startServerWithBubbleTuningAt(
 		}
 	}
 
+	chatBroker := newAnnouncingChatBroker(world)
 	go world.Run(t.Context())
 
 	handler := server.New(server.Deps{
 		Logger:            slog.New(slog.DiscardHandler),
 		World:             world,
 		Ticks:             ticks,
-		Chat:              chat.NewBroker(),
+		Chat:              chatBroker,
 		HeartbeatInterval: time.Hour,
 	})
 

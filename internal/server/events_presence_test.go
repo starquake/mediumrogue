@@ -37,13 +37,18 @@ func TestEventsTokenTracksPresence(t *testing.T) {
 	// Fast poll + short grace so the real-time disconnect sweep fires within the
 	// test; long combat patience keeps AFK resolution out of the way.
 	world := game.NewWorld(20*time.Millisecond, time.Minute, 5*time.Millisecond, grace, 0xC0FFEE, 12, ticks)
+
+	chatBroker := chat.NewBroker()
+
+	world.SetAnnounce(func(sender, text string) { chatBroker.Publish(sender, text) })
+
 	go world.Run(t.Context())
 
 	handler := server.New(server.Deps{
 		Logger:            slog.New(slog.DiscardHandler),
 		World:             world,
 		Ticks:             ticks,
-		Chat:              chat.NewBroker(),
+		Chat:              chatBroker,
 		HeartbeatInterval: time.Hour,
 	})
 	ts := httptest.NewServer(handler)

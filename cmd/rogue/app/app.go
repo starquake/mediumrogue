@@ -67,6 +67,8 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 
 	chatBroker := chat.NewBroker()
 
+	world.SetAnnounce(func(sender, text string) { chatBroker.Publish(sender, text) })
+
 	handler := server.New(server.Deps{
 		Logger:            logger,
 		World:             world,

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -84,6 +85,20 @@ func routeChatCommand(
 	case "leave":
 		sender = systemSender
 		out, err = deps.World.PartyLeave(req.Token)
+	case "quest":
+		sender = systemSender
+
+		id, perr := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
+		if perr != nil {
+			respondError(w, deps.Logger, http.StatusUnprocessableEntity, "usage: /quest <id>")
+
+			return "", "", false
+		}
+
+		out, err = deps.World.QuestTake(req.Token, id)
+	case "abandon":
+		sender = systemSender
+		out, err = deps.World.QuestAbandon(req.Token)
 	default:
 		sender = name
 		out, err = chat.RunCommand(text, chat.Sender{Name: name, Hex: senderHex})
