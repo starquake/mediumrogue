@@ -1,6 +1,15 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-09, after milestone 8.2 parties **merged to `main` (PR #28)** — invite/accept/leave party commands, `Entity.PartyID`, SolidJS `<RosterPanel>`, on-map partymate color. See the "Handoff note" below for the resume point. Update this file at the end of
+*Last updated: 2026-07-10, after milestone 8.3 quests landed — **milestone 8
+complete**. A seeded 6-quest board (3 kill 2–4 targets + 3 reach ≥8 hexes out,
+deterministic from `WORLD_SEED` with a tiny-world fallback), `/quest <id>` +
+`/abandon`, one-slot rules (joining a party abandons a personal quest;
+dissolve/sweep returns a quest to the board with progress reset), kill quests
+tick once-per-quest-per-turn via bubble presence, completion pays every
+current holder in full (the human +XP% passive applies), a `SetAnnounce`
+broker hook for quest chat announcements, and a SolidJS `<QuestPanel>`
+showing my quest + the board with XP rewards (XP jump visible in the stats
+HUD). Next per plan §8 is **9 shader filter**. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -206,20 +215,55 @@ slices, each its own spec → plan → PR:
   accept → roster (2 members, matching non-zero party id) → leave → roster
   gone).
 
-Next: **8.3 quests** (quest log UI, quest invites building on the party
-membership + the `/`-command registry). After that: 9 = shader filter,
-10 = deploy; then late tooling **11 = live admin/difficulty console** and
-**12 = combat/move analytics log** (see plan §8.11–12).
+- **8.3 quests — DONE** (this PR): a seeded 6-quest board,
+  `internal/game/quest.go` — 3 **kill** quests (slay 2–4 monsters, reward
+  `N * MonsterXP`) and 3 **reach** quests (stand on a goal hex ≥8 hexes from
+  spawn, reward a flat `questReachRewardXP`), generated deterministically from
+  `WORLD_SEED` (sorted candidate lists before the seeded pick, so board order
+  never depends on map iteration order) with a fallback for tiny test worlds
+  that can't find a hex 8 away. Two new `/`-registry verbs: **`/quest <id>`**
+  takes an available quest (solo or for your whole party) and **`/abandon`**
+  drops your current one. **One quest slot** per player/party: taking a new
+  quest 422s while you hold one; joining a party (`/accept`) auto-abandons a
+  personal quest first; a party's quest returns to the board (progress reset)
+  when the party dissolves below 2 or the disconnect sweep removes a holder.
+  Kill quests tick **once per quest per turn** via existing combat-bubble
+  presence (no separate kill-tracking pass); reach quests are checked after
+  movement resolution. **Completion pays every current holder in full** — the
+  human `+XP%` passive applies per holder, `syncMaxHPLocked` runs, and a new
+  `World.SetAnnounce(fn)` hook (installed once at server wiring; called from
+  inside the world lock, safe because the underlying chat publish is
+  non-blocking) broadcasts a "Quest complete: … — NAMES gain N XP" system
+  chat line (also used for the "quest returned to the board" line on
+  dissolve/sweep). Client: a third SolidJS component, `<QuestPanel>`
+  (`client/src/quest/QuestPanel.tsx`, mounted into `#quest-root`), renders
+  `#quest-mine` (my active quest, objective + reward XP) and `#quest-board`
+  (remaining available quests) from a small store (`client/src/quest/store.ts`)
+  refreshed every turn bundle (`TurnEvent.Quests`, full-snapshot, no separate
+  stream). `window.game.{quest,quests}` exposed for tests; the XP jump on
+  completion is visible both in `window.game.xp` and the `#stats` HUD text.
+  **Deferred**: the board depletes (completed quests stay completed) —
+  repeatable quests arrive later alongside continuous monster spawning.
+  Covered by unit tests (board determinism, take/abandon/one-slot,
+  join-abandons-personal, dissolve/sweep-returns-to-board, kill tick
+  once-per-turn, reach completion, full-party payout with human bonus), a
+  chat-command integration test, and `client/e2e/quests.spec.ts` (dwarf join →
+  take the closest reach quest → walk to its goal → completion → exact XP
+  jump + `#stats` change + "Quest complete" chat line).
 
-**Handoff note (2026-07-09):** 8.1 (PR #26) and 8.2 (PR #28) are **merged to
-`main`**; working tree clean, on `main`. **8.3 quests has NOT been designed
-yet** — the next session should *brainstorm → spec → plan → build* per the
-milestone-slice workflow (see the `milestone-slice-workflow` memory). The open
-quest decisions to settle first are in plan §9: does a late joiner get full
-party-quest progress/rewards, what happens to a quest when members leave/die,
-and can one player run multiple quests at once. Also recorded but not built:
-the two tooling milestones above, and a **selected-path preview** render item
-(plan §6 — show my own route: goal + every hex, local-only).
+**Milestone 8 (quests, parties & chat) is complete.** Next per plan §8 is
+**9 = shader filter**, then 10 = deploy; then late tooling **11 = live
+admin/difficulty console** and **12 = combat/move analytics log** (see plan
+§8.11–12).
+
+**Handoff note (2026-07-10):** 8.1 (PR #26), 8.2 (PR #28), and 8.3 (this PR)
+are landed; milestone 8 is done. The plan §9 party-quest-membership open
+decision is now settled (full pay-at-completion to every current holder;
+joining a party abandons a personal quest; one quest slot per
+player/party; dissolve/sweep returns a quest to the board with progress
+reset) — see plan §9. Also recorded but not built: the two tooling
+milestones above, and a **selected-path preview** render item (plan §6 —
+show my own route: goal + every hex, local-only).
 
 ## Known placeholders / debt (all deliberate)
 
