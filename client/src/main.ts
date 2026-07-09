@@ -25,7 +25,7 @@ import {
   XPPerLevel,
 } from "./protocol.gen";
 import { EntityLayer } from "./render/entities";
-import { hexDistance, neighbor, pixelToHex } from "./render/hex";
+import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { buildMapLayer } from "./render/map";
 import { TurnTimer } from "./ui/timer";
 
@@ -55,6 +55,8 @@ export interface GameDebug {
   species: string;
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
+  /** The world container's screen offset — follows `me` so it stays centred. */
+  camera: { x: number; y: number };
   /** Runtime turn interval from the latest bundle, in ms. */
   intervalMs: number;
   /** Count of named heartbeat frames received — proves the keep-alive is observable. */
@@ -177,6 +179,7 @@ window.game = {
   class: "",
   species: "",
   me: null,
+  camera: { x: 0, y: 0 },
   intervalMs: 0,
   heartbeats: 0,
   get phase(): "playback" | "input" {
@@ -256,11 +259,16 @@ async function start(): Promise<void> {
   const world = new Container();
   app.stage.addChild(world);
 
-  const center = (): void => {
-    world.position.set(app.screen.width / 2, app.screen.height / 2);
+  // Camera: keep my entity centred on screen by offsetting the world container
+  // by -hexToPixel(myHex). Falls back to the origin before my hex is known.
+  let camHex: Hex = { q: 0, r: 0 };
+  const centerCamera = (): void => {
+    const p = hexToPixel(camHex);
+    world.position.set(app.screen.width / 2 - p.x, app.screen.height / 2 - p.y);
+    window.game.camera = { x: world.position.x, y: world.position.y };
   };
-  center();
-  app.renderer.on("resize", center);
+  centerCamera();
+  app.renderer.on("resize", centerCamera);
 
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
@@ -369,6 +377,8 @@ async function start(): Promise<void> {
       const mine = event.entities.find((e) => e.id === me.entityId);
       if (mine !== undefined && window.game.me !== null) {
         window.game.me.hex = mine.hex;
+        camHex = mine.hex;
+        centerCamera();
         // Arrived at the destination → clear it.
         if (
           window.game.destination !== null &&
