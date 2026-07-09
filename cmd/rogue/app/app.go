@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/starquake/mediumrogue/internal/chat"
 	"github.com/starquake/mediumrogue/internal/config"
 	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/hub"
@@ -64,10 +65,13 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	)
 	world.SpawnMonsters(cfg.MonsterCount)
 
+	chatBroker := chat.NewBroker()
+
 	handler := server.New(server.Deps{
 		Logger:            logger,
 		World:             world,
 		Ticks:             ticks,
+		Chat:              chatBroker,
 		HeartbeatInterval: cfg.HeartbeatInterval,
 	})
 

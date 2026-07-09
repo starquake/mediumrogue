@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/starquake/mediumrogue/internal/chat"
 	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -67,6 +68,7 @@ func startServerWithBubbleTuning(
 		Logger:            slog.New(slog.DiscardHandler),
 		World:             world,
 		Ticks:             ticks,
+		Chat:              chat.NewBroker(),
 		HeartbeatInterval: heartbeatInterval,
 	})
 
@@ -97,6 +99,7 @@ func startServerWithGrace(
 		Logger:            slog.New(slog.DiscardHandler),
 		World:             world,
 		Ticks:             ticks,
+		Chat:              chat.NewBroker(),
 		HeartbeatInterval: heartbeatInterval,
 	})
 
@@ -152,6 +155,7 @@ func startServerWithBubbleTuningAt(
 		Logger:            slog.New(slog.DiscardHandler),
 		World:             world,
 		Ticks:             ticks,
+		Chat:              chat.NewBroker(),
 		HeartbeatInterval: time.Hour,
 	})
 
