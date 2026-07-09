@@ -60,6 +60,13 @@ const (
 	ClassMage    = "mage"
 )
 
+// Intent kinds: the type of an IntentRequest. An empty Kind is treated as
+// IntentMove for backward compatibility.
+const (
+	IntentMove   = "move"
+	IntentAttack = "attack"
+)
+
 // Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
 // the client can show health bars once combat (6.3) starts changing it.
 const (
