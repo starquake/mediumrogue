@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -148,5 +149,50 @@ func TestLoadRejectsBubblePollNotBelowInterval(t *testing.T) {
 
 	if _, err := config.Load(); err == nil {
 		t.Fatal("Load() accepted BUBBLE_POLL equal to TURN_INTERVAL")
+	}
+}
+
+func TestLoadWorldDefaults(t *testing.T) {
+	t.Setenv("WORLD_SEED", "")
+	t.Setenv("WORLD_RADIUS", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got, want := cfg.WorldSeed, uint64(0xC0FFEE); got != want {
+		t.Errorf("WorldSeed = %#x, want %#x", got, want)
+	}
+
+	if got, want := cfg.WorldRadius, 24; got != want {
+		t.Errorf("WorldRadius = %d, want %d", got, want)
+	}
+}
+
+func TestLoadWorldOverrides(t *testing.T) {
+	t.Setenv("WORLD_SEED", "0x2A")
+	t.Setenv("WORLD_RADIUS", "10")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got, want := cfg.WorldSeed, uint64(42); got != want {
+		t.Errorf("WorldSeed = %d, want %d", got, want)
+	}
+
+	if got, want := cfg.WorldRadius, 10; got != want {
+		t.Errorf("WorldRadius = %d, want %d", got, want)
+	}
+}
+
+func TestLoadRejectsNonPositiveRadius(t *testing.T) {
+	t.Setenv("WORLD_RADIUS", "0")
+
+	_, err := config.Load()
+	if got, want := err, config.ErrNonPositiveRadius; !errors.Is(got, want) {
+		t.Errorf("err = %v, want %v", got, want)
 	}
 }
