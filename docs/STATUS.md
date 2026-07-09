@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-09, after milestone 8.1 chat (global ephemeral chat over SSE, SolidJS `<ChatPanel>`, name-at-join, `/here` command). Update this file at the end of
+*Last updated: 2026-07-09, after milestone 8.2 parties (invite/accept/leave party commands, `Entity.PartyID`, SolidJS `<RosterPanel>`, on-map partymate color). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -176,8 +176,38 @@ slices, each its own spec → plan → PR:
   `client/e2e/chat.spec.ts` (two-client delivery, `/here`, the readable
   unknown-command line, and a pointer-events-overlay regression guard).
 
-Next: **8.2 parties** (party membership, invites, then quest log UI). After
-that: 9 = shader filter, 10 = deploy.
+- **8.2 parties — DONE** (this PR): party membership via chat commands, no new
+  UI beyond a roster panel. `Entity.PartyID` (0 = solo, minted per-party via
+  `nextPartyID`) rides the existing turn bundle — no separate party stream.
+  Three commands added to the `/`-registry (`internal/game/party.go`):
+  **`/invite <name>`** records a pending invite to the **nearest** player
+  named `<name>` **excluding the sender** (`nearestPlayerByNameLocked`, ties
+  broken by lowest entity id) and broadcasts a chat announcement telling the
+  target to `/accept`; **`/accept`** joins the accepter into the inviter's
+  party (minting a new party id if the inviter was solo); **`/leave`** removes
+  the caller from their party. A party is **≥ 2 members**: `leavePartyLocked`
+  clears every remaining member's party id too if a leave/accept-elsewhere
+  drops it below 2 — so a party never lingers at size 1. Party membership
+  **persists across death** (only `/leave` or the disconnect sweep clears it)
+  and the disconnect sweep purges both a swept player's party membership and
+  any pending invites naming them (`world.go`). All three commands 422 with a
+  readable message on failure (not joined, no such player, invite yourself,
+  no/expired pending invite, already in that party, not in a party). Client:
+  a second SolidJS component, `<RosterPanel>` (`client/src/party/RosterPanel.tsx`,
+  mounted into `#roster-root`), renders `#roster-panel` with one
+  `.roster-member` line per name — hidden entirely (via `<Show>`) while solo.
+  Partymates render in a distinct on-map color (`PARTY_COLOR` in
+  `client/src/render/entities.ts`, keyed off `partyId` matching mine, self
+  excluded). `window.game.{party,partyId}` exposed for tests. **Deferred**:
+  shared movement/waypoints, party perks/buffs, and a party leader role — see
+  the plan §8/§9 notes. Covered by unit tests (invite/accept/leave, dissolve
+  at <2, nearest-match determinism, disconnect-sweep purge), a chat-command
+  integration test, and `client/e2e/parties.spec.ts` (two-client invite →
+  accept → roster (2 members, matching non-zero party id) → leave → roster
+  gone).
+
+Next: **8.3 quests** (quest log UI, quest invites building on the party
+channel). After that: 9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 

@@ -5,6 +5,7 @@ import { hexToPixel, HEX_SIZE, type Point } from "./hex";
 
 const OTHER_COLOR = 0xc8b458;
 const ME_COLOR = 0x8fd0ff;
+const PARTY_COLOR = 0x8fe08f;
 const MONSTER_COLOR = 0xd6544f;
 const HP_BAR_BG = 0x1a1f1a;
 const HP_BAR_FG = 0x4fd66c;
@@ -36,6 +37,7 @@ interface Dot {
   duration: number;
   mine: boolean;
   hostile: boolean;
+  partymate: boolean;
   hp: number;
   maxHp: number;
   inCombat: boolean;
@@ -59,7 +61,7 @@ export class EntityLayer {
     ticker.add(this.tick);
   }
 
-  update(entities: Entity[], myEntityID: number, playbackMs: number): void {
+  update(entities: Entity[], myEntityID: number, myPartyID: number, playbackMs: number): void {
     const present = new Set<number>();
 
     for (const e of entities) {
@@ -70,6 +72,7 @@ export class EntityLayer {
       // Anything not a player renders hostile — an unknown kind is safer shown
       // as a monster than mistaken for a friendly player (per the protocol doc).
       const hostile = e.kind !== EntityPlayer;
+      const partymate = e.partyId !== 0 && e.partyId === myPartyID && e.id !== myEntityID;
       let dot = this.dots.get(e.id);
 
       if (dot === undefined) {
@@ -89,6 +92,7 @@ export class EntityLayer {
           duration: 0,
           mine,
           hostile,
+          partymate,
           hp: e.hp,
           maxHp: e.maxHp,
           inCombat: e.inCombat,
@@ -102,6 +106,7 @@ export class EntityLayer {
         dot.duration = playbackMs;
         dot.mine = mine;
         dot.hostile = hostile;
+        dot.partymate = partymate;
         dot.hp = e.hp;
         dot.maxHp = e.maxHp;
         dot.inCombat = e.inCombat;
@@ -195,7 +200,13 @@ export class EntityLayer {
 
   private drawDot(dot: Dot): void {
     const { x, y } = dot.current;
-    const color = dot.hostile ? MONSTER_COLOR : dot.mine ? ME_COLOR : OTHER_COLOR;
+    const color = dot.hostile
+      ? MONSTER_COLOR
+      : dot.mine
+        ? ME_COLOR
+        : dot.partymate
+          ? PARTY_COLOR
+          : OTHER_COLOR;
     dot.gfx
       .clear()
       .circle(x, y, HEX_SIZE * 0.45)

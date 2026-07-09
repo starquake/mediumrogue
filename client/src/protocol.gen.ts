@@ -320,6 +320,12 @@ export interface Entity {
    * Name is the player's display name; empty for monsters.
    */
   name: string;
+  /**
+   * PartyID groups players into a party (≥2 members share a non-zero id);
+   * 0 means solo. Monsters are always 0. The roster and on-map partymate
+   * coloring are derived client-side by grouping entities on this.
+   */
+  partyId: number /* int64 */;
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its
