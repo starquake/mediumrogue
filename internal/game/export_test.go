@@ -314,3 +314,15 @@ func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
 
 	return weaponDamage(w, level), w.rangeHex, w.aoeRadius, ok
 }
+
+// ReachableWalkableForTest exposes reachableWalkable — the origin-connected
+// walkable BFS — so a black-box test can assert on the spawnable region.
+func ReachableWalkableForTest(m protocol.MapResponse) map[protocol.Hex]bool {
+	return reachableWalkable(m)
+}
+
+// TileCountForTest exposes tileCount, the closed-form hexagon tile count, so
+// a black-box test can assert map size without duplicating the formula.
+func TileCountForTest(radius int) int {
+	return tileCount(radius)
+}
