@@ -281,6 +281,37 @@
       #chat-form button:hover {
         background: #2a3d2b;
       }
+      /* Roster overlay: mirrors #chat-root's click-through discipline — the
+         root spans a corner of the viewport but only the visible panel
+         re-enables pointer events, so empty overlay space still passes clicks
+         through to the map. Placed top-right-ish, well clear of the bottom-
+         left chat and the top-right class/species pickers. */
+      #roster-root {
+        position: fixed;
+        top: 8rem;
+        right: 1rem;
+        z-index: 10;
+        pointer-events: none;
+      }
+      #roster-panel {
+        pointer-events: auto;
+        width: 10rem;
+        background: rgba(11, 15, 11, 0.85);
+        border: 1px solid var(--dim);
+        padding: 0.4rem 0.6rem;
+        text-shadow: 0 1px 2px #000;
+      }
+      #roster-title {
+        margin-bottom: 0.25rem;
+        color: var(--dim);
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      .roster-member {
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
     </style>
   </head>
   <body>
@@ -311,6 +342,7 @@
       <input id="name-input" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />
     </div>
     <div id="chat-root"></div>
+    <div id="roster-root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -11,6 +11,8 @@ import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
 import { fetchMap } from "./net/map";
 import { join, loadIdentity, submitIntent } from "./net/session";
+import { mountRoster } from "./party/RosterPanel";
+import { setParty } from "./party/store";
 import type { Hex, TurnEvent } from "./protocol.gen";
 import {
   BowRange,
@@ -89,6 +91,10 @@ export interface GameDebug {
   chat: { seq: number; sender: string; text: string }[];
   /** Send a chat line as if typed into the panel (drives e2e). */
   sendChat: (text: string) => Promise<void>;
+  /** Names of MY party's members (including me), from the latest bundle. Empty when solo. */
+  party: string[];
+  /** This client's entity's party id, from the latest bundle. 0 when solo. */
+  partyId: number;
 }
 
 declare global {
@@ -230,6 +236,8 @@ window.game = {
     return chatMessages();
   },
   sendChat: (text: string): Promise<void> => storeSendChat(text),
+  party: [],
+  partyId: 0,
 };
 
 /** The ranged weapon range for a class, or null for a class with no ranged weapon (fighter). */
@@ -282,6 +290,7 @@ async function start(): Promise<void> {
   namePickerEl.hidden = !isNewPlayer;
 
   mountChat(mustGet("chat-root"));
+  mountRoster(mustGet("roster-root"));
 
   const app = new Application();
   await app.init({ background: "#0b0f0b", resizeTo: window, antialias: true });
@@ -434,6 +443,16 @@ async function start(): Promise<void> {
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
       }
 
+      // Party roster: refreshed every turn from the bundle itself (no separate
+      // party-membership stream) — solo (partyId 0) always renders an empty
+      // roster, so the panel simply doesn't show.
+      const myPartyId = mine?.partyId ?? 0;
+      const partyNames =
+        myPartyId === 0 ? [] : event.entities.filter((e) => e.partyId === myPartyId).map((e) => e.name);
+      setParty(partyNames);
+      window.game.party = partyNames;
+      window.game.partyId = myPartyId;
+
       // Absent from this bundle: either a coalesced/momentary blip (ignore —
       // see MISSING_GRACE_MS) or the disconnect-grace sweep really removed
       // this entity (the player was gone too long) — re-join once the
@@ -472,7 +491,7 @@ async function start(): Promise<void> {
         turnTimerEl.hidden = false;
       }
 
-      entityLayer.update(event.entities, me.entityId, playbackMs);
+      entityLayer.update(event.entities, me.entityId, mine?.partyId ?? 0, playbackMs);
       timer.onTurn(event.intervalMs, playbackMs);
     },
     onConnectionChange: (connected: boolean): void => {
