@@ -228,6 +228,10 @@ type Entity struct {
 	Level int `json:"level"`
 	// Name is the player's display name; empty for monsters.
 	Name string `json:"name"`
+	// PartyID groups players into a party (≥2 members share a non-zero id);
+	// 0 means solo. Monsters are always 0. The roster and on-map partymate
+	// coloring are derived client-side by grouping entities on this.
+	PartyID int64 `json:"partyId"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its
