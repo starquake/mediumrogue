@@ -116,6 +116,9 @@ func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	e := &entity{
 		id: w.nextID, hex: hex, token: token,
 		kind: protocol.EntityPlayer, class: protocol.ClassFighter, hp: maxHP, maxHP: maxHP,
+		// A placed player stands in for a live, connected one: give it an open
+		// stream so the disconnect sweep never removes it out from under a test.
+		streams: 1, disconnectedAt: w.now(),
 	}
 	w.entities[e.id] = e
 	w.byToken[token] = e
@@ -234,6 +237,51 @@ func (w *World) ResolveCombatOnlyForTest() {
 	w.resolveDeathsLocked(members)
 
 	w.turn++
+}
+
+// SetDisconnectGraceForTest overrides the disconnect grace so a presence test can
+// drive the sweep after a short, hand-advanced interval instead of the default.
+func (w *World) SetDisconnectGraceForTest(d time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.disconnectGrace = d
+}
+
+// SweepForTest runs the disconnect sweep at now and reports whether it removed
+// any entity, so a test can drive removal without the control-loop goroutine.
+func (w *World) SweepForTest(now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.sweepDisconnectedLocked(now)
+}
+
+// StreamsForTest returns the live stream count for the entity with token, or -1
+// if no entity has that token, so a presence test can assert the bookkeeping and
+// distinguish "zero streams" from "swept away".
+func (w *World) StreamsForTest(token string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.byToken[token]; ok {
+		return e.streams
+	}
+
+	return -1
+}
+
+// DisconnectedAtForTest returns the entity's removal-grace clock start and
+// whether an entity with token exists, so a test can assert the stamp.
+func (w *World) DisconnectedAtForTest(token string) (time.Time, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.byToken[token]; ok {
+		return e.disconnectedAt, true
+	}
+
+	return time.Time{}, false
 }
 
 // MaxHPForTest exposes the class/level max-HP helper so a test can assert the
