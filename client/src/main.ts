@@ -7,11 +7,23 @@ import { Application, Container } from "pixi.js";
 import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import { fetchMap } from "./net/map";
-import { join, submitIntent } from "./net/session";
+import { join, loadIdentity, persistConfirmedClass, submitIntent } from "./net/session";
 import type { Hex, TurnEvent } from "./protocol.gen";
-import { EntityMonster, PlaybackSeconds, TurnSeconds, XPPerLevel } from "./protocol.gen";
+import {
+  BowRange,
+  ClassFighter,
+  ClassMage,
+  ClassRogue,
+  EntityMonster,
+  IntentAttack,
+  IntentMove,
+  MageRange,
+  PlaybackSeconds,
+  TurnSeconds,
+  XPPerLevel,
+} from "./protocol.gen";
 import { EntityLayer } from "./render/entities";
-import { neighbor, pixelToHex } from "./render/hex";
+import { hexDistance, neighbor, pixelToHex } from "./render/hex";
 import { buildMapLayer } from "./render/map";
 import { TurnTimer } from "./ui/timer";
 
@@ -35,6 +47,8 @@ export interface GameDebug {
   xp: number;
   /** This client's entity's level, from the latest bundle. 1 until joined. */
   level: number;
+  /** This client's entity's class ("fighter"/"rogue"/"mage"), from the latest bundle. "" until joined. */
+  class: string;
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
   /** Runtime turn interval from the latest bundle, in ms. */
@@ -85,6 +99,29 @@ const turnTimerEl = mustGet("turn-timer");
 const combatPanelEl = mustGet("combat-panel");
 const combatWaitingEl = mustGet("combat-waiting");
 const combatPatienceEl = mustGet("combat-patience");
+const classPickerEl = mustGet("class-picker");
+const classButtons = Array.from(classPickerEl.querySelectorAll<HTMLButtonElement>("button[data-class]"));
+
+// Class picker: a brand-new player (no stored identity) sees this while the
+// map/engine load, giving a real window to click before the join call fires
+// — a returning player's token already fixes their class server-side (the
+// server ignores Class on a token match), so the picker never shows for
+// them. Nothing needs to be clicked: the join always fires once assets are
+// ready, using whichever class is currently selected (Fighter by default) —
+// this keeps a fresh page load joining promptly even if no one ever clicks.
+let selectedClass: string = ClassFighter;
+
+function selectClass(cls: string): void {
+  selectedClass = cls;
+  for (const btn of classButtons) {
+    btn.classList.toggle("selected", btn.dataset["class"] === cls);
+  }
+}
+
+for (const btn of classButtons) {
+  btn.addEventListener("click", () => selectClass(btn.dataset["class"] ?? ClassFighter));
+}
+selectClass(ClassFighter);
 
 // Turn-phase timing, tracked from wall-clock (performance.now) and reset on
 // each turn bundle. window.game.phase is computed on read from these, so it
@@ -106,6 +143,7 @@ window.game = {
   hp: {},
   xp: 0,
   level: 1,
+  class: "",
   me: null,
   intervalMs: 0,
   heartbeats: 0,
@@ -131,7 +169,53 @@ window.game = {
   tapHex: (): Promise<void> => Promise.resolve(),
 };
 
+/** The ranged weapon range for a class, or null for a class with no ranged weapon (fighter). */
+function rangedRangeFor(cls: string): number | null {
+  if (cls === ClassRogue) {
+    return BowRange;
+  }
+  if (cls === ClassMage) {
+    return MageRange;
+  }
+
+  return null;
+}
+
+/**
+ * Decides whether a click on `target` should fire a ranged attack instead of
+ * a move. Out of combat, or my class has no ranged weapon (fighter): always
+ * a move. In combat with a ranged class: a rogue's bow only fires at a
+ * hostile actually standing on the clicked hex, within BowRange — any other
+ * click there still walks (mirrors the melee-bump flow). A mage's AoE magic
+ * can be aimed at any hex within MageRange — the blast can land on empty
+ * ground and still catch nearby hostiles — so any in-range click attacks.
+ * Reads window.game (the same state the debug/test surface exposes) rather
+ * than closed-over locals, so it stays correct regardless of when it's called.
+ */
+function isRangedAttackClick(target: Hex): boolean {
+  if (!window.game.inCombat) {
+    return false;
+  }
+  const range = rangedRangeFor(window.game.class);
+  const me = window.game.me;
+  if (range === null || me === null || hexDistance(me.hex, target) > range) {
+    return false;
+  }
+  if (window.game.class === ClassMage) {
+    return true;
+  }
+
+  return window.game.positions.some(
+    (p) => p.kind === EntityMonster && p.hex.q === target.q && p.hex.r === target.r,
+  );
+}
+
 async function start(): Promise<void> {
+  // A brand-new player (no stored identity yet) gets the picker while the
+  // map/engine load below — a real window to choose before join() fires.
+  const isNewPlayer = loadIdentity() === null;
+  classPickerEl.hidden = !isNewPlayer;
+
   const app = new Application();
   await app.init({ background: "#0b0f0b", resizeTo: window, antialias: true });
   document.body.appendChild(app.canvas);
@@ -154,18 +238,23 @@ async function start(): Promise<void> {
 
   const timer = new TurnTimer(app.ticker);
 
-  const me = await join();
+  // The join always fires now, click or not — whichever class is currently
+  // selected (Fighter by default) is what's sent; a returning player's
+  // stored class overrides this regardless (join() itself resends their
+  // token, and the server ignores Class on a token match).
+  classPickerEl.hidden = true;
+  const me = await join(selectedClass);
   window.game.me = { id: me.entityId, hex: me.hex };
   const identity = { entityId: me.entityId, token: me.token };
 
-  // walkTo submits a destination and records it for the HUD/tests. The world's
-  // answer (movement) only ever arrives via turn bundles. A rejected target
-  // (unwalkable / unreachable) never becomes a pending walk, so clear it —
-  // unless a newer walkTo has already replaced the destination in the meantime.
+  // walkTo submits a move destination and records it for the HUD/tests. The
+  // world's answer (movement) only ever arrives via turn bundles. A rejected
+  // target (unwalkable / unreachable) never becomes a pending walk, so clear
+  // it — unless a newer walkTo has already replaced the destination meanwhile.
   const walkTo = (target: Hex): Promise<void> => {
     window.game.destination = target;
 
-    return submitIntent(identity, target).then((accepted) => {
+    return submitIntent(identity, target, IntentMove).then((accepted) => {
       const pending = window.game.destination;
       if (!accepted && pending !== null && pending.q === target.q && pending.r === target.r) {
         window.game.destination = null;
@@ -173,7 +262,20 @@ async function start(): Promise<void> {
     });
   };
 
-  window.game.tapHex = (q, r): Promise<void> => walkTo({ q, r });
+  // attackAt fires a ranged attack intent at target: no destination bookkeeping
+  // (the attacker doesn't move onto it), just submit and let the turn bundle's
+  // HP changes speak for the result.
+  const attackAt = (target: Hex): Promise<void> => submitIntent(identity, target, IntentAttack).then(() => undefined);
+
+  // clickTarget is the single decision point shared by canvas clicks and
+  // window.game.tapHex, so tapHex genuinely mirrors "as if the hex were
+  // clicked" (including the ranged-attack UX) for tests. Out of combat, or
+  // for a class with no ranged weapon, this is always a move — identical to
+  // the pre-classes behavior.
+  const clickTarget = (target: Hex): Promise<void> =>
+    isRangedAttackClick(target) ? attackAt(target) : walkTo(target);
+
+  window.game.tapHex = (q, r): Promise<void> => clickTarget({ q, r });
 
   connectEvents({
     onTurn: (event: TurnEvent): void => {
@@ -204,6 +306,8 @@ async function start(): Promise<void> {
 
         window.game.xp = mine.xp;
         window.game.level = mine.level;
+        window.game.class = mine.class;
+        persistConfirmedClass(mine.class);
         const xpIntoLevel = mine.xp % XPPerLevel;
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
       }
@@ -252,8 +356,10 @@ async function start(): Promise<void> {
     },
   });
 
-  // Click-to-move: canvas point → world point (undo the centering translate) →
-  // hex → destination.
+  // Click-to-move (or, in combat with a ranged class, click-to-attack): canvas
+  // point → world point (undo the centering translate) → hex → clickTarget's
+  // move-vs-attack decision. A small cursor affordance previews which one a
+  // hover would trigger.
   app.canvas.addEventListener("pointerdown", (ev: PointerEvent): void => {
     if (ev.button !== 0) {
       return;
@@ -262,7 +368,14 @@ async function start(): Promise<void> {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
-    walkTo(pixelToHex({ x: worldX, y: worldY }));
+    clickTarget(pixelToHex({ x: worldX, y: worldY }));
+  });
+
+  app.canvas.addEventListener("pointermove", (ev: PointerEvent): void => {
+    const rect = app.canvas.getBoundingClientRect();
+    const worldX = ev.clientX - rect.left - world.position.x;
+    const worldY = ev.clientY - rect.top - world.position.y;
+    app.canvas.style.cursor = isRangedAttackClick(pixelToHex({ x: worldX, y: worldY })) ? "crosshair" : "default";
   });
 }
 

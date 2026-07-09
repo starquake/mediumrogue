@@ -5,9 +5,16 @@ const STORAGE_KEY = "mediumrogue.identity";
 export interface Identity {
   entityId: number;
   token: string;
+  /** The class this identity joined/rejoined as — "" for identities stored before 6b.2. */
+  class: string;
 }
 
-function storedIdentity(): Identity | null {
+/**
+ * Reads the persisted identity, if any. Exported so callers (the class
+ * picker) can tell a brand-new player (no identity yet) from a returning one
+ * without duplicating the localStorage/JSON-parse dance.
+ */
+export function loadIdentity(): Identity | null {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw === null) {
     return null;
@@ -21,13 +28,15 @@ function storedIdentity(): Identity | null {
 
 /**
  * Claims an entity: re-sends the stored token so a page refresh keeps the
- * same character, and stores whatever identity the server answers with (a
- * stale token after a server restart just becomes a fresh entity).
+ * same character (and the same class — the server ignores Class entirely on
+ * a token match, so a returning player's stored class always wins over
+ * whatever the picker currently has selected), and stores whatever identity
+ * the server answers with (a stale token after a server restart just becomes
+ * a fresh entity, joined as `chosenClass`).
  */
-export async function join(): Promise<JoinResponse> {
-  // class "" lets the server pick the backward-compatible default (Fighter);
-  // the class-picker UX that sends a real choice lands in the client task.
-  const body: JoinRequest = { token: storedIdentity()?.token ?? "", class: "" };
+export async function join(chosenClass: string): Promise<JoinResponse> {
+  const stored = loadIdentity();
+  const body: JoinRequest = { token: stored?.token ?? "", class: stored?.class ?? chosenClass };
   const resp = await fetch("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -38,22 +47,45 @@ export async function join(): Promise<JoinResponse> {
   }
 
   const joined = (await resp.json()) as JoinResponse;
-  const identity: Identity = { entityId: joined.entityId, token: joined.token };
+  const identity: Identity = {
+    entityId: joined.entityId,
+    token: joined.token,
+    class: stored?.class ?? chosenClass,
+  };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
 
   return joined;
 }
 
 /**
- * Queues "step to target" for the next turn. Resolves to true when the
- * server accepted the intent; false on rejection (not adjacent, not
- * walkable, stale identity). Movement itself only ever arrives via the turn
- * bundle — the client never moves an entity locally.
+ * Reconciles the persisted identity's class against the server's own answer
+ * (an entity's `class` in the turn bundle — the true, normalized value). A
+ * no-op once they agree; only writes localStorage when they don't, which
+ * covers pre-6b.2 stored identities (no `class` field at all) and guards
+ * against the client and server ever disagreeing on what was actually joined.
  */
-export async function submitIntent(identity: Identity, target: Hex): Promise<boolean> {
-  // kind "" defaults to "move" server-side; the ranged-attack intent UX lands
-  // in the client task.
-  const body: IntentRequest = { entityId: identity.entityId, token: identity.token, target, kind: "" };
+export function persistConfirmedClass(cls: string): void {
+  const stored = loadIdentity();
+  if (stored === null || cls === "" || stored.class === cls) {
+    return;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, class: cls }));
+}
+
+/**
+ * Queues an intent for the next turn — "step to target" (kind "move") or a
+ * ranged attack at target (kind "attack"). Resolves to true when the server
+ * accepted the intent; false on rejection (not adjacent/not walkable for a
+ * move, out of range/no ranged weapon for an attack, stale identity).
+ * Movement itself only ever arrives via the turn bundle — the client never
+ * moves an entity locally.
+ */
+export async function submitIntent(
+  identity: Pick<Identity, "entityId" | "token">,
+  target: Hex,
+  kind: string,
+): Promise<boolean> {
+  const body: IntentRequest = { entityId: identity.entityId, token: identity.token, target, kind };
   const resp = await fetch("/api/intent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

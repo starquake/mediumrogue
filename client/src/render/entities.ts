@@ -1,6 +1,6 @@
 import { Container, Graphics, Text, type Ticker } from "pixi.js";
 
-import { EntityPlayer, type Entity } from "../protocol.gen";
+import { ClassFighter, ClassMage, ClassRogue, EntityPlayer, type Entity } from "../protocol.gen";
 import { hexToPixel, HEX_SIZE, type Point } from "./hex";
 
 const OTHER_COLOR = 0xc8b458;
@@ -11,8 +11,24 @@ const HP_BAR_FG = 0x4fd66c;
 const COMBAT_RING_COLOR = 0xffcc33;
 const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
 
+// A one-letter glyph per class, drawn centered on a player's dot so classes
+// are distinguishable at a glance. Monsters have no class (empty string on
+// the wire) and simply get no glyph.
+const CLASS_GLYPH: Record<string, string> = {
+  [ClassFighter]: "F",
+  [ClassRogue]: "R",
+  [ClassMage]: "M",
+};
+const CLASS_LABEL_STYLE = {
+  fontFamily: "Courier New",
+  fontSize: 11,
+  fontWeight: "bold",
+  fill: 0x0b0f0b,
+} as const;
+
 interface Dot {
   gfx: Graphics;
+  label: Text;
   from: Point;
   to: Point;
   current: Point;
@@ -60,8 +76,12 @@ export class EntityLayer {
         // First sighting: appear in place, no tween.
         const gfx = new Graphics();
         this.container.addChild(gfx);
+        const label = new Text({ text: CLASS_GLYPH[e.class] ?? "", style: CLASS_LABEL_STYLE });
+        label.anchor.set(0.5);
+        this.container.addChild(label);
         dot = {
           gfx,
+          label,
           from: to,
           to,
           current: to,
@@ -85,6 +105,7 @@ export class EntityLayer {
         dot.hp = e.hp;
         dot.maxHp = e.maxHp;
         dot.inCombat = e.inCombat;
+        dot.label.text = CLASS_GLYPH[e.class] ?? "";
       }
 
       this.drawDot(dot);
@@ -94,6 +115,7 @@ export class EntityLayer {
     for (const [id, dot] of this.dots) {
       if (!present.has(id)) {
         dot.gfx.destroy();
+        dot.label.destroy();
         this.dots.delete(id);
       }
     }
@@ -164,6 +186,7 @@ export class EntityLayer {
       .circle(x, y, HEX_SIZE * 0.45)
       .fill(color)
       .stroke({ width: 2, color: 0x0b0f0b });
+    dot.label.position.set(x, y);
 
     // A combat time bubble freezes its members — a ring around the dot lets
     // world players see a frozen fight in progress, distinct from a stopped
