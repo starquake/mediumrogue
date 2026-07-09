@@ -210,6 +210,37 @@ type TurnEvent struct {
 	// Bubbles is every active combat time bubble in the world; a client filters
 	// to the one containing its own entity.
 	Bubbles []BubbleView `json:"bubbles"`
+	// Quests is the whole quest board, sorted by ID.
+	Quests []QuestView `json:"quests"`
+}
+
+// QuestState is a quest's lifecycle stage on the board.
+type QuestState string
+
+// The quest lifecycle. Completed quests stay completed — the board depletes
+// (repeatable quests arrive with continuous monster spawning, later).
+const (
+	QuestAvailable QuestState = "available"
+	QuestTaken     QuestState = "taken"
+	QuestCompleted QuestState = "completed"
+)
+
+// QuestView is one quest on the board as the client sees it. The whole board
+// (~6 rows) rides every turn bundle (full-snapshot philosophy); the client
+// picks out its own quest by holder id.
+type QuestView struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// Kind is "kill" (slay TargetN monsters) or "reach" (stand on GoalHex).
+	Kind     string     `json:"kind"`
+	TargetN  int        `json:"targetN"`
+	GoalHex  Hex        `json:"goalHex"`
+	Progress int        `json:"progress"`
+	RewardXP int        `json:"rewardXp"`
+	State    QuestState `json:"state"`
+	// The holder when taken: at most one of these is non-zero.
+	HolderEntityID int64 `json:"holderEntityId"`
+	HolderPartyID  int64 `json:"holderPartyId"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.
