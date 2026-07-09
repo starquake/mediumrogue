@@ -241,6 +241,12 @@ The core of the design. Every 5 seconds, one world turn:
 9. **Shader filter pass:** the WebGL post-processing filter for the retro look.
 10. **Polish & launch:** deploy to the VPS, send the URL to the group, playtest with everyone online.
 
+**Tooling for tuning & balance (late / ongoing — build once the game is playable enough to tune, likely around or after launch):**
+
+11. **Live admin / difficulty console:** an **admin-only** control surface to adjust game difficulty and parameters **while the game is running**, without a restart — so difficulty can be experimented with against real players and dialed in to "challenging but fair." Levers: monster count / strength / spawn rate, XP rates, combat constants (damage, radii, patience), world/encounter density, etc. Most game-rule numbers currently live as compile-time `internal/protocol` constants and boot-time `internal/config` env knobs; this milestone needs a **runtime-mutable override layer** (a live-tunable settings store the simulation reads each turn) exposed through an authenticated admin screen (a separate SolidJS page or a gated panel). Changes take effect on the next turn; ideally shows current values and lets you reset to defaults. Auth-gated (do **not** expose tuning to normal players).
+
+12. **Combat & movement analytics log:** an append-only event log of combat and movement carrying enough context to **analyze difficulty and gear quality after the fact** — e.g. per event: turn, actors (id/name/class/species/level), action (move/attack/crit/kill/death), damage dealt/taken, weapon/gear used, HP before/after, bubble/encounter id, outcome. **Dual-audience by requirement:** it must be **human-readable** *and* **machine-parseable**, so both a person skimming it and an automated agent (an LLM) can parse it and form judgements about how hard the game is and how good the gear is. Do it the **idiomatic** way: structured Go logging via `slog` with a dedicated event category/attribute (or a dedicated append-only **JSONL** event stream) so it is **filterable** — normal server logs vs the analytics event stream separable by a key/level. Feeds directly into milestone 11's difficulty tuning (and future automated balance passes). Pairs with the `combat-modifier-pipeline` / gear work, which is where "gear quality" becomes a meaningful, loggable dimension.
+
 ## 9. Open Decisions to Settle Early
 
 - [x] ~~Language/stack~~ → **Decided: Go server + TypeScript/PixiJS browser client** (see §1; the "learn Rust" goal was retired when the design stopped needing Rust)
