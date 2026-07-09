@@ -45,13 +45,14 @@ func join(t *testing.T, ts *httptest.Server, token string) protocol.JoinResponse
 }
 
 // joinClass is join plus an explicit class (protocol.ClassFighter/Rogue/Mage).
-// Class is required on the wire (server rejects anything else for a new
-// entity); join defaults to Fighter for every caller that doesn't care which
-// class it joins as.
+// Class and species are required on the wire (server rejects anything else for
+// a new entity); join defaults to Fighter/Human for every caller that doesn't
+// care which class or species it joins as.
 func joinClass(t *testing.T, ts *httptest.Server, token, class string) protocol.JoinResponse {
 	t.Helper()
 
-	resp := postJSON(t, ts, "/api/join", protocol.JoinRequest{Token: token, Class: class})
+	resp := postJSON(t, ts, "/api/join",
+		protocol.JoinRequest{Token: token, Class: class, Species: protocol.SpeciesHuman})
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("join status = %d, want 200", got)
 	}

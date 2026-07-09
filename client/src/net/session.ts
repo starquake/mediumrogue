@@ -1,3 +1,4 @@
+import { SpeciesHuman } from "../protocol.gen";
 import type { Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
@@ -41,7 +42,7 @@ export async function join(chosenClass: string): Promise<JoinResponse> {
   const body: JoinRequest = {
     token: stored?.token ?? "",
     class: stored?.class ?? chosenClass,
-    species: stored?.species ?? "",
+    species: stored?.species ?? SpeciesHuman,
   };
   const resp = await fetch("/api/join", {
     method: "POST",
@@ -57,7 +58,7 @@ export async function join(chosenClass: string): Promise<JoinResponse> {
     entityId: joined.entityId,
     token: joined.token,
     class: stored?.class ?? chosenClass,
-    species: stored?.species ?? "",
+    species: stored?.species ?? SpeciesHuman,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
 

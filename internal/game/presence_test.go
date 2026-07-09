@@ -19,7 +19,7 @@ func TestJoinStartsGraceClock(t *testing.T) {
 
 	w, clk := newTimedWorld(t)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestStreamOpenClose(t *testing.T) {
 
 	w, clk := newTimedWorld(t)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestSweepRemovesPastGrace(t *testing.T) {
 	w, clk := newTimedWorld(t)
 	w.SetDisconnectGraceForTest(presenceGrace)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestSweepKeepsWithinGrace(t *testing.T) {
 	w, clk := newTimedWorld(t)
 	w.SetDisconnectGraceForTest(presenceGrace)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestReconnectWithinGraceKeeps(t *testing.T) {
 	w, clk := newTimedWorld(t)
 	w.SetDisconnectGraceForTest(presenceGrace)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestTwoStreamsKeptUntilBothClose(t *testing.T) {
 	w, clk := newTimedWorld(t)
 	w.SetDisconnectGraceForTest(presenceGrace)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestSweepDissolvesBubble(t *testing.T) {
 	w, clk := newTimedWorld(t)
 	w.SetDisconnectGraceForTest(presenceGrace)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

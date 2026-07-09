@@ -38,7 +38,7 @@ func TestJoinCreatesEntityOnWalkableHex(t *testing.T) {
 
 	w := newWorld()
 
-	resp, err := w.Join("", protocol.ClassFighter)
+	resp, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -62,14 +62,14 @@ func TestJoinWithKnownTokenReturnsSameEntity(t *testing.T) {
 
 	w := newWorld()
 
-	first, err := w.Join("", protocol.ClassFighter)
+	first, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
-	// Class is ignored on a reclaim (known token) — an empty class here must
-	// still succeed and return the existing entity.
-	again, err := w.Join(first.Token, "")
+	// Class and species are ignored on a reclaim (known token) — empty values
+	// here must still succeed and return the existing entity.
+	again, err := w.Join(first.Token, "", "")
 	if err != nil {
 		t.Fatalf("re-Join: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestJoinWithUnknownTokenCreatesNewEntity(t *testing.T) {
 
 	w := newWorld()
 
-	resp, err := w.Join("stale-token-from-before-a-restart", protocol.ClassFighter)
+	resp, err := w.Join("stale-token-from-before-a-restart", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestIntentMovesEntityOnResolve(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", protocol.ClassFighter)
+	me, _ := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 
 	target := walkableNeighbor(t, w, me.Hex)
 
@@ -130,7 +130,7 @@ func TestLatestIntentWins(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", protocol.ClassFighter)
+	me, _ := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 
 	first := walkableNeighbor(t, w, me.Hex)
 
@@ -159,7 +159,7 @@ func TestIntentValidation(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", protocol.ClassFighter)
+	me, _ := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	target := walkableNeighbor(t, w, me.Hex)
 
 	cases := []struct {
@@ -204,7 +204,7 @@ func TestIntentRejectsUnwalkableTarget(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", protocol.ClassFighter)
+	me, _ := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 
 	// Find an adjacent unwalkable hex if the spawn has one; otherwise walk a
 	// probe entity to the lake shore... which milestone 3 cannot do without
@@ -258,7 +258,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", protocol.ClassFighter)
+	me, _ := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 
 	// A destination two hexes away: a walkable neighbor of a walkable neighbor
 	// that sits at distance 2 from spawn (geometry-independent discovery).

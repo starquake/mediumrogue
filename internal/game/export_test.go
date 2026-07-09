@@ -191,6 +191,18 @@ func (w *World) SetClassForTest(id int64, class string) {
 	}
 }
 
+// SetSpeciesForTest overwrites a player entity's species directly, so a combat
+// test can drive a species passive (human XP, elf crit, dwarf DR) on an exact
+// board without going through Join.
+func (w *World) SetSpeciesForTest(id int64, species string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.species = species
+	}
+}
+
 // SetPathForTest overwrites an entity's queued path directly. A monster's path
 // is normally computed fresh by thinkMonstersLocked every turn (which holds a
 // monster in place whenever it's adjacent to a player — attacking is
