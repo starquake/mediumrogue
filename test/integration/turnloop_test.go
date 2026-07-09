@@ -41,7 +41,17 @@ func postJSON(t *testing.T, ts *httptest.Server, path string, body any) *http.Re
 func join(t *testing.T, ts *httptest.Server, token string) protocol.JoinResponse {
 	t.Helper()
 
-	resp := postJSON(t, ts, "/api/join", protocol.JoinRequest{Token: token})
+	return joinClass(t, ts, token, "")
+}
+
+// joinClass is join plus an explicit class (protocol.ClassFighter/Rogue/Mage,
+// or "" for the backward-compatible default). Milestone 6b.2 tests use this to
+// join as a specific class; join keeps its old signature/behavior (empty class
+// -> Fighter) for every pre-existing caller.
+func joinClass(t *testing.T, ts *httptest.Server, token, class string) protocol.JoinResponse {
+	t.Helper()
+
+	resp := postJSON(t, ts, "/api/join", protocol.JoinRequest{Token: token, Class: class})
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("join status = %d, want 200", got)
 	}
