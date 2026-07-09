@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-09, after milestone-6b.2 classes (fighter/rogue/mage, ranged + AoE). Update this file at the end of
+*Last updated: 2026-07-09, after issue #21 disconnect cleanup (entities despawn after a grace). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -174,18 +174,23 @@ After that (§8): 7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = 
   combat/flee mechanics (milestone 6).
 - **No same-origin/CSRF guard on POSTs**: acceptable while auth is
   bearer-token-in-body (no ambient credentials). Revisit with real identity.
-- **Entities never leave the world**: no disconnect handling — every join
-  without a token mints a new entity forever (offline-character policy is an
-  open decision in plan §9). **E2e consequence:** a shared Playwright server
-  accumulates every spec's entities for the whole run — so under CI's worker
-  parallelism accumulated players can fill a hex to `StackCap` and block an
-  unrelated movement spec's walk (reproduced under `--workers=12`), and a
-  monster-server spec can wedge a combat bubble (unstuck only by the 60s
-  `COMBAT_PATIENCE` AFK fallback). Fix: `playwright.config.ts` gives **every spec
-  its own single-consumer server** (a project + webServer per spec file, DRY over
-  a `specs` list; `MONSTER_COUNT` set only where needed), so cross-spec state
-  sharing is structurally impossible. Add a new e2e spec to that `specs` list.
-  Tracked as **issue #21**; the real product fix is disconnect cleanup.
+- **Disconnect cleanup (issue #21, DONE)**: a player's entity is **removed after
+  its event stream has been gone for `DISCONNECT_GRACE`** (env, default 20s). The
+  SSE stream is identified by `/api/events?token=<token>`; the world tracks a per-
+  player live stream count and sweeps players with no stream past the grace (in
+  the `pollTick` control loop). A reconnect (stream reopens with the same token)
+  within the grace **keeps** the character; the client also re-joins if its entity
+  was swept during a long absence. This **decides §9's offline-character policy**:
+  offline characters are removed from the live world after a grace (their *data*
+  isn't persisted yet — see the deferred `character-persistence-reconnect` and
+  `bed-home-spawn` notes: a reconnect currently mints a NEW character).
+- **E2e per-spec servers (now redundant, kept for safety)**: `playwright.config.ts`
+  still gives **every spec its own single-consumer server** (a project + webServer
+  per spec file, DRY over a `specs` list; `MONSTER_COUNT` only where needed) — the
+  6b.2 mitigation for cross-spec entity accumulation. With disconnect cleanup that
+  accumulation is fixed at the root, so this could be simplified back to a shared
+  server (with a short `DISCONNECT_GRACE`) as a follow-up. Add a new e2e spec to
+  the `specs` list for now.
 - **No explicit wait input**: standing still = not sending an intent. An
   explicit wait intent may become useful inside combat time bubbles
   (milestone 6) — decide then.

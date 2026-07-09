@@ -37,6 +37,12 @@ const (
 	defaultBubblePoll     = 100 * time.Millisecond
 )
 
+// defaultDisconnectGrace is how long a disconnected player's entity lingers
+// before the world sweeps it — long enough to survive a brief reconnect, short
+// enough that a rage-quit doesn't leave a ghost blocking a hex for a whole
+// combat.
+const defaultDisconnectGrace = 20 * time.Second
+
 // Config is the fully resolved server configuration.
 type Config struct {
 	// Addr is the listen address, from LISTEN_ADDR.
@@ -60,6 +66,9 @@ type Config struct {
 	// for elapsed turns and lock-ins, from BUBBLE_POLL. Must be shorter than
 	// TurnInterval.
 	BubblePoll time.Duration
+	// DisconnectGrace is how long a disconnected player's entity lingers before
+	// the world sweeps it, from DISCONNECT_GRACE.
+	DisconnectGrace time.Duration
 }
 
 // Load reads configuration from the environment.
@@ -70,6 +79,7 @@ func Load() (*Config, error) {
 		HeartbeatInterval: defaultHeartbeatInterval,
 		CombatPatience:    defaultCombatPatience,
 		BubblePoll:        defaultBubblePoll,
+		DisconnectGrace:   defaultDisconnectGrace,
 	}
 
 	if err := overrideDuration(&cfg.TurnInterval, "TURN_INTERVAL"); err != nil {
@@ -89,6 +99,10 @@ func Load() (*Config, error) {
 	}
 
 	if err := overrideDuration(&cfg.BubblePoll, "BUBBLE_POLL"); err != nil {
+		return nil, err
+	}
+
+	if err := overrideDuration(&cfg.DisconnectGrace, "DISCONNECT_GRACE"); err != nil {
 		return nil, err
 	}
 

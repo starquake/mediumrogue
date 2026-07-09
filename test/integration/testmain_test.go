@@ -16,6 +16,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/server"
 )
 
+// testDisconnectGrace keeps the disconnect sweep comfortably out of the way of
+// existing integration tests — no entity is swept mid-test. Milestone 6.4
+// Task 5 adds sweep tests that thread a short grace explicitly.
+const testDisconnectGrace = time.Hour
+
 // startServer boots the full handler tree with a fast clock and returns the
 // test server. Everything shuts down via t.Cleanup / t.Context. No monsters
 // are spawned, so existing tests that assert on entity counts/behavior are
@@ -53,9 +58,39 @@ func startServerWithBubbleTuning(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, ticks)
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, ticks)
 
 	world.SpawnMonsters(monsterCount)
+	go world.Run(t.Context())
+
+	handler := server.New(server.Deps{
+		Logger:            slog.New(slog.DiscardHandler),
+		World:             world,
+		Ticks:             ticks,
+		HeartbeatInterval: heartbeatInterval,
+	})
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	return ts
+}
+
+// startServerWithGrace boots the handler tree with an explicit (short)
+// disconnectGrace so the disconnect sweep fires within a test — the rest of the
+// suite keeps the long testDisconnectGrace default and is never swept
+// mid-test. No monsters are spawned; a fast bubblePoll keeps the sweep (which
+// rides the control loop) checking promptly, and a long combatPatience stays
+// out of the way. Used by disconnect_test.go.
+func startServerWithGrace(
+	t *testing.T, turnInterval, heartbeatInterval, disconnectGrace time.Duration,
+) *httptest.Server {
+	t.Helper()
+
+	ticks := hub.New()
+
+	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, disconnectGrace, ticks)
+
 	go world.Run(t.Context())
 
 	handler := server.New(server.Deps{
@@ -103,7 +138,7 @@ func startServerWithBubbleTuningAt(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, ticks)
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, ticks)
 
 	for _, h := range hexes {
 		if !world.SpawnMonsterAt(h) {

@@ -37,6 +37,10 @@ func TestLoadDefaults(t *testing.T) {
 	if got, want := cfg.BubblePoll, 100*time.Millisecond; got != want {
 		t.Errorf("BubblePoll = %s, want 100ms", got)
 	}
+
+	if got, want := cfg.DisconnectGrace, 20*time.Second; got != want {
+		t.Errorf("DisconnectGrace = %s, want 20s", got)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -46,6 +50,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("MONSTER_COUNT", "7")
 	t.Setenv("COMBAT_PATIENCE", "30s")
 	t.Setenv("BUBBLE_POLL", "50ms")
+	t.Setenv("DISCONNECT_GRACE", "10s")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -74,6 +79,10 @@ func TestLoadOverrides(t *testing.T) {
 
 	if got, want := cfg.BubblePoll, 50*time.Millisecond; got != want {
 		t.Errorf("BubblePoll = %s, want 50ms", got)
+	}
+
+	if got, want := cfg.DisconnectGrace, 10*time.Second; got != want {
+		t.Errorf("DisconnectGrace = %s, want 10s", got)
 	}
 }
 
@@ -122,6 +131,14 @@ func TestLoadRejectsNonPositiveBubblePoll(t *testing.T) {
 
 	if _, err := config.Load(); err == nil {
 		t.Fatal("Load() accepted a negative BUBBLE_POLL")
+	}
+}
+
+func TestLoadRejectsNonPositiveDisconnectGrace(t *testing.T) {
+	t.Setenv("DISCONNECT_GRACE", "0s")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a zero DISCONNECT_GRACE")
 	}
 }
 

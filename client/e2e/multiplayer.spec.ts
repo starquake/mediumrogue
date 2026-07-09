@@ -68,7 +68,10 @@ test("the client stays disconnected while the stream is down, then reconnects an
   // stream at the network layer before the client connects: the client must
   // report disconnected and keep retrying (EventSource retry + the liveness
   // watchdog), then recover when the stream returns.
-  await page.route("**/api/events", (route) => route.abort());
+  // "**" also covers the "?token=..." query string the client now sends —
+  // without it, the glob wouldn't match the token-bearing request and this
+  // route would silently stop intercepting the stream.
+  await page.route("**/api/events**", (route) => route.abort());
   await page.goto("/");
 
   // Join (POST /api/join is not blocked) succeeds, but the stream is down: no
@@ -78,7 +81,7 @@ test("the client stays disconnected while the stream is down, then reconnects an
   expect(await page.evaluate(() => window.game.turn)).toBe(-1);
 
   // Restore the stream: the client reconnects and resyncs to the latest turn.
-  await page.unroute("**/api/events");
+  await page.unroute("**/api/events**");
   await expect.poll(() => page.evaluate(() => window.game.connected), { timeout: 15_000 }).toBe(true);
   await expect
     .poll(() => page.evaluate(() => window.game.turn), { timeout: 15_000 })

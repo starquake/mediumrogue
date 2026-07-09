@@ -73,6 +73,15 @@ type entity struct {
 	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
 	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
 	bubbleID int64
+	// streams is the number of live event streams currently open for this player
+	// (multiple browser tabs → >1). Players only; monsters leave it 0 and are
+	// never swept (they have no token). Bumped by StreamOpened, dropped by
+	// StreamClosed.
+	streams int
+	// disconnectedAt is when this player's last event stream closed (or its join
+	// time, before its first stream opens): the start of its removal-grace clock.
+	// Only consulted while streams == 0. Players only.
+	disconnectedAt time.Time
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -89,6 +98,9 @@ type World struct {
 	// config (a clean seam — they are not yet in NewWorld's signature).
 	combatPatience time.Duration
 	bubblePoll     time.Duration
+	// disconnectGrace is how long a disconnected player's entity lingers before
+	// the world sweeps it. Set from config in NewWorld.
+	disconnectGrace time.Duration
 	// now is the clock, injectable in tests so the two-clock gating can be driven
 	// deterministically without real time. Defaults to time.Now.
 	now func() time.Time
@@ -116,8 +128,10 @@ type World struct {
 
 // NewWorld builds the world on the static map. combatPatience is the AFK
 // fallback before a combat bubble resolves without a straggler; bubblePoll is
-// the control-loop cadence (see Run). Run must be started for turns to advance.
-func NewWorld(interval, combatPatience, bubblePoll time.Duration, ticks *hub.Hub) *World {
+// the control-loop cadence (see Run); disconnectGrace is how long a
+// disconnected player's entity lingers before the world sweeps it. Run must be
+// started for turns to advance.
+func NewWorld(interval, combatPatience, bubblePoll, disconnectGrace time.Duration, ticks *hub.Hub) *World {
 	worldMap := StaticMap()
 
 	terrain := make(map[protocol.Hex]protocol.Terrain, len(worldMap.Tiles))
@@ -132,17 +146,18 @@ func NewWorld(interval, combatPatience, bubblePoll time.Duration, ticks *hub.Hub
 	seed := int64(binary.BigEndian.Uint64(seedBuf[:]))
 
 	return &World{
-		interval:       interval,
-		ticks:          ticks,
-		combatPatience: combatPatience,
-		bubblePoll:     bubblePoll,
-		now:            time.Now,
-		terrain:        terrain,
-		worldMap:       worldMap,
-		entities:       make(map[int64]*entity),
-		byToken:        make(map[string]*entity),
-		bubbles:        make(map[int64]*bubble),
-		seed:           seed,
+		interval:        interval,
+		ticks:           ticks,
+		combatPatience:  combatPatience,
+		bubblePoll:      bubblePoll,
+		disconnectGrace: disconnectGrace,
+		now:             time.Now,
+		terrain:         terrain,
+		worldMap:        worldMap,
+		entities:        make(map[int64]*entity),
+		byToken:         make(map[string]*entity),
+		bubbles:         make(map[int64]*bubble),
+		seed:            seed,
 	}
 }
 
@@ -190,17 +205,28 @@ func (w *World) Run(ctx context.Context) {
 // the world; capturing member sets up front (and recomputing bubbles only once,
 // at the end) guarantees every entity acts exactly once, never twice and never
 // zero times, regardless of how the pass reshuffles domains. Bubbles resolve in
-// sorted-id order for reproducibility. Returns whether anything resolved.
+// sorted-id order for reproducibility.
+//
+// Its first step is the disconnect sweep (before any member set is captured), so
+// a player gone past the grace never lands in a resolution this pass. Returns
+// whether anything changed — a resolution or a swept removal — so a removal-only
+// pass still republishes.
 func (w *World) pollTick(now time.Time) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	// Sweep first, before capturing any member set: a swept entity is then never
+	// part of this pass's resolution, and the recompute inside the sweep leaves
+	// readyBubbleTurnsLocked reading up-to-date bubbles. A removal alone (no other
+	// resolution) still publishes so clients despawn the gone entity.
+	swept := w.sweepDisconnectedLocked(now)
 
 	doWorld := now.Sub(w.lastWorldTick) >= w.interval
 
 	turns := w.readyBubbleTurnsLocked(now)
 
 	if !doWorld && len(turns) == 0 {
-		return false
+		return swept
 	}
 
 	if doWorld {
@@ -212,6 +238,9 @@ func (w *World) pollTick(now time.Time) bool {
 		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
 	}
 
+	// Final recompute after this pass's resolutions moved entities. (A sweep
+	// above may have already recomputed once — keep this one anyway: positions
+	// changed since. recompute is idempotent, so the extra call is harmless.)
 	w.recomputeBubblesLocked(now)
 
 	return true
@@ -260,6 +289,11 @@ func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	defer w.mu.Unlock()
 
 	if e, ok := w.byToken[token]; ok && token != "" {
+		// A reclaim is a fresh sign of life: refresh the grace clock so a sweep
+		// can't remove the entity in the gap before its reopened stream calls
+		// StreamOpened.
+		e.disconnectedAt = w.now()
+
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 	}
 
@@ -283,11 +317,81 @@ func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	e := &entity{
 		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
 		kind: protocol.EntityPlayer, class: class, hp: maxHP, maxHP: maxHP,
+		// streams starts 0, disconnectedAt at join time: the removal-grace clock
+		// runs from the join so a client that joins but never opens a stream is
+		// eventually swept. The client opens its stream within ms (StreamOpened).
+		disconnectedAt: w.now(),
 	}
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+}
+
+// StreamOpened marks that a live event stream opened for the entity with this
+// token (a new connection or an EventSource reconnect). A positive stream count
+// keeps the entity out of the disconnect sweep. No-op for an unknown or empty
+// token (a stream opened before/without a join).
+func (w *World) StreamOpened(token string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.byToken[token]; ok && token != "" {
+		e.streams++
+	}
+}
+
+// StreamClosed marks that an event stream for this token closed; when the last
+// one closes it stamps disconnectedAt, starting the removal grace. No-op for an
+// unknown/empty token or an entity with no open streams.
+func (w *World) StreamClosed(token string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.byToken[token]; ok && token != "" && e.streams > 0 {
+		e.streams--
+		if e.streams == 0 {
+			e.disconnectedAt = w.now()
+		}
+	}
+}
+
+// sweepDisconnectedLocked removes every player whose event stream has been gone
+// longer than the disconnect grace: a player entity (kind player AND a token)
+// with streams == 0 and now-disconnectedAt > disconnectGrace. Monsters (no
+// token) are never candidates. It collects candidate ids first (sorted) and
+// deletes after, so the entity map is never mutated mid-range and removals are
+// deterministic. If it removed anyone it recomputes bubbles — a swept entity may
+// have been mid-fight — and returns true, so the caller republishes and clients
+// despawn the entity. Callers hold w.mu.
+func (w *World) sweepDisconnectedLocked(now time.Time) bool {
+	var gone []int64
+
+	for id, e := range w.entities {
+		if e.kind != protocol.EntityPlayer || e.token == "" {
+			continue
+		}
+
+		if e.streams == 0 && now.Sub(e.disconnectedAt) > w.disconnectGrace {
+			gone = append(gone, id)
+		}
+	}
+
+	if len(gone) == 0 {
+		return false
+	}
+
+	slices.Sort(gone)
+
+	for _, id := range gone {
+		e := w.entities[id]
+		delete(w.entities, id)
+		delete(w.byToken, e.token)
+	}
+
+	w.recomputeBubblesLocked(now)
+
+	return true
 }
 
 // SubmitIntent applies one player intent for the next turn. Kind is required:

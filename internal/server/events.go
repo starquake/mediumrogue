@@ -45,6 +45,17 @@ func handleEvents(deps Deps) http.Handler {
 		// with no bytes at all until the next turn or heartbeat.
 		flusher.Flush()
 
+		// Identify the player behind this stream and mark presence. A token is
+		// present once the client has joined; a not-yet-joined watcher (empty
+		// token) is skipped — StreamOpened/Closed are no-ops for it anyway, so
+		// this just avoids a needless lock. The defer sits right after the open
+		// so StreamClosed fires on every return path (normal, context cancel, or
+		// a write error), dropping the stream count and starting the grace.
+		if token := r.URL.Query().Get("token"); token != "" {
+			deps.World.StreamOpened(token)
+			defer deps.World.StreamClosed(token)
+		}
+
 		ticks, unsubscribe := deps.Ticks.Subscribe()
 		defer unsubscribe()
 

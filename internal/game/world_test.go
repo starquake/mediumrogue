@@ -16,10 +16,13 @@ import (
 const (
 	testCombatPatience = time.Minute
 	testBubblePoll     = time.Millisecond
+	// testDisconnectGrace is long enough that no existing test's entity is
+	// swept mid-run; disconnect-sweep behavior gets its own short-grace tests.
+	testDisconnectGrace = time.Hour
 )
 
 func newWorld() *game.World {
-	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, hub.New())
+	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, hub.New())
 }
 
 // step drives one turn without running the ticker goroutine.
@@ -303,7 +306,7 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 func TestSnapshotCarriesInterval(t *testing.T) {
 	t.Parallel()
 
-	w := game.NewWorld(250*time.Millisecond, testCombatPatience, testBubblePoll, hub.New())
+	w := game.NewWorld(250*time.Millisecond, testCombatPatience, testBubblePoll, testDisconnectGrace, hub.New())
 	if got, want := w.Snapshot().IntervalMs, int64(250); got != want {
 		t.Fatalf("IntervalMs = %d, want 250", got)
 	}
