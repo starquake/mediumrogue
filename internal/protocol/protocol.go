@@ -53,6 +53,13 @@ const (
 	EntityMonster = "monster"
 )
 
+// Classes: the three playable character types.
+const (
+	ClassFighter = "fighter"
+	ClassRogue   = "rogue"
+	ClassMage    = "mage"
+)
+
 // Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
 // the client can show health bars once combat (6.3) starts changing it.
 const (
@@ -77,6 +84,42 @@ const (
 	// MonsterXP is awarded to every player in the fight when a monster dies —
 	// the full amount each, not divided.
 	MonsterXP = 20
+)
+
+// Per-class base stats (level 1). Level scaling: MaxHP += HPPerLevel * (level - 1);
+// weapon damage += DamagePerLevel * (level - 1).
+const (
+	// FighterMaxHP is the level-1 max HP for Fighter class (tanky melee).
+	FighterMaxHP = 30
+	// RogueMaxHP is the level-1 max HP for Rogue class (high single-target damage, squishy).
+	RogueMaxHP = 16
+	// MageMaxHP is the level-1 max HP for Mage class (AoE ranged, squishy).
+	MageMaxHP = 14
+
+	// SwordDamage is level-1 damage for the Fighter's close weapon (sword).
+	SwordDamage = 4
+	// DaggerDamage is level-1 damage for the Rogue's close weapon (dagger).
+	DaggerDamage = 7
+	// BowDamage is level-1 damage for the Rogue's ranged weapon (bow).
+	BowDamage = 6
+	// StaffBonkDamage is level-1 damage for the Mage's close weapon (staff bonk).
+	StaffBonkDamage = 2
+	// StaffMagicDamage is level-1 damage per target for the Mage's ranged weapon (staff magic AoE).
+	StaffMagicDamage = 4
+	// FistsDamage is level-1 damage for fallback/unarmed attacks.
+	FistsDamage = 1
+
+	// BowRange is the maximum hex distance for Rogue bow attacks.
+	BowRange = 4
+	// MageRange is the maximum hex distance for Mage magic attacks.
+	MageRange = 4
+	// MageAoERadius is the splash radius in hexes for Mage AoE magic (includes target + neighbors).
+	MageAoERadius = 1
+
+	// HPPerLevel is the additional max HP gained per level above 1.
+	HPPerLevel = 4
+	// DamagePerLevel is the additional damage gained per level above 1.
+	DamagePerLevel = 1
 )
 
 // Tile is one hex of the world map.
@@ -146,6 +189,7 @@ type Entity struct {
 	ID       int64  `json:"id"`
 	Hex      Hex    `json:"hex"`
 	Kind     string `json:"kind"`
+	Class    string `json:"class"`
 	HP       int    `json:"hp"`
 	MaxHP    int    `json:"maxHp"`
 	InCombat bool   `json:"inCombat"`
@@ -159,6 +203,9 @@ type Entity struct {
 // stored token to reclaim its entity; an empty token means "new player".
 type JoinRequest struct {
 	Token string `json:"token"`
+	// Class is the player's chosen class (ClassFighter, ClassRogue, ClassMage).
+	// Empty/unknown defaults to ClassFighter for backward compatibility.
+	Class string `json:"class"`
 }
 
 // JoinResponse identifies the caller's entity. The token is the bearer
@@ -170,15 +217,19 @@ type JoinResponse struct {
 	Hex      Hex    `json:"hex"`
 }
 
-// IntentRequest is the body of POST /api/intent: "walk to Target". Target is
-// any walkable hex, not just a neighbor — the server pathfinds from the
-// entity's current position and walks the route one hex per turn. A keyboard
-// step is simply a Target one hex away. One intent per entity per turn; a
-// later submission in the same input window replaces the earlier route.
+// IntentRequest is the body of POST /api/intent: "walk to Target" or "attack Target".
+// Target is any walkable hex (for move) or target hex (for attack), not just a
+// neighbor — the server pathfinds from the entity's current position and walks the
+// route one hex per turn. A keyboard step is simply a Target one hex away. One
+// intent per entity per turn; a later submission in the same input window replaces
+// the earlier intent.
 type IntentRequest struct {
 	EntityID int64  `json:"entityId"`
 	Token    string `json:"token"`
-	Target   Hex    `json:"target"`
+	// Kind is the intent type: "move" (default/empty) or "attack" (ranged).
+	// Empty defaults to "move" for backward compatibility.
+	Kind   string `json:"kind"`
+	Target Hex    `json:"target"`
 }
 
 // ErrorResponse is the JSON body of every non-2xx API response.

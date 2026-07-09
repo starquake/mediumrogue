@@ -77,6 +77,18 @@ export const EntityPlayer = "player";
  */
 export const EntityMonster = "monster";
 /**
+ * Classes: the three playable character types.
+ */
+export const ClassFighter = "fighter";
+/**
+ * Classes: the three playable character types.
+ */
+export const ClassRogue = "rogue";
+/**
+ * Classes: the three playable character types.
+ */
+export const ClassMage = "mage";
+/**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
  */
@@ -109,6 +121,62 @@ export const XPPerLevel = 100;
  * the full amount each, not divided.
  */
 export const MonsterXP = 20;
+/**
+ * FighterMaxHP is the level-1 max HP for Fighter class (tanky melee).
+ */
+export const FighterMaxHP = 30;
+/**
+ * RogueMaxHP is the level-1 max HP for Rogue class (high single-target damage, squishy).
+ */
+export const RogueMaxHP = 16;
+/**
+ * MageMaxHP is the level-1 max HP for Mage class (AoE ranged, squishy).
+ */
+export const MageMaxHP = 14;
+/**
+ * SwordDamage is level-1 damage for the Fighter's close weapon (sword).
+ */
+export const SwordDamage = 4;
+/**
+ * DaggerDamage is level-1 damage for the Rogue's close weapon (dagger).
+ */
+export const DaggerDamage = 7;
+/**
+ * BowDamage is level-1 damage for the Rogue's ranged weapon (bow).
+ */
+export const BowDamage = 6;
+/**
+ * StaffBonkDamage is level-1 damage for the Mage's close weapon (staff bonk).
+ */
+export const StaffBonkDamage = 2;
+/**
+ * StaffMagicDamage is level-1 damage per target for the Mage's ranged weapon (staff magic AoE).
+ */
+export const StaffMagicDamage = 4;
+/**
+ * FistsDamage is level-1 damage for fallback/unarmed attacks.
+ */
+export const FistsDamage = 1;
+/**
+ * BowRange is the maximum hex distance for Rogue bow attacks.
+ */
+export const BowRange = 4;
+/**
+ * MageRange is the maximum hex distance for Mage magic attacks.
+ */
+export const MageRange = 4;
+/**
+ * MageAoERadius is the splash radius in hexes for Mage AoE magic (includes target + neighbors).
+ */
+export const MageAoERadius = 1;
+/**
+ * HPPerLevel is the additional max HP gained per level above 1.
+ */
+export const HPPerLevel = 4;
+/**
+ * DamagePerLevel is the additional damage gained per level above 1.
+ */
+export const DamagePerLevel = 1;
 /**
  * Tile is one hex of the world map.
  */
@@ -192,6 +260,7 @@ export interface Entity {
   id: number /* int64 */;
   hex: Hex;
   kind: string;
+  class: string;
   hp: number /* int */;
   maxHp: number /* int */;
   inCombat: boolean;
@@ -210,6 +279,11 @@ export interface Entity {
  */
 export interface JoinRequest {
   token: string;
+  /**
+   * Class is the player's chosen class (ClassFighter, ClassRogue, ClassMage).
+   * Empty/unknown defaults to ClassFighter for backward compatibility.
+   */
+  class: string;
 }
 /**
  * JoinResponse identifies the caller's entity. The token is the bearer
@@ -222,15 +296,21 @@ export interface JoinResponse {
   hex: Hex;
 }
 /**
- * IntentRequest is the body of POST /api/intent: "walk to Target". Target is
- * any walkable hex, not just a neighbor — the server pathfinds from the
- * entity's current position and walks the route one hex per turn. A keyboard
- * step is simply a Target one hex away. One intent per entity per turn; a
- * later submission in the same input window replaces the earlier route.
+ * IntentRequest is the body of POST /api/intent: "walk to Target" or "attack Target".
+ * Target is any walkable hex (for move) or target hex (for attack), not just a
+ * neighbor — the server pathfinds from the entity's current position and walks the
+ * route one hex per turn. A keyboard step is simply a Target one hex away. One
+ * intent per entity per turn; a later submission in the same input window replaces
+ * the earlier intent.
  */
 export interface IntentRequest {
   entityId: number /* int64 */;
   token: string;
+  /**
+   * Kind is the intent type: "move" (default/empty) or "attack" (ranged).
+   * Empty defaults to "move" for backward compatibility.
+   */
+  kind: string;
   target: Hex;
 }
 /**
