@@ -22,7 +22,7 @@ const (
 )
 
 func newWorld() *game.World {
-	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, hub.New())
+	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 12, hub.New())
 }
 
 // step drives one turn without running the ticker goroutine.
@@ -248,6 +248,46 @@ func isWalkable(w *game.World, h protocol.Hex) bool {
 	return false
 }
 
+// terrainOf scans w's map for h's tile and returns its terrain, failing the
+// test if h is off the map entirely.
+func terrainOf(t *testing.T, w *game.World, h protocol.Hex) protocol.Terrain {
+	t.Helper()
+
+	for _, tile := range w.Map().Tiles {
+		if tile.Hex == h {
+			return tile.Terrain
+		}
+	}
+
+	t.Fatalf("hex %v is off the generated map", h)
+
+	return ""
+}
+
+// TestSpawnsLandInWalkableRegion: many joins on a large generated map must all
+// land on grass or forest — spawnHexLocked restricts to w.spawnable (the
+// origin-reachable walkable region), so a spawn can never land on an isolated
+// walkable pocket the origin can't reach, nor on water/rock.
+func TestSpawnsLandInWalkableRegion(t *testing.T) {
+	t.Parallel()
+
+	w := game.NewWorld(
+		time.Millisecond, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 24, hub.New(),
+	)
+
+	// Many joins must all land on reachable, walkable tiles.
+	for i := range 30 {
+		e, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+		if err != nil {
+			t.Fatalf("join %d: %v", i, err)
+		}
+
+		if terr := terrainOf(t, w, e.Hex); terr != protocol.TerrainGrass && terr != protocol.TerrainForest {
+			t.Errorf("join %d landed on %q at %v, want grass or forest", i, terr, e.Hex)
+		}
+	}
+}
+
 func submitOK(w *game.World, me protocol.JoinResponse, target protocol.Hex) bool {
 	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: target}
 
@@ -306,7 +346,9 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 func TestSnapshotCarriesInterval(t *testing.T) {
 	t.Parallel()
 
-	w := game.NewWorld(250*time.Millisecond, testCombatPatience, testBubblePoll, testDisconnectGrace, hub.New())
+	w := game.NewWorld(
+		250*time.Millisecond, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 12, hub.New(),
+	)
 	if got, want := w.Snapshot().IntervalMs, int64(250); got != want {
 		t.Fatalf("IntervalMs = %d, want 250", got)
 	}

@@ -119,9 +119,17 @@ type World struct {
 	lastWorldTick time.Time
 	terrain       map[protocol.Hex]protocol.Terrain
 	worldMap      protocol.MapResponse
-	entities      map[int64]*entity
-	byToken       map[string]*entity
-	nextID        int64
+	// radius is the world's hex radius (from Config.WorldRadius), the loop
+	// bound for spawnHexLocked's outward spiral.
+	radius int
+	// spawnable is the origin-reachable walkable region (BFS from origin over
+	// walkable tiles, computed once at construction) — spawnHexLocked only
+	// places players on hexes in this set, so a spawn can never land in a
+	// walkable pocket cut off from the origin by water/rock.
+	spawnable map[protocol.Hex]bool
+	entities  map[int64]*entity
+	byToken   map[string]*entity
+	nextID    int64
 	// bubbles are the active combat time bubbles, keyed by id. Rebuilt each turn
 	// by recomputeBubblesLocked; ids carry across recomputes for stable gating.
 	bubbles      map[int64]*bubble
@@ -133,13 +141,17 @@ type World struct {
 	seed int64
 }
 
-// NewWorld builds the world on the static map. combatPatience is the AFK
-// fallback before a combat bubble resolves without a straggler; bubblePoll is
-// the control-loop cadence (see Run); disconnectGrace is how long a
-// disconnected player's entity lingers before the world sweeps it. Run must be
-// started for turns to advance.
-func NewWorld(interval, combatPatience, bubblePoll, disconnectGrace time.Duration, ticks *hub.Hub) *World {
-	worldMap := StaticMap()
+// NewWorld builds the world from a procedurally generated map (GenerateMap,
+// seeded by worldSeed/radius — see internal/game/worldgen.go).
+// combatPatience is the AFK fallback before a combat bubble resolves without a
+// straggler; bubblePoll is the control-loop cadence (see Run); disconnectGrace
+// is how long a disconnected player's entity lingers before the world sweeps
+// it. Run must be started for turns to advance.
+func NewWorld(
+	interval, combatPatience, bubblePoll, disconnectGrace time.Duration,
+	worldSeed uint64, radius int, ticks *hub.Hub,
+) *World {
+	worldMap := GenerateMap(worldSeed, radius)
 
 	terrain := make(map[protocol.Hex]protocol.Terrain, len(worldMap.Tiles))
 	for _, t := range worldMap.Tiles {
@@ -161,6 +173,8 @@ func NewWorld(interval, combatPatience, bubblePoll, disconnectGrace time.Duratio
 		now:             time.Now,
 		terrain:         terrain,
 		worldMap:        worldMap,
+		radius:          radius,
+		spawnable:       reachableWalkable(worldMap),
 		entities:        make(map[int64]*entity),
 		byToken:         make(map[string]*entity),
 		bubbles:         make(map[int64]*bubble),
@@ -1135,7 +1149,7 @@ func nearestPlayer(from protocol.Hex, players []*entity) *entity {
 func (w *World) spawnHexLocked() (protocol.Hex, error) {
 	origin := protocol.Hex{Q: 0, R: 0}
 
-	for radius := 0; radius <= MapRadius; radius++ {
+	for radius := 0; radius <= w.radius; radius++ {
 		for q := -radius; q <= radius; q++ {
 			for r := -radius; r <= radius; r++ {
 				h := protocol.Hex{Q: q, R: r}
@@ -1143,7 +1157,10 @@ func (w *World) spawnHexLocked() (protocol.Hex, error) {
 					continue
 				}
 
-				if w.walkableLocked(h) && w.occupancyLocked(h) < protocol.StackCap {
+				// w.spawnable[h] already implies walkable; using it (rather than
+				// walkableLocked) keeps spawns off any walkable pocket the origin
+				// can't reach.
+				if w.spawnable[h] && w.occupancyLocked(h) < protocol.StackCap {
 					return h, nil
 				}
 			}
