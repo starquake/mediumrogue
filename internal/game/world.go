@@ -38,6 +38,9 @@ var (
 	// ErrInvalidClass rejects a Join for a new entity whose Class is not one of
 	// ClassFighter, ClassRogue, ClassMage.
 	ErrInvalidClass = errors.New("invalid class")
+	// ErrInvalidSpecies rejects a Join for a new entity whose Species is not one
+	// of SpeciesHuman, SpeciesElf, SpeciesDwarf.
+	ErrInvalidSpecies = errors.New("invalid species")
 	// ErrInvalidIntentKind rejects a SubmitIntent whose Kind is not
 	// IntentMove or IntentAttack.
 	ErrInvalidIntentKind = errors.New("invalid intent kind")
@@ -57,8 +60,12 @@ type entity struct {
 	// and set at Join; empty for monsters. It selects the entity's weapon
 	// loadout and base HP via the class.go helpers.
 	class string
-	hp    int
-	maxHP int
+	// species is the player's species (protocol.SpeciesHuman/Elf/Dwarf), validated
+	// and set at Join; empty for monsters. It drives the combat passives in
+	// species.go (human XP bonus, elf crit, dwarf damage reduction).
+	species string
+	hp      int
+	maxHP   int
 	// xp is the entity's cumulative experience (players only; monsters stay 0).
 	// Level is derived from it via levelFor; on death it falls to the current
 	// level's floor (levelFloorXP).
@@ -279,12 +286,13 @@ func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
 // Join returns the entity for token, creating a new one (empty or unknown
 // token) at a free spawn hex with the given class. For a new entity, class is
 // required — it must be ClassFighter, ClassRogue, or ClassMage, else Join
-// returns ErrInvalidClass. An unknown token quietly becomes a new player
-// rather than an error: the stored identity of a restarted server is gone, and
-// the client's right move is always "then give me a fresh entity". For a
-// reclaim (known token) class is ignored — the existing entity already has
-// its class.
-func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
+// returns ErrInvalidClass, and species must be SpeciesHuman, SpeciesElf, or
+// SpeciesDwarf, else ErrInvalidSpecies. An unknown token quietly becomes a new
+// player rather than an error: the stored identity of a restarted server is
+// gone, and the client's right move is always "then give me a fresh entity".
+// For a reclaim (known token) class and species are ignored — the existing
+// entity already has both.
+func (w *World) Join(token, class, species string) (protocol.JoinResponse, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -299,6 +307,10 @@ func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 
 	if !validClass(class) {
 		return protocol.JoinResponse{}, ErrInvalidClass
+	}
+
+	if !validSpecies(species) {
+		return protocol.JoinResponse{}, ErrInvalidSpecies
 	}
 
 	spawn, err := w.spawnHexLocked()
@@ -316,7 +328,7 @@ func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	w.nextID++
 	e := &entity{
 		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
-		kind: protocol.EntityPlayer, class: class, hp: maxHP, maxHP: maxHP,
+		kind: protocol.EntityPlayer, class: class, species: species, hp: maxHP, maxHP: maxHP,
 		// streams starts 0, disconnectedAt at join time: the removal-grace clock
 		// runs from the join so a client that joins but never opens a stream is
 		// eventually swept. The client opens its stream within ms (StreamOpened).
@@ -503,7 +515,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, Class: e.class, HP: e.hp, MaxHP: e.maxHP,
+			ID: e.id, Hex: e.hex, Kind: e.kind, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
 			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp),
 		})
 	}
@@ -617,7 +629,13 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 	if killed > 0 {
 		for _, e := range members {
 			if e.kind == protocol.EntityPlayer && e.hp > 0 {
-				e.xp += killed * protocol.MonsterXP
+				award := killed * protocol.MonsterXP
+				if e.species == protocol.SpeciesHuman {
+					// Human passive: a flat +HumanXPBonusPercent on every kill award.
+					award = award * (percentBase + protocol.HumanXPBonusPercent) / percentBase
+				}
+
+				e.xp += award
 				syncMaxHPLocked(e)
 			}
 		}
@@ -803,7 +821,9 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 		victim := victims[rng.IntN(len(victims))]
-		damage[victim.id] += attackDamage(a.attacker)
+		base := attackDamage(a.attacker)
+		crit := critMultiplier(a.attacker, rng)
+		damage[victim.id] += applyDR(victim, base*crit)
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
@@ -858,7 +878,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 			continue
 		}
 
-		w.resolveAoELocked(byHex, e, target, wpn.aoeRadius, dmg, damage)
+		w.resolveAoELocked(rng, byHex, e, target, wpn.aoeRadius, dmg, damage)
 	}
 }
 
@@ -876,21 +896,27 @@ func (w *World) resolveBowLocked(
 
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
+	crit := critMultiplier(attacker, rng)
 	victim := victims[rng.IntN(len(victims))]
-	damage[victim.id] += dmg
+	damage[victim.id] += applyDR(victim, dmg*crit)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
 // entity within aoeRadius of the target hex. Same-faction entities (the caster
-// and friendly players) are skipped — no friendly fire. Callers hold w.mu.
+// and friendly players) are skipped — no friendly fire. The crit is rolled once
+// for the caster (an elf's crit cast crits its whole splash) before the target
+// loop, then applied per target after each victim's damage reduction. Callers
+// hold w.mu.
 func (w *World) resolveAoELocked(
-	byHex map[protocol.Hex][]*entity,
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
 	attacker *entity, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
 ) {
+	crit := critMultiplier(attacker, rng)
+
 	for _, occs := range byHex {
 		for _, o := range occs {
 			if opposing(attacker, o) && HexDistance(target, o.hex) <= aoeRadius {
-				damage[o.id] += dmg
+				damage[o.id] += applyDR(o, dmg*crit)
 			}
 		}
 	}

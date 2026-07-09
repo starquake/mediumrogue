@@ -60,6 +60,13 @@ const (
 	ClassMage    = "mage"
 )
 
+// Species: the three player species with distinct passive bonuses.
+const (
+	SpeciesHuman = "human"
+	SpeciesElf   = "elf"
+	SpeciesDwarf = "dwarf"
+)
+
 // Intent kinds: the type of an IntentRequest. Kind is required — it must be
 // IntentMove or IntentAttack.
 const (
@@ -122,6 +129,18 @@ const (
 	HPPerLevel = 4
 	// DamagePerLevel is the additional damage gained per level above 1.
 	DamagePerLevel = 1
+)
+
+// Per-species passive bonuses (tunable, applied per-species in 6b.3+).
+const (
+	// HumanXPBonusPercent is the XP gain multiplier for Human species (e.g. +50%).
+	HumanXPBonusPercent = 50
+	// ElfCritChancePercent is the percent base crit chance for Elf species.
+	ElfCritChancePercent = 20
+	// ElfCritMultiplier is the damage multiplier for Elf crits.
+	ElfCritMultiplier = 2
+	// DwarfDamageReduction is the flat damage reduction per attack for Dwarf species.
+	DwarfDamageReduction = 1
 )
 
 // Tile is one hex of the world map.
@@ -192,6 +211,7 @@ type Entity struct {
 	Hex      Hex    `json:"hex"`
 	Kind     string `json:"kind"`
 	Class    string `json:"class"`
+	Species  string `json:"species"`
 	HP       int    `json:"hp"`
 	MaxHP    int    `json:"maxHp"`
 	InCombat bool   `json:"inCombat"`
@@ -210,6 +230,11 @@ type JoinRequest struct {
 	// ClassMage. Ignored on a reclaim (known token) — an existing entity
 	// already has its class.
 	Class string `json:"class"`
+	// Species is the player's chosen species. Required for a new player (empty
+	// token or unknown token): must be SpeciesHuman, SpeciesElf, or
+	// SpeciesDwarf. Ignored on a reclaim (known token) — an existing entity
+	// already has its species.
+	Species string `json:"species"`
 }
 
 // JoinResponse identifies the caller's entity. The token is the bearer

@@ -14,7 +14,7 @@ func TestFreshPlayerHasZeroXPLevelOne(t *testing.T) {
 
 	w := newWorld()
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -34,14 +34,16 @@ func TestFreshPlayerHasZeroXPLevelOne(t *testing.T) {
 }
 
 // TestKillGrantsXP: a player who bumps a one-hit monster to death is awarded the
-// full MonsterXP; the derived Level reflects the new total.
+// full MonsterXP; the derived Level reflects the new total. Joins as a Dwarf so
+// the base award is asserted without the Human XP bonus (the bonus has its own
+// test); Dwarf adds no crit RNG and no XP modifier.
 func TestKillGrantsXP(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
 	w.SetSeedForTest(10)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesDwarf)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -182,14 +184,15 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 }
 
 // TestKillCrossingLevelBoundaryLevelsUp: a player one kill short of the next
-// level crosses XPPerLevel on the kill and their derived Level increments.
+// level crosses XPPerLevel on the kill and their derived Level increments. Joins
+// as a Dwarf so the boundary math uses the base MonsterXP award (no Human bonus).
 func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
 	w.SetSeedForTest(12)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesDwarf)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -242,7 +245,7 @@ func TestDeathFloorsXPKeepsLevel(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(13)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -287,7 +290,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(14)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

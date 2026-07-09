@@ -188,7 +188,7 @@ func TestMonsterAIApproachesNearestPlayer(t *testing.T) {
 
 	w := newWorld()
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestMonsterAIAttacksAdjacentSolePlayer(t *testing.T) {
 
 	w := newWorld()
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

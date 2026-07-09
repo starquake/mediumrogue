@@ -13,7 +13,7 @@ import (
 func snapshotClassAndMaxHP(t *testing.T, w *game.World, class string) (string, int) {
 	t.Helper()
 
-	me, err := w.Join("", class)
+	me, err := w.Join("", class, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join(%q): %v", class, err)
 	}
@@ -81,7 +81,7 @@ func TestJoinRejectsInvalidClass(t *testing.T) {
 
 			w := newWorld()
 
-			_, err := w.Join("", tc.class)
+			_, err := w.Join("", tc.class, protocol.SpeciesHuman)
 			if got, want := err, game.ErrInvalidClass; !errors.Is(got, want) {
 				t.Fatalf("Join(%q) err = %v, want %v", tc.class, got, want)
 			}
@@ -142,7 +142,7 @@ func TestRespawnScalesMaxHPToLevel(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(7)
 
-	me, err := w.Join("", protocol.ClassFighter)
+	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

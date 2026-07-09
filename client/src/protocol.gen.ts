@@ -89,6 +89,18 @@ export const ClassRogue = "rogue";
  */
 export const ClassMage = "mage";
 /**
+ * Species: the three player species with distinct passive bonuses.
+ */
+export const SpeciesHuman = "human";
+/**
+ * Species: the three player species with distinct passive bonuses.
+ */
+export const SpeciesElf = "elf";
+/**
+ * Species: the three player species with distinct passive bonuses.
+ */
+export const SpeciesDwarf = "dwarf";
+/**
  * Intent kinds: the type of an IntentRequest. Kind is required — it must be
  * IntentMove or IntentAttack.
  */
@@ -179,6 +191,22 @@ export const HPPerLevel = 4;
  */
 export const DamagePerLevel = 1;
 /**
+ * HumanXPBonusPercent is the XP gain multiplier for Human species (e.g. +50%).
+ */
+export const HumanXPBonusPercent = 50;
+/**
+ * ElfCritChancePercent is the percent base crit chance for Elf species.
+ */
+export const ElfCritChancePercent = 20;
+/**
+ * ElfCritMultiplier is the damage multiplier for Elf crits.
+ */
+export const ElfCritMultiplier = 2;
+/**
+ * DwarfDamageReduction is the flat damage reduction per attack for Dwarf species.
+ */
+export const DwarfDamageReduction = 1;
+/**
  * Tile is one hex of the world map.
  */
 export interface Tile {
@@ -262,6 +290,7 @@ export interface Entity {
   hex: Hex;
   kind: string;
   class: string;
+  species: string;
   hp: number /* int */;
   maxHp: number /* int */;
   inCombat: boolean;
@@ -287,6 +316,13 @@ export interface JoinRequest {
    * already has its class.
    */
   class: string;
+  /**
+   * Species is the player's chosen species. Required for a new player (empty
+   * token or unknown token): must be SpeciesHuman, SpeciesElf, or
+   * SpeciesDwarf. Ignored on a reclaim (known token) — an existing entity
+   * already has its species.
+   */
+  species: string;
 }
 /**
  * JoinResponse identifies the caller's entity. The token is the bearer
