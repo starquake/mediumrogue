@@ -89,6 +89,9 @@ type World struct {
 	// config (a clean seam — they are not yet in NewWorld's signature).
 	combatPatience time.Duration
 	bubblePoll     time.Duration
+	// disconnectGrace is how long a disconnected player's entity lingers before
+	// the world sweeps it. Set from config in NewWorld.
+	disconnectGrace time.Duration
 	// now is the clock, injectable in tests so the two-clock gating can be driven
 	// deterministically without real time. Defaults to time.Now.
 	now func() time.Time
@@ -116,8 +119,10 @@ type World struct {
 
 // NewWorld builds the world on the static map. combatPatience is the AFK
 // fallback before a combat bubble resolves without a straggler; bubblePoll is
-// the control-loop cadence (see Run). Run must be started for turns to advance.
-func NewWorld(interval, combatPatience, bubblePoll time.Duration, ticks *hub.Hub) *World {
+// the control-loop cadence (see Run); disconnectGrace is how long a
+// disconnected player's entity lingers before the world sweeps it. Run must be
+// started for turns to advance.
+func NewWorld(interval, combatPatience, bubblePoll, disconnectGrace time.Duration, ticks *hub.Hub) *World {
 	worldMap := StaticMap()
 
 	terrain := make(map[protocol.Hex]protocol.Terrain, len(worldMap.Tiles))
@@ -132,17 +137,18 @@ func NewWorld(interval, combatPatience, bubblePoll time.Duration, ticks *hub.Hub
 	seed := int64(binary.BigEndian.Uint64(seedBuf[:]))
 
 	return &World{
-		interval:       interval,
-		ticks:          ticks,
-		combatPatience: combatPatience,
-		bubblePoll:     bubblePoll,
-		now:            time.Now,
-		terrain:        terrain,
-		worldMap:       worldMap,
-		entities:       make(map[int64]*entity),
-		byToken:        make(map[string]*entity),
-		bubbles:        make(map[int64]*bubble),
-		seed:           seed,
+		interval:        interval,
+		ticks:           ticks,
+		combatPatience:  combatPatience,
+		bubblePoll:      bubblePoll,
+		disconnectGrace: disconnectGrace,
+		now:             time.Now,
+		terrain:         terrain,
+		worldMap:        worldMap,
+		entities:        make(map[int64]*entity),
+		byToken:         make(map[string]*entity),
+		bubbles:         make(map[int64]*bubble),
+		seed:            seed,
 	}
 }
 

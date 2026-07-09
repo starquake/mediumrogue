@@ -16,6 +16,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/server"
 )
 
+// testDisconnectGrace keeps the disconnect sweep comfortably out of the way of
+// existing integration tests — no entity is swept mid-test. Milestone 6.4
+// Task 5 adds sweep tests that thread a short grace explicitly.
+const testDisconnectGrace = time.Hour
+
 // startServer boots the full handler tree with a fast clock and returns the
 // test server. Everything shuts down via t.Cleanup / t.Context. No monsters
 // are spawned, so existing tests that assert on entity counts/behavior are
@@ -53,7 +58,7 @@ func startServerWithBubbleTuning(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, ticks)
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, ticks)
 
 	world.SpawnMonsters(monsterCount)
 	go world.Run(t.Context())
@@ -103,7 +108,7 @@ func startServerWithBubbleTuningAt(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, ticks)
+	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, ticks)
 
 	for _, h := range hexes {
 		if !world.SpawnMonsterAt(h) {
