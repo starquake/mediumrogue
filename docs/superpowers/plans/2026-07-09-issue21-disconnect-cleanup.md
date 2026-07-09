@@ -67,7 +67,7 @@ func (w *World) StreamClosed(token string) {
 
 **Files:** `client/src/net/events.ts` (+ its callers), `client/src/main.ts`.
 - [ ] `connectEvents` opens `/api/events` **with the token** when available: pass the token into `connectEvents` (from the stored/joined identity) and build `new EventSource("/api/events?token=" + encodeURIComponent(token))`; a client with no token yet connects without it (watch-only until join). Ensure the reconnect path (auto-retry) also carries the token.
-- [ ] **Re-join if gone**: if the client's own entity id is absent from turn bundles for a short spell (e.g. N consecutive bundles / a couple seconds — it was swept after a long disconnect), **re-join** with the stored token (unknown token → fresh entity, existing behaviour) and adopt the new identity/entity id. Keep it minimal and guarded (don't re-join spuriously on a single missed bundle).
+- [ ] **Re-join if gone**: if the client's own entity id is absent from turn bundles for a short spell (e.g. N consecutive bundles / a couple seconds — it was swept after a long disconnect), **re-join** with the stored token (unknown token → fresh entity, existing behaviour) and adopt the new identity/entity id. Keep it minimal and guarded (don't re-join spuriously on a single missed bundle). *(Interim: this mints a NEW character. The `character-persistence-reconnect` follow-up will instead restore the OLD character at the player's `bed-home-spawn`. Don't build anything here that blocks a later token→character store.)*
 - [ ] `npm run check`; `make e2e` (2×) green; commit.
 
 ## Task 5: Integration + e2e

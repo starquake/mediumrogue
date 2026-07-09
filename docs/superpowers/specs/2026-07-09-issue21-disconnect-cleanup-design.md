@@ -76,14 +76,24 @@ avatars. (The alternative — persist offline characters as idle bodies — is a
 different game feel and is NOT what #21 wants.) Flagging because §9 lists it as
 open.
 
-## Out of scope / follow-ups
+## Out of scope / follow-ups (decided 2026-07-09 — future work)
+- **Character persistence across reconnect** (future slice): a returning player
+  should get their **old character back** (XP, class, level), not a fresh one.
+  This slice's interim behaviour is the opposite — a player removed after the
+  grace re-joins as a **new** character (unknown token → fresh entity). The future
+  work archives the character by identity/token on removal and restores it on
+  reconnect. Don't design anything here that blocks a later character store keyed
+  by token. Tracked in the `character-persistence-reconnect` note.
+- **Bed / home spawn point** (future slice): each player has a **bed** (home
+  spawn); reconnecting (and dying) returns them to their bed rather than a
+  spiral-from-origin spawn. Bed mechanics are TBD (place/claim a bed, one per
+  player, maybe tied to a location/quest). Tracked in the `bed-home-spawn` note.
 - **Revert the per-spec e2e servers**: with disconnect cleanup + a short e2e
   `DISCONNECT_GRACE`, a shared server would no longer accumulate, so the 6b.2
   per-spec-server workaround could be simplified back. Leave it as-is here (it
   works); note it as a possible follow-up (would also re-validate this fix under a
   shared server).
-- **Persisted/offline characters, character deletion UX, reconnect-with-full-state
-  replay** — not this change.
+- **Character deletion UX, reconnect-with-full-state replay** — not this change.
 
 ## Tests
 - **Unit (`internal/game`)**: `StreamOpened`/`StreamClosed` bookkeeping (count,
