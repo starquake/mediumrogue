@@ -12,10 +12,11 @@ import (
 
 // Quest command failures; the HTTP layer maps them to 422.
 var (
-	ErrQuestNotFound = errors.New("no such quest")
-	ErrQuestTaken    = errors.New("that quest is already taken")
-	ErrQuestSlotFull = errors.New("you already have an active quest — /abandon it first")
-	ErrNoActiveQuest = errors.New("no active quest")
+	ErrQuestNotFound  = errors.New("no such quest")
+	ErrQuestTaken     = errors.New("that quest is already taken")
+	ErrQuestCompleted = errors.New("that quest is already completed")
+	ErrQuestSlotFull  = errors.New("you already have an active quest — /abandon it first")
+	ErrNoActiveQuest  = errors.New("no active quest")
 )
 
 const (
@@ -144,6 +145,10 @@ func (w *World) QuestTake(token string, questID int64) (string, error) {
 		return "", ErrQuestNotFound
 	}
 
+	if q.state == protocol.QuestCompleted {
+		return "", ErrQuestCompleted
+	}
+
 	if q.state != protocol.QuestAvailable {
 		return "", ErrQuestTaken
 	}
@@ -219,18 +224,47 @@ func (w *World) resetQuestLocked(q *quest) {
 	q.holderParty = 0
 }
 
+// personalQuestLocked returns e's PERSONAL taken quest (holderEntity == e.id),
+// or nil if e holds none. Shared lookup for abandonPersonalQuestLocked and
+// promotePersonalQuestLocked, which differ only in what they do with the
+// match.
+func (w *World) personalQuestLocked(e *entity) *quest {
+	for _, q := range w.quests {
+		if q.state == protocol.QuestTaken && q.holderEntity == e.id {
+			return q
+		}
+	}
+
+	return nil
+}
+
 // abandonPersonalQuestLocked returns e's PERSONAL quest to the board (used
 // when e joins a party — the slot becomes the party's agenda — and by the
 // disconnect sweep). No-op without one. Announces.
 func (w *World) abandonPersonalQuestLocked(e *entity) {
-	for _, q := range w.quests {
-		if q.state == protocol.QuestTaken && q.holderEntity == e.id {
-			w.resetQuestLocked(q)
-			w.announce("system", fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
-
-			return
-		}
+	q := w.personalQuestLocked(e)
+	if q == nil {
+		return
 	}
+
+	w.resetQuestLocked(q)
+	w.announce("system", fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
+}
+
+// promotePersonalQuestLocked converts e's PERSONAL quest into e's (freshly
+// minted) party's quest, called from PartyAccept's mint-new-party branch: the
+// party forms AROUND whatever quest the inviter had pitched, rather than
+// abandoning it — invariant is that nobody in a party holds a personal
+// quest. Progress carries over unchanged. No-op without one. Announces.
+func (w *World) promotePersonalQuestLocked(e *entity) {
+	q := w.personalQuestLocked(e)
+	if q == nil {
+		return
+	}
+
+	q.holderEntity = 0
+	q.holderParty = e.partyID
+	w.announce("system", fmt.Sprintf("quest #%d (%s) is now %s's party's quest", q.id, q.name, e.name))
 }
 
 // returnPartyQuestLocked returns a dissolved party's quest to the board.

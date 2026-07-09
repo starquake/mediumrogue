@@ -78,6 +78,7 @@ func (w *World) PartyAccept(token string) (string, error) {
 	if inviter.partyID == 0 {
 		w.nextPartyID++
 		inviter.partyID = w.nextPartyID
+		w.promotePersonalQuestLocked(inviter)
 	}
 
 	accepter.partyID = inviter.partyID

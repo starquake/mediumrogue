@@ -103,6 +103,34 @@ func TestQuestTakeOneSlotAndErrors(t *testing.T) {
 	}
 }
 
+// TestQuestTakeCompletedReturnsDistinctError: taking a COMPLETED quest reports
+// ErrQuestCompleted, not the generic ErrQuestTaken (which now means "taken but
+// still in progress") — a player asking to help with a finished quest gets a
+// clearer message than "someone already grabbed that".
+func TestQuestTakeCompletedReturnsDistinctError(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+
+	qID, goal := reachQuest(t, w)
+
+	_, token := w.PlaceEntityForTest(goal)
+	if _, err := w.QuestTake(token, qID); err != nil {
+		t.Fatalf("take: %v", err)
+	}
+
+	w.ResolveTurnForTest()
+
+	if got, want := questByID(t, w, qID).State, protocol.QuestCompleted; got != want {
+		t.Fatalf("state after reaching the goal = %q, want %q", got, want)
+	}
+
+	bob := joinNamed(t, w, "bob")
+	if _, err := w.QuestTake(bob.Token, qID); !errors.Is(err, game.ErrQuestCompleted) {
+		t.Errorf("take completed: err = %v, want ErrQuestCompleted", err)
+	}
+}
+
 func TestPartyTakeAndJoinAbandonsPersonalQuest(t *testing.T) {
 	t.Parallel()
 
@@ -136,6 +164,112 @@ func TestPartyTakeAndJoinAbandonsPersonalQuest(t *testing.T) {
 	q3 := nthAvailableQuest(t, w, 0)
 	if _, err := w.QuestTake(bob.Token, q3); !errors.Is(err, game.ErrQuestSlotFull) {
 		t.Errorf("member take with party quest: err = %v, want ErrQuestSlotFull", err)
+	}
+}
+
+// TestFormingPartyPromotesInviterQuest: alice (solo) takes a quest, then
+// invites bob and bob accepts. Rather than abandoning alice's PERSONAL quest
+// (the existing rule for the ACCEPTER's quest, exercised by
+// TestPartyTakeAndJoinAbandonsPersonalQuest), forming the party PROMOTES it —
+// the party forms around whatever alice had already pitched. Progress carries
+// over, and the one-slot invariant now covers both members: neither can take
+// a second quest.
+func TestFormingPartyPromotesInviterQuest(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+	bob := joinNamed(t, w, "bob")
+	q1, q2 := firstAvailableQuests(t, w, 2)
+
+	if _, err := w.QuestTake(alice.Token, q1); err != nil {
+		t.Fatalf("alice take: %v", err)
+	}
+
+	if got, want := questByID(t, w, q1).HolderEntityID, alice.EntityID; got != want {
+		t.Fatalf("quest holder entity before party forms = %d, want alice %d", got, want)
+	}
+
+	mustInviteAccept(t, w, alice, bob, "bob")
+
+	pa, pb := partyIDOf(t, w, alice.EntityID), partyIDOf(t, w, bob.EntityID)
+	if pa == 0 || pa != pb {
+		t.Fatalf("party ids: alice=%d bob=%d, want equal non-zero", pa, pb)
+	}
+
+	qv := questByID(t, w, q1)
+	if got, want := qv.HolderPartyID, pa; got != want {
+		t.Errorf("quest HolderPartyID = %d, want the new party id %d", got, want)
+	}
+
+	if got, want := qv.HolderEntityID, int64(0); got != want {
+		t.Errorf("quest HolderEntityID = %d, want %d (promoted off the inviter)", got, want)
+	}
+
+	if got, want := qv.Progress, 0; got != want {
+		t.Errorf("progress after promotion = %d, want %d (carried over unchanged)", got, want)
+	}
+
+	if got, want := qv.State, protocol.QuestTaken; got != want {
+		t.Errorf("state after promotion = %q, want %q", got, want)
+	}
+
+	// Both slots are now full — the promoted quest is the whole party's.
+	if _, err := w.QuestTake(alice.Token, q2); !errors.Is(err, game.ErrQuestSlotFull) {
+		t.Errorf("alice take another: err = %v, want ErrQuestSlotFull", err)
+	}
+
+	if _, err := w.QuestTake(bob.Token, q2); !errors.Is(err, game.ErrQuestSlotFull) {
+		t.Errorf("bob take another: err = %v, want ErrQuestSlotFull", err)
+	}
+}
+
+// TestPromotedQuestPaysWholeParty: alice takes a reach quest solo, then forms
+// a party with bob — promoting it. Bob (who never touched the quest before
+// the promotion) then stands on the goal alone; completion still pays BOTH
+// party members the full reward. Both join as dwarf/elf (not human) so
+// neither's XP gets the human bonus, keeping the expected delta exact.
+func TestPromotedQuestPaysWholeParty(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+
+	alice, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesDwarf)
+	if err != nil {
+		t.Fatalf("join alice: %v", err)
+	}
+
+	bob, err := w.Join("", "bob", protocol.ClassFighter, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("join bob: %v", err)
+	}
+
+	qID, goal := reachQuest(t, w)
+
+	if _, err := w.QuestTake(alice.Token, qID); err != nil {
+		t.Fatalf("take: %v", err)
+	}
+
+	mustInviteAccept(t, w, alice, bob, "bob")
+
+	if got, want := questByID(t, w, qID).HolderPartyID, partyIDOf(t, w, alice.EntityID); got == 0 || got != want {
+		t.Fatalf("quest HolderPartyID = %d, want alice's party %d", got, want)
+	}
+
+	w.SetHexForTest(bob.EntityID, goal)
+	w.ResolveTurnForTest()
+
+	qv := questByID(t, w, qID)
+	if got, want := qv.State, protocol.QuestCompleted; got != want {
+		t.Fatalf("state after bob reaches the goal = %q, want %q", got, want)
+	}
+
+	if got, want := w.XPForTest(alice.EntityID), qv.RewardXP; got != want {
+		t.Errorf("alice XP = %d, want %d (full reward, no human bonus)", got, want)
+	}
+
+	if got, want := w.XPForTest(bob.EntityID), qv.RewardXP; got != want {
+		t.Errorf("bob XP = %d, want %d (full reward, no human bonus)", got, want)
 	}
 }
 
