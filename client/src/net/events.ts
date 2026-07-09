@@ -12,6 +12,18 @@ export interface EventsCallbacks {
   onHeartbeat?: () => void;
 }
 
+/** Handle returned by connectEvents: tear down, or force a fresh connection. */
+export interface EventsController {
+  /** Stops the watchdog and closes the stream for good. */
+  close: () => void;
+  /**
+   * Closes the current stream and opens a new one immediately, re-reading
+   * `getToken()` — for when the identity (and therefore the token) just
+   * changed, e.g. after a re-join minted a fresh entity.
+   */
+  reconnect: () => void;
+}
+
 // Liveness window: a stream is dead after this long with no data. Turn-scaled so
 // a slow production cadence (5s turns → 20s window) is never mistaken for a
 // drop; floored for the pre-first-bundle window.
@@ -23,11 +35,20 @@ function livenessWindow(intervalMs: number): number {
 }
 
 /**
- * Opens the world stream. Returns a teardown that stops the watchdog and closes
- * the stream. EventSource handles Last-Event-ID on its own auto-retry; a
- * watchdog-driven reconnect is a fresh connection that resyncs to latest.
+ * Opens the world stream at `/api/events`, carrying the current token (from
+ * `getToken`, re-read on every connect so a later re-join's new token is
+ * picked up) as a query param — `/api/events?token=<token>` — so the server
+ * can attribute the stream to an entity for disconnect-grace bookkeeping. An
+ * empty token (no identity yet) connects to plain `/api/events` — watch-only
+ * until join.
+ *
+ * Returns a controller: `close` stops the watchdog and closes the stream for
+ * good; `reconnect` closes the current stream and opens a fresh one right
+ * away (re-reading `getToken`), for when the identity/token just changed.
+ * EventSource handles Last-Event-ID on its own auto-retry; a watchdog- or
+ * reconnect()-driven reconnect is a fresh connection that resyncs to latest.
  */
-export function connectEvents(callbacks: EventsCallbacks): () => void {
+export function connectEvents(getToken: () => string, callbacks: EventsCallbacks): EventsController {
   let source: EventSource;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   let windowMs = LIVENESS_FLOOR_MS;
@@ -50,7 +71,9 @@ export function connectEvents(callbacks: EventsCallbacks): () => void {
   };
 
   const connect = (): void => {
-    source = new EventSource("/api/events");
+    const token = getToken();
+    const url = token === "" ? "/api/events" : `/api/events?token=${encodeURIComponent(token)}`;
+    source = new EventSource(url);
 
     source.addEventListener(EventTurn, (event: MessageEvent<string>) => {
       const turn = JSON.parse(event.data) as TurnEvent;
@@ -82,12 +105,21 @@ export function connectEvents(callbacks: EventsCallbacks): () => void {
 
   connect();
 
-  return (): void => {
-    torndown = true;
-    if (watchdog !== undefined) {
-      clearTimeout(watchdog);
-    }
+  return {
+    close: (): void => {
+      torndown = true;
+      if (watchdog !== undefined) {
+        clearTimeout(watchdog);
+      }
 
-    source.close();
+      source.close();
+    },
+    reconnect: (): void => {
+      if (torndown) {
+        return;
+      }
+      source.close();
+      connect();
+    },
   };
 }

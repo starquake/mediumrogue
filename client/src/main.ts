@@ -6,6 +6,7 @@ import { Application, Container } from "pixi.js";
 
 import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
+import type { EventsController } from "./net/events";
 import { fetchMap } from "./net/map";
 import { join, loadIdentity, submitIntent } from "./net/session";
 import type { Hex, TurnEvent } from "./protocol.gen";
@@ -101,6 +102,12 @@ const combatWaitingEl = mustGet("combat-waiting");
 const combatPatienceEl = mustGet("combat-patience");
 const classPickerEl = mustGet("class-picker");
 const classButtons = Array.from(classPickerEl.querySelectorAll<HTMLButtonElement>("button[data-class]"));
+
+// How long this client's entity must be absent from turn bundles before it
+// re-joins (see attemptRejoin below) — well above a single coalesced/missed
+// bundle, so a normal blip never trips it; only a sustained absence (the
+// disconnect-grace sweep really removed the entity) does.
+const MISSING_GRACE_MS = 2_000;
 
 // Class picker: a brand-new player (no stored identity) sees this while the
 // map/engine load, giving a real window to click before the join call fires
@@ -247,6 +254,44 @@ async function start(): Promise<void> {
   window.game.me = { id: me.entityId, hex: me.hex };
   const identity = { entityId: me.entityId, token: me.token };
 
+  // Re-join tracking: if this client's entity is absent from turn bundles for
+  // a sustained spell, the disconnect-grace sweep removed it server-side (the
+  // player was gone too long) — re-join to get a playable (fresh) character
+  // back. MISSING_GRACE_MS is deliberately a couple of seconds, well above a
+  // single coalesced/missed bundle, so a normal blip never trips it.
+  let missingSinceMs: number | null = null;
+  let rejoining = false;
+  let eventsController: EventsController;
+
+  // attemptRejoin re-sends the (now-orphaned) stored token: the server won't
+  // recognize it and mints a fresh entity of the same class (existing
+  // behaviour — see session.join()). Adopts the new identity in place (so
+  // every closure that captured `identity`/`me` sees the update) and forces
+  // the event stream to reconnect with the new token. Guarded by `rejoining`
+  // so an in-flight re-join can't be started twice.
+  const attemptRejoin = async (): Promise<void> => {
+    if (rejoining) {
+      return;
+    }
+    rejoining = true;
+    try {
+      const rejoinClass = window.game.class !== "" ? window.game.class : selectedClass;
+      const rejoined = await join(rejoinClass);
+      identity.entityId = rejoined.entityId;
+      identity.token = rejoined.token;
+      me.entityId = rejoined.entityId;
+      me.token = rejoined.token;
+      me.hex = rejoined.hex;
+      window.game.me = { id: rejoined.entityId, hex: rejoined.hex };
+      window.game.destination = null;
+      // The token just changed — the stream must reconnect under the new one
+      // (a stream opened under the stale token no longer maps to any entity).
+      eventsController.reconnect();
+    } finally {
+      rejoining = false;
+    }
+  };
+
   // walkTo submits a move destination and records it for the HUD/tests. The
   // world's answer (movement) only ever arrives via turn bundles. A rejected
   // target (unwalkable / unreachable) never becomes a pending walk, so clear
@@ -277,7 +322,7 @@ async function start(): Promise<void> {
 
   window.game.tapHex = (q, r): Promise<void> => clickTarget({ q, r });
 
-  connectEvents({
+  eventsController = connectEvents(() => identity.token, {
     onTurn: (event: TurnEvent): void => {
       window.game.turn = event.turn;
       window.game.entities = event.entities.length;
@@ -309,6 +354,22 @@ async function start(): Promise<void> {
         window.game.class = mine.class;
         const xpIntoLevel = mine.xp % XPPerLevel;
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
+      }
+
+      // Absent from this bundle: either a coalesced/momentary blip (ignore —
+      // see MISSING_GRACE_MS) or the disconnect-grace sweep really removed
+      // this entity (the player was gone too long) — re-join once the
+      // absence has been sustained for MISSING_GRACE_MS. Present again →
+      // reset the streak, whether that's because it never left or because a
+      // re-join just landed a fresh entity.
+      if (mine === undefined) {
+        missingSinceMs ??= performance.now();
+        if (performance.now() - missingSinceMs >= MISSING_GRACE_MS) {
+          missingSinceMs = null;
+          void attemptRejoin();
+        }
+      } else {
+        missingSinceMs = null;
       }
 
       // A combat bubble freezes this client's turn clock in place of the
