@@ -1,4 +1,3 @@
-import { SpeciesHuman } from "../protocol.gen";
 import type { Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
@@ -31,18 +30,18 @@ export function loadIdentity(): Identity | null {
 
 /**
  * Claims an entity: re-sends the stored token so a page refresh keeps the
- * same character (and the same class — the server ignores Class entirely on
- * a token match, so a returning player's stored class always wins over
- * whatever the picker currently has selected), and stores whatever identity
- * the server answers with (a stale token after a server restart just becomes
- * a fresh entity, joined as `chosenClass`).
+ * same character (and the same class/species — the server ignores Class and
+ * Species entirely on a token match, so a returning player's stored choices
+ * always win over whatever the pickers currently have selected), and stores
+ * whatever identity the server answers with (a stale token after a server
+ * restart just becomes a fresh entity, joined as `chosenClass`/`chosenSpecies`).
  */
-export async function join(chosenClass: string): Promise<JoinResponse> {
+export async function join(chosenClass: string, chosenSpecies: string): Promise<JoinResponse> {
   const stored = loadIdentity();
   const body: JoinRequest = {
     token: stored?.token ?? "",
     class: stored?.class ?? chosenClass,
-    species: stored?.species ?? SpeciesHuman,
+    species: stored?.species ?? chosenSpecies,
   };
   const resp = await fetch("/api/join", {
     method: "POST",
@@ -58,7 +57,7 @@ export async function join(chosenClass: string): Promise<JoinResponse> {
     entityId: joined.entityId,
     token: joined.token,
     class: stored?.class ?? chosenClass,
-    species: stored?.species ?? SpeciesHuman,
+    species: stored?.species ?? chosenSpecies,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
 

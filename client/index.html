@@ -131,6 +131,44 @@
         background: #2a3d2b;
         border-color: #7cb342;
       }
+      /* Species picker: mirrors #class-picker exactly (same visibility rule,
+         same styling) — shown beside it for a brand-new player. */
+      #species-picker {
+        position: fixed;
+        top: 0.75rem;
+        right: 13rem;
+        z-index: 11;
+        background: rgba(11, 15, 11, 0.85);
+        border: 1px solid var(--dim);
+        padding: 0.5rem 0.75rem;
+        text-align: center;
+        text-shadow: 0 1px 2px #000;
+      }
+      #species-picker[hidden] {
+        display: none;
+      }
+      #species-picker-label {
+        margin-bottom: 0.35rem;
+        color: var(--dim);
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      #species-picker button {
+        margin: 0 0.15rem;
+        padding: 0.3rem 0.6rem;
+        font-family: inherit;
+        font-size: 0.85rem;
+        color: var(--fg);
+        background: #16201a;
+        border: 1px solid var(--dim);
+        cursor: pointer;
+      }
+      #species-picker button.selected,
+      #species-picker button:hover {
+        background: #2a3d2b;
+        border-color: #7cb342;
+      }
     </style>
   </head>
   <body>
@@ -149,6 +187,12 @@
       <button type="button" data-class="fighter">Fighter</button>
       <button type="button" data-class="rogue">Rogue</button>
       <button type="button" data-class="mage">Mage</button>
+    </div>
+    <div id="species-picker" hidden>
+      <div id="species-picker-label">Choose your species</div>
+      <button type="button" data-species="human">Human</button>
+      <button type="button" data-species="elf">Elf</button>
+      <button type="button" data-species="dwarf">Dwarf</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

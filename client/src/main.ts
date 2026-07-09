@@ -20,6 +20,7 @@ import {
   IntentMove,
   MageRange,
   PlaybackSeconds,
+  SpeciesHuman,
   TurnSeconds,
   XPPerLevel,
 } from "./protocol.gen";
@@ -50,6 +51,8 @@ export interface GameDebug {
   level: number;
   /** This client's entity's class ("fighter"/"rogue"/"mage"), from the latest bundle. "" until joined. */
   class: string;
+  /** This client's entity's species ("human"/"elf"/"dwarf"), from the latest bundle. "" until joined. */
+  species: string;
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
   /** Runtime turn interval from the latest bundle, in ms. */
@@ -102,6 +105,10 @@ const combatWaitingEl = mustGet("combat-waiting");
 const combatPatienceEl = mustGet("combat-patience");
 const classPickerEl = mustGet("class-picker");
 const classButtons = Array.from(classPickerEl.querySelectorAll<HTMLButtonElement>("button[data-class]"));
+const speciesPickerEl = mustGet("species-picker");
+const speciesButtons = Array.from(
+  speciesPickerEl.querySelectorAll<HTMLButtonElement>("button[data-species]"),
+);
 
 // How long this client's entity must be absent from turn bundles before it
 // re-joins (see attemptRejoin below) — well above a single coalesced/missed
@@ -130,6 +137,23 @@ for (const btn of classButtons) {
 }
 selectClass(ClassFighter);
 
+// Species picker: mirrors the class picker exactly — same visibility rule
+// (brand-new player only; a returning player's token already fixes their
+// species server-side), same "nothing needs to be clicked" default (Human).
+let selectedSpecies: string = SpeciesHuman;
+
+function selectSpecies(species: string): void {
+  selectedSpecies = species;
+  for (const btn of speciesButtons) {
+    btn.classList.toggle("selected", btn.dataset["species"] === species);
+  }
+}
+
+for (const btn of speciesButtons) {
+  btn.addEventListener("click", () => selectSpecies(btn.dataset["species"] ?? SpeciesHuman));
+}
+selectSpecies(SpeciesHuman);
+
 // Turn-phase timing, tracked from wall-clock (performance.now) and reset on
 // each turn bundle. window.game.phase is computed on read from these, so it
 // reports the true phase at any instant — independent of render-frame cadence,
@@ -151,6 +175,7 @@ window.game = {
   xp: 0,
   level: 1,
   class: "",
+  species: "",
   me: null,
   intervalMs: 0,
   heartbeats: 0,
@@ -222,6 +247,7 @@ async function start(): Promise<void> {
   // map/engine load below — a real window to choose before join() fires.
   const isNewPlayer = loadIdentity() === null;
   classPickerEl.hidden = !isNewPlayer;
+  speciesPickerEl.hidden = !isNewPlayer;
 
   const app = new Application();
   await app.init({ background: "#0b0f0b", resizeTo: window, antialias: true });
@@ -245,12 +271,14 @@ async function start(): Promise<void> {
 
   const timer = new TurnTimer(app.ticker);
 
-  // The join always fires now, click or not — whichever class is currently
-  // selected (Fighter by default) is what's sent; a returning player's
-  // stored class overrides this regardless (join() itself resends their
-  // token, and the server ignores Class on a token match).
+  // The join always fires now, click or not — whichever class/species are
+  // currently selected (Fighter/Human by default) is what's sent; a
+  // returning player's stored choices override this regardless (join()
+  // itself resends their token, and the server ignores Class/Species on a
+  // token match).
   classPickerEl.hidden = true;
-  const me = await join(selectedClass);
+  speciesPickerEl.hidden = true;
+  const me = await join(selectedClass, selectedSpecies);
   window.game.me = { id: me.entityId, hex: me.hex };
   const identity = { entityId: me.entityId, token: me.token };
 
@@ -276,7 +304,8 @@ async function start(): Promise<void> {
     rejoining = true;
     try {
       const rejoinClass = window.game.class !== "" ? window.game.class : selectedClass;
-      const rejoined = await join(rejoinClass);
+      const rejoinSpecies = window.game.species !== "" ? window.game.species : selectedSpecies;
+      const rejoined = await join(rejoinClass, rejoinSpecies);
       identity.entityId = rejoined.entityId;
       identity.token = rejoined.token;
       me.entityId = rejoined.entityId;
@@ -352,6 +381,7 @@ async function start(): Promise<void> {
         window.game.xp = mine.xp;
         window.game.level = mine.level;
         window.game.class = mine.class;
+        window.game.species = mine.species;
         const xpIntoLevel = mine.xp % XPPerLevel;
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
       }
