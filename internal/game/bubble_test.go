@@ -49,7 +49,7 @@ func mustWalkable(t *testing.T, w *game.World, h protocol.Hex) protocol.Hex {
 	t.Helper()
 
 	if !isWalkable(w, h) {
-		t.Fatalf("hex %v is not walkable on the static map", h)
+		t.Fatalf("hex %v is not walkable on the generated map", h)
 	}
 
 	return h

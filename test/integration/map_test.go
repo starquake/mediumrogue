@@ -77,10 +77,12 @@ func TestMapIsGeneratedAndWalkableNearOrigin(t *testing.T) {
 	}
 
 	origin := protocol.Hex{Q: 0, R: 0}
+
 	originTerrain, ok := terrainAtHex(m, origin)
 	if !ok {
 		t.Fatalf("origin %v missing from tiles", origin)
 	}
+
 	if got := originTerrain; got != protocol.TerrainGrass && got != protocol.TerrainForest {
 		t.Errorf("origin terrain = %q, want grass or forest (walkable)", got)
 	}
@@ -97,6 +99,7 @@ func TestMapIsGeneratedAndWalkableNearOrigin(t *testing.T) {
 		if !ok {
 			t.Fatalf("rim hex %v missing from tiles", h)
 		}
+
 		if got, want := terr, protocol.TerrainRock; got != want {
 			t.Errorf("rim hex %v terrain = %q, want %q", h, got, want)
 		}
@@ -108,14 +111,15 @@ func TestMapIsGeneratedAndWalkableNearOrigin(t *testing.T) {
 	for _, tile := range m.Tiles {
 		distinct[tile.Terrain] = true
 	}
-	if got, min := len(distinct), 2; got < min {
-		t.Errorf("distinct terrains = %d, want >= %d (tiles: %+v)", got, min, distinct)
+
+	if got, wantMin := len(distinct), 2; got < wantMin {
+		t.Errorf("distinct terrains = %d, want >= %d (tiles: %+v)", got, wantMin, distinct)
 	}
 }
 
 // terrainAtHex scans m.Tiles for h and reports its terrain, or ok=false if h
 // isn't present.
-func terrainAtHex(m protocol.MapResponse, h protocol.Hex) (terrain protocol.Terrain, ok bool) {
+func terrainAtHex(m protocol.MapResponse, h protocol.Hex) (protocol.Terrain, bool) {
 	for _, tile := range m.Tiles {
 		if tile.Hex == h {
 			return tile.Terrain, true
