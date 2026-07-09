@@ -12,6 +12,10 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// testerName is the display name every integration-test join uses; the tests
+// in this package don't care about names, only that Join accepts a valid one.
+const testerName = "tester"
+
 // postJSON posts body as JSON and registers response-body cleanup.
 func postJSON(t *testing.T, ts *httptest.Server, path string, body any) *http.Response {
 	t.Helper()
@@ -52,7 +56,7 @@ func joinClass(t *testing.T, ts *httptest.Server, token, class string) protocol.
 	t.Helper()
 
 	resp := postJSON(t, ts, "/api/join",
-		protocol.JoinRequest{Token: token, Class: class, Species: protocol.SpeciesHuman})
+		protocol.JoinRequest{Token: token, Name: testerName, Class: class, Species: protocol.SpeciesHuman})
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("join status = %d, want 200", got)
 	}

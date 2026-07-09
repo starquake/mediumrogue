@@ -34,6 +34,15 @@ export const CombatRadius = 6;
  */
 export const StackCap = 5;
 /**
+ * MaxChatLen caps a chat message length in runes (defence-in-depth; the
+ * client also caps input). MaxNameLen caps a player's display name.
+ */
+export const MaxChatLen = 500;
+/**
+ * World rules that both sides need to agree on.
+ */
+export const MaxNameLen = 24;
+/**
  * Hex is an axial coordinate on the flat-top hex grid. See Red Blob Games'
  * hex guide for the coordinate math conventions.
  */
@@ -239,6 +248,11 @@ export const EventTurn = "turn";
  */
 export const EventHeartbeat = "heartbeat";
 /**
+ * EventChat announces a chat message. It carries NO id (chat is not a turn
+ * and must not advance Last-Event-ID); its data is a JSON ChatMessage.
+ */
+export const EventChat = "chat";
+/**
  * BubbleView is a window into a combat bubble: who's in it, which members it's
  * still waiting on, and how long until the patience timeout. Every bundle
  * carries all active bubbles; a client picks the one whose MemberIDs include
@@ -302,6 +316,10 @@ export interface Entity {
    * Level is server-authoritative; monsters send 1, players send their actual level.
    */
   level: number /* int */;
+  /**
+   * Name is the player's display name; empty for monsters.
+   */
+  name: string;
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its
@@ -309,6 +327,12 @@ export interface Entity {
  */
 export interface JoinRequest {
   token: string;
+  /**
+   * Name is the player's display name (chat sender label). Required for a
+   * new player (non-empty after trim, at most MaxNameLen runes); ignored on
+   * a reclaim (known token) — an existing entity already has its name.
+   */
+  name: string;
   /**
    * Class is the player's chosen class. Required for a new player (empty
    * token or unknown token): must be ClassFighter, ClassRogue, or
@@ -351,6 +375,25 @@ export interface IntentRequest {
    */
   kind: string;
   target: Hex;
+}
+/**
+ * ChatMessage is the payload of an EventChat frame: one line in the global
+ * channel. Seq is a server-assigned monotonic sequence (a stable client key
+ * and ordering aid — not a timestamp). Sender is the author's display name.
+ */
+export interface ChatMessage {
+  seq: number /* int64 */;
+  sender: string;
+  text: string;
+}
+/**
+ * ChatRequest is the body of POST /api/chat. Token authenticates the sender;
+ * Text is the message (or a "/command"). The server resolves the sender's
+ * name and position from the token — the client cannot set them.
+ */
+export interface ChatRequest {
+  token: string;
+  text: string;
 }
 /**
  * ErrorResponse is the JSON body of every non-2xx API response.

@@ -20,7 +20,8 @@ import (
 func joinSpecies(t *testing.T, ts *httptest.Server, species string) protocol.JoinResponse {
 	t.Helper()
 
-	resp := postJSON(t, ts, "/api/join", protocol.JoinRequest{Class: protocol.ClassFighter, Species: species})
+	resp := postJSON(t, ts, "/api/join",
+		protocol.JoinRequest{Name: testerName, Class: protocol.ClassFighter, Species: species})
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("join status = %d, want 200", got)
 	}
@@ -164,7 +165,8 @@ func TestJoinRejectsInvalidSpeciesOverHTTP(t *testing.T) {
 		{"empty", ""},
 		{"unknown", "gnome"},
 	} {
-		resp := postJSON(t, ts, "/api/join", protocol.JoinRequest{Class: protocol.ClassFighter, Species: tc.species})
+		resp := postJSON(t, ts, "/api/join",
+			protocol.JoinRequest{Name: testerName, Class: protocol.ClassFighter, Species: tc.species})
 		if got, want := resp.StatusCode, http.StatusUnprocessableEntity; got != want {
 			t.Errorf("join(species=%q) status = %d, want %d (case %s)", tc.species, got, want, tc.name)
 		}

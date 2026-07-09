@@ -14,7 +14,7 @@ func TestFreshPlayerHasZeroXPLevelOne(t *testing.T) {
 
 	w := newWorld()
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestKillGrantsXP(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(10)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesDwarf)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesDwarf)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(12)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesDwarf)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesDwarf)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestDeathFloorsXPKeepsLevel(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(13)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	w := newWorld()
 	w.SetSeedForTest(14)
 
-	me, err := w.Join("", protocol.ClassFighter, protocol.SpeciesHuman)
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

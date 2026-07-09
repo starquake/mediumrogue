@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/starquake/mediumrogue/internal/chat"
 	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/hub"
 )
@@ -19,6 +20,8 @@ type Deps struct {
 	Logger *slog.Logger
 	World  *game.World
 	Ticks  *hub.Hub
+	// Chat fans chat messages to every connected SSE stream.
+	Chat *chat.Broker
 	// HeartbeatInterval is how often the SSE handlers emit a comment frame on
 	// an otherwise idle stream. Threaded through Deps (not read from config
 	// here) so tests can shrink it to milliseconds.

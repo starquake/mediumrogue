@@ -59,6 +59,9 @@ func handleEvents(deps Deps) http.Handler {
 		ticks, unsubscribe := deps.Ticks.Subscribe()
 		defer unsubscribe()
 
+		chatCh, unsubscribeChat := deps.Chat.Subscribe()
+		defer unsubscribeChat()
+
 		// Seed the watermark from Last-Event-ID so a reconnecting client is not
 		// re-sent a turn it already has. A fresh client (no header) or a
 		// malformed value defaults to -1 → current snapshot sent immediately.
@@ -74,6 +77,10 @@ func handleEvents(deps Deps) http.Handler {
 				return
 			case <-ticks:
 				lastSent = writeTurn(w, deps, flusher, lastSent)
+			case msg := <-chatCh:
+				if !writeChat(w, deps, flusher, msg) {
+					return
+				}
 			case <-heartbeat.C:
 				// Named keep-alive: fires on a fixed cadence regardless of turns,
 				// so the client's liveness watchdog stays fed even when a frozen
@@ -129,4 +136,23 @@ func writeTurn(w http.ResponseWriter, deps Deps, flusher http.Flusher, lastSent 
 	flusher.Flush()
 
 	return turn
+}
+
+// writeChat emits one chat message as an EventChat frame. No id: — chat must
+// not advance Last-Event-ID. Returns false if the connection is gone.
+func writeChat(w http.ResponseWriter, deps Deps, flusher http.Flusher, msg protocol.ChatMessage) bool {
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		deps.Logger.Error("marshal chat", "err", err)
+
+		return true
+	}
+
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", protocol.EventChat, payload); err != nil {
+		return false
+	}
+
+	flusher.Flush()
+
+	return true
 }

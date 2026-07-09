@@ -26,6 +26,10 @@ func addRoutes(mux *http.ServeMux, deps Deps) {
 	mux.Handle("POST /api/join", handleJoin(deps))
 	mux.Handle("POST /api/intent", handleIntent(deps))
 
+	// Global chat: a joined player POSTs a line (or a "/command"); it fans out
+	// to every connected stream as an EventChat frame.
+	mux.Handle("POST /api/chat", handleChat(deps))
+
 	// The embedded client bundle, served at the root. Registered last so the
 	// more specific patterns above win.
 	mux.Handle("/", web.Handler())

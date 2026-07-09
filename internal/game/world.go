@@ -9,8 +9,10 @@ import (
 	"fmt"
 	mrand "math/rand/v2"
 	"slices"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -41,6 +43,8 @@ var (
 	// ErrInvalidSpecies rejects a Join for a new entity whose Species is not one
 	// of SpeciesHuman, SpeciesElf, SpeciesDwarf.
 	ErrInvalidSpecies = errors.New("invalid species")
+	// ErrInvalidName rejects an empty or over-long display name at join.
+	ErrInvalidName = errors.New("invalid name")
 	// ErrInvalidIntentKind rejects a SubmitIntent whose Kind is not
 	// IntentMove or IntentAttack.
 	ErrInvalidIntentKind = errors.New("invalid intent kind")
@@ -56,6 +60,9 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
+	// name is the player's display name (chat sender label), validated and set
+	// at Join; empty for monsters.
+	name string
 	// class is the player's class (protocol.ClassFighter/Rogue/Mage), validated
 	// and set at Join; empty for monsters. It selects the entity's weapon
 	// loadout and base HP via the class.go helpers.
@@ -298,15 +305,17 @@ func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
 }
 
 // Join returns the entity for token, creating a new one (empty or unknown
-// token) at a free spawn hex with the given class. For a new entity, class is
+// token) at a free spawn hex with the given name, class, and species. For a
+// new entity, name is required — non-empty after trimming and at most
+// protocol.MaxNameLen runes, else Join returns ErrInvalidName; class is
 // required — it must be ClassFighter, ClassRogue, or ClassMage, else Join
 // returns ErrInvalidClass, and species must be SpeciesHuman, SpeciesElf, or
 // SpeciesDwarf, else ErrInvalidSpecies. An unknown token quietly becomes a new
 // player rather than an error: the stored identity of a restarted server is
 // gone, and the client's right move is always "then give me a fresh entity".
-// For a reclaim (known token) class and species are ignored — the existing
-// entity already has both.
-func (w *World) Join(token, class, species string) (protocol.JoinResponse, error) {
+// For a reclaim (known token) name, class, and species are ignored — the
+// existing entity already has all three.
+func (w *World) Join(token, name, class, species string) (protocol.JoinResponse, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -317,6 +326,11 @@ func (w *World) Join(token, class, species string) (protocol.JoinResponse, error
 		e.disconnectedAt = w.now()
 
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+	}
+
+	name = strings.TrimSpace(name)
+	if !validName(name) {
+		return protocol.JoinResponse{}, ErrInvalidName
 	}
 
 	if !validClass(class) {
@@ -342,7 +356,7 @@ func (w *World) Join(token, class, species string) (protocol.JoinResponse, error
 	w.nextID++
 	e := &entity{
 		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
-		kind: protocol.EntityPlayer, class: class, species: species, hp: maxHP, maxHP: maxHP,
+		kind: protocol.EntityPlayer, name: name, class: class, species: species, hp: maxHP, maxHP: maxHP,
 		// streams starts 0, disconnectedAt at join time: the removal-grace clock
 		// runs from the join so a client that joins but never opens a stream is
 		// eventually swept. The client opens its stream within ms (StreamOpened).
@@ -352,6 +366,29 @@ func (w *World) Join(token, class, species string) (protocol.JoinResponse, error
 	w.byToken[e.token] = e
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+}
+
+// validName accepts a trimmed, non-empty name of at most
+// protocol.MaxNameLen runes.
+func validName(name string) bool {
+	n := utf8.RuneCountInString(name)
+
+	return n > 0 && n <= protocol.MaxNameLen
+}
+
+// SenderFor resolves a chat sender from their token: their display name and
+// current authoritative position. ok is false for an unknown or empty token
+// (not joined). Used by POST /api/chat so /here can't be spoofed.
+func (w *World) SenderFor(token string) (string, protocol.Hex, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e, ok := w.byToken[token]
+	if !ok || token == "" {
+		return "", protocol.Hex{}, false
+	}
+
+	return e.name, e.hex, true
 }
 
 // StreamOpened marks that a live event stream opened for the entity with this
@@ -529,7 +566,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
+			ID: e.id, Hex: e.hex, Kind: e.kind, Name: e.name, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
 			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp),
 		})
 	}

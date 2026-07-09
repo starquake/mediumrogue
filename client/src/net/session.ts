@@ -1,4 +1,4 @@
-import type { Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
+import type { ChatRequest, ErrorResponse, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
 
@@ -35,11 +35,18 @@ export function loadIdentity(): Identity | null {
  * always win over whatever the pickers currently have selected), and stores
  * whatever identity the server answers with (a stale token after a server
  * restart just becomes a fresh entity, joined as `chosenClass`/`chosenSpecies`).
+ * `chosenName` is likewise only used for a new/orphaned token — the server
+ * ignores Name on a reclaim (an existing entity already has its name).
  */
-export async function join(chosenClass: string, chosenSpecies: string): Promise<JoinResponse> {
+export async function join(
+  chosenName: string,
+  chosenClass: string,
+  chosenSpecies: string,
+): Promise<JoinResponse> {
   const stored = loadIdentity();
   const body: JoinRequest = {
     token: stored?.token ?? "",
+    name: chosenName,
     class: stored?.class ?? chosenClass,
     species: stored?.species ?? chosenSpecies,
   };
@@ -85,4 +92,25 @@ export async function submitIntent(
   });
 
   return resp.status === 202;
+}
+
+/**
+ * POSTs a chat line. Throws with the server's message on a non-2xx (e.g. a
+ * 422 command error or a 401 stale token), so the caller (the chat store)
+ * can surface it locally as a system line.
+ */
+export async function sendChat(token: string, text: string): Promise<void> {
+  const body: ChatRequest = { token, text };
+  const resp = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const detail = await resp
+      .json()
+      .then((body: ErrorResponse) => body.error)
+      .catch(() => "");
+    throw new Error(detail || `chat failed (${resp.status})`);
+  }
 }
