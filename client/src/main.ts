@@ -366,7 +366,9 @@ async function start(): Promise<void> {
         missingSinceMs ??= performance.now();
         if (performance.now() - missingSinceMs >= MISSING_GRACE_MS) {
           missingSinceMs = null;
-          void attemptRejoin();
+          // Swallow a failed re-join (transient network): the streak restarts and
+          // it retries after another MISSING_GRACE_MS — no unhandled rejection.
+          void attemptRejoin().catch(() => {});
         }
       } else {
         missingSinceMs = null;

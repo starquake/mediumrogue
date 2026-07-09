@@ -238,6 +238,9 @@ func (w *World) pollTick(now time.Time) bool {
 		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
 	}
 
+	// Final recompute after this pass's resolutions moved entities. (A sweep
+	// above may have already recomputed once — keep this one anyway: positions
+	// changed since. recompute is idempotent, so the extra call is harmless.)
 	w.recomputeBubblesLocked(now)
 
 	return true
@@ -286,6 +289,11 @@ func (w *World) Join(token, class string) (protocol.JoinResponse, error) {
 	defer w.mu.Unlock()
 
 	if e, ok := w.byToken[token]; ok && token != "" {
+		// A reclaim is a fresh sign of life: refresh the grace clock so a sweep
+		// can't remove the entity in the gap before its reopened stream calls
+		// StreamOpened.
+		e.disconnectedAt = w.now()
+
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 	}
 
