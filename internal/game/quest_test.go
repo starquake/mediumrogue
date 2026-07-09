@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
@@ -473,4 +474,18 @@ func reachQuest(t *testing.T, w *game.World) (int64, protocol.Hex) {
 	t.Fatalf("no reach quest on the board")
 
 	return 0, protocol.Hex{}
+}
+
+// TestQuestBoardTinyWorldDoesNotPanic guards the reach-goal fallback: a world
+// too small for any hex at the preferred quest distance must still boot (the
+// generator falls back to nearer reachable hexes rather than panicking).
+func TestQuestBoardTinyWorldDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	w := game.NewWorld(time.Hour, time.Second, time.Millisecond, time.Minute, 0xC0FFEE, 2, hub.New())
+
+	quests := w.Snapshot().Quests
+	if got, want := len(quests), 6; got != want {
+		t.Fatalf("tiny-world board size = %d, want %d", got, want)
+	}
 }

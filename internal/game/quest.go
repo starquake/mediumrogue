@@ -73,6 +73,21 @@ func generateQuests(seed uint64, m protocol.MapResponse) []*quest {
 		}
 	}
 
+	// A tiny WORLD_RADIUS can leave no candidate at questReachMinDist; fall
+	// back to every reachable non-origin hex so boot never panics on IntN(0).
+	// A world too small even for that (radius 1) targets the origin itself.
+	if len(goals) == 0 {
+		for h := range reach {
+			if h != origin {
+				goals = append(goals, h)
+			}
+		}
+	}
+
+	if len(goals) == 0 {
+		goals = append(goals, origin)
+	}
+
 	slices.SortFunc(goals, func(a, b protocol.Hex) int {
 		if a.Q != b.Q {
 			return a.Q - b.Q
