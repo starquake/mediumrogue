@@ -351,8 +351,14 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // must have a ranged weapon (else ErrNoRangedWeapon) and the target must be
 // within its reach at submit time (else ErrOutOfRange). On success it records
 // the target and clears the route — a ranged attack replaces the move for this
-// turn. Range is re-checked at resolution against post-move positions, so a shot
-// that opens in range but ends out of range simply fizzles. Callers hold w.mu.
+// turn. The resolution-time re-check is defensive (nothing relocates a shooter
+// mid-turn today; it guards a future knockback/forced-move mechanic).
+//
+// INVARIANT: max(BowRange, MageRange+MageAoERadius) must stay <= CombatRadius, so
+// any entity a ranged attack can reach is always already in the shooter's combat
+// bubble. If a longer-reach weapon is ever added, a monster could be ranged-killed
+// in the WORLD domain (where resolveWorldTurnLocked awards no kill-XP) — add an
+// in-bubble/target-in-member-set guard here then. Callers hold w.mu.
 func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
 	wpn, ok := rangedWeapon(e.class)
 	if !ok {
