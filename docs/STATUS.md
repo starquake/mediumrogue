@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-09, after milestone-7 procgen (seeded noise-biome world, radius 24, camera-follow) — **milestone 6 era complete**. Update this file at the end of
+*Last updated: 2026-07-09, after milestone 8.1 chat (global ephemeral chat over SSE, SolidJS `<ChatPanel>`, name-at-join, `/here` command). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -146,7 +146,38 @@ slices, each its own spec → plan → PR:
   `noiseScale`, `waterLevel` (0.30), `mountainLevel` (0.78), `forestLevel`,
   `clearingRadius`. **Milestone 7 complete → milestone 6 era done.**
 
-After that (§8): 8 = quests/parties/chat (**NEXT**), 9 = shader filter, 10 = deploy.
+## Milestone 8 — quests, parties & chat (decomposed like M6)
+
+- **8.1 chat — DONE** (this PR): global ephemeral chat over SSE. A dedicated
+  **non-coalescing** fan-out broker (`internal/chat.Broker`, distinct from
+  `internal/hub`'s coalescing-tick model — every chat message is delivered,
+  best-effort per slow-subscriber buffer) publishes to `POST /api/chat` and
+  fans out as a no-`id:` `event: chat` SSE frame (`protocol.ChatMessage
+  {Seq,Sender,Text}`) — no-id is deliberate: chat must never advance
+  `Last-Event-ID`/turn resync. A player now picks a **display name at join**
+  (free-text field, default `"traveler"`, required on `Entity`/`JoinRequest`);
+  `SenderFor(token)` resolves a chat sender's authoritative name + position
+  server-side so commands can't be spoofed by the client. A `/`-command
+  registry (`internal/chat.RunCommand`) parses `"/verb args…"`; the first
+  command is **`/here`** (broadcasts the sender's live position, 📍 + `(q,
+  r)`); an unknown/empty verb is a 422 whose message the client surfaces as a
+  **readable local system line** (e.g. `unknown command: /badcmd`), not a raw
+  JSON error blob. Client: the first **SolidJS** component,
+  `<ChatPanel>` (`client/src/chat/ChatPanel.tsx`, mounted into `#chat-root` —
+  a click-through overlay div so the underlying Pixi canvas keeps receiving
+  map clicks; only `#chat-panel` itself re-enables `pointer-events`), backed
+  by a small reactive store (`client/src/chat/store.ts`, capped to the last
+  200 lines client-side — **not** a history buffer). `window.game.{name,
+  chat, sendChat}` exposed for tests. **Ephemeral by design**: no server-side
+  history, no replay on reconnect/join — a client only sees chat sent while
+  its stream is live. Party/local channels and persisted history are later
+  (see the plan §8 chat note). Covered by broker/command unit tests, a chat
+  integration test (POST → both SSE subscribers receive the frame), and
+  `client/e2e/chat.spec.ts` (two-client delivery, `/here`, the readable
+  unknown-command line, and a pointer-events-overlay regression guard).
+
+Next: **8.2 parties** (party membership, invites, then quest log UI). After
+that: 9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 
