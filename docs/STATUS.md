@@ -1,6 +1,6 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-08, after milestone-6b.1 XP & leveling. Update this file at the end of
+*Last updated: 2026-07-09, after milestone-6b.2 classes (fighter/rogue/mage, ranged + AoE). Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -111,19 +111,30 @@ slices, each its own spec → plan → PR:
   progress) — resolving the 6.3 "no XP penalty yet" debt. Wire: `Entity.XP`/
   `Level`; client: a level/XP stats HUD + `window.game.xp`/`level`. A level
   grants **no mechanical bonus yet** — that arrives with classes/species.
-- **6b.2 classes — NEXT**: rogue/fighter/mage combat identities.
-- **6b.3 species**: human (learns faster → XP multiplier), elf (crits), dwarf (soak).
+- **6b.2 classes — DONE** (this PR): fighter/rogue/mage with distinct combat.
+  Per-class HP (fighter 30 tanky, rogue 16, mage 14) + weapon damage, both
+  **scaling with level** (levels now matter). **Class-default equipped weapons**
+  (rogue dagger+bow, fighter sword, mage staff) — melee **bump** uses the close
+  weapon; **ranged attack intents** (`kind:"attack"`) add rogue **bow**
+  (single-target) and mage **AoE magic** (`no friendly fire`); fighter has no
+  ranged. Class chosen at join (client picker, default fighter); `Entity.Class`
+  + `window.game.class`. Ranged rules: `BowRange`/`MageRange=4`, AoE radius 1,
+  distance-only (no terrain LOS). **Gear inventory/equip/drops deferred** (see
+  the `gear-equipment-system` note — 6b.2 uses class defaults + unarmed fallback).
+- **6b.3 species — NEXT**: human (learns faster → XP multiplier), elf (crits), dwarf (soak).
 
 After that (§8): 7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = deploy.
 
 ## Known placeholders / debt (all deliberate)
 
-- **Combat is flat melee, no classes**: bump-to-attack does a single flat damage
-  per attacker kind (`PlayerAttackDamage`/`MonsterAttackDamage`); no classes,
-  weapons, ranged, or AoE — that's 6b.2/6b.3. XP & the XP-level death penalty
-  now exist (6b.1), but a level grants **no mechanical bonus yet** (levels feed
-  class/species scaling in 6b.2/6b.3). Killed monsters are removed and **do not
-  respawn** (fixed pool depletes; continuous spawning is a later tuning pass).
+- **No gear/inventory yet**: classes (6b.2) use **class-default equipped weapons**
+  (rogue dagger+bow, fighter sword, mage staff) with an unarmed (fists) fallback;
+  there's no inventory, equip/swap, or loot drops — that's a later gear slice
+  (see the `gear-equipment-system` note). No **species** passives yet (6b.3). No
+  **terrain-blocked LOS** for ranged (distance-only). Killed monsters are removed
+  and **do not respawn** (fixed pool depletes; continuous spawning is later).
+  `protocol.PlayerAttackDamage` is now an orphaned constant (melee uses class
+  weapons) — remove opportunistically.
 - **`spawnHexLocked` is faction-blind**: `Join` and player respawn pick the
   nearest free walkable hex without avoiding monster-occupied hexes, so a
   player can spawn co-located with a monster (opposing co-occupancy). Inert
@@ -165,13 +176,16 @@ After that (§8): 7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = 
   bearer-token-in-body (no ambient credentials). Revisit with real identity.
 - **Entities never leave the world**: no disconnect handling — every join
   without a token mints a new entity forever (offline-character policy is an
-  open decision in plan §9). **E2e consequence:** the shared Playwright server
-  accumulates every spec's player for the whole run; monsters that hunt and
-  cluster on that pile can push a hex to `StackCap` and block an unrelated
-  movement spec. So `playwright.config.ts` runs two servers — a monster-free
-  **core** server and a **combat** server (`MONSTER_COUNT` set) — and specs
-  matching `/(monsters|combat)\.spec\.ts$/` run against the combat server (name
-  future combat e2e specs `*combat.spec.ts` so they land there).
+  open decision in plan §9). **E2e consequence:** a shared Playwright server
+  accumulates every spec's entities for the whole run — so a monster-server spec
+  can wedge a combat bubble (unstuck only by the 60s `COMBAT_PATIENCE` AFK
+  fallback) and starve a sibling spec running in parallel. Fix (6b.2):
+  `playwright.config.ts` gives each **monster-needing** spec its **own private
+  server** (a Playwright project + webServer per spec — `monsters`, `combat`,
+  `ranged`, each on its own port), while monster-free "core" specs (incl.
+  `multiplayer.spec` with its two clients on one shared server) run together. So
+  cross-spec state sharing on a monster server is structurally impossible. Name a
+  new monster/combat e2e spec so it gets its own project entry.
 - **No explicit wait input**: standing still = not sending an intent. An
   explicit wait intent may become useful inside combat time bubbles
   (milestone 6) — decide then.
