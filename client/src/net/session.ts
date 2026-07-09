@@ -1,4 +1,4 @@
-import type { ChatRequest, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
+import type { ChatRequest, ErrorResponse, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
 
@@ -107,7 +107,10 @@ export async function sendChat(token: string, text: string): Promise<void> {
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
-    const detail = await resp.text().catch(() => "");
+    const detail = await resp
+      .json()
+      .then((body: ErrorResponse) => body.error)
+      .catch(() => "");
     throw new Error(detail || `chat failed (${resp.status})`);
   }
 }

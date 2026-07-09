@@ -2,6 +2,7 @@ import { createEffect, For } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
+import { MaxChatLen } from "../protocol.gen";
 import { messages, sendChat } from "./store";
 
 function ChatPanel(): JSXElement {
@@ -45,7 +46,7 @@ function ChatPanel(): JSXElement {
           type="text"
           autocomplete="off"
           placeholder="Say something… (/here to share location)"
-          maxlength={500}
+          maxlength={MaxChatLen}
         />
         <button type="submit">Send</button>
       </form>
