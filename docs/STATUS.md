@@ -177,15 +177,15 @@ After that (§8): 7 = procgen, 8 = quests/parties/chat, 9 = shader filter, 10 = 
 - **Entities never leave the world**: no disconnect handling — every join
   without a token mints a new entity forever (offline-character policy is an
   open decision in plan §9). **E2e consequence:** a shared Playwright server
-  accumulates every spec's entities for the whole run — so a monster-server spec
-  can wedge a combat bubble (unstuck only by the 60s `COMBAT_PATIENCE` AFK
-  fallback) and starve a sibling spec running in parallel. Fix (6b.2):
-  `playwright.config.ts` gives each **monster-needing** spec its **own private
-  server** (a Playwright project + webServer per spec — `monsters`, `combat`,
-  `ranged`, each on its own port), while monster-free "core" specs (incl.
-  `multiplayer.spec` with its two clients on one shared server) run together. So
-  cross-spec state sharing on a monster server is structurally impossible. Name a
-  new monster/combat e2e spec so it gets its own project entry.
+  accumulates every spec's entities for the whole run — so under CI's worker
+  parallelism accumulated players can fill a hex to `StackCap` and block an
+  unrelated movement spec's walk (reproduced under `--workers=12`), and a
+  monster-server spec can wedge a combat bubble (unstuck only by the 60s
+  `COMBAT_PATIENCE` AFK fallback). Fix: `playwright.config.ts` gives **every spec
+  its own single-consumer server** (a project + webServer per spec file, DRY over
+  a `specs` list; `MONSTER_COUNT` set only where needed), so cross-spec state
+  sharing is structurally impossible. Add a new e2e spec to that `specs` list.
+  Tracked as **issue #21**; the real product fix is disconnect cleanup.
 - **No explicit wait input**: standing still = not sending an intent. An
   explicit wait intent may become useful inside combat time bubbles
   (milestone 6) — decide then.
