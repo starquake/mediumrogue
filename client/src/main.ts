@@ -4,6 +4,8 @@ import "pixi.js/unsafe-eval";
 
 import { Application, Container } from "pixi.js";
 
+import { mountChat } from "./chat/ChatPanel";
+import { appendChat, messages as chatMessages, sendChat as storeSendChat, setChatToken } from "./chat/store";
 import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
@@ -81,6 +83,12 @@ export interface GameDebug {
    * before proceeding — callers that don't care are free to ignore it.
    */
   tapHex: (q: number, r: number) => Promise<void>;
+  /** This client's chosen display name (chat sender label). "" until joined. */
+  name: string;
+  /** The global chat log, mirrored live from the chat store's signal. */
+  chat: { seq: number; sender: string; text: string }[];
+  /** Send a chat line as if typed into the panel (drives e2e). */
+  sendChat: (text: string) => Promise<void>;
 }
 
 declare global {
@@ -111,6 +119,8 @@ const speciesPickerEl = mustGet("species-picker");
 const speciesButtons = Array.from(
   speciesPickerEl.querySelectorAll<HTMLButtonElement>("button[data-species]"),
 );
+const namePickerEl = mustGet("name-picker");
+const nameInputEl = mustGet("name-input") as HTMLInputElement;
 
 // How long this client's entity must be absent from turn bundles before it
 // re-joins (see attemptRejoin below) — well above a single coalesced/missed
@@ -155,6 +165,19 @@ for (const btn of speciesButtons) {
   btn.addEventListener("click", () => selectSpecies(btn.dataset["species"] ?? SpeciesHuman));
 }
 selectSpecies(SpeciesHuman);
+
+// Name field: mirrors the pickers (brand-new player only), but free text
+// rather than buttons. Defaults to "traveler" so a fresh page load can still
+// join promptly (e2e, or a player who never touches the field) — the input's
+// own placeholder communicates the default rather than pre-filling the value,
+// so a deliberately-typed name never has to first clear placeholder text.
+const DEFAULT_NAME = "traveler";
+let selectedName: string = DEFAULT_NAME;
+
+nameInputEl.addEventListener("input", () => {
+  const trimmed = nameInputEl.value.trim();
+  selectedName = trimmed === "" ? DEFAULT_NAME : trimmed;
+});
 
 // Turn-phase timing, tracked from wall-clock (performance.now) and reset on
 // each turn bundle. window.game.phase is computed on read from these, so it
@@ -202,6 +225,11 @@ window.game = {
   inCombat: false,
   bubble: null,
   tapHex: (): Promise<void> => Promise.resolve(),
+  name: "",
+  get chat(): { seq: number; sender: string; text: string }[] {
+    return chatMessages();
+  },
+  sendChat: (text: string): Promise<void> => storeSendChat(text),
 };
 
 /** The ranged weapon range for a class, or null for a class with no ranged weapon (fighter). */
@@ -251,6 +279,9 @@ async function start(): Promise<void> {
   const isNewPlayer = loadIdentity() === null;
   classPickerEl.hidden = !isNewPlayer;
   speciesPickerEl.hidden = !isNewPlayer;
+  namePickerEl.hidden = !isNewPlayer;
+
+  mountChat(mustGet("chat-root"));
 
   const app = new Application();
   await app.init({ background: "#0b0f0b", resizeTo: window, antialias: true });
@@ -282,16 +313,19 @@ async function start(): Promise<void> {
 
   const timer = new TurnTimer(app.ticker);
 
-  // The join always fires now, click or not — whichever class/species are
-  // currently selected (Fighter/Human by default) is what's sent; a
-  // returning player's stored choices override this regardless (join()
-  // itself resends their token, and the server ignores Class/Species on a
-  // token match).
+  // The join always fires now, click or not — whichever name/class/species
+  // are currently selected ("traveler"/Fighter/Human by default) is what's
+  // sent; a returning player's stored choices override class/species
+  // regardless (join() itself resends their token, and the server ignores
+  // Name/Class/Species on a token match).
   classPickerEl.hidden = true;
   speciesPickerEl.hidden = true;
-  const me = await join(selectedClass, selectedSpecies);
+  namePickerEl.hidden = true;
+  const me = await join(selectedName, selectedClass, selectedSpecies);
   window.game.me = { id: me.entityId, hex: me.hex };
+  window.game.name = selectedName;
   const identity = { entityId: me.entityId, token: me.token };
+  setChatToken(identity.token);
 
   // Re-join tracking: if this client's entity is absent from turn bundles for
   // a sustained spell, the disconnect-grace sweep removed it server-side (the
@@ -314,9 +348,10 @@ async function start(): Promise<void> {
     }
     rejoining = true;
     try {
+      const rejoinName = window.game.name !== "" ? window.game.name : selectedName;
       const rejoinClass = window.game.class !== "" ? window.game.class : selectedClass;
       const rejoinSpecies = window.game.species !== "" ? window.game.species : selectedSpecies;
-      const rejoined = await join(rejoinClass, rejoinSpecies);
+      const rejoined = await join(rejoinName, rejoinClass, rejoinSpecies);
       identity.entityId = rejoined.entityId;
       identity.token = rejoined.token;
       me.entityId = rejoined.entityId;
@@ -324,6 +359,7 @@ async function start(): Promise<void> {
       me.hex = rejoined.hex;
       window.game.me = { id: rejoined.entityId, hex: rejoined.hex };
       window.game.destination = null;
+      setChatToken(identity.token);
       // The token just changed — the stream must reconnect under the new one
       // (a stream opened under the stale token no longer maps to any entity).
       eventsController.reconnect();
@@ -393,6 +429,7 @@ async function start(): Promise<void> {
         window.game.level = mine.level;
         window.game.class = mine.class;
         window.game.species = mine.species;
+        window.game.name = mine.name;
         const xpIntoLevel = mine.xp % XPPerLevel;
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
       }
@@ -445,6 +482,9 @@ async function start(): Promise<void> {
     },
     onHeartbeat: (): void => {
       window.game.heartbeats += 1;
+    },
+    onChat: (msg): void => {
+      appendChat(msg);
     },
   });
 

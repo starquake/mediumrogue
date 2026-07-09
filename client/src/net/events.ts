@@ -4,12 +4,13 @@
 // client would keep believing it is connected. The watchdog treats "no data
 // within a turn-scaled window" as a dead stream: it reports disconnected and
 // opens a fresh EventSource, which resyncs to the latest snapshot on reconnect.
-import { EventHeartbeat, EventTurn, type TurnEvent } from "../protocol.gen";
+import { EventChat, EventHeartbeat, EventTurn, type ChatMessage, type TurnEvent } from "../protocol.gen";
 
 export interface EventsCallbacks {
   onTurn: (turn: TurnEvent) => void;
   onConnectionChange: (connected: boolean) => void;
   onHeartbeat?: () => void;
+  onChat?: (msg: ChatMessage) => void;
 }
 
 /** Handle returned by connectEvents: tear down, or force a fresh connection. */
@@ -94,6 +95,13 @@ export function connectEvents(getToken: () => string, callbacks: EventsCallbacks
       callbacks.onConnectionChange(true);
       arm();
       callbacks.onHeartbeat?.();
+    });
+
+    // Chat carries no `id:` (see EventChat's doc comment) — it must not
+    // advance Last-Event-ID — so it doesn't touch the liveness watchdog either.
+    source.addEventListener(EventChat, (event: MessageEvent<string>) => {
+      const msg = JSON.parse(event.data) as ChatMessage;
+      callbacks.onChat?.(msg);
     });
 
     // EventSource retries on its own after an error it detects; just report the
