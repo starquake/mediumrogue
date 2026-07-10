@@ -3,7 +3,7 @@ import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
 import type { ItemView } from "../protocol.gen";
-import { inventory } from "./store";
+import { inventory, markEquipPending, pendingEquip } from "./store";
 
 // stats renders an item's numbers compactly: "dmg 5 · rng 4 · aoe 1".
 function stats(it: ItemView): string {
@@ -15,6 +15,14 @@ function stats(it: ItemView): string {
 }
 
 function GearPanel(props: { equip: (itemId: number) => void }): JSXElement {
+  // An equip click flips its button to "…" immediately (the intent is on the
+  // wire; in a bubble the swap waits for the turn) — see the store's
+  // pendingEquip for when it clears.
+  const equipClick = (itemId: number): void => {
+    markEquipPending(itemId);
+    props.equip(itemId);
+  };
+
   return (
     <div id="gear-panel">
       <Show when={inventory().length > 0}>
@@ -22,8 +30,12 @@ function GearPanel(props: { equip: (itemId: number) => void }): JSXElement {
         <For each={inventory()}>
           {(it) => (
             <div class="gear-row" classList={{ "gear-equipped": it.equipped }}>
-              <button type="button" disabled={it.equipped} onClick={() => props.equip(Number(it.id))}>
-                {it.equipped ? "equipped" : "equip"}
+              <button
+                type="button"
+                disabled={it.equipped || pendingEquip() === Number(it.id)}
+                onClick={() => equipClick(Number(it.id))}
+              >
+                {it.equipped ? "equipped" : pendingEquip() === Number(it.id) ? "…" : "equip"}
               </button>
               <span class="gear-name">{it.name}</span>
               <span class="gear-stats">{stats(it)}</span>

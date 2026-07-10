@@ -83,6 +83,25 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
         }
       }
 
+      // Inside a bubble but still beyond bow range (bow 4 < bubble radius 6),
+      // a tap on the monster would be a move — and moves are now restricted
+      // to this turn's reachable tiles. Step onto the reachable tile that
+      // closes the most distance until the monster is in range; from there
+      // the tap IS the ranged attack and goes straight through.
+      const bowRange = 4;
+      if (window.game.inCombat && bestDist > bowRange && window.game.combatMoves.length > 0) {
+        let step = window.game.combatMoves[0]!;
+        for (const h of window.game.combatMoves.slice(1)) {
+          if (dist(h, nearest.hex) < dist(step, nearest.hex)) {
+            step = h;
+          }
+        }
+
+        window.game.tapHex(step.q, step.r);
+
+        return;
+      }
+
       window.game.tapHex(nearest.hex.q, nearest.hex.r);
     }, EntityMonster);
 

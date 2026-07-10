@@ -363,6 +363,10 @@
       .quest-row {
         font-size: 0.8rem;
         line-height: 1.4;
+        /* Hang-indent: wrapped quest lines tuck under their own first line's
+           text instead of flushing left under the "#N" marker. */
+        padding-left: 1.2em;
+        text-indent: -1.2em;
       }
       /* Gear panel: second member of the #left-panels column (see above);
          same opaque-panel-in-click-through-root discipline as the others. */

@@ -33,18 +33,26 @@ func bubbleWithMember(bundle protocol.TurnEvent, id int64) (protocol.BubbleView,
 	return protocol.BubbleView{}, false
 }
 
-// decodeBundle reads and unmarshals the next SSE turn frame.
+// decodeBundle reads and unmarshals the next SSE TURN frame. The stream
+// interleaves chat announces (kill summaries, deaths, pickups) and named
+// heartbeats with turn bundles — anything that isn't a turn frame is
+// skipped, not mis-decoded as an empty bundle.
 func decodeBundle(t *testing.T, r *bufio.Reader) protocol.TurnEvent {
 	t.Helper()
 
-	frames := readFrames(t, r, 1)
+	for {
+		frames := readFrames(t, r, 1)
+		if frames[0].event != protocol.EventTurn {
+			continue
+		}
 
-	var bundle protocol.TurnEvent
-	if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
-		t.Fatalf("unmarshal bundle %q: %v", frames[0].data, err)
+		var bundle protocol.TurnEvent
+		if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
+			t.Fatalf("unmarshal bundle %q: %v", frames[0].data, err)
+		}
+
+		return bundle
 	}
-
-	return bundle
 }
 
 // TestCombatBubbleFreezesOverHTTP exercises milestone 6.4's headline behavior
