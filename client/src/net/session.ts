@@ -84,7 +84,15 @@ export async function submitIntent(
   target: Hex,
   kind: string,
 ): Promise<boolean> {
-  const body: IntentRequest = { entityId: identity.entityId, token: identity.token, target, kind };
+  // itemId is unused for move/attack intents — equip intents are sent by a
+  // later milestone task.
+  const body: IntentRequest = {
+    entityId: identity.entityId,
+    token: identity.token,
+    target,
+    kind,
+    itemId: 0,
+  };
   const resp = await fetch("/api/intent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

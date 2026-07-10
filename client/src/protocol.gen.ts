@@ -111,14 +111,33 @@ export const SpeciesElf = "elf";
 export const SpeciesDwarf = "dwarf";
 /**
  * Intent kinds: the type of an IntentRequest. Kind is required — it must be
- * IntentMove or IntentAttack.
+ * IntentMove, IntentAttack, or IntentEquip.
  */
 export const IntentMove = "move";
 /**
  * Intent kinds: the type of an IntentRequest. Kind is required — it must be
- * IntentMove or IntentAttack.
+ * IntentMove, IntentAttack, or IntentEquip.
  */
 export const IntentAttack = "attack";
+/**
+ * IntentEquip equips an owned item (IntentRequest.ItemID). Outside a combat
+ * bubble it applies immediately and costs nothing; inside a bubble it is the
+ * player's committed action for that turn.
+ */
+export const IntentEquip = "equip";
+/**
+ * Item slots: every item definition fills exactly one.
+ */
+export const ItemSlotClose = "close";
+/**
+ * Item slots: every item definition fills exactly one.
+ */
+export const ItemSlotRanged = "ranged";
+/**
+ * DropChancePercent is the chance (out of 100) that a slain monster drops an
+ * item onto its death hex. Tuning knob.
+ */
+export const DropChancePercent = 30;
 /**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
@@ -299,6 +318,10 @@ export interface TurnEvent {
    * Quests is the whole quest board, sorted by ID.
    */
   quests: QuestView[];
+  /**
+   * GroundItems is every dropped item currently lying on the map.
+   */
+  groundItems: GroundItemView[];
 }
 /**
  * QuestState is a quest's lifecycle stage on the board.
@@ -343,6 +366,36 @@ export interface QuestView {
   holderPartyId: number /* int64 */;
 }
 /**
+ * ItemView is one owned item as the client sees it: display stats plus
+ * whether it currently sits in its slot. The numbers ride the wire so the
+ * client never compiles against item content.
+ */
+export interface ItemView {
+  id: number /* int64 */;
+  defId: string;
+  name: string;
+  slot: string;
+  damage: number /* int */;
+  rangeHex: number /* int */;
+  aoeRadius: number /* int */;
+  /**
+   * Desc is the authored human-readable rule text ("+3 vs targets below
+   * half HP"); empty for rule-less items.
+   */
+  desc: string;
+  equipped: boolean;
+}
+/**
+ * GroundItemView is one dropped item lying on the map, waiting to be walked
+ * over. ID is the item instance id (stable client key).
+ */
+export interface GroundItemView {
+  id: number /* int64 */;
+  hex: Hex;
+  defId: string;
+  name: string;
+}
+/**
  * Entity is one thing standing on the map: a player or a monster.
  */
 export interface Entity {
@@ -372,6 +425,10 @@ export interface Entity {
    * coloring are derived client-side by grouping entities on this.
    */
   partyId: number /* int64 */;
+  /**
+   * Items is the entity's owned items. Players only; monsters send none.
+   */
+  items: ItemView[];
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its
@@ -422,11 +479,15 @@ export interface IntentRequest {
   entityId: number /* int64 */;
   token: string;
   /**
-   * Kind is the intent type. Required: must be IntentMove ("move") or
-   * IntentAttack ("attack").
+   * Kind is the intent type. Required: must be IntentMove ("move"),
+   * IntentAttack ("attack"), or IntentEquip ("equip").
    */
   kind: string;
   target: Hex;
+  /**
+   * ItemID names the item to equip. Equip intents only.
+   */
+  itemId: number /* int64 */;
 }
 /**
  * ChatMessage is the payload of an EventChat frame: one line in the global

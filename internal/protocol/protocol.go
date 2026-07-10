@@ -72,11 +72,25 @@ const (
 )
 
 // Intent kinds: the type of an IntentRequest. Kind is required — it must be
-// IntentMove or IntentAttack.
+// IntentMove, IntentAttack, or IntentEquip.
 const (
 	IntentMove   = "move"
 	IntentAttack = "attack"
+	// IntentEquip equips an owned item (IntentRequest.ItemID). Outside a combat
+	// bubble it applies immediately and costs nothing; inside a bubble it is the
+	// player's committed action for that turn.
+	IntentEquip = "equip"
 )
+
+// Item slots: every item definition fills exactly one.
+const (
+	ItemSlotClose  = "close"
+	ItemSlotRanged = "ranged"
+)
+
+// DropChancePercent is the chance (out of 100) that a slain monster drops an
+// item onto its death hex. Tuning knob.
+const DropChancePercent = 30
 
 // Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
 // the client can show health bars once combat (6.3) starts changing it.
@@ -212,6 +226,8 @@ type TurnEvent struct {
 	Bubbles []BubbleView `json:"bubbles"`
 	// Quests is the whole quest board, sorted by ID.
 	Quests []QuestView `json:"quests"`
+	// GroundItems is every dropped item currently lying on the map.
+	GroundItems []GroundItemView `json:"groundItems"`
 }
 
 // QuestState is a quest's lifecycle stage on the board.
@@ -243,6 +259,32 @@ type QuestView struct {
 	HolderPartyID  int64 `json:"holderPartyId"`
 }
 
+// ItemView is one owned item as the client sees it: display stats plus
+// whether it currently sits in its slot. The numbers ride the wire so the
+// client never compiles against item content.
+type ItemView struct {
+	ID        int64  `json:"id"`
+	DefID     string `json:"defId"`
+	Name      string `json:"name"`
+	Slot      string `json:"slot"`
+	Damage    int    `json:"damage"`
+	RangeHex  int    `json:"rangeHex"`
+	AoERadius int    `json:"aoeRadius"`
+	// Desc is the authored human-readable rule text ("+3 vs targets below
+	// half HP"); empty for rule-less items.
+	Desc     string `json:"desc"`
+	Equipped bool   `json:"equipped"`
+}
+
+// GroundItemView is one dropped item lying on the map, waiting to be walked
+// over. ID is the item instance id (stable client key).
+type GroundItemView struct {
+	ID    int64  `json:"id"`
+	Hex   Hex    `json:"hex"`
+	DefID string `json:"defId"`
+	Name  string `json:"name"`
+}
+
 // Entity is one thing standing on the map: a player or a monster.
 type Entity struct {
 	ID       int64  `json:"id"`
@@ -263,6 +305,8 @@ type Entity struct {
 	// 0 means solo. Monsters are always 0. The roster and on-map partymate
 	// coloring are derived client-side by grouping entities on this.
 	PartyID int64 `json:"partyId"`
+	// Items is the entity's owned items. Players only; monsters send none.
+	Items []ItemView `json:"items"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its
@@ -303,10 +347,12 @@ type JoinResponse struct {
 type IntentRequest struct {
 	EntityID int64  `json:"entityId"`
 	Token    string `json:"token"`
-	// Kind is the intent type. Required: must be IntentMove ("move") or
-	// IntentAttack ("attack").
+	// Kind is the intent type. Required: must be IntentMove ("move"),
+	// IntentAttack ("attack"), or IntentEquip ("equip").
 	Kind   string `json:"kind"`
 	Target Hex    `json:"target"`
+	// ItemID names the item to equip. Equip intents only.
+	ItemID int64 `json:"itemId"`
 }
 
 // ChatMessage is the payload of an EventChat frame: one line in the global
