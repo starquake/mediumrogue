@@ -134,6 +134,7 @@
         margin-bottom: 1.6rem;
       }
       #start-panel .label {
+        display: block;
         color: var(--dim);
         font-size: 0.7rem;
         letter-spacing: 0.2em;
@@ -158,7 +159,16 @@
         grid-template-columns: repeat(3, 1fr);
         gap: 0.6rem;
       }
+      /* Cards are real <button>s (keyboard operability: free focus/Enter/
+         Space semantics), so undo the UA button styling to keep the card
+         look: inherit the page font, left-align, block-flow contents. */
       #start-panel .card {
+        display: block;
+        width: 100%;
+        font-family: inherit;
+        font-size: inherit;
+        text-align: left;
+        color: var(--fg);
         border: 1px solid var(--dim);
         background: #101710;
         padding: 0.7rem 0.8rem;
@@ -166,6 +176,10 @@
       }
       #start-panel .card:hover {
         background: #18251a;
+      }
+      #start-panel .card:focus-visible {
+        outline: 2px solid #7cb342;
+        outline-offset: 2px;
       }
       #start-panel .card.selected {
         border-color: #7cb342;
@@ -183,18 +197,22 @@
         color: #0b0f0b;
         margin-bottom: 0.45rem;
       }
-      #start-panel .card h3 {
+      /* .card-name/.card-desc are spans (a <button> only permits phrasing
+         content — no h3/p inside), styled to read as heading + body text. */
+      #start-panel .card .card-name {
+        display: block;
         margin: 0 0 0.3rem;
         font-size: 0.95rem;
         font-weight: bold;
       }
-      #start-panel .card p {
+      #start-panel .card .card-desc {
+        display: block;
         margin: 0;
         font-size: 0.72rem;
         line-height: 1.45;
         color: var(--dim);
       }
-      #start-panel .card.selected p {
+      #start-panel .card.selected .card-desc {
         color: var(--fg);
       }
       #start-panel .fighter .glyph {
@@ -467,45 +485,45 @@
         <h1>Medium Rogue</h1>
         <div class="tagline">a shared world · one turn every five seconds · bring friends</div>
 
-        <div class="label">Your name</div>
+        <label class="label" for="start-name">Your name</label>
         <input id="start-name" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />
 
         <div class="label">Class — how you fight</div>
         <div class="cards">
-          <div class="card fighter selected" data-class="fighter">
+          <button type="button" class="card fighter selected" data-class="fighter">
             <span class="glyph">F</span>
-            <h3>Fighter</h3>
-            <p>Steady melee, tough enough to hold the front. Medium damage, high HP.</p>
-          </div>
-          <div class="card rogue" data-class="rogue">
+            <span class="card-name">Fighter</span>
+            <span class="card-desc">Steady melee, tough enough to hold the front. Medium damage, high HP.</span>
+          </button>
+          <button type="button" class="card rogue" data-class="rogue">
             <span class="glyph">R</span>
-            <h3>Rogue</h3>
-            <p>Dagger up close, bow at range — picked automatically. Hits hardest, takes hits badly.</p>
-          </div>
-          <div class="card mage" data-class="mage">
+            <span class="card-name">Rogue</span>
+            <span class="card-desc">Dagger up close, bow at range — picked automatically. Hits hardest, takes hits badly.</span>
+          </button>
+          <button type="button" class="card mage" data-class="mage">
             <span class="glyph">M</span>
-            <h3>Mage</h3>
-            <p>Area magic from the back line — hits groups at once. Fragile.</p>
-          </div>
+            <span class="card-name">Mage</span>
+            <span class="card-desc">Area magic from the back line — hits groups at once. Fragile.</span>
+          </button>
         </div>
 
         <div class="label">Species — your style</div>
         <div class="cards species">
-          <div class="card selected" data-species="human">
+          <button type="button" class="card selected" data-species="human">
             <span class="glyph">H</span>
-            <h3>Human</h3>
-            <p>Learns faster: bonus XP on every award.</p>
-          </div>
-          <div class="card" data-species="elf">
+            <span class="card-name">Human</span>
+            <span class="card-desc">Learns faster: bonus XP on every award.</span>
+          </button>
+          <button type="button" class="card" data-species="elf">
             <span class="glyph">E</span>
-            <h3>Elf</h3>
-            <p>Deadly precision: chance to land critical hits.</p>
-          </div>
-          <div class="card" data-species="dwarf">
+            <span class="card-name">Elf</span>
+            <span class="card-desc">Deadly precision: chance to land critical hits.</span>
+          </button>
+          <button type="button" class="card" data-species="dwarf">
             <span class="glyph">D</span>
-            <h3>Dwarf</h3>
-            <p>Stone-tough: shrugs off part of every hit.</p>
-          </div>
+            <span class="card-name">Dwarf</span>
+            <span class="card-desc">Stone-tough: shrugs off part of every hit.</span>
+          </button>
         </div>
 
         <button id="start-enter" type="button">Enter the world</button>
