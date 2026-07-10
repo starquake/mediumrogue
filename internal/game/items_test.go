@@ -337,6 +337,28 @@ func TestValidateItemDefsPanicsOnUnknownRuleKinds(t *testing.T) {
 	}
 }
 
+// TestValidateItemDefsPanicsOnEarnXPWithChanceCondition: earn-XP folds run
+// with a nil rng (ruleCtx{} — see resolveBubbleTurnLocked's kill-XP award),
+// so a chance condition on an earn-XP card would nil-deref conditionHolds'
+// ctx.rng.IntN call the first time such a card actually rolled. Content that
+// shape must fail loudly at load, not the first time a player gets a kill.
+func TestValidateItemDefsPanicsOnEarnXPWithChanceCondition(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("validateItemDefs did not panic on an earn-xp card with a chance condition")
+		}
+	}()
+
+	validateItemDefs([]*itemDef{{
+		id: "lucky-charm", slot: protocol.ItemSlotClose,
+		rules: []ruleCard{
+			{event: evEarnXP, when: []condition{{kind: condChance, n: 50}}, then: effect{kind: effMulPct, n: 200}},
+		},
+	}})
+}
+
 // TestValidateMaxReachPanicsBeyondCombatRadius: the INVARIANT queueAttackLocked
 // depends on — every ranged def's rangeHex+aoeRadius must stay within
 // CombatRadius, or a ranged kill could land in the WORLD domain (no bubble,

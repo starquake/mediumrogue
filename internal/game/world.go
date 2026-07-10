@@ -582,8 +582,10 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 }
 
 // queueMoveLocked validates a move intent and sets the entity's route to a
-// walkable, reachable target, clearing any pending ranged attack (the latest
-// intent in the window wins). Callers hold w.mu.
+// walkable, reachable target, clearing any pending ranged attack or queued
+// equip (the latest intent in the window wins — the swap is a whole turn's
+// action, so a move submitted after an equip must displace it exactly as an
+// equip displaces a queued move). Callers hold w.mu.
 func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 	if !w.walkableLocked(target) {
 		return ErrNotWalkable
@@ -596,6 +598,7 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 
 	e.path = path
 	e.attackTarget = nil
+	e.pendingEquip = 0
 
 	return nil
 }
@@ -603,9 +606,11 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // queueAttackLocked validates a ranged attack intent and queues it: the entity
 // must have a ranged weapon equipped (else ErrNoRangedWeapon) and the target must
 // be within its reach at submit time (else ErrOutOfRange). On success it records
-// the target and clears the route — a ranged attack replaces the move for this
-// turn. The resolution-time re-check is defensive (nothing relocates a shooter
-// mid-turn today; it guards a future knockback/forced-move mechanic).
+// the target and clears the route and any queued equip — a ranged attack
+// replaces the move AND the swap for this turn (the latest intent in the
+// window wins). The resolution-time re-check is defensive (nothing relocates
+// a shooter mid-turn today; it guards a future knockback/forced-move
+// mechanic).
 //
 // INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
 // CombatRadius (validateMaxReach, run at content load by mustValidateContent),
@@ -627,13 +632,18 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
 	t := target
 	e.attackTarget = &t
 	e.path = nil
+	e.pendingEquip = 0
 
 	return nil
 }
 
 // queueEquipLocked validates and applies/queues an equip. Outside a bubble the
-// swap is immediate and free; inside, it becomes the player's action this turn
-// (clearing move/attack — you swap, you don't also act). Callers hold w.mu.
+// swap is immediate and free — it also clears any stale pendingEquip left over
+// from a bubble that dissolved before its queued swap resolved, so that swap
+// can never resurrect and silently override this free equip on the entity's
+// next combat resolution. Inside a bubble, the swap becomes the player's
+// action this turn (clearing move/attack — you swap, you don't also act).
+// Callers hold w.mu.
 func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	inst, ok := e.itemByID(itemID)
 	if !ok {
@@ -647,6 +657,7 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 
 	if e.bubbleID == 0 {
 		e.applyEquip(inst.id, def.slot)
+		e.pendingEquip = 0
 
 		return nil
 	}
@@ -725,13 +736,11 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 // itemViewsLocked builds the wire item list for one entity: an ItemView per
 // owned item instance (Equipped true iff it currently fills the close or
-// ranged slot), or nil for a monster (which owns no items — see
-// entity.items) or a player who owns none. Callers hold w.mu.
+// ranged slot). Always a non-nil slice — empty (not null) for a monster
+// (which owns no items — see entity.items) or a player who owns none, so the
+// wire shape matches the generated TS type's non-optional ItemView[]. Callers
+// hold w.mu.
 func itemViewsLocked(e *entity) []protocol.ItemView {
-	if e.kind != protocol.EntityPlayer || len(e.items) == 0 {
-		return nil
-	}
-
 	views := make([]protocol.ItemView, 0, len(e.items))
 
 	for _, it := range e.items {

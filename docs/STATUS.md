@@ -286,9 +286,10 @@ show my own route: goal + every hex, local-only).
   **Items are now real content**: `internal/game/content.go`'s `itemDefs`
   registry holds the 5 class defaults (iron sword, dagger, shortbow, oak
   staff, ember focus — the "live balance" numbers carried forward from the
-  old protocol weapon constants) plus 4 starter drops with their own rule
-  cards (Butcher's Cleaver, Venom Fang, Pack Bow, Ember Staff), validated at
-  package init (`mustValidateContent`). Every character has a **close** and a
+  old protocol weapon constants) plus 5 starter drops — 4 with their own rule
+  cards (Butcher's Cleaver, Venom Fang, Pack Bow, Ember Staff) and one flat
+  upgrade with no rule card (Iron Warhammer) — validated at package init
+  (`mustValidateContent`). Every character has a **close** and a
   **ranged** slot; class defaults are granted pre-equipped at join
   (`grantDefaultsLocked`); a slain monster has a `DropChancePercent=30` chance
   to drop a weighted-random item onto its death hex; walking onto a drop's hex

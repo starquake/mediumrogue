@@ -236,6 +236,141 @@ func TestEquipInBubbleClearsPendingRangedAttack(t *testing.T) {
 	}
 }
 
+// TestEquipThenMoveInBubbleClearsPendingEquip: submitting a move AFTER an
+// equip within the same input window must replace the queued equip too — the
+// swap is the player's whole turn, so a later move/attack intent must discard
+// it exactly as an equip discards a queued move/attack (the reverse ordering
+// tested above). Without clearing pendingEquip, both the swap and the move
+// would land the same turn.
+func TestEquipThenMoveInBubbleClearsPendingEquip(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	idA, tokA, idB, tokB, _, form := twoPlayerBubble(t, w)
+
+	hexA0 := hexOfSnap(form, idA)
+	target := walkableNeighbor(t, w, hexA0)
+
+	instID := w.GrantItemForTest(idA, "iron-warhammer")
+
+	// Queue the equip first.
+	if err := w.SubmitIntent(equipIntent(idA, tokA, instID)); err != nil {
+		t.Fatalf("SubmitIntent equip: %v", err)
+	}
+
+	// Now move: this must clear the queued equip and become A's action instead.
+	moveReq := protocol.IntentRequest{EntityID: idA, Token: tokA, Kind: protocol.IntentMove, Target: target}
+	if err := w.SubmitIntent(moveReq); err != nil {
+		t.Fatalf("SubmitIntent move: %v", err)
+	}
+
+	if got, want := w.PendingEquipForTest(idA), int64(0); got != want {
+		t.Fatalf("pendingEquip after move queued = %d, want cleared (%d)", got, want)
+	}
+
+	// B locks in -> bubble resolves.
+	hexB0 := hexOfSnap(form, idB)
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: idB, Token: tokB, Kind: protocol.IntentMove, Target: hexB0,
+	}); err != nil {
+		t.Fatalf("SubmitIntent B move: %v", err)
+	}
+
+	resolved := w.Snapshot()
+
+	if closeInst, _ := w.EquippedSlotsForTest(idA); closeInst == instID {
+		t.Errorf("close slot after resolution = %d, want unchanged (equip replaced by the move)", closeInst)
+	}
+
+	if got, want := hexOfSnap(resolved, idA), target; got != want {
+		t.Errorf("A's hex = %v, want %v (the queued move must have resolved, not been dropped)", got, want)
+	}
+}
+
+// TestEquipThenAttackInBubbleClearsPendingEquip: submitting a ranged attack
+// AFTER an equip within the same input window must replace the queued equip —
+// the mirror of TestEquipThenMoveInBubbleClearsPendingEquip for attack.
+func TestEquipThenAttackInBubbleClearsPendingEquip(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	idA, tokA, idB, tokB, monsterID, form := twoPlayerBubble(t, w)
+	w.SetClassForTest(idA, protocol.ClassRogue) // grants dagger + shortbow
+
+	monsterHex := hexOfSnap(form, monsterID)
+	monsterHP := entityHP(t, form, monsterID)
+
+	instID := w.GrantItemForTest(idA, "venom-fang") // a Rogue close-slot item
+
+	// Queue the equip first.
+	if err := w.SubmitIntent(equipIntent(idA, tokA, instID)); err != nil {
+		t.Fatalf("SubmitIntent equip: %v", err)
+	}
+
+	// Now attack: this must clear the queued equip and become A's action instead.
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: idA, Token: tokA, Kind: protocol.IntentAttack, Target: monsterHex,
+	}); err != nil {
+		t.Fatalf("SubmitIntent attack: %v", err)
+	}
+
+	if got, want := w.PendingEquipForTest(idA), int64(0); got != want {
+		t.Fatalf("pendingEquip after attack queued = %d, want cleared (%d)", got, want)
+	}
+
+	// B locks in without engaging the monster -> bubble resolves.
+	hexB0 := hexOfSnap(form, idB)
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: idB, Token: tokB, Kind: protocol.IntentMove, Target: hexB0,
+	}); err != nil {
+		t.Fatalf("SubmitIntent B move: %v", err)
+	}
+
+	resolved := w.Snapshot()
+
+	if closeInst, _ := w.EquippedSlotsForTest(idA); closeInst == instID {
+		t.Errorf("close slot after resolution = %d, want unchanged (equip replaced by the attack)", closeInst)
+	}
+
+	if got, want := entityHP(t, resolved, monsterID), monsterHP; got >= want {
+		t.Errorf("monster HP = %d, want less than %d (A's ranged attack must have resolved, not been dropped)", got, want)
+	}
+}
+
+// TestImmediateEquipClearsStalePendingEquip: a pendingEquip left over from a
+// dissolved bubble (e.g. the other member fled or died before the swap
+// resolved) must not resurrect on the entity's next resolution — a later,
+// free (out-of-bubble) equip of a different item must win outright, not get
+// silently reverted to the stale queued item by the very next combat pass.
+func TestImmediateEquipClearsStalePendingEquip(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	id, tok := w.PlaceEntityForTest(protocol.Hex{Q: 0, R: 0})
+
+	staleInst := w.GrantItemForTest(id, "iron-warhammer")
+	w.SetPendingEquipForTest(id, staleInst)
+
+	newInst := w.GrantItemForTest(id, "butchers-cleaver")
+
+	if err := w.SubmitIntent(equipIntent(id, tok, newInst)); err != nil {
+		t.Fatalf("SubmitIntent equip: %v", err)
+	}
+
+	if closeInst, _ := w.EquippedSlotsForTest(id); closeInst != newInst {
+		t.Fatalf("close slot after immediate equip = %d, want %d", closeInst, newInst)
+	}
+
+	// A full world-domain resolution (not ResolveCombatOnlyForTest, which
+	// skips the pendingEquip-apply pass entirely) is what would silently
+	// re-apply a stale pendingEquip left uncleared by the immediate-equip path.
+	step(t, w)
+
+	if closeInst, _ := w.EquippedSlotsForTest(id); closeInst != newInst {
+		t.Errorf("close slot after resolution = %d, want %d (stale pendingEquip must not revert it)", closeInst, newInst)
+	}
+}
+
 // TestDeathClearsPendingEquip: a pending equip does not survive a death — and
 // separately, gear already equipped (items owned + slots filled) is untouched
 // by death/respawn, matching entity.items' doc comment ("gear survives

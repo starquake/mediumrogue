@@ -253,6 +253,13 @@ func validateItemDefs(defs []*itemDef) {
 // sync with rules.go's own event/condition/effect const blocks and
 // conditionHolds/applyRules switches — see the cross-reference comment on
 // rules.go's evDealDamage const block.
+//
+// It also rejects an evEarnXP card carrying a condChance condition: the
+// kill-XP fold (resolveBubbleTurnLocked's award loop) calls applyRules with a
+// bare ruleCtx{} — no rng — because earn-XP has never needed one before. A
+// chance condition on such a card would nil-deref conditionHolds' ctx.rng the
+// first time it actually rolled, mid-combat. Fail at load instead; lift this
+// once earn-XP folds thread a real rng.
 func validateRuleCards(owner string, cards []ruleCard) {
 	for _, c := range cards {
 		switch c.event {
@@ -266,6 +273,10 @@ func validateRuleCards(owner string, cards []ruleCard) {
 			case condChance, condTargetHPBelowPct, condTargetHPFull, condAllyInBubble, condTargetAdjacent:
 			default:
 				panic("game: " + owner + " rule card has unknown condition " + cond.kind)
+			}
+
+			if c.event == evEarnXP && cond.kind == condChance {
+				panic("game: " + owner + " earn-xp rule card has a chance condition (earn-xp folds run without rng)")
 			}
 		}
 
