@@ -356,6 +356,66 @@
         font-size: 0.8rem;
         line-height: 1.4;
       }
+      /* Gear overlay: mirrors #quest-root/#quest-panel exactly (click-through
+         root, opaque panel), stacked directly below the quest panel on the
+         left edge — both are "always visible once joined" HUD, unlike the
+         bottom-anchored chat or the pre-join-only pickers. */
+      #gear-root {
+        position: fixed;
+        top: 18rem;
+        left: 1rem;
+        z-index: 10;
+        pointer-events: none;
+      }
+      #gear-panel {
+        pointer-events: auto;
+        width: 16rem;
+        background: rgba(11, 15, 11, 0.85);
+        border: 1px solid var(--dim);
+        padding: 0.4rem 0.6rem;
+        text-shadow: 0 1px 2px #000;
+      }
+      #gear-title {
+        margin-bottom: 0.25rem;
+        color: var(--dim);
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      .gear-row {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        line-height: 1.4;
+      }
+      .gear-row button {
+        font-family: inherit;
+        font-size: 0.7rem;
+        color: var(--fg);
+        background: #16201a;
+        border: 1px solid var(--dim);
+        padding: 0.05rem 0.35rem;
+        cursor: pointer;
+      }
+      .gear-row button:hover:not(:disabled) {
+        background: #2a3d2b;
+        border-color: #7cb342;
+      }
+      .gear-row button:disabled {
+        color: var(--dim);
+        cursor: default;
+      }
+      .gear-equipped .gear-name {
+        color: #7cb342;
+      }
+      .gear-stats {
+        color: var(--dim);
+      }
+      .gear-desc {
+        color: var(--dim);
+        font-style: italic;
+      }
     </style>
   </head>
   <body>
@@ -388,6 +448,7 @@
     <div id="chat-root"></div>
     <div id="roster-root"></div>
     <div id="quest-root"></div>
+    <div id="gear-root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -49,11 +49,11 @@ func decodeTurnFrame(t *testing.T, r *bufio.Reader) protocol.TurnEvent {
 // re-equipping any of them is a same-slot no-op swap — queueEquipLocked
 // applies it immediately outside a bubble and returns nil, same as a real
 // swap would. Seeing an actual true->false/false->true FLIP needs a SECOND
-// same-slot item, which only exists via a drop (TestDropPickupLoop); this
-// test is deliberately scoped to the 202-path + wire shape, per the task
-// brief ("keep this test to the 200-path + wire shape unless the drop loop
-// hands you a spare item cheaply" — it doesn't, see TestDropPickupLoop's
-// determinism note).
+// same-slot item, which only exists via a drop — and TestDropPickupLoop's
+// drop is not deterministically farmable into a spare same-slot item cheaply
+// (see its determinism note on why the drop roll itself can't be pinned), so
+// this test is deliberately scoped to the 202-path + wire-shape assertions
+// instead of a real flip.
 func TestEquipOverHTTP(t *testing.T) {
 	t.Parallel()
 

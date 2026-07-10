@@ -12,16 +12,26 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// Ranged reach for the default rogue/mage weapons (internal/game/content.go's
-// shortbow / ember-focus registry entries). This package has no access to
-// the unexported item registry, so the numbers are mirrored here as literal
-// constants — keep in sync with content.go's item defs (also pinned directly
-// against the registry by internal/game's items_test.go).
-const (
-	rogueBowRange = 4
-	mageRange     = 4
-	mageAoERadius = 1
-)
+// equippedRangedStats returns the range/AoE radius of entity id's equipped
+// ranged-slot item, read straight off a real turn bundle (Entity.Items —
+// milestone 6b.4). Used to drive the bow/AoE tests' fire-or-chase decisions
+// without mirroring internal/game/content.go's shortbow/ember-focus numbers
+// as local literals — the wire is now the single source of truth, also
+// pinned directly against the registry by internal/game's items_test.go.
+func equippedRangedStats(bundle protocol.TurnEvent, id int64) (int, int, bool) {
+	e, found := entityOf(bundle, id)
+	if !found {
+		return 0, 0, false
+	}
+
+	for _, it := range e.Items {
+		if it.Slot == protocol.ItemSlotRanged && it.Equipped {
+			return it.RangeHex, it.AoERadius, true
+		}
+	}
+
+	return 0, 0, false
+}
 
 // TestJoinPerClassMaxHP joins one of each class and reads their MaxHP (and
 // Class) back off a real turn bundle, proving the per-class stats in
@@ -129,11 +139,11 @@ func postAttackIntent(t *testing.T, ts *httptest.Server, me protocol.JoinRespons
 // should not silently exhaust the whole deadline before failing.
 func fireBowOrChase(
 	t *testing.T, ts *httptest.Server, me protocol.JoinResponse,
-	myHex, target protocol.Hex, consecutiveRejected *int,
+	myHex, target protocol.Hex, bowRange int, consecutiveRejected *int,
 ) bool {
 	t.Helper()
 
-	if hexDistance(myHex, target) > rogueBowRange {
+	if hexDistance(myHex, target) > bowRange {
 		postIntent(t, ts, me, target)
 
 		return false
@@ -154,7 +164,7 @@ func fireBowOrChase(
 	if *consecutiveRejected > 40 {
 		t.Fatalf(
 			"rogue attack intent rejected repeatedly (status %d, %q); range check: dist=%d, range=%d",
-			resp.StatusCode, body.Error, hexDistance(myHex, target), rogueBowRange,
+			resp.StatusCode, body.Error, hexDistance(myHex, target), bowRange,
 		)
 	}
 
@@ -207,6 +217,11 @@ func TestRogueBowKillsAtRange(t *testing.T) {
 		t.Fatal("no monsters present in first bundle")
 	}
 
+	bowRange, _, ok := equippedRangedStats(first, me.EntityID)
+	if !ok {
+		t.Fatal("joined rogue has no equipped ranged item in first turn bundle")
+	}
+
 	var (
 		monsterDamaged      bool
 		everFiredInRange    bool
@@ -229,7 +244,7 @@ func TestRogueBowKillsAtRange(t *testing.T) {
 		}
 
 		if target, found := nearestMonster(bundle, myHex); found {
-			if fireBowOrChase(t, ts, me, myHex, target, &consecutiveRejected) {
+			if fireBowOrChase(t, ts, me, myHex, target, bowRange, &consecutiveRejected) {
 				everFiredInRange = true
 			}
 		}
@@ -272,12 +287,12 @@ func TestRogueBowKillsAtRange(t *testing.T) {
 // hostiles must be non-empty; the caster's own hex always counts itself as a
 // covering candidate (distance 0), and every hostile hex trivially covers
 // itself, so the returned count is always >= 1.
-func bestAoETarget(mine protocol.Hex, hostiles []protocol.Hex) (protocol.Hex, int) {
+func bestAoETarget(mine protocol.Hex, hostiles []protocol.Hex, aoeRadius int) (protocol.Hex, int) {
 	countWithin := func(h protocol.Hex) int {
 		n := 0
 
 		for _, m := range hostiles {
-			if hexDistance(h, m) <= mageAoERadius {
+			if hexDistance(h, m) <= aoeRadius {
 				n++
 			}
 		}
@@ -304,11 +319,11 @@ func bestAoETarget(mine protocol.Hex, hostiles []protocol.Hex) (protocol.Hex, in
 func fireAoEOrChase(
 	t *testing.T, ts *httptest.Server, me protocol.JoinResponse,
 	bundle protocol.TurnEvent, myHex protocol.Hex, monsterHexes []protocol.Hex,
-	consecutiveRejected *int,
+	mageRange, aoeRadius int, consecutiveRejected *int,
 ) {
 	t.Helper()
 
-	candidate, _ := bestAoETarget(myHex, monsterHexes)
+	candidate, _ := bestAoETarget(myHex, monsterHexes, aoeRadius)
 
 	if hexDistance(myHex, candidate) > mageRange {
 		if target, found := nearestMonster(bundle, myHex); found {
@@ -383,6 +398,11 @@ func TestMageAoEDamagesMonsters(t *testing.T) {
 		t.Fatal("no monsters present in first bundle")
 	}
 
+	mageRange, aoeRadius, ok := equippedRangedStats(first, me.EntityID)
+	if !ok {
+		t.Fatal("joined mage has no equipped ranged item in first turn bundle")
+	}
+
 	prevHP := make(map[int64]int, len(startHP))
 	maps.Copy(prevHP, startHP)
 
@@ -416,7 +436,7 @@ func TestMageAoEDamagesMonsters(t *testing.T) {
 		}
 
 		if len(monsterHexes) > 0 {
-			fireAoEOrChase(t, ts, me, bundle, myHex, monsterHexes, &consecutiveRejected)
+			fireAoEOrChase(t, ts, me, bundle, myHex, monsterHexes, mageRange, aoeRadius, &consecutiveRejected)
 		}
 
 		seenNow := make(map[int64]bool, len(startHP))

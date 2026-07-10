@@ -7,11 +7,14 @@ without writing code. Game-design background lives in
 `roguelike-mp-plan.md`; the engineering note behind this is the
 `combat-modifier-pipeline` decision (plan §8, milestone 6b).*
 
-> **Status:** the rule pipeline is *planned, not built yet*. Today the three
-> species bonuses are small hardcoded exceptions in the combat code. The
-> pipeline gets built together with the gear system, and everything below
-> describes the world after that. Designs written in this format now are
-> exactly what we'll feed into it.
+> **Status:** the pipeline is **live** (milestone 6b.4). Events implemented:
+> `deal-damage`, `take-damage`, `earn-XP` — the three species bonuses and
+> gear's rule-carrying items all run through it today
+> (`internal/game/rules.go`). `attack-roll`, `on-kill`, and `aggro-range` are
+> still future (§2's event table below flags each as not-yet-implemented);
+> a design written in that vocabulary now still lands as a Tier-2 vocabulary
+> addition, not a rewrite. Everything below describes the system as it
+> actually runs.
 
 ---
 
@@ -82,17 +85,27 @@ moments. The short version (full detail: plan §5):
 
 These are the moments the engine will expose. Every rule must name one:
 
-| Event | The moment… | Example rules that hook here |
-|---|---|---|
-| **attack-roll** | …an attack is being aimed: hit chance, crit chance, crit size | elf crit bonus, "lucky" weapons, accuracy debuffs |
-| **deal-damage** | …your hit's damage number is computed | weapon enchantments, "bonus vs undead", damage buffs |
-| **take-damage** | …an incoming hit's damage is applied to you | dwarf toughness, armor, shields, vulnerabilities |
-| **earn-XP** | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
-| **on-kill** | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
+| Event | Live? | The moment… | Example rules that hook here |
+|---|---|---|---|
+| **deal-damage** | yes | …your hit's damage number is computed | weapon enchantments, "bonus vs undead", damage buffs, **elf's crit** (a chance-conditioned ×2 — see the note below) |
+| **take-damage** | yes | …an incoming hit's damage is applied to you | dwarf toughness, armor, shields, vulnerabilities |
+| **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
+| **attack-roll** | not yet | …an attack is being aimed: hit chance, crit chance, crit size | "lucky" weapons, accuracy debuffs, a miss chance |
+| **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
 
-This list will grow (likely candidates: *turn-start / turn-end* for poison
-and regeneration, *on-move*, *on-death*, *on-level-up*). Growing it is
-engine work — see §7 on what's cheap vs. expensive.
+`attack-roll` and `on-kill` are documented here so designs can be written
+against them now, but nothing calls them yet — a card naming one would sit
+unused until the event ships. **Elf's crit ended up modeled as a
+`deal-damage` effect** (a chance-conditioned ×2 multiplier), not a separate
+`attack-roll` roll — fewer moving parts, same result, and it's the pattern
+to reach for first: only add a real `attack-roll` event once something needs
+an actual to-hit/miss check (a genuine `attack-roll` candidate: the sketch
+species idea *"Halfling — hard to hit"* in §6 below).
+
+This list will grow (likely candidates: `aggro-range` for the backlogged
+"monster aggro radius via the pipeline" idea, *turn-start / turn-end* for
+poison and regeneration, *on-move*, *on-death*, *on-level-up*). Growing it
+is engine work — see §7 on what's cheap vs. expensive.
 
 ---
 
@@ -275,7 +288,9 @@ A few engine truths to design *with*, not against:
 ## 8. The design-card template (copy me)
 
 One card per idea. A shared doc or spreadsheet of these is the ideal
-handoff format — they translate almost 1:1 into the game's data.
+handoff format — they translate almost 1:1 into the game's data: this is now
+literally the shape of `internal/game/content.go`'s `itemDefs`/`*Cards`
+registry, which every gear card and species passive feeds today.
 
 ```
 ### <Name>
