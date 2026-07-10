@@ -2,6 +2,7 @@ package game_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -677,4 +678,66 @@ func TestQuestBoardTinyWorldDoesNotPanic(t *testing.T) {
 	if got, want := len(quests), 6; got != want {
 		t.Fatalf("tiny-world board size = %d, want %d", got, want)
 	}
+}
+
+// TestKillQuestTickAnnouncesProgress: a mid-quest kill announces "N down, M to
+// go" in chat (feedback where players look mid-fight); the FINAL kill
+// announces completion only — no redundant tick line.
+func TestKillQuestTickAnnouncesProgress(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+
+	var announced []string
+
+	w.SetAnnounce(func(_, text string) { announced = append(announced, text) })
+
+	qID, targetN := killQuest(t, w, 2)
+	if got, want := targetN, 2; got != want {
+		t.Fatalf("test assumes a kill-2 quest; got targetN = %d", got)
+	}
+
+	if _, err := w.QuestTake(alice.Token, qID); err != nil {
+		t.Fatalf("take: %v", err)
+	}
+
+	hexes := walkableNeighborsN(t, w, alice.Hex, targetN)
+	for _, h := range hexes {
+		monsterID := w.PlaceMonsterForTest(h)
+		w.SetHPForTest(monsterID, protocol.SwordDamage) // one bump is lethal
+	}
+
+	step(t, w) // forming turn
+
+	// First kill: a progress announcement, no completion yet.
+	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	step(t, w)
+
+	if got, want := lastAnnouncement(announced), "Cull the pack: 1 down, 1 to go"; got != want {
+		t.Errorf("tick announcement = %q, want %q", got, want)
+	}
+
+	// Final kill: completion announcement, and NOT another tick line.
+	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[1]})
+	step(t, w)
+
+	last := lastAnnouncement(announced)
+	if got, want := last, "Quest complete"; !strings.Contains(got, want) {
+		t.Errorf("final announcement = %q, should contain %q", got, want)
+	}
+
+	for _, a := range announced {
+		if strings.Contains(a, "2 down") {
+			t.Errorf("final kill also announced a tick line %q — completion should replace it", a)
+		}
+	}
+}
+
+func lastAnnouncement(announced []string) string {
+	if len(announced) == 0 {
+		return ""
+	}
+
+	return announced[len(announced)-1]
 }

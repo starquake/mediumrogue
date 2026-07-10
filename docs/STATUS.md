@@ -9,7 +9,11 @@ tick once-per-quest-per-turn via bubble presence, completion pays every
 current holder in full (the human +XP% passive applies), a `SetAnnounce`
 broker hook for quest chat announcements, and a SolidJS `<QuestPanel>`
 showing my quest + the board with XP rewards (XP jump visible in the stats
-HUD). Next per plan §8 is **9 shader filter**. Update this file at the end of
+HUD). **Milestone 9 (CRT shader filter) was built and then dropped unmerged**
+(PR #32 closed — the user disliked the look; a different post-processing pass
+may return later; see the `visual-features-need-preview` memory for the
+lesson and the strict-driver `highp` shader pitfall). Next per plan §8 is
+**10 polish & launch**. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is

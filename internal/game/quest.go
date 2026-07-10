@@ -300,7 +300,13 @@ func (w *World) tickKillQuestsLocked(members []*entity, killed int) {
 		q.progress = min(q.progress+killed, q.targetN)
 		if q.progress >= q.targetN {
 			w.completeQuestLocked(q)
+
+			continue
 		}
+
+		// Progress feedback where players are actually looking mid-fight: the
+		// chat stream. (Completion has its own announcement.)
+		w.announce("system", fmt.Sprintf("%s: %d down, %d to go", q.name, q.progress, q.targetN-q.progress))
 	}
 }
 
