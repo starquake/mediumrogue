@@ -1,15 +1,44 @@
 package game_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// reachKind mirrors the unexported game-package quest-kind literal (goconst:
-// keep the literal out of this file; quest_test.go owns the other uses).
-const reachKind = "reach"
+// walkableHexAtDistance scans the world's origin-reachable walkable region
+// (the same set spawnHexLocked and Pathfind can actually reach) for a hex
+// whose distance from `from` falls in [minDist, maxDist], returning the
+// lowest by (Q, R) among matches for a fully deterministic, reproducible pick
+// (the region is a map — iterating it directly would return an arbitrary
+// match, varying run to run for the same fixed-seed world).
+func walkableHexAtDistance(t *testing.T, w *game.World, from protocol.Hex, minDist, maxDist int) protocol.Hex {
+	t.Helper()
+
+	var candidates []protocol.Hex
+
+	for h := range game.ReachableWalkableForTest(w.Map()) {
+		if d := game.HexDistance(from, h); d >= minDist && d <= maxDist {
+			candidates = append(candidates, h)
+		}
+	}
+
+	if len(candidates) == 0 {
+		t.Fatalf("no reachable walkable hex within distance [%d,%d] of %v", minDist, maxDist, from)
+	}
+
+	slices.SortFunc(candidates, func(a, b protocol.Hex) int {
+		if a.Q != b.Q {
+			return a.Q - b.Q
+		}
+
+		return a.R - b.R
+	})
+
+	return candidates[0]
+}
 
 // entityHex scans the snapshot for an entity's current hex.
 func entityHex(t *testing.T, w *game.World, id int64) protocol.Hex {
@@ -43,27 +72,14 @@ func TestWorldMonstersKeepMovingWhileAllPlayersAreBubbled(t *testing.T) {
 	nearHex := walkableNeighborsN(t, w, alice.Hex, 1)[0]
 	w.PlaceMonsterForTest(nearHex)
 
-	// A far monster: use a reach-quest goal — guaranteed walkable and
-	// reachable, ≥8 from the origin. Pick the farthest from alice and require
-	// it strictly outside her CombatRadius so it starts world-domain.
-	var farHex protocol.Hex
-
-	bestDist := 0
-
-	for _, q := range w.Snapshot().Quests {
-		if q.Kind != reachKind {
-			continue
-		}
-
-		if d := game.HexDistance(alice.Hex, q.GoalHex); d > bestDist {
-			farHex, bestDist = q.GoalHex, d
-		}
-	}
-
-	if bestDist <= protocol.CombatRadius {
-		t.Fatalf("no reach goal outside CombatRadius of alice (best %d) — pick another placement", bestDist)
-	}
-
+	// A far monster: within MonsterAggroRadius (#36 — a WORLD monster only
+	// hunts a player within ITS aggro range; the whole point of this test is
+	// that the world keeps running, which now requires the monster to have
+	// noticed alice in the first place) but with enough of a buffer over
+	// CombatRadius (+2, not +1) that a single approach step during the
+	// forming turn below can't accidentally close it into alice's bubble
+	// before the "starts OUTSIDE the bubble" precondition is even checked.
+	farHex := walkableHexAtDistance(t, w, alice.Hex, protocol.CombatRadius+2, protocol.MonsterAggroRadius)
 	farID := w.PlaceMonsterForTest(farHex)
 
 	// Forming turn: alice + the near monster bubble up; the far monster stays

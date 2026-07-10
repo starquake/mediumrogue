@@ -29,6 +29,17 @@ export const PlaybackSeconds = 2;
  */
 export const CombatRadius = 6;
 /**
+ * MonsterAggroRadius is the hex distance at which a WORLD-domain monster
+ * notices a player and starts hunting it; beyond it, a monster stands
+ * still (#36 — no wander this slice). It MUST stay strictly greater than
+ * CombatRadius: a monster has to notice a player before it can close the
+ * distance into a combat bubble, or it would sit frozen just outside
+ * aggro range forever. A monster already inside a combat bubble ignores
+ * this and keeps chasing its bubble's players unconditionally — a fight
+ * is a fight.
+ */
+export const MonsterAggroRadius = 10;
+/**
  * StackCap is the maximum number of friendly entities on one hex — sized
  * so a full party fits.
  */

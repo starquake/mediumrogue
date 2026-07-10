@@ -263,7 +263,7 @@ func validateItemDefs(defs []*itemDef) {
 func validateRuleCards(owner string, cards []ruleCard) {
 	for _, c := range cards {
 		switch c.event {
-		case evDealDamage, evTakeDamage, evEarnXP:
+		case evDealDamage, evTakeDamage, evEarnXP, evAggroRange:
 		default:
 			panic("game: " + owner + " rule card has unknown event " + c.event)
 		}

@@ -836,7 +836,7 @@ type pendingAttack struct {
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.regenPlayersLocked(members)
-	w.resolveCombatLocked(members, w.allPlayersLocked())
+	w.resolveCombatLocked(members, w.allPlayersLocked(), true)
 	w.checkReachQuestsLocked()
 	w.turn++
 }
@@ -872,7 +872,7 @@ func (w *World) regenPlayersLocked(members []*entity) {
 // for the next turn. Like resolveWorldTurnLocked it does NOT recompute — see that
 // method. Callers hold w.mu.
 func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.Time) {
-	killed := w.resolveCombatLocked(members, playersOf(members))
+	killed := w.resolveCombatLocked(members, playersOf(members), false)
 
 	// Kill XP belongs to the fight: every player who survived this bubble-turn
 	// earns the FULL MonsterXP for each monster that fell — no last-hit
@@ -909,12 +909,21 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 // set: think → move (faction-aware, with bump deferral) → attack (simultaneous,
 // post-move positions) → apply damage & deaths. The set is a whole
 // CombatRadius-connected domain (the world domain or one bubble), so no move,
-// bump, stack, or attack can reach an entity outside it. It does not recompute
-// bubbles or advance the turn — the two resolve callers own that. It returns the
-// number of monsters that died this resolution, which the bubble path turns into
-// the shared kill-XP award. Callers hold w.mu.
-func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
-	w.thinkMonstersLocked(members, monsterTargets)
+// bump, stack, or attack can reach an entity outside it. worldDomain selects
+// thinkMonstersLocked's aggro gating (true for the world domain, false inside
+// a bubble — see that function's doc comment). It does not recompute bubbles
+// or advance the turn — the two resolve callers own that. It returns the
+// number of monsters that died this resolution, which the bubble path turns
+// into the shared kill-XP award. Callers hold w.mu.
+func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDomain bool) int {
+	// Built before thinkMonstersLocked (unlike pre-6.4, when the rng was built
+	// after) so a future aggro-range rule card using a condChance condition has
+	// a real, turn-seeded rng to consume instead of a nil one — see
+	// aggroRadiusForLocked.
+	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
+
+	w.thinkMonstersLocked(rng, members, monsterTargets, worldDomain)
 
 	// Pending equips are this turn's action for any member that queued one
 	// (queueEquipLocked, inside a bubble): apply the swap before any damage
@@ -923,9 +932,6 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
 	for _, e := range members {
 		applyPendingEquip(e)
 	}
-
-	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
-	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
 
 	// Evolving board: who is on each hex as moves resolve.
 	byHex := make(map[protocol.Hex][]*entity, len(members))
@@ -1486,11 +1492,20 @@ func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
 // WORLD monsters chase the nearest player anywhere — including one frozen in
 // a bubble — so the world keeps running (§5) and an approaching monster is
 // absorbed by the bubble recompute the moment it closes within CombatRadius
-// of a bubbled player (walk-in reinforcement). Callers hold w.mu.
+// of a bubbled player (walk-in reinforcement).
+//
+// worldDomain gates that WORLD chase behind aggro range (#36): a WORLD-domain
+// monster only picks a target among players within THEIR OWN effective aggro
+// radius (aggroRadiusForLocked — nearestAggroedPlayerLocked does the
+// filtering); if nobody qualifies it stands still (no wander this slice) —
+// see rng's doc comment on why it's threaded in even though no content uses
+// evAggroRange yet. A bubble's monsters (worldDomain false) keep chasing
+// unconditionally — a fight is a fight, aggro range does not apply once
+// you're already in one. Callers hold w.mu.
 //
 // When adjacent, path[0] is the player's own hex, so the move phase converts
 // this into a bump-to-attack (6.3).
-func (w *World) thinkMonstersLocked(members, targets []*entity) {
+func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, worldDomain bool) {
 	if len(targets) == 0 {
 		return
 	}
@@ -1500,9 +1515,20 @@ func (w *World) thinkMonstersLocked(members, targets []*entity) {
 			continue
 		}
 
-		target := nearestPlayer(m.hex, targets)
+		var target *entity
+		if worldDomain {
+			target = w.nearestAggroedPlayerLocked(rng, m.hex, targets)
+			if target == nil {
+				m.path = nil // nobody within their own aggro range: stand still
+
+				continue
+			}
+		} else {
+			target = nearestPlayer(m.hex, targets)
+		}
+
 		path := Pathfind(m.hex, target.hex, w.walkableLocked)
-		// Step toward the nearest player; when adjacent, path[0] is the player's own
+		// Step toward the target; when adjacent, path[0] is the player's own
 		// hex, so the move phase converts this into a bump-to-attack (6.3).
 		if len(path) >= 1 {
 			m.path = []protocol.Hex{path[0]}
@@ -1510,6 +1536,48 @@ func (w *World) thinkMonstersLocked(members, targets []*entity) {
 			m.path = nil
 		}
 	}
+}
+
+// nearestAggroedPlayerLocked returns the player nearest `from` among
+// `players`, considering only players within THEIR OWN effective aggro radius
+// of `from` (aggroRadiusForLocked — gear/species can make one player more or
+// less noticeable than another), ties broken by lowest id like nearestPlayer.
+// Returns nil if no player qualifies — the monster notices nobody. Callers
+// hold w.mu.
+func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, from protocol.Hex, players []*entity) *entity {
+	var best *entity
+
+	bestDist := 0
+
+	for _, p := range players {
+		d := HexDistance(from, p.hex)
+		if d > aggroRadiusForLocked(rng, p) {
+			continue
+		}
+
+		if best == nil || d < bestDist || (d == bestDist && p.id < best.id) {
+			best, bestDist = p, d
+		}
+	}
+
+	return best
+}
+
+// aggroRadiusForLocked returns the hex radius at which a WORLD-domain monster
+// notices player p: protocol.MonsterAggroRadius folded through p's own
+// noticeability rule cards (species + both equipped items' rules — mirroring
+// rollDamageLocked's victimCards fold: any gear on the entity can contribute,
+// not just the "acting" slot) via the evAggroRange event. No content defines
+// an evAggroRange card yet, so this is a no-op fold today — the hook exists so
+// a future sneaky/loud item can shrink or grow it without touching this
+// call site. Callers hold w.mu.
+func aggroRadiusForLocked(rng *mrand.Rand, p *entity) int {
+	cards := slices.Concat(speciesCards(p.species), closeDefFor(p).rules)
+	if ranged := rangedDefFor(p); ranged != nil {
+		cards = slices.Concat(cards, ranged.rules)
+	}
+
+	return applyRules(evAggroRange, protocol.MonsterAggroRadius, cards, ruleCtx{attacker: p, rng: rng})
 }
 
 // playersOf filters the player entities out of a member set, preserving order.

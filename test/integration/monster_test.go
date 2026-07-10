@@ -64,18 +64,19 @@ func TestMonstersAppearInTurnBundle(t *testing.T) {
 // over real HTTP: once a player joins, a monster's hex changes across
 // successive turn bundles as it paths toward the player.
 //
-// The monster is seeded near the far rim, eleven hexes from the origin (where
-// the player spawns) — well outside CombatRadius, so it hunts and steps in the
-// WORLD domain (no bubble to freeze it in place) for several world ticks before
-// it ever reaches combat range. Its hex changes on the very first world tick,
-// and the long world-domain runway leaves a wide window to observe a step before
-// the eventual freeze, regardless of the seed or connect latency. The test is
-// not parallel so its tick loop is not starved by sibling servers under a loaded
-// runner (#22).
+// The monster is seeded nine hexes from the origin (where the player spawns)
+// — outside CombatRadius so it hunts and steps in the WORLD domain (no bubble
+// to freeze it in place) for a few world ticks before it ever reaches combat
+// range, but within MonsterAggroRadius (#36) so a WORLD-domain monster
+// actually notices the player and moves at all. Its hex changes on the very
+// first world tick, and the world-domain runway leaves a window to observe a
+// step before the eventual freeze, regardless of the seed or connect latency.
+// The test is not parallel so its tick loop is not starved by sibling servers
+// under a loaded runner (#22).
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestMonsterHuntsPlayer(t *testing.T) {
-	ts := startServerWithMonstersAt(t, 20*time.Millisecond, protocol.Hex{Q: -11, R: 0})
+	ts := startServerWithMonstersAt(t, 20*time.Millisecond, protocol.Hex{Q: -9, R: 0})
 
 	join(t, ts, "")
 

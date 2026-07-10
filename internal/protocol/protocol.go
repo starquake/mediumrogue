@@ -21,6 +21,15 @@ const (
 	// CombatRadius is the mutual-line-of-sight distance (in hexes) at which a
 	// combat time bubble forms around a player and a hostile.
 	CombatRadius = 6
+	// MonsterAggroRadius is the hex distance at which a WORLD-domain monster
+	// notices a player and starts hunting it; beyond it, a monster stands
+	// still (#36 — no wander this slice). It MUST stay strictly greater than
+	// CombatRadius: a monster has to notice a player before it can close the
+	// distance into a combat bubble, or it would sit frozen just outside
+	// aggro range forever. A monster already inside a combat bubble ignores
+	// this and keeps chasing its bubble's players unconditionally — a fight
+	// is a fight.
+	MonsterAggroRadius = 10
 	// StackCap is the maximum number of friendly entities on one hex — sized
 	// so a full party fits.
 	StackCap = 5
@@ -29,6 +38,15 @@ const (
 	MaxChatLen = 500
 	MaxNameLen = 24
 )
+
+// _ [MonsterAggroRadius - CombatRadius - 1]struct{} is a compile-time guard
+// on the invariant documented on MonsterAggroRadius above: a negative array
+// length is a compile error, so the package fails to BUILD (not just fail a
+// test) the moment either constant changes to violate
+// MonsterAggroRadius > CombatRadius. TestMonsterAggroRadiusExceedsCombatRadius
+// (protocol_test.go) asserts the same thing at the test level for a clearer
+// failure message.
+var _ [MonsterAggroRadius - CombatRadius - 1]struct{}
 
 // Hex is an axial coordinate on the flat-top hex grid. See Red Blob Games'
 // hex guide for the coordinate math conventions.
