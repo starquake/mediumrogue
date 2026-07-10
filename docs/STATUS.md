@@ -1,15 +1,11 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-10, after milestone 8.3 quests landed — **milestone 8
-complete**. A seeded 6-quest board (3 kill 2–4 targets + 3 reach ≥8 hexes out,
-deterministic from `WORLD_SEED` with a tiny-world fallback), `/quest <id>` +
-`/abandon`, one-slot rules (joining a party abandons a personal quest;
-dissolve/sweep returns a quest to the board with progress reset), kill quests
-tick once-per-quest-per-turn via bubble presence, completion pays every
-current holder in full (the human +XP% passive applies), a `SetAnnounce`
-broker hook for quest chat announcements, and a SolidJS `<QuestPanel>`
-showing my quest + the board with XP rewards (XP jump visible in the stats
-HUD). Next per plan §8 is **9 shader filter**. Update this file at the end of
+*Last updated: 2026-07-10, after milestone 9 shader filter (this PR) — CRT
+scanlines/vignette/desaturate+tint as a swappable `client/src/render/filter.ts`
+pass, default on, HUD toggle + localStorage persistence — built in parallel
+with and rebased onto milestone 8.3 quests (**milestone 8 complete** on main;
+see the milestone 8 and 9 sections below). Next per plan §8 is **10 polish &
+launch**. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -264,6 +260,29 @@ player/party; dissolve/sweep returns a quest to the board with progress
 reset) — see plan §9. Also recorded but not built: the two tooling
 milestones above, and a **selected-path preview** render item (plan §6 —
 show my own route: goal + every hex, local-only).
+
+## Milestone 9 — shader filter — DONE
+
+CRT post-processing as a swappable pass over the whole Pixi stage
+(`client/src/render/filter.ts`): scanlines, a corner vignette, and a
+desaturate+phosphor-tint mix, all dialed from one uniform-value tuning block
+(`CRT` in that file). Default **on**. A `#filter-toggle` HUD button flips
+between `crt`/`none`; the choice is persisted to `localStorage`
+(`mediumrogue.filter`) and restored on load/reload — the toggle survives a
+reconnect/rejoin the same way identity does. The DOM social UI (chat panel,
+roster panel) floats above the canvas and is deliberately **not** filtered —
+only the Pixi stage gets the pass. `window.game.filter` (current look) and
+`window.game.setFilter(name)` are exposed for tests, and every other e2e spec
+already runs green with the filter on (no pixel-diffing needed — a passing
+suite *is* the proof the filter doesn't break rendering/input). Covered by
+`client/e2e/filter.spec.ts`: default-on + HUD label, toggle + reload
+persistence, and re-enable-then-walk (proves input/render still work with the
+pass active). **Deferred** (as registry entries for a later pass): a
+bloom/flat-palette alternate look, time-based flicker, and per-look tuning
+sliders in the HUD.
+
+Next per plan §8: **10 polish & launch** (8.3 quests, if not already landed,
+remains open independently of this milestone).
 
 ## Known placeholders / debt (all deliberate)
 
