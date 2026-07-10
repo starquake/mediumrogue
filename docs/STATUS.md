@@ -247,10 +247,10 @@ slices, each its own spec → plan → PR:
   take the closest reach quest → walk to its goal → completion → exact XP
   jump + `#stats` change + "Quest complete" chat line).
 
-**Milestone 8 (quests, parties & chat) is complete.** Next per plan §8 is
-**9 = shader filter**, then 10 = deploy; then late tooling **11 = live
-admin/difficulty console** and **12 = combat/move analytics log** (see plan
-§8.11–12).
+**Milestone 8 (quests, parties & chat) is complete.** Milestone 9 (shader
+filter) landed right after — see its section below. Next per plan §8 is
+**10 = polish & launch**; then late tooling **11 = live admin/difficulty
+console** and **12 = combat/move analytics log** (see plan §8.11–12).
 
 **Handoff note (2026-07-10):** 8.1 (PR #26), 8.2 (PR #28), and 8.3 (this PR)
 are landed; milestone 8 is done. The plan §9 party-quest-membership open
@@ -281,8 +281,7 @@ pass active). **Deferred** (as registry entries for a later pass): a
 bloom/flat-palette alternate look, time-based flicker, and per-look tuning
 sliders in the HUD.
 
-Next per plan §8: **10 polish & launch** (8.3 quests, if not already landed,
-remains open independently of this milestone).
+Next per plan §8: **10 polish & launch**.
 
 ## Known placeholders / debt (all deliberate)
 
