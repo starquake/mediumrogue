@@ -90,122 +90,147 @@
       #combat-panel[hidden] {
         display: none;
       }
-      /* Class picker: shown only for a brand-new player (no stored identity)
-         while the map/engine load, so there's a real window to choose before
-         the join fires — a returning player's token already fixes their
-         class server-side, so this never appears for them. Unlike #hud it
-         takes pointer events (the buttons must be clickable). */
-      #class-picker {
+      /* Start screen: character creation, shown only for a brand-new player
+         (no stored identity — see main.ts's isNewPlayer) while the map/
+         engine load behind it. Highest z-index in the page — it overlays
+         everything, HUD included — until Enter fires the join. A returning
+         player's stored identity skips this entirely (their token already
+         fixes class/species server-side). */
+      #start-screen {
         position: fixed;
-        top: 0.75rem;
-        right: 1rem;
-        z-index: 11;
-        background: rgba(11, 15, 11, 0.85);
-        border: 1px solid var(--dim);
-        padding: 0.5rem 0.75rem;
-        text-align: center;
-        text-shadow: 0 1px 2px #000;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        background: rgba(11, 15, 11, 0.97);
       }
-      #class-picker[hidden] {
+      #start-screen[hidden] {
         display: none;
       }
-      #class-picker-label {
-        margin-bottom: 0.35rem;
+      #start-panel {
+        width: min(46rem, 94vw);
+        max-height: 90vh;
+        overflow-y: auto;
+        background: rgba(11, 15, 11, 0.92);
+        border: 1px solid var(--dim);
+        padding: 2rem 2.5rem;
+        text-shadow: 0 1px 2px #000;
+      }
+      #start-panel h1 {
+        margin: 0 0 0.25rem;
+        font-weight: normal;
+        letter-spacing: 0.45em;
+        color: var(--dim);
+        font-size: 1.05rem;
+        text-transform: uppercase;
+        text-align: center;
+      }
+      #start-panel .tagline {
+        text-align: center;
+        color: var(--dim);
+        font-size: 0.8rem;
+        margin-bottom: 1.6rem;
+      }
+      #start-panel .label {
         color: var(--dim);
         font-size: 0.7rem;
         letter-spacing: 0.2em;
         text-transform: uppercase;
+        margin: 1.2rem 0 0.45rem;
       }
-      #class-picker button {
-        margin: 0 0.15rem;
-        padding: 0.3rem 0.6rem;
+      #start-name {
+        width: 100%;
+        padding: 0.55rem 0.7rem;
         font-family: inherit;
-        font-size: 0.85rem;
-        color: var(--fg);
-        background: #16201a;
-        border: 1px solid var(--dim);
-        cursor: pointer;
-      }
-      #class-picker button.selected,
-      #class-picker button:hover {
-        background: #2a3d2b;
-        border-color: #7cb342;
-      }
-      /* Species picker: mirrors #class-picker exactly (same visibility rule,
-         same styling) — shown beside it for a brand-new player. */
-      #species-picker {
-        position: fixed;
-        top: 0.75rem;
-        right: 13rem;
-        z-index: 11;
-        background: rgba(11, 15, 11, 0.85);
-        border: 1px solid var(--dim);
-        padding: 0.5rem 0.75rem;
-        text-align: center;
-        text-shadow: 0 1px 2px #000;
-      }
-      #species-picker[hidden] {
-        display: none;
-      }
-      #species-picker-label {
-        margin-bottom: 0.35rem;
-        color: var(--dim);
-        font-size: 0.7rem;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-      }
-      #species-picker button {
-        margin: 0 0.15rem;
-        padding: 0.3rem 0.6rem;
-        font-family: inherit;
-        font-size: 0.85rem;
-        color: var(--fg);
-        background: #16201a;
-        border: 1px solid var(--dim);
-        cursor: pointer;
-      }
-      #species-picker button.selected,
-      #species-picker button:hover {
-        background: #2a3d2b;
-        border-color: #7cb342;
-      }
-      /* Name field: mirrors the pickers' visibility rule (brand-new player
-         only) and styling, but is a text input rather than buttons. Sits
-         below the two pickers so all three read top-to-bottom as one join
-         flow. */
-      #name-picker {
-        position: fixed;
-        top: 4.5rem;
-        right: 1rem;
-        z-index: 11;
-        background: rgba(11, 15, 11, 0.85);
-        border: 1px solid var(--dim);
-        padding: 0.5rem 0.75rem;
-        text-align: center;
-        text-shadow: 0 1px 2px #000;
-      }
-      #name-picker[hidden] {
-        display: none;
-      }
-      #name-picker-label {
-        margin-bottom: 0.35rem;
-        color: var(--dim);
-        font-size: 0.7rem;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-      }
-      #name-input {
-        width: 10rem;
-        padding: 0.3rem 0.5rem;
-        font-family: inherit;
-        font-size: 0.85rem;
+        font-size: 1rem;
         color: var(--fg);
         background: #16201a;
         border: 1px solid var(--dim);
       }
-      #name-input:focus {
+      #start-name:focus {
         outline: none;
         border-color: #7cb342;
+      }
+      #start-panel .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.6rem;
+      }
+      #start-panel .card {
+        border: 1px solid var(--dim);
+        background: #101710;
+        padding: 0.7rem 0.8rem;
+        cursor: pointer;
+      }
+      #start-panel .card:hover {
+        background: #18251a;
+      }
+      #start-panel .card.selected {
+        border-color: #7cb342;
+        background: #1b2b1c;
+        box-shadow: 0 0 0 1px #7cb342 inset;
+      }
+      #start-panel .card .glyph {
+        display: inline-block;
+        width: 1.7rem;
+        height: 1.7rem;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 1.7rem;
+        font-weight: bold;
+        color: #0b0f0b;
+        margin-bottom: 0.45rem;
+      }
+      #start-panel .card h3 {
+        margin: 0 0 0.3rem;
+        font-size: 0.95rem;
+        font-weight: bold;
+      }
+      #start-panel .card p {
+        margin: 0;
+        font-size: 0.72rem;
+        line-height: 1.45;
+        color: var(--dim);
+      }
+      #start-panel .card.selected p {
+        color: var(--fg);
+      }
+      #start-panel .fighter .glyph {
+        background: #8fd0ff;
+      }
+      #start-panel .rogue .glyph {
+        background: #c8b458;
+      }
+      #start-panel .mage .glyph {
+        background: #c78fdf;
+      }
+      #start-panel .species .glyph {
+        background: #8fe08f;
+      }
+      #start-enter {
+        margin-top: 1.8rem;
+        width: 100%;
+        padding: 0.8rem;
+        font-family: inherit;
+        font-size: 1rem;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: #0b0f0b;
+        background: #7cb342;
+        border: 1px solid #7cb342;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      #start-enter:hover {
+        background: #8fce53;
+      }
+      #start-panel .hint {
+        text-align: center;
+        color: var(--dim);
+        font-size: 0.7rem;
+        margin-top: 0.7rem;
       }
       /* Chat overlay: #chat-root spans a corner of the viewport but is itself
          click-through (pointer-events: none) so a map click landing on empty
@@ -437,21 +462,55 @@
         In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
       </div>
     </header>
-    <div id="class-picker" hidden>
-      <div id="class-picker-label">Choose your class</div>
-      <button type="button" data-class="fighter">Fighter</button>
-      <button type="button" data-class="rogue">Rogue</button>
-      <button type="button" data-class="mage">Mage</button>
-    </div>
-    <div id="species-picker" hidden>
-      <div id="species-picker-label">Choose your species</div>
-      <button type="button" data-species="human">Human</button>
-      <button type="button" data-species="elf">Elf</button>
-      <button type="button" data-species="dwarf">Dwarf</button>
-    </div>
-    <div id="name-picker" hidden>
-      <label id="name-picker-label" for="name-input">Your name</label><br />
-      <input id="name-input" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />
+    <div id="start-screen" hidden>
+      <div id="start-panel">
+        <h1>Medium Rogue</h1>
+        <div class="tagline">a shared world · one turn every five seconds · bring friends</div>
+
+        <div class="label">Your name</div>
+        <input id="start-name" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />
+
+        <div class="label">Class — how you fight</div>
+        <div class="cards">
+          <div class="card fighter selected" data-class="fighter">
+            <span class="glyph">F</span>
+            <h3>Fighter</h3>
+            <p>Steady melee, tough enough to hold the front. Medium damage, high HP.</p>
+          </div>
+          <div class="card rogue" data-class="rogue">
+            <span class="glyph">R</span>
+            <h3>Rogue</h3>
+            <p>Dagger up close, bow at range — picked automatically. Hits hardest, takes hits badly.</p>
+          </div>
+          <div class="card mage" data-class="mage">
+            <span class="glyph">M</span>
+            <h3>Mage</h3>
+            <p>Area magic from the back line — hits groups at once. Fragile.</p>
+          </div>
+        </div>
+
+        <div class="label">Species — your style</div>
+        <div class="cards species">
+          <div class="card selected" data-species="human">
+            <span class="glyph">H</span>
+            <h3>Human</h3>
+            <p>Learns faster: bonus XP on every award.</p>
+          </div>
+          <div class="card" data-species="elf">
+            <span class="glyph">E</span>
+            <h3>Elf</h3>
+            <p>Deadly precision: chance to land critical hits.</p>
+          </div>
+          <div class="card" data-species="dwarf">
+            <span class="glyph">D</span>
+            <h3>Dwarf</h3>
+            <p>Stone-tough: shrugs off part of every hit.</p>
+          </div>
+        </div>
+
+        <button id="start-enter" type="button">Enter the world</button>
+        <div class="hint">returning players skip this screen — your character remembers you</div>
+      </div>
     </div>
     <div id="chat-root"></div>
     <div id="roster-root"></div>
