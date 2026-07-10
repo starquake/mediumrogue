@@ -270,7 +270,14 @@ func validateRuleCards(owner string, cards []ruleCard) {
 
 		for _, cond := range c.when {
 			switch cond.kind {
-			case condChance, condTargetHPBelowPct, condTargetHPFull, condAllyInBubble, condTargetAdjacent:
+			case condChance, condTargetHPBelowPct, condTargetHPBelowFlat,
+				condTargetHPFull, condAllyInBubble, condTargetAdjacent:
+			case condAttackerSpecies:
+				// A species gate on a species that can't exist would silently
+				// never hold — a content typo, caught at load.
+				if !validSpecies(cond.s) {
+					panic("game: " + owner + " attackerSpecies rule card names unknown species " + cond.s)
+				}
 			default:
 				panic("game: " + owner + " rule card has unknown condition " + cond.kind)
 			}

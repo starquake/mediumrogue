@@ -13,13 +13,17 @@ import (
 // DropChancePercent, drawn from the same PCG stream as the rest of a
 // bubble-turn resolution — move-shuffle first, then the bump's damage roll,
 // then the drop roll in resolveDeathsLocked). Found by probing killSeedDrops'
-// exact scenario: seed 0 misses (no ground item), seed 4 hits (drops
-// "iron-warhammer").
+// exact scenario: seed 0 misses (no ground item), seed 4 hits. WHICH def the
+// hit yields depends on the whole dropTable (the weighted pick walks it), so
+// these two constants are re-derived whenever the table grows — the tests
+// prove the drop→pickup cycle, not any particular item. Current values:
+// re-derived after the first designer batch (mattock + war-mage staff)
+// widened the table.
 const (
 	killMissSeed        = 0
 	killDropSeed        = 4
-	killDropSeedDefID   = "iron-warhammer"
-	killDropSeedDefName = "Iron Warhammer"
+	killDropSeedDefID   = "venom-fang"
+	killDropSeedDefName = "Venom Fang"
 )
 
 // oneHitKillBubble joins a named level-1 Fighter (iron sword, the Join

@@ -117,3 +117,62 @@ func TestApplyRulesConditions(t *testing.T) {
 		t.Errorf("allyInBubble = %d, want %d", got, want)
 	}
 }
+
+// TestApplyRulesTargetHPBelowFlat: the flat-threshold execute condition (the
+// Staff of the War Mage's rule) compares against ABSOLUTE hp, deliberately
+// not scaling with maxHP — a mop-up tool stays a mop-up tool against big
+// monsters (designer decision, first-gear review v2).
+func TestApplyRulesTargetHPBelowFlat(t *testing.T) {
+	t.Parallel()
+
+	card := []ruleCard{{
+		event: evDealDamage,
+		when:  []condition{{kind: condTargetHPBelowFlat, n: 6}},
+		then:  effect{kind: effMulPct, n: 200},
+	}}
+
+	// hp 5 < 6: holds regardless of a huge maxHP.
+	weak := &entity{hp: 5, maxHP: 200}
+	if got, want := applyRules(evDealDamage, 3, card, ruleCtx{victim: weak}), 6; got != want {
+		t.Errorf("applyRules vs hp 5 = %d, want %d", got, want)
+	}
+
+	// hp 6 is NOT below 6: boundary excluded.
+	boundary := &entity{hp: 6, maxHP: 10}
+	if got, want := applyRules(evDealDamage, 3, card, ruleCtx{victim: boundary}), 3; got != want {
+		t.Errorf("applyRules vs hp 6 = %d, want %d", got, want)
+	}
+
+	// nil victim: fails closed.
+	if got, want := applyRules(evDealDamage, 3, card, ruleCtx{}), 3; got != want {
+		t.Errorf("applyRules vs nil victim = %d, want %d", got, want)
+	}
+}
+
+// TestApplyRulesAttackerSpecies: the species-gated condition (the Ancient
+// Dwarven Mattock's rule) reads the ATTACKER's species — gear that is
+// usable by a whole class but sings in one species' hands.
+func TestApplyRulesAttackerSpecies(t *testing.T) {
+	t.Parallel()
+
+	card := []ruleCard{{
+		event: evDealDamage,
+		when:  []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
+		then:  effect{kind: effAdd, n: 3},
+	}}
+
+	dwarf := &entity{species: protocol.SpeciesDwarf}
+	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{attacker: dwarf}), 7; got != want {
+		t.Errorf("applyRules dwarf attacker = %d, want %d", got, want)
+	}
+
+	elf := &entity{species: protocol.SpeciesElf}
+	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{attacker: elf}), 4; got != want {
+		t.Errorf("applyRules elf attacker = %d, want %d", got, want)
+	}
+
+	// nil attacker (defensive): fails closed.
+	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{}), 4; got != want {
+		t.Errorf("applyRules nil attacker = %d, want %d", got, want)
+	}
+}
