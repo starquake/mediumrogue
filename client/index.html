@@ -90,6 +90,25 @@
       #combat-panel[hidden] {
         display: none;
       }
+      /* Filter toggle: a HUD-adjacent control, but #hud itself is
+         pointer-events: none (it's an overlay that shouldn't eat map
+         clicks) — re-enable pointer events on just this button, same trick
+         as #chat-panel/#roster-panel inside their click-through roots. */
+      #filter-toggle {
+        pointer-events: auto;
+        margin-top: 0.4rem;
+        padding: 0.2rem 0.5rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        color: var(--dim);
+        background: #16201a;
+        border: 1px solid var(--dim);
+        cursor: pointer;
+      }
+      #filter-toggle:hover {
+        background: #2a3d2b;
+        border-color: #7cb342;
+      }
       /* Class picker: shown only for a brand-new player (no stored identity)
          while the map/engine load, so there's a real window to choose before
          the join fires — a returning player's token already fixes their
@@ -368,6 +387,7 @@
       <div id="combat-panel" hidden>
         In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
       </div>
+      <button type="button" id="filter-toggle">filter: crt</button>
     </header>
     <div id="class-picker" hidden>
       <div id="class-picker-label">Choose your class</div>

@@ -31,6 +31,8 @@ import {
   XPPerLevel,
 } from "./protocol.gen";
 import { EntityLayer } from "./render/entities";
+import { applyFilter, currentFilter, loadFilterChoice, saveFilterChoice } from "./render/filter";
+import type { FilterName } from "./render/filter";
 import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { buildMapLayer } from "./render/map";
 import { TurnTimer } from "./ui/timer";
@@ -101,6 +103,10 @@ export interface GameDebug {
   quest: QuestView | null;
   /** The whole quest board, from the latest bundle. */
   quests: QuestView[];
+  /** The active post-processing look ("crt"/"none"), mirrored from render/filter. */
+  filter: string;
+  /** Switch the post-processing look, persisting the choice (drives the HUD toggle and e2e). */
+  setFilter: (name: string) => void;
 }
 
 declare global {
@@ -133,6 +139,7 @@ const speciesButtons = Array.from(
 );
 const namePickerEl = mustGet("name-picker");
 const nameInputEl = mustGet("name-input") as HTMLInputElement;
+const filterToggleEl = mustGet("filter-toggle");
 
 // How long this client's entity must be absent from turn bundles before it
 // re-joins (see attemptRejoin below) — well above a single coalesced/missed
@@ -246,6 +253,8 @@ window.game = {
   partyId: 0,
   quest: null,
   quests: [],
+  filter: "crt",
+  setFilter: (): void => {},
 };
 
 /** The ranged weapon range for a class, or null for a class with no ranged weapon (fighter). */
@@ -304,6 +313,24 @@ async function start(): Promise<void> {
   const app = new Application();
   await app.init({ background: "#0b0f0b", resizeTo: window, antialias: true });
   document.body.appendChild(app.canvas);
+  applyFilter(app, loadFilterChoice());
+
+  const syncFilterUI = (): void => {
+    window.game.filter = currentFilter();
+    filterToggleEl.textContent = `filter: ${currentFilter()}`;
+  };
+
+  window.game.setFilter = (name: string): void => {
+    const look: FilterName = name === "none" ? "none" : "crt";
+    applyFilter(app, look);
+    saveFilterChoice(look);
+    syncFilterUI();
+  };
+
+  filterToggleEl.addEventListener("click", () => {
+    window.game.setFilter(currentFilter() === "crt" ? "none" : "crt");
+  });
+  syncFilterUI();
 
   const world = new Container();
   app.stage.addChild(world);
