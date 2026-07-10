@@ -3,6 +3,7 @@ package game_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -402,5 +403,91 @@ func TestDeathClearsPendingEquip(t *testing.T) {
 
 	if got, want := rangedInst, preRangedInst; got != want {
 		t.Errorf("ranged slot after death = %d, want unchanged %d", got, want)
+	}
+}
+
+// chainBubbleHexes hunts the generated map for a player-anchored chain: a
+// walkable anchor a, a walkable b at exactly CombatRadius from a, and a
+// walkable m at exactly CombatRadius from b but beyond CombatRadius of a. A
+// bubble over {a, b, m} then depends on the player at b (players anchor
+// edges; a↔m is out of range), so removing b dissolves it around a.
+func chainBubbleHexes(t *testing.T, w *game.World) (protocol.Hex, protocol.Hex, protocol.Hex) {
+	t.Helper()
+
+	tiles := w.Map().Tiles
+	for _, ta := range tiles {
+		if !isWalkable(w, ta.Hex) {
+			continue
+		}
+
+		for _, tb := range tiles {
+			if !isWalkable(w, tb.Hex) || game.HexDistance(ta.Hex, tb.Hex) != protocol.CombatRadius {
+				continue
+			}
+
+			for _, tm := range tiles {
+				if isWalkable(w, tm.Hex) &&
+					game.HexDistance(tb.Hex, tm.Hex) == protocol.CombatRadius &&
+					game.HexDistance(ta.Hex, tm.Hex) > protocol.CombatRadius+1 {
+					return ta.Hex, tb.Hex, tm.Hex
+				}
+			}
+		}
+	}
+
+	t.Skip("no player-anchored chain topology on this map")
+
+	return protocol.Hex{}, protocol.Hex{}, protocol.Hex{}
+}
+
+// TestBubbleDissolveAppliesPendingEquip: a swap queued inside a bubble that
+// dissolves before its turn resolves applies AT dissolve time — back in world
+// time equips are free, so the queued intent must neither vanish nor leak
+// into a later world-turn resolution as a silent late swap.
+func TestBubbleDissolveAppliesPendingEquip(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	hexA, hexB, hexM := chainBubbleHexes(t, w)
+
+	idA, tokA := w.PlaceEntityForTest(hexA)
+	idB, tokB := w.PlaceEntityForTest(hexB)
+	w.PlaceMonsterForTest(hexM)
+
+	form := step(t, w)
+	if !inCombat(t, form, idA) || !inCombat(t, form, idB) {
+		t.Fatalf("chain bubble did not form (A: %v, B: %v)", inCombat(t, form, idA), inCombat(t, form, idB))
+	}
+
+	// A queues a swap inside the bubble; B never locks in, so it stays pending.
+	instID := w.GrantItemForTest(idA, "iron-warhammer")
+	if err := w.SubmitIntent(equipIntent(idA, tokA, instID)); err != nil {
+		t.Fatalf("SubmitIntent equip: %v", err)
+	}
+
+	if got, want := w.PendingEquipForTest(idA), instID; got != want {
+		t.Fatalf("pendingEquip = %d, want queued %d", got, want)
+	}
+
+	// B disconnects and is swept: the bubble loses its anchoring player and
+	// dissolves around A without ever resolving its turn.
+	w.StreamClosed(tokB)
+	w.SetDisconnectGraceForTest(0)
+
+	if !w.SweepForTest(time.Now().Add(time.Minute)) {
+		t.Fatalf("sweep removed nobody; expected B to be swept")
+	}
+
+	if inCombat(t, w.Snapshot(), idA) {
+		t.Fatalf("A still in combat after sweep; expected the bubble to dissolve")
+	}
+
+	// The queued swap applied at dissolve and is no longer pending.
+	if closeInst, _ := w.EquippedSlotsForTest(idA); closeInst != instID {
+		t.Errorf("close slot after dissolve = %d, want %d (queued equip must apply at dissolve)", closeInst, instID)
+	}
+
+	if got, want := w.PendingEquipForTest(idA), int64(0); got != want {
+		t.Errorf("pendingEquip after dissolve = %d, want %d", got, want)
 	}
 }

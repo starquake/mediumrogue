@@ -669,6 +669,24 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	return nil
 }
 
+// applyPendingEquip applies and clears e's queued equip, if any. Shared by
+// the resolution pass in resolveCombatLocked (the swap is the bubble-turn's
+// action) and by the bubble-dissolve branch of recomputeBubblesLocked (the
+// bubble vanished before its turn resolved — the player is back in world
+// time, where equips are free and immediate, so the queued swap applies now
+// instead of leaking into a later world turn as a silent late swap).
+func applyPendingEquip(e *entity) {
+	if e.pendingEquip == 0 {
+		return
+	}
+
+	if inst, ok := e.itemByID(e.pendingEquip); ok {
+		e.applyEquip(inst.id, itemDefByID[inst.defID].slot)
+	}
+
+	e.pendingEquip = 0
+}
+
 // applyEquip swaps instID into slot (protocol.ItemSlotClose or
 // ItemSlotRanged), replacing whatever instance was equipped there. Callers
 // must have already validated ownership and class (queueEquipLocked, or the
@@ -867,18 +885,10 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
 
 	// Pending equips are this turn's action for any member that queued one
 	// (queueEquipLocked, inside a bubble): apply the swap before any damage
-	// resolves, then clear it — members arrive id-sorted, so this is
-	// deterministic like the rest of the phased resolution.
+	// resolves — members arrive id-sorted, so this is deterministic like the
+	// rest of the phased resolution.
 	for _, e := range members {
-		if e.pendingEquip == 0 {
-			continue
-		}
-
-		if inst, ok := e.itemByID(e.pendingEquip); ok {
-			e.applyEquip(inst.id, itemDefByID[inst.defID].slot)
-		}
-
-		e.pendingEquip = 0
+		applyPendingEquip(e)
 	}
 
 	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
