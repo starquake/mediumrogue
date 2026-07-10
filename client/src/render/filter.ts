@@ -33,7 +33,13 @@ const crtFrag = /* glsl */ `
   out vec4 finalColor;
 
   uniform sampler2D uTexture;
-  uniform vec4 uInputSize;
+  // highp is REQUIRED: the default filter vertex stage reads uInputSize at
+  // highp (the GLSL ES vertex default), and a fragment redeclaration at the
+  // injected default (mediump) is a LINK error on strict drivers (real
+  // NVIDIA GL rejects the program and the whole stage renders blank; CI's
+  // SwiftShader permits the mismatch, hiding it). Mirrors the explicit
+  // qualifier in pixi.js's own displacement.frag.
+  uniform highp vec4 uInputSize;
   uniform float uScanlineDepth;
   uniform float uScanlinePeriod;
   uniform float uVignetteStrength;

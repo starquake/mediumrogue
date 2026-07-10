@@ -105,3 +105,38 @@ test("re-enabling the filter still lets a walk go through", async ({ page }) => 
     )
     .toBe(true);
 });
+
+test("the CRT shader compiles and links cleanly (no WebGL/Pixi errors)", async ({ page }) => {
+  // Regression guard for the blank-map bug: the CRT fragment shader declared
+  // uInputSize at default (mediump) precision while the default filter vertex
+  // stage uses highp — strict drivers (real NVIDIA GL) reject the program at
+  // LINK time ("Could not initialize shader" + "useProgram: program not
+  // valid") and the whole stage renders blank. CI's software renderer is
+  // permissive, so state-based assertions alone cannot catch it; this test
+  // fails loudly on any machine with a strict driver by asserting the console
+  // stays free of shader errors while the filter is active and rendering.
+  const shaderErrors: string[] = [];
+  page.on("console", (message) => {
+    const text = message.text();
+    if (
+      text.includes("Could not initialize shader") ||
+      text.includes("useProgram: program not valid") ||
+      text.includes("Precisions of uniform")
+    ) {
+      shaderErrors.push(`[${message.type()}] ${text}`);
+    }
+  });
+
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => window.game.filter)).toBe("crt");
+
+  // Force a fresh filter build + several rendered frames with it active.
+  await page.evaluate(() => {
+    window.game.setFilter("none");
+    window.game.setFilter("crt");
+  });
+  await expect.poll(() => page.evaluate(() => window.game.turn)).toBeGreaterThan(0);
+  await page.waitForTimeout(300);
+
+  expect(shaderErrors).toEqual([]);
+});
