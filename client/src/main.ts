@@ -27,14 +27,18 @@ import {
   ItemSlotRanged,
   PlaybackSeconds,
   SpeciesHuman,
+  StackCap,
+  TerrainForest,
+  TerrainGrass,
   TurnSeconds,
   XPPerLevel,
 } from "./protocol.gen";
 import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
 import { FeedbackLayer } from "./render/feedback";
-import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
+import { DIRECTIONS, hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { GroundItemLayer } from "./render/items";
+import { MoveRangeLayer } from "./render/range";
 import { buildMapLayer } from "./render/map";
 import { TurnTimer } from "./ui/timer";
 
@@ -115,6 +119,13 @@ export interface GameDebug {
    * the HP it had left). Drives the floating combat numbers; exposed for e2e.
    */
   damage: { id: number; amount: number }[];
+  /**
+   * The hexes my entity can act on THIS combat turn (moves + bump-attacks),
+   * from the latest bundle. Empty outside a bubble — out there, click-anywhere
+   * pathing applies and no restriction exists. Drives the tactical overlay
+   * and the in-combat click filter; exposed for e2e.
+   */
+  combatMoves: Hex[];
 }
 
 declare global {
@@ -263,7 +274,15 @@ window.game = {
   inventory: [],
   groundItems: [],
   damage: [],
+  combatMoves: [],
 };
+
+// How many hexes an entity can cover in one action-gated combat turn. 1 is
+// the current rule (one step per turn, same as the resolution walks paths);
+// the reach computation below is a BFS precisely so a future run/jump
+// ability — or a pipeline-supplied per-entity movement range — only changes
+// this number (or its source), not the structure.
+const COMBAT_MOVE_RANGE = 1;
 
 // My equipped ranged weapon's range/AoE radius, refreshed every turn bundle
 // from Entity.Items (Milestone 6b.4: weapon numbers now live in the server's
@@ -327,6 +346,73 @@ async function start(): Promise<void> {
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
+
+  // Walkability lookup for the combat movement overlay: grass and forest are
+  // walkable (the same rule the server's map applies); everything else —
+  // water, rock, off-map — is not. Static for the map's lifetime.
+  const walkable = new Set<string>();
+  for (const tile of map.tiles) {
+    if (tile.terrain === TerrainGrass || tile.terrain === TerrainForest) {
+      walkable.add(`${tile.hex.q},${tile.hex.r}`);
+    }
+  }
+
+  // The tactical overlay tints reachable tiles directly on the ground, under
+  // loot and entities alike.
+  const moveRangeLayer = new MoveRangeLayer();
+  world.addChild(moveRangeLayer.container);
+
+  // combatReach BFS-expands from my hex up to COMBAT_MOVE_RANGE steps through
+  // walkable, non-hostile, non-full tiles. A hostile-held tile on the
+  // frontier is a bump-attack target (stepping in swings), never expanded
+  // through. Occupancy and hostility read the latest bundle via window.game.
+  const combatReach = (): { moves: Hex[]; bumps: Hex[] } => {
+    const me = window.game.me;
+    if (me === null) {
+      return { moves: [], bumps: [] };
+    }
+
+    const occupants = new Map<string, { n: number; hostile: boolean }>();
+    for (const p of window.game.positions) {
+      const key = `${p.hex.q},${p.hex.r}`;
+      const o = occupants.get(key) ?? { n: 0, hostile: false };
+      o.n += 1;
+      o.hostile ||= p.kind === EntityMonster;
+      occupants.set(key, o);
+    }
+
+    const moves: Hex[] = [];
+    const bumps: Hex[] = [];
+    const seen = new Set<string>([`${me.hex.q},${me.hex.r}`]);
+    let frontier: Hex[] = [me.hex];
+
+    for (let step = 0; step < COMBAT_MOVE_RANGE; step++) {
+      const next: Hex[] = [];
+
+      for (const from of frontier) {
+        for (const dir of Object.keys(DIRECTIONS) as (keyof typeof DIRECTIONS)[]) {
+          const h = neighbor(from, dir);
+          const key = `${h.q},${h.r}`;
+          if (seen.has(key) || !walkable.has(key)) {
+            continue;
+          }
+          seen.add(key);
+
+          const occ = occupants.get(key);
+          if (occ?.hostile) {
+            bumps.push(h); // swing in, never walk through
+          } else if ((occ?.n ?? 0) < StackCap) {
+            moves.push(h);
+            next.push(h); // a future range >1 keeps expanding from here
+          }
+        }
+      }
+
+      frontier = next;
+    }
+
+    return { moves, bumps };
+  };
 
   // Ground-loot layer sits under the entity layer (added first) — a dropped
   // item never occludes a player/monster dot standing over it.
@@ -458,13 +544,31 @@ async function start(): Promise<void> {
   // window.game.tapHex, so tapHex genuinely mirrors "as if the hex were
   // clicked" (including the ranged-attack UX) for tests. Out of combat, or
   // for a class with no ranged weapon, this is always a move — identical to
-  // the pre-classes behavior.
+  // the pre-classes behavior. IN combat, non-attack clicks are restricted to
+  // the tiles reachable this turn (the tinted overlay): tactical turns are
+  // chosen one step at a time, not queued as a path across the battlefield.
   const clickTarget = (target: Hex): Promise<void> => {
+    if (isRangedAttackClick(target)) {
+      clearEquipPending(); // a real intent replaces a queued in-bubble equip
+      return attackAt(target);
+    }
+
+    if (window.game.inCombat) {
+      // My own hex is always selectable: "stand here" clears a queued path
+      // (Pathfind(from == to) is empty) — the tactical wait/cancel action.
+      const self =
+        window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
+      const reachable = window.game.combatMoves.some((h) => h.q === target.q && h.r === target.r);
+      if (!self && !reachable) {
+        return Promise.resolve(); // out of this turn's reach: not a valid selection
+      }
+    }
+
     // A map click replaces a queued in-bubble equip server-side (latest
     // intent wins) — release its button's pending "…" to match.
     clearEquipPending();
 
-    return isRangedAttackClick(target) ? attackAt(target) : walkTo(target);
+    return walkTo(target);
   };
 
   window.game.tapHex = (q, r): Promise<void> => clickTarget({ q, r });
@@ -613,6 +717,18 @@ async function start(): Promise<void> {
 
       entityLayer.update(event.entities, me.entityId, mine?.partyId ?? 0, playbackMs);
       timer.onTurn(event.intervalMs, playbackMs);
+
+      // Tactical movement overlay: reachable tiles while in a bubble, nothing
+      // outside one. Computed last — it reads the me/positions/inCombat state
+      // this handler just refreshed.
+      if (window.game.inCombat) {
+        const reach = combatReach();
+        window.game.combatMoves = [...reach.moves, ...reach.bumps];
+        moveRangeLayer.update(reach.moves, reach.bumps);
+      } else {
+        window.game.combatMoves = [];
+        moveRangeLayer.update([], []);
+      }
     },
     onConnectionChange: (connected: boolean): void => {
       window.game.connected = connected;

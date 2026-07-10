@@ -63,6 +63,24 @@ test("bumping into a monster deals damage, observable via window.game.hp", async
         }
       }
 
+      // In a bubble, only this turn's reachable tiles are selectable (the
+      // tactical click filter) — step onto whichever reachable tile closes
+      // the most distance, exactly like a human player now plays it. The
+      // monster's own hex appears in combatMoves as a bump tile once
+      // adjacent, so this same pick lands the killing bump.
+      if (window.game.inCombat && window.game.combatMoves.length > 0) {
+        let step = window.game.combatMoves[0]!;
+        for (const h of window.game.combatMoves.slice(1)) {
+          if (dist(h, nearest.hex) < dist(step, nearest.hex)) {
+            step = h;
+          }
+        }
+
+        window.game.tapHex(step.q, step.r);
+
+        return;
+      }
+
       window.game.tapHex(nearest.hex.q, nearest.hex.r);
     }, EntityMonster);
 
