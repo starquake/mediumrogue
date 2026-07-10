@@ -1,6 +1,10 @@
 package game
 
-import "github.com/starquake/mediumrogue/internal/protocol"
+import (
+	mrand "math/rand/v2"
+
+	"github.com/starquake/mediumrogue/internal/protocol"
+)
 
 // items.go: the gear system's types, per-entity helpers, and content
 // validation (spec: docs/superpowers/specs/2026-07-10-m6b.4-gear-pipeline-design.md).
@@ -116,6 +120,37 @@ func rangedDefFor(e *entity) *itemDef {
 // both the melee and ranged combat paths.
 func itemDamage(def *itemDef, level int) int {
 	return def.damage + protocol.DamagePerLevel*(level-1)
+}
+
+// pickDrop draws one def from dropTable, weighted by dropWeight — a
+// class-default (dropWeight 0) is never in dropTable, so it can never be
+// returned. Returns nil only if dropTable is empty (no content registers any
+// drops at all); the live registry always has entries, so dropLootLocked's
+// nil check is a defensive no-op today. Consumes exactly one rng draw.
+func pickDrop(rng *mrand.Rand) *itemDef {
+	total := 0
+	for _, def := range dropTable {
+		total += def.dropWeight
+	}
+
+	if total == 0 {
+		return nil
+	}
+
+	roll := rng.IntN(total)
+
+	for _, def := range dropTable {
+		if roll < def.dropWeight {
+			return def
+		}
+
+		roll -= def.dropWeight
+	}
+
+	// Unreachable: roll is drawn from [0,total) and the loop above consumes
+	// exactly total weight across dropTable's defs, so it always returns
+	// before falling through.
+	panic("game: pickDrop weight accounting bug")
 }
 
 // Class-default item ids: shared between the registry (content.go), the

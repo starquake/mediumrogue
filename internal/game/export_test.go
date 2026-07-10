@@ -267,7 +267,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 
 	attacks := w.moveAndBumpLocked(rng, byHex, members)
 	w.attackLocked(rng, byHex, attacks)
-	w.resolveDeathsLocked(members)
+	w.resolveDeathsLocked(rng, members)
 
 	w.turn++
 }
@@ -422,4 +422,47 @@ func ReachableWalkableForTest(m protocol.MapResponse) map[protocol.Hex]bool {
 // a black-box test can assert map size without duplicating the formula.
 func TileCountForTest(radius int) int {
 	return tileCount(radius)
+}
+
+// PickDropForTest exposes pickDrop, seeded from a single uint64 (stream 0),
+// so a content test can enumerate the weighted-drop distribution over a
+// fixed seed range without depending on any World. Returns "" only if
+// dropTable is empty (pickDrop's defensive nil case).
+func PickDropForTest(seed uint64) string {
+	//nolint:gosec // deterministic test-only seed, not security-sensitive; reproducibility is required.
+	rng := mrand.New(mrand.NewPCG(seed, 0))
+
+	def := pickDrop(rng)
+	if def == nil {
+		return ""
+	}
+
+	return def.id
+}
+
+// DropTableIDsForTest returns every def id in dropTable (registry order), so
+// a content test can assert pickDrop's output set against the live registry
+// instead of a hand-duplicated literal list.
+func DropTableIDsForTest() []string {
+	ids := make([]string, len(dropTable))
+	for i, def := range dropTable {
+		ids[i] = def.id
+	}
+
+	return ids
+}
+
+// GroundItemForTest drops a fresh item instance of defID directly onto hex,
+// bypassing the death-roll (dropLootLocked) entirely, so a pickup test can
+// engineer an exact ground-item board state without seed-hunting a kill's
+// drop roll. Returns the new instance id.
+func (w *World) GroundItemForTest(hex protocol.Hex, defID string) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.nextID++
+	inst := itemInstance{id: w.nextID, defID: defID}
+	w.groundItems[hex] = append(w.groundItems[hex], inst)
+
+	return inst.id
 }

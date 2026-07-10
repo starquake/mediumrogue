@@ -189,6 +189,12 @@ type World struct {
 	// auto-abandon). Defaults to a no-op so tests without chat wiring pass; set
 	// via SetAnnounce.
 	announce func(sender, text string)
+	// groundItems is every dropped item currently lying on the map, keyed by
+	// hex. Populated by dropLootLocked (a slain monster's death hex), drained
+	// by pickupLocked (a player walking onto the hex takes everything there).
+	// Instance ids are minted from the same nextID sequence as entities and
+	// owned items — unique across the whole world.
+	groundItems map[protocol.Hex][]itemInstance
 }
 
 // NewWorld builds the world from a procedurally generated map (GenerateMap,
@@ -232,6 +238,7 @@ func NewWorld(
 		seed:            seed,
 		quests:          generateQuests(worldSeed, worldMap),
 		announce:        func(string, string) {},
+		groundItems:     make(map[protocol.Hex][]itemInstance),
 	}
 }
 
@@ -675,6 +682,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: e.name, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
 			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
+			Items: itemViewsLocked(e),
 		})
 	}
 
@@ -698,10 +706,44 @@ func (w *World) Snapshot() protocol.TurnEvent {
 		})
 	}
 
+	groundItems := make([]protocol.GroundItemView, 0, len(w.groundItems))
+
+	for hex, items := range w.groundItems {
+		for _, it := range items {
+			def := itemDefByID[it.defID]
+			groundItems = append(groundItems, protocol.GroundItemView{ID: it.id, Hex: hex, DefID: it.defID, Name: def.name})
+		}
+	}
+
+	slices.SortFunc(groundItems, func(a, b protocol.GroundItemView) int { return int(a.ID - b.ID) })
+
 	return protocol.TurnEvent{
 		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
-		Quests: questViews,
+		Quests: questViews, GroundItems: groundItems,
 	}
+}
+
+// itemViewsLocked builds the wire item list for one entity: an ItemView per
+// owned item instance (Equipped true iff it currently fills the close or
+// ranged slot), or nil for a monster (which owns no items — see
+// entity.items) or a player who owns none. Callers hold w.mu.
+func itemViewsLocked(e *entity) []protocol.ItemView {
+	if e.kind != protocol.EntityPlayer || len(e.items) == 0 {
+		return nil
+	}
+
+	views := make([]protocol.ItemView, 0, len(e.items))
+
+	for _, it := range e.items {
+		def := itemDefByID[it.defID]
+		views = append(views, protocol.ItemView{
+			ID: it.id, DefID: it.defID, Name: def.name, Slot: def.slot,
+			Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
+			Equipped: it.id == e.closeSlot || it.id == e.rangedSlot,
+		})
+	}
+
+	return views
 }
 
 // opposing reports whether a and b are of different factions (player vs
@@ -840,9 +882,19 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
 	}
 
 	attacks := w.moveAndBumpLocked(rng, byHex, members)
+
+	// Walk-on pickup happens after movement lands and before damage: a player
+	// who just stepped onto a ground-item hex collects it this same turn, but
+	// an item dropped THIS turn (resolveDeathsLocked, below) is not visible
+	// to pick up until the earliest a player can walk onto that hex — next
+	// turn. members is id-sorted (every caller sorts before calling
+	// resolveCombatLocked), so two players landing on the same hex resolve
+	// lowest-id-first, mirroring every other simultaneous tie-break here.
+	w.pickupLocked(members)
+
 	w.attackLocked(rng, byHex, attacks)
 
-	return w.resolveDeathsLocked(members)
+	return w.resolveDeathsLocked(rng, members)
 }
 
 // allyInBubbleLocked reports whether another living same-faction entity shares
@@ -1172,13 +1224,17 @@ func syncMaxHPLocked(e *entity) {
 func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
 
 // resolveDeathsLocked floors a dying player's XP to its level start, removes dead
-// monsters, and respawns dead players (full HP, fresh spawn hex, same id + token
-// — the client stays joined) among the given member set. It returns the number of
+// monsters (rolling each one's ground-loot drop first — dropLootLocked), and
+// respawns dead players (full HP, fresh spawn hex, same id + token — the
+// client stays joined) among the given member set. It returns the number of
 // monsters that died; the kill-XP award lives in the bubble-resolution path
 // (resolveBubbleTurnLocked), so a kill only pays inside a real fight. The
-// death-floor here still applies to ANY player death, world or bubble. Callers
-// hold w.mu.
-func (w *World) resolveDeathsLocked(members []*entity) int {
+// death-floor here still applies to ANY player death, world or bubble. rng is
+// the resolution's shared turn RNG (resolveCombatLocked/
+// ResolveCombatOnlyForTest) — one drop roll per dead monster, consumed in the
+// same id-sorted order as the rest of this pass, so a full turn stays
+// reproducible from the seed alone. Callers hold w.mu.
+func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) int {
 	var dead []*entity
 
 	monstersKilled := 0
@@ -1199,6 +1255,7 @@ func (w *World) resolveDeathsLocked(members []*entity) int {
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
+			w.dropLootLocked(rng, e.hex)
 			delete(w.entities, e.id)
 
 			continue
@@ -1222,6 +1279,57 @@ func (w *World) resolveDeathsLocked(members []*entity) int {
 	}
 
 	return monstersKilled
+}
+
+// dropLootLocked rolls a slain monster's ground-loot drop: DropChancePercent
+// (out of percentBase) chance of anything at all, and if it hits, one
+// dropWeight-weighted def from dropTable (pickDrop) lands on at — the
+// monster's death hex — as a fresh item instance (id minted from the shared
+// nextID sequence, same as entities and owned items). A miss, or an empty
+// dropTable, drops nothing. Callers hold w.mu.
+func (w *World) dropLootLocked(rng *mrand.Rand, at protocol.Hex) {
+	if rng.IntN(percentBase) >= protocol.DropChancePercent {
+		return
+	}
+
+	def := pickDrop(rng)
+	if def == nil {
+		return
+	}
+
+	w.nextID++
+
+	inst := itemInstance{id: w.nextID, defID: def.id}
+	w.groundItems[at] = append(w.groundItems[at], inst)
+}
+
+// pickupLocked resolves the walk-on pickup phase: every living player in
+// members (id-sorted, per resolveCombatLocked's callers) that stands on a
+// hex holding ground items takes ALL of them and the hex clears. Two players
+// landing on the same hex the same turn resolve lowest-id-first, since
+// members arrives id-sorted. Runs after moveAndBumpLocked (post-move
+// positions) and before attackLocked (a walk-on pickup is not an action, so
+// it never displaces the turn's attack). Monsters never pick up (they own no
+// items — see entity.items). Each pickup announces via the chat hook.
+// Callers hold w.mu.
+func (w *World) pickupLocked(members []*entity) {
+	for _, e := range members {
+		if e.kind != protocol.EntityPlayer || e.hp <= 0 {
+			continue
+		}
+
+		items := w.groundItems[e.hex]
+		if len(items) == 0 {
+			continue
+		}
+
+		for _, it := range items {
+			e.items = append(e.items, it)
+			w.announce("system", e.name+" picked up "+itemDefByID[it.defID].name)
+		}
+
+		delete(w.groundItems, e.hex)
+	}
 }
 
 // spawnStream is a fixed PCG stream for monster placement, distinct from the
