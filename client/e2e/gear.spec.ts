@@ -50,9 +50,9 @@ test("gear panel renders class-default inventory with equipped items disabled", 
   expect(inventory.every((it) => it.equipped)).toBe(true);
   expect(new Set(inventory.map((it) => it.defId)).size).toBe(2);
 
-  // 2. The panel itself: title, one row per item, a "worn" label + disabled
-  // button on each (every class default starts equipped, so no row ever
-  // shows a live "equip" button here).
+  // 2. The panel itself: title, one row per item, an "equipped" label +
+  // disabled button on each (every class default starts equipped, so no row
+  // ever shows a live "equip" button here).
   await expect(page.locator("#gear-panel")).toBeVisible();
   await expect(page.locator("#gear-title")).toHaveText("Gear");
   const rows = page.locator(".gear-row");
@@ -62,7 +62,7 @@ test("gear panel renders class-default inventory with equipped items disabled", 
     const row = rows.nth(i);
     await expect(row).toHaveClass(/gear-equipped/);
     const button = row.locator("button");
-    await expect(button).toHaveText("worn");
+    await expect(button).toHaveText("equipped");
     await expect(button).toBeDisabled();
   }
 

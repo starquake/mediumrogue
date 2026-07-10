@@ -23,7 +23,7 @@ function GearPanel(props: { equip: (itemId: number) => void }): JSXElement {
           {(it) => (
             <div class="gear-row" classList={{ "gear-equipped": it.equipped }}>
               <button type="button" disabled={it.equipped} onClick={() => props.equip(Number(it.id))}>
-                {it.equipped ? "worn" : "equip"}
+                {it.equipped ? "equipped" : "equip"}
               </button>
               <span class="gear-name">{it.name}</span>
               <span class="gear-stats">{stats(it)}</span>

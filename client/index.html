@@ -312,22 +312,30 @@
         font-size: 0.85rem;
         line-height: 1.4;
       }
-      /* Quest overlay: mirrors #chat-root/#roster-root's click-through
-         discipline. Placed on the left edge below the HUD bar and above the
-         (much shorter, bottom-anchored) chat panel, so it never collides with
-         either — nor with the pre-join pickers, which live on the right and
-         only show before joining, while the quest board is visible from the
-         very first bundle. */
-      #quest-root {
+      /* Left panel column: quest + gear stack in one fixed flex column on
+         the left edge, below the HUD bar and above the (much shorter,
+         bottom-anchored) chat panel. Flex flow — not per-panel fixed
+         offsets — is what keeps them from ever overlapping: a tall quest
+         board simply pushes the gear panel down. The column itself is
+         click-through (pointer-events: none); only the visible panels
+         re-enable pointer events, same discipline as #chat-root. */
+      #left-panels {
         position: fixed;
         top: 8rem;
         left: 1rem;
         z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        pointer-events: none;
+      }
+      #quest-root,
+      #gear-root {
         pointer-events: none;
       }
       #quest-panel {
         pointer-events: auto;
-        width: 16rem;
+        width: 20rem;
         background: rgba(11, 15, 11, 0.85);
         border: 1px solid var(--dim);
         padding: 0.4rem 0.6rem;
@@ -356,20 +364,11 @@
         font-size: 0.8rem;
         line-height: 1.4;
       }
-      /* Gear overlay: mirrors #quest-root/#quest-panel exactly (click-through
-         root, opaque panel), stacked directly below the quest panel on the
-         left edge — both are "always visible once joined" HUD, unlike the
-         bottom-anchored chat or the pre-join-only pickers. */
-      #gear-root {
-        position: fixed;
-        top: 18rem;
-        left: 1rem;
-        z-index: 10;
-        pointer-events: none;
-      }
+      /* Gear panel: second member of the #left-panels column (see above);
+         same opaque-panel-in-click-through-root discipline as the others. */
       #gear-panel {
         pointer-events: auto;
-        width: 16rem;
+        width: 20rem;
         background: rgba(11, 15, 11, 0.85);
         border: 1px solid var(--dim);
         padding: 0.4rem 0.6rem;
@@ -384,10 +383,12 @@
       }
       .gear-row {
         display: flex;
+        flex-wrap: wrap;
         align-items: baseline;
-        gap: 0.4rem;
+        gap: 0.15rem 0.4rem;
         font-size: 0.8rem;
         line-height: 1.4;
+        margin-bottom: 0.25rem;
       }
       .gear-row button {
         font-family: inherit;
@@ -415,6 +416,9 @@
       .gear-desc {
         color: var(--dim);
         font-style: italic;
+        /* Rule text gets its own full-width line under name + stats, instead
+           of squeezing into whatever tail space the first line leaves. */
+        flex-basis: 100%;
       }
     </style>
   </head>
@@ -447,8 +451,10 @@
     </div>
     <div id="chat-root"></div>
     <div id="roster-root"></div>
-    <div id="quest-root"></div>
-    <div id="gear-root"></div>
+    <div id="left-panels">
+      <div id="quest-root"></div>
+      <div id="gear-root"></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
