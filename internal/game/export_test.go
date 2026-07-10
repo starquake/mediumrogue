@@ -348,6 +348,70 @@ func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
 	return 0, 0, 0, false
 }
 
+// GrantItemForTest mints and grants (but does not equip) an item instance of
+// defID to the entity, returning the new instance id, so an equip test can
+// engineer an owned item beyond a class's Join defaults (e.g. an
+// owned-but-wrong-class item, or a second close-slot item to swap into) without
+// going through Join/SetClassForTest, which grants exactly one class's default
+// set.
+func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e, ok := w.entities[entityID]
+	if !ok {
+		return 0
+	}
+
+	w.nextID++
+	inst := itemInstance{id: w.nextID, defID: defID}
+	e.items = append(e.items, inst)
+
+	return inst.id
+}
+
+// EquippedSlotsForTest returns an entity's equipped close- and ranged-slot
+// item instance ids (0 = empty), so an equip test can assert a swap took (or
+// did not yet take) effect without waiting on the wire snapshot's item view
+// (not wired until a later task).
+func (w *World) EquippedSlotsForTest(id int64) (int64, int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.closeSlot, e.rangedSlot
+	}
+
+	return 0, 0
+}
+
+// SetPendingEquipForTest overwrites an entity's queued equip directly, so a
+// death test can engineer a pending equip surviving into a death/respawn
+// without depending on multi-player bubble timing (a solo bubble's equip
+// resolves — and clears pendingEquip — synchronously within the SubmitIntent
+// call that completes its lock-in).
+func (w *World) SetPendingEquipForTest(id, itemID int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.pendingEquip = itemID
+	}
+}
+
+// PendingEquipForTest returns an entity's queued equip item id (0 = none), so
+// a test can assert it was cleared.
+func (w *World) PendingEquipForTest(id int64) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.pendingEquip
+	}
+
+	return 0
+}
+
 // ReachableWalkableForTest exposes reachableWalkable — the origin-connected
 // walkable BFS — so a black-box test can assert on the spawnable region.
 func ReachableWalkableForTest(m protocol.MapResponse) map[protocol.Hex]bool {

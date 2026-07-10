@@ -37,6 +37,12 @@ var (
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
 	ErrOutOfRange = errors.New("target is out of range")
+	// ErrItemNotOwned rejects an equip intent naming an item instance id the
+	// entity does not own.
+	ErrItemNotOwned = errors.New("item not owned")
+	// ErrWrongClass rejects an equip intent naming an item whose class does not
+	// match the entity's class.
+	ErrWrongClass = errors.New("item is for a different class")
 	// ErrInvalidClass rejects a Join for a new entity whose Class is not one of
 	// ClassFighter, ClassRogue, ClassMage.
 	ErrInvalidClass = errors.New("invalid class")
@@ -110,6 +116,14 @@ type entity struct {
 	// slot, or 0 for empty. 0 is never a valid instance id (nextID starts
 	// counting from 1). See equippedDef/closeDefFor/rangedDefFor (items.go).
 	closeSlot, rangedSlot int64
+	// pendingEquip is the item instance id queued by an equip intent submitted
+	// inside a combat bubble — the swap becomes this turn's action (see
+	// queueEquipLocked) instead of applying immediately. 0 means no equip is
+	// queued. Applied and cleared by resolveCombatLocked's pending-equip pass;
+	// also cleared on death (resolveDeathsLocked) as a safety net for
+	// resolution paths that skip that pass (e.g. the ResolveCombatOnlyForTest
+	// test bridge).
+	pendingEquip int64
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -506,7 +520,10 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 // hex — the server pathfinds from the entity's current position and the walk
 // advances one hex per resolved turn. An "attack" intent queues a ranged
 // attack at Target (bow single-target or mage AoE) and clears the route — you
-// shoot, you don't move. Any other Kind (including empty) is rejected with
+// shoot, you don't move. An "equip" intent (ItemID) swaps an owned item into
+// its slot: outside a combat bubble it is free and immediate; inside one it
+// is the player's action for the turn (clearing any queued move/attack, see
+// queueEquipLocked). Any other Kind (including empty) is rejected with
 // ErrInvalidIntentKind. For an entity inside a combat bubble the submission
 // also counts as a lock-in for the bubble's action-gated turn, and once every
 // player member has locked in the bubble resolves immediately. The latest
@@ -527,6 +544,10 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 		}
 	case protocol.IntentAttack:
 		if err := w.queueAttackLocked(e, req.Target); err != nil {
+			return err
+		}
+	case protocol.IntentEquip:
+		if err := w.queueEquipLocked(e, req.ItemID); err != nil {
 			return err
 		}
 	default:
@@ -601,6 +622,46 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
 	e.path = nil
 
 	return nil
+}
+
+// queueEquipLocked validates and applies/queues an equip. Outside a bubble the
+// swap is immediate and free; inside, it becomes the player's action this turn
+// (clearing move/attack — you swap, you don't also act). Callers hold w.mu.
+func (w *World) queueEquipLocked(e *entity, itemID int64) error {
+	inst, ok := e.itemByID(itemID)
+	if !ok {
+		return ErrItemNotOwned
+	}
+
+	def := itemDefByID[inst.defID]
+	if def.class != e.class {
+		return ErrWrongClass
+	}
+
+	if e.bubbleID == 0 {
+		e.applyEquip(inst.id, def.slot)
+
+		return nil
+	}
+
+	e.pendingEquip = itemID
+	e.path = nil
+	e.attackTarget = nil
+
+	return nil
+}
+
+// applyEquip swaps instID into slot (protocol.ItemSlotClose or
+// ItemSlotRanged), replacing whatever instance was equipped there. Callers
+// must have already validated ownership and class (queueEquipLocked, or the
+// pending-equip pass in resolveCombatLocked).
+func (e *entity) applyEquip(instID int64, slot string) {
+	switch slot {
+	case protocol.ItemSlotClose:
+		e.closeSlot = instID
+	case protocol.ItemSlotRanged:
+		e.rangedSlot = instID
+	}
 }
 
 // Snapshot is the current turn bundle: turn number plus every entity,
@@ -752,6 +813,22 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 // the shared kill-XP award. Callers hold w.mu.
 func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
 	w.thinkMonstersLocked(members, monsterTargets)
+
+	// Pending equips are this turn's action for any member that queued one
+	// (queueEquipLocked, inside a bubble): apply the swap before any damage
+	// resolves, then clear it — members arrive id-sorted, so this is
+	// deterministic like the rest of the phased resolution.
+	for _, e := range members {
+		if e.pendingEquip == 0 {
+			continue
+		}
+
+		if inst, ok := e.itemByID(e.pendingEquip); ok {
+			e.applyEquip(inst.id, itemDefByID[inst.defID].slot)
+		}
+
+		e.pendingEquip = 0
+	}
 
 	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
@@ -1141,6 +1218,7 @@ func (w *World) resolveDeathsLocked(members []*entity) int {
 		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
 		e.hp = e.maxHP
 		e.path = nil
+		e.pendingEquip = 0
 	}
 
 	return monstersKilled
