@@ -704,7 +704,7 @@ type pendingAttack struct {
 // the world domain — only possible via an anomalous faction-blind spawn/join
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
-	w.resolveCombatLocked(members)
+	w.resolveCombatLocked(members, w.allPlayersLocked())
 	w.checkReachQuestsLocked()
 	w.turn++
 }
@@ -715,7 +715,7 @@ func (w *World) resolveWorldTurnLocked(members []*entity) {
 // for the next turn. Like resolveWorldTurnLocked it does NOT recompute — see that
 // method. Callers hold w.mu.
 func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.Time) {
-	killed := w.resolveCombatLocked(members)
+	killed := w.resolveCombatLocked(members, playersOf(members))
 
 	// Kill XP belongs to the fight: every player who survived this bubble-turn
 	// earns the FULL MonsterXP for each monster that fell — no last-hit
@@ -754,8 +754,8 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 // bubbles or advance the turn — the two resolve callers own that. It returns the
 // number of monsters that died this resolution, which the bubble path turns into
 // the shared kill-XP award. Callers hold w.mu.
-func (w *World) resolveCombatLocked(members []*entity) int {
-	w.thinkMonstersLocked(members)
+func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
+	w.thinkMonstersLocked(members, monsterTargets)
 
 	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
@@ -1170,22 +1170,18 @@ func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
 }
 
 // thinkMonstersLocked sets each monster in the member set to a single step
-// toward its nearest player in that same set. Recomputed every turn (players
-// move). Scoping the target search to the set keeps a bubble's monsters chasing
-// bubble players and world monsters chasing world players. Callers hold w.mu.
+// toward its nearest player among `targets`. Recomputed every turn (players
+// move). The two domains scope targets differently: a bubble's monsters chase
+// only that bubble's players (a frozen fight stays self-contained), while
+// WORLD monsters chase the nearest player anywhere — including one frozen in
+// a bubble — so the world keeps running (§5) and an approaching monster is
+// absorbed by the bubble recompute the moment it closes within CombatRadius
+// of a bubbled player (walk-in reinforcement). Callers hold w.mu.
 //
 // When adjacent, path[0] is the player's own hex, so the move phase converts
 // this into a bump-to-attack (6.3).
-func (w *World) thinkMonstersLocked(members []*entity) {
-	players := make([]*entity, 0, len(members))
-
-	for _, e := range members {
-		if e.kind == protocol.EntityPlayer {
-			players = append(players, e)
-		}
-	}
-
-	if len(players) == 0 {
+func (w *World) thinkMonstersLocked(members, targets []*entity) {
+	if len(targets) == 0 {
 		return
 	}
 
@@ -1194,7 +1190,7 @@ func (w *World) thinkMonstersLocked(members []*entity) {
 			continue
 		}
 
-		target := nearestPlayer(m.hex, players)
+		target := nearestPlayer(m.hex, targets)
 		path := Pathfind(m.hex, target.hex, w.walkableLocked)
 		// Step toward the nearest player; when adjacent, path[0] is the player's own
 		// hex, so the move phase converts this into a bump-to-attack (6.3).
@@ -1204,6 +1200,35 @@ func (w *World) thinkMonstersLocked(members []*entity) {
 			m.path = nil
 		}
 	}
+}
+
+// playersOf filters the player entities out of a member set, preserving order.
+func playersOf(members []*entity) []*entity {
+	players := make([]*entity, 0, len(members))
+
+	for _, e := range members {
+		if e.kind == protocol.EntityPlayer {
+			players = append(players, e)
+		}
+	}
+
+	return players
+}
+
+// allPlayersLocked returns every player in the world regardless of domain,
+// sorted by id (the deterministic nearest-player tie-break). Callers hold w.mu.
+func (w *World) allPlayersLocked() []*entity {
+	players := make([]*entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer {
+			players = append(players, e)
+		}
+	}
+
+	slices.SortFunc(players, func(a, b *entity) int { return int(a.id - b.id) })
+
+	return players
 }
 
 // nearestPlayer returns the player closest to `from` by hex distance, ties
