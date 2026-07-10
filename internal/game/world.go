@@ -68,8 +68,9 @@ type entity struct {
 	// fewer than two members dissolves (see leavePartyLocked).
 	partyID int64
 	// class is the player's class (protocol.ClassFighter/Rogue/Mage), validated
-	// and set at Join; empty for monsters. It selects the entity's weapon
-	// loadout and base HP via the class.go helpers.
+	// and set at Join; empty for monsters. It selects the entity's base HP
+	// (class.go's maxHPFor) and, via classDefaultIDs, the starting items
+	// grantDefaultsLocked equips at Join.
 	class string
 	// species is the player's species (protocol.SpeciesHuman/Elf/Dwarf), validated
 	// and set at Join; empty for monsters. It selects the passive rule cards
@@ -101,6 +102,14 @@ type entity struct {
 	// time, before its first stream opens): the start of its removal-grace clock.
 	// Only consulted while streams == 0. Players only.
 	disconnectedAt time.Time
+	// items is every item instance this entity owns (players only; monsters own
+	// none — they fight with the flat monsterClawsDef profile). Granted at Join
+	// by grantDefaultsLocked; gear survives death (never cleared by respawn).
+	items []itemInstance
+	// closeSlot and rangedSlot are the instance ids currently equipped in each
+	// slot, or 0 for empty. 0 is never a valid instance id (nextID starts
+	// counting from 1). See equippedDef/closeDefFor/rangedDefFor (items.go).
+	closeSlot, rangedSlot int64
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -387,6 +396,7 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	}
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
+	w.grantDefaultsLocked(e)
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
@@ -563,24 +573,26 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 }
 
 // queueAttackLocked validates a ranged attack intent and queues it: the entity
-// must have a ranged weapon (else ErrNoRangedWeapon) and the target must be
-// within its reach at submit time (else ErrOutOfRange). On success it records
+// must have a ranged weapon equipped (else ErrNoRangedWeapon) and the target must
+// be within its reach at submit time (else ErrOutOfRange). On success it records
 // the target and clears the route — a ranged attack replaces the move for this
 // turn. The resolution-time re-check is defensive (nothing relocates a shooter
 // mid-turn today; it guards a future knockback/forced-move mechanic).
 //
-// INVARIANT: max(BowRange, MageRange+MageAoERadius) must stay <= CombatRadius, so
-// any entity a ranged attack can reach is always already in the shooter's combat
-// bubble. If a longer-reach weapon is ever added, a monster could be ranged-killed
-// in the WORLD domain (where resolveWorldTurnLocked awards no kill-XP) — add an
-// in-bubble/target-in-member-set guard here then. Callers hold w.mu.
+// INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
+// CombatRadius (validateMaxReach, run at content load by mustValidateContent),
+// so any entity a ranged attack can reach is always already in the shooter's
+// combat bubble. If that invariant were ever violated, a monster could be
+// ranged-killed in the WORLD domain (where resolveWorldTurnLocked awards no
+// kill-XP) — add an in-bubble/target-in-member-set guard here then. Callers
+// hold w.mu.
 func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
-	wpn, ok := rangedWeapon(e.class)
-	if !ok {
+	def := rangedDefFor(e)
+	if def == nil {
 		return ErrNoRangedWeapon
 	}
 
-	if HexDistance(e.hex, target) > wpn.rangeHex {
+	if HexDistance(e.hex, target) > def.rangeHex {
 		return ErrOutOfRange
 	}
 
@@ -666,18 +678,6 @@ func removeEntity(occs []*entity, m *entity) []*entity {
 	}
 
 	return occs
-}
-
-// attackDamage is the melee/bump damage an attacker deals. A monster deals the
-// flat MonsterAttackDamage; a player deals its class close-weapon damage,
-// level-scaled (fighter = sword, rogue = dagger, mage = staff bonk, unarmed =
-// fists) via the class.go single source of truth.
-func attackDamage(e *entity) int {
-	if e.kind == protocol.EntityMonster {
-		return protocol.MonsterAttackDamage
-	}
-
-	return weaponDamage(closeWeapon(e.class), levelFor(e.xp))
 }
 
 // pendingBump is a move onto an opposing-held hex, re-checked post-move.
@@ -790,13 +790,27 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 }
 
 // rollDamageLocked runs one hit through the pipeline: the attacker's
-// deal-damage cards (species + weapon, Task 3) then the victim's take-damage
-// cards. Every damage number in the game flows through here. Callers hold w.mu.
-func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, base int) int {
+// deal-damage cards (species + the acting weapon's rules) then the victim's
+// take-damage cards (species + the rules of BOTH the victim's equipped defs,
+// close then ranged — a hit lands on the whole entity, not just the slot that
+// happens to be attacking). weapon is the attacker's acting weapon def
+// (closeDefFor for a bump, rangedDefFor for a shot); it is never nil — every
+// combat site resolves a def (fists/claws fallback for close, a real
+// equipped item for ranged, since a nil ranged def never reaches here — see
+// queueAttackLocked/resolveRangedLocked). Every damage number in the game
+// flows through here. Callers hold w.mu.
+func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weapon *itemDef, base int) int {
 	ctx := ruleCtx{attacker: attacker, victim: victim, allyInBubble: w.allyInBubbleLocked(attacker), rng: rng}
-	dealt := applyRules(evDealDamage, base, speciesCards(attacker.species), ctx)
 
-	return applyRules(evTakeDamage, dealt, speciesCards(victim.species), ctx)
+	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
+	dealt := applyRules(evDealDamage, base, attackerCards, ctx)
+
+	victimCards := slices.Concat(speciesCards(victim.species), closeDefFor(victim).rules)
+	if ranged := rangedDefFor(victim); ranged != nil {
+		victimCards = slices.Concat(victimCards, ranged.rules)
+	}
+
+	return applyRules(evTakeDamage, dealt, victimCards, ctx)
 }
 
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
@@ -947,8 +961,15 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 		victim := victims[rng.IntN(len(victims))]
-		base := attackDamage(a.attacker)
-		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, base)
+
+		// Melee/bump damage: the attacker's equipped close-slot item (or the
+		// fists/claws fallback — closeDefFor), level-scaled via itemDamage. A
+		// monster's closeDefFor is always monsterClawsDef, reproducing the old
+		// flat MonsterAttackDamage (levelFor(0) == 1, so the level-scaling term
+		// is 0). Resolved once here (mirroring resolveRangedLocked's def :=
+		// rangedDefFor(e) below) so the def is looked up exactly once per hit.
+		weapon := closeDefFor(a.attacker)
+		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, weapon, itemDamage(weapon, levelFor(a.attacker.xp)))
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
@@ -986,24 +1007,24 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		target := *e.attackTarget
 		e.attackTarget = nil // resolved, whether it hits or fizzles
 
-		wpn, ok := rangedWeapon(e.class)
-		if !ok {
-			continue
+		def := rangedDefFor(e)
+		if def == nil {
+			continue // unequipped mid-turn (equip intent, Task 4) → fizzle
 		}
 
-		if HexDistance(e.hex, target) > wpn.rangeHex {
+		if HexDistance(e.hex, target) > def.rangeHex {
 			continue // moved out of range this turn → fizzle
 		}
 
-		dmg := weaponDamage(wpn, levelFor(e.xp))
+		dmg := itemDamage(def, levelFor(e.xp))
 
-		if wpn.aoeRadius == 0 {
-			w.resolveBowLocked(rng, byHex, e, target, dmg, damage)
+		if def.aoeRadius == 0 {
+			w.resolveBowLocked(rng, byHex, e, def, target, dmg, damage)
 
 			continue
 		}
 
-		w.resolveAoELocked(rng, byHex, e, target, wpn.aoeRadius, dmg, damage)
+		w.resolveAoELocked(rng, byHex, e, def, target, def.aoeRadius, dmg, damage)
 	}
 }
 
@@ -1012,7 +1033,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 // stack. An empty or friendly-only target hex deals nothing. Callers hold w.mu.
 func (w *World) resolveBowLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
-	attacker *entity, target protocol.Hex, dmg int, damage map[int64]int,
+	attacker *entity, weapon *itemDef, target protocol.Hex, dmg int, damage map[int64]int,
 ) {
 	victims := opposingOccupants(byHex[target], attacker)
 	if len(victims) == 0 {
@@ -1022,7 +1043,7 @@ func (w *World) resolveBowLocked(
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 	victim := victims[rng.IntN(len(victims))]
-	damage[victim.id] += w.rollDamageLocked(rng, attacker, victim, dmg)
+	damage[victim.id] += w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
@@ -1036,7 +1057,7 @@ func (w *World) resolveBowLocked(
 // Callers hold w.mu.
 func (w *World) resolveAoELocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
-	attacker *entity, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
+	attacker *entity, weapon *itemDef, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
 ) {
 	var victims []*entity
 
@@ -1051,7 +1072,7 @@ func (w *World) resolveAoELocked(
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 	for _, o := range victims {
-		damage[o.id] += w.rollDamageLocked(rng, attacker, o, dmg)
+		damage[o.id] += w.rollDamageLocked(rng, attacker, o, weapon, dmg)
 	}
 }
 

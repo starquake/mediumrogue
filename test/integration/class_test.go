@@ -12,6 +12,17 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// Ranged reach for the default rogue/mage weapons (internal/game/content.go's
+// shortbow / ember-focus registry entries). This package has no access to
+// the unexported item registry, so the numbers are mirrored here as literal
+// constants — keep in sync with content.go's item defs (also pinned directly
+// against the registry by internal/game's items_test.go).
+const (
+	rogueBowRange = 4
+	mageRange     = 4
+	mageAoERadius = 1
+)
+
 // TestJoinPerClassMaxHP joins one of each class and reads their MaxHP (and
 // Class) back off a real turn bundle, proving the per-class stats in
 // internal/game/class.go actually reach the wire: fighter is tankiest, rogue
@@ -111,7 +122,7 @@ func postAttackIntent(t *testing.T, ts *httptest.Server, me protocol.JoinRespons
 }
 
 // fireBowOrChase submits a rogue's turn action: fire the bow (an "attack"
-// intent) at target if it is within BowRange, else move toward it. Returns
+// intent) at target if it is within range, else move toward it. Returns
 // whether the shot was accepted (fired in range this turn); a rejection
 // increments *consecutiveRejected and, past 40 in a row, fails the test loudly
 // with the rejection body — a real regression (e.g. the range check flipped)
@@ -122,7 +133,7 @@ func fireBowOrChase(
 ) bool {
 	t.Helper()
 
-	if hexDistance(myHex, target) > protocol.BowRange {
+	if hexDistance(myHex, target) > rogueBowRange {
 		postIntent(t, ts, me, target)
 
 		return false
@@ -142,8 +153,8 @@ func fireBowOrChase(
 	*consecutiveRejected++
 	if *consecutiveRejected > 40 {
 		t.Fatalf(
-			"rogue attack intent rejected repeatedly (status %d, %q); range check: dist=%d, BowRange=%d",
-			resp.StatusCode, body.Error, hexDistance(myHex, target), protocol.BowRange,
+			"rogue attack intent rejected repeatedly (status %d, %q); range check: dist=%d, range=%d",
+			resp.StatusCode, body.Error, hexDistance(myHex, target), rogueBowRange,
 		)
 	}
 
@@ -153,7 +164,7 @@ func fireBowOrChase(
 // TestRogueBowKillsAtRange exercises the rogue's ranged bow attack over real
 // HTTP/SSE: a joined rogue targets whichever monster is nearest (recomputed
 // every bundle, since monsters hunt back and a fixed target can go stale) and,
-// once within BowRange, fires an "attack" intent instead of moving.
+// once within range, fires an "attack" intent instead of moving.
 //
 // Because an attack intent clears the rogue's route (queueAttackLocked), the
 // rogue never bumps while it is firing — so any monster HP drop observed on a
@@ -162,7 +173,7 @@ func fireBowOrChase(
 // disguised bump.
 //
 // The monster is seeded two hexes from the origin (where the rogue spawns) —
-// already inside BowRange, so the rogue fires from range on its first bubble
+// already inside range, so the rogue fires from range on its first bubble
 // lock-in rather than after a long crypto-random chase gated on the background
 // tick loop. That makes the ranged kill deterministic and robust even under a
 // CPU-starved runner (#22). The test is not parallel so its tick loop is not
@@ -255,8 +266,8 @@ func TestRogueBowKillsAtRange(t *testing.T) {
 }
 
 // bestAoETarget picks whichever candidate hex — the caster's own hex, or one
-// of the given hostile hexes — currently has the most hostiles within
-// MageAoERadius, maximizing the mage's chance of a same-turn multi-hit given
+// of the given hostile hexes — currently has the most hostiles within the AoE
+// radius, maximizing the mage's chance of a same-turn multi-hit given
 // the CURRENT board (recomputed every bundle, since monsters keep moving).
 // hostiles must be non-empty; the caster's own hex always counts itself as a
 // covering candidate (distance 0), and every hostile hex trivially covers
@@ -266,7 +277,7 @@ func bestAoETarget(mine protocol.Hex, hostiles []protocol.Hex) (protocol.Hex, in
 		n := 0
 
 		for _, m := range hostiles {
-			if hexDistance(h, m) <= protocol.MageAoERadius {
+			if hexDistance(h, m) <= mageAoERadius {
 				n++
 			}
 		}
@@ -287,7 +298,7 @@ func bestAoETarget(mine protocol.Hex, hostiles []protocol.Hex) (protocol.Hex, in
 
 // fireAoEOrChase submits a mage's turn action: fire the AoE (an "attack"
 // intent) at whichever hex currently covers the most hostiles (bestAoETarget)
-// if that hex is within MageRange, else chase the nearest monster into range.
+// if that hex is within range, else chase the nearest monster into range.
 // A rejection increments *consecutiveRejected and, past 40 in a row, fails the
 // test loudly instead of silently exhausting the whole deadline.
 func fireAoEOrChase(
@@ -299,7 +310,7 @@ func fireAoEOrChase(
 
 	candidate, _ := bestAoETarget(myHex, monsterHexes)
 
-	if hexDistance(myHex, candidate) > protocol.MageRange {
+	if hexDistance(myHex, candidate) > mageRange {
 		if target, found := nearestMonster(bundle, myHex); found {
 			postIntent(t, ts, me, target)
 		}
@@ -322,7 +333,7 @@ func fireAoEOrChase(
 
 // TestMageAoEDamagesMonsters exercises the mage's ranged AoE attack over real
 // HTTP/SSE: a joined mage fires at whichever hex currently covers the most
-// hostiles within MageAoERadius (bestAoETarget, recomputed every bundle),
+// hostiles within AoE radius (bestAoETarget, recomputed every bundle),
 // falling back to chasing the nearest monster into range otherwise.
 //
 // It requires TWO OR MORE monsters to take damage in the SAME turn (a bump or
@@ -334,7 +345,7 @@ func fireAoEOrChase(
 // Two monsters are seeded on adjacent hexes two steps from the origin (where
 // the mage spawns). They beeline for the mage as one cluster (bubble.go: every
 // monster within CombatRadius joins one bubble), so on an early bubble-turn
-// they sit within a single MageAoERadius footprint the mage can reach — the
+// they sit within a single AoE-radius footprint the mage can reach — the
 // mage fires at the hex covering the most hostiles (bestAoETarget, recomputed
 // every bundle) and drops both at once. Seeding a known cluster next to the
 // spawn makes the same-turn multi-hit deterministic and robust even under a

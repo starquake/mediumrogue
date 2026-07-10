@@ -113,8 +113,10 @@ const (
 	MonsterXP = 20
 )
 
-// Per-class base stats (level 1). Level scaling: MaxHP += HPPerLevel * (level - 1);
-// weapon damage += DamagePerLevel * (level - 1).
+// Per-class base stats (level 1). Level scaling: MaxHP += HPPerLevel * (level - 1).
+// Weapon damage/range/AoE are content data now (internal/game's item
+// registry, milestone 6b.4) — see itemDamage there; DamagePerLevel is the
+// shared per-level scaling knob both class HP and item damage read.
 const (
 	// FighterMaxHP is the level-1 max HP for Fighter class (tanky melee).
 	FighterMaxHP = 30
@@ -123,25 +125,9 @@ const (
 	// MageMaxHP is the level-1 max HP for Mage class (AoE ranged, squishy).
 	MageMaxHP = 14
 
-	// SwordDamage is level-1 damage for the Fighter's close weapon (sword).
-	SwordDamage = 4
-	// DaggerDamage is level-1 damage for the Rogue's close weapon (dagger).
-	DaggerDamage = 7
-	// BowDamage is level-1 damage for the Rogue's ranged weapon (bow).
-	BowDamage = 6
-	// StaffBonkDamage is level-1 damage for the Mage's close weapon (staff bonk).
-	StaffBonkDamage = 2
-	// StaffMagicDamage is level-1 damage per target for the Mage's ranged weapon (staff magic AoE).
-	StaffMagicDamage = 4
-	// FistsDamage is level-1 damage for fallback/unarmed attacks.
+	// FistsDamage is level-1 damage for fallback/unarmed attacks (the empty
+	// close-slot fallback; see internal/game's fistsDef).
 	FistsDamage = 1
-
-	// BowRange is the maximum hex distance for Rogue bow attacks.
-	BowRange = 4
-	// MageRange is the maximum hex distance for Mage magic attacks.
-	MageRange = 4
-	// MageAoERadius is the splash radius in hexes for Mage AoE magic (includes target + neighbors).
-	MageAoERadius = 1
 
 	// HPPerLevel is the additional max HP gained per level above 1.
 	HPPerLevel = 4

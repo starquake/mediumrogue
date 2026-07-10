@@ -13,6 +13,15 @@ const percentBase = 100
 // Events: the moments a card can hook. deal-damage runs attacker-side per
 // (attacker, victim) pair; take-damage runs victim-side on the result;
 // earn-XP runs on each player's kill award.
+//
+// Adding a new event/condition/effect kind here also means adding it to
+// items.go's validateRuleCards switches (event/condition/effect) and, for a
+// condition, conditionHolds' switch below — three places that must agree so
+// mustValidateContent's load-time check and this file's runtime evaluation
+// never silently diverge (a kind valid to one but not the other either panics
+// spuriously at load, or validates cleanly and then no-ops forever at
+// runtime — conditionHolds fails closed via its default case, but
+// applyRules' effect switch has no default at all).
 const (
 	evDealDamage = "deal-damage"
 	evTakeDamage = "take-damage"
@@ -22,6 +31,8 @@ const (
 // Condition kinds. chance consumes the turn rng (deterministic: cards are
 // evaluated in stable order). The target* conditions read the victim; ally
 // presence is precomputed into the ctx by the caller (it needs world state).
+// See the evDealDamage const block above: keep in sync with
+// items.go's validateRuleCards.
 const (
 	condChance           = "chance"           // n = percent
 	condTargetHPBelowPct = "targetHPBelowPct" // n = percent of maxHP
@@ -31,7 +42,8 @@ const (
 )
 
 // Effect kinds. All adds apply before all multipliers (fold phases), so card
-// order can never change arithmetic within a phase.
+// order can never change arithmetic within a phase. See the evDealDamage
+// const block above: keep in sync with items.go's validateRuleCards.
 const (
 	effAdd    = "add"    // n may be negative
 	effMulPct = "mulPct" // n = percent (200 = double)

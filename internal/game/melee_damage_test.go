@@ -3,6 +3,7 @@ package game_test
 import (
 	"testing"
 
+	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
@@ -18,8 +19,8 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 		class string
 		want  int
 	}{
-		{"fighter sword", protocol.ClassFighter, protocol.SwordDamage},
-		{"rogue dagger", protocol.ClassRogue, protocol.DaggerDamage},
+		{"fighter sword", protocol.ClassFighter, game.ItemDamageForTest("iron-sword", 1)},
+		{"rogue dagger", protocol.ClassRogue, game.ItemDamageForTest("dagger", 1)},
 	}
 
 	for _, tc := range tests {
@@ -61,7 +62,7 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 
 // TestBumpDamageScalesWithLevel: a higher-level player bumps for more — the
 // class close weapon gains DamagePerLevel for each level above 1. A level-3
-// Fighter's sword deals SwordDamage + 2*DamagePerLevel, strictly above the
+// Fighter's sword deals its iron-sword base + 2*DamagePerLevel, strictly above the
 // level-1 sword.
 func TestBumpDamageScalesWithLevel(t *testing.T) {
 	t.Parallel()
@@ -92,11 +93,11 @@ func TestBumpDamageScalesWithLevel(t *testing.T) {
 
 	dealt := protocol.MonsterMaxHP - monster.HP
 
-	if got, want := dealt, protocol.SwordDamage+2*protocol.DamagePerLevel; got != want {
+	if got, want := dealt, game.ItemDamageForTest("iron-sword", 1)+2*protocol.DamagePerLevel; got != want {
 		t.Errorf("level-3 Fighter bump damage = %d, want %d (sword + DamagePerLevel per level)", got, want)
 	}
 
-	if got, floor := dealt, protocol.SwordDamage; got <= floor {
+	if got, floor := dealt, game.ItemDamageForTest("iron-sword", 1); got <= floor {
 		t.Errorf("level-3 bump damage = %d, want > level-1 sword %d (level must raise it)", got, floor)
 	}
 }

@@ -175,41 +175,10 @@ export const RogueMaxHP = 16;
  */
 export const MageMaxHP = 14;
 /**
- * SwordDamage is level-1 damage for the Fighter's close weapon (sword).
- */
-export const SwordDamage = 4;
-/**
- * DaggerDamage is level-1 damage for the Rogue's close weapon (dagger).
- */
-export const DaggerDamage = 7;
-/**
- * BowDamage is level-1 damage for the Rogue's ranged weapon (bow).
- */
-export const BowDamage = 6;
-/**
- * StaffBonkDamage is level-1 damage for the Mage's close weapon (staff bonk).
- */
-export const StaffBonkDamage = 2;
-/**
- * StaffMagicDamage is level-1 damage per target for the Mage's ranged weapon (staff magic AoE).
- */
-export const StaffMagicDamage = 4;
-/**
- * FistsDamage is level-1 damage for fallback/unarmed attacks.
+ * FistsDamage is level-1 damage for fallback/unarmed attacks (the empty
+ * close-slot fallback; see internal/game's fistsDef).
  */
 export const FistsDamage = 1;
-/**
- * BowRange is the maximum hex distance for Rogue bow attacks.
- */
-export const BowRange = 4;
-/**
- * MageRange is the maximum hex distance for Mage magic attacks.
- */
-export const MageRange = 4;
-/**
- * MageAoERadius is the splash radius in hexes for Mage AoE magic (includes target + neighbors).
- */
-export const MageAoERadius = 1;
 /**
  * HPPerLevel is the additional max HP gained per level above 1.
  */

@@ -17,14 +17,12 @@ import type { Hex, QuestView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
-  BowRange,
   ClassFighter,
   ClassMage,
   ClassRogue,
   EntityMonster,
   IntentAttack,
   IntentMove,
-  MageRange,
   PlaybackSeconds,
   SpeciesHuman,
   TurnSeconds,
@@ -248,13 +246,24 @@ window.game = {
   quests: [],
 };
 
+// Ranged reach for the default rogue/mage weapons (server:
+// internal/game/content.go's shortbow / ember-focus registry entries).
+// Milestone 6b.4 moved weapon numbers off the wire's protocol constants and
+// into the server's item registry (content is not compile-time shared with
+// the client) — until gear rides the wire (Task 5: Entity.Items), this stays
+// a literal mirror of the class DEFAULT weapon's range, kept in sync by hand.
+// It only drives the click-vs-move UX hint below; the server is authoritative
+// on the real equipped weapon's range regardless.
+const ROGUE_BOW_RANGE = 4;
+const MAGE_RANGE = 4;
+
 /** The ranged weapon range for a class, or null for a class with no ranged weapon (fighter). */
 function rangedRangeFor(cls: string): number | null {
   if (cls === ClassRogue) {
-    return BowRange;
+    return ROGUE_BOW_RANGE;
   }
   if (cls === ClassMage) {
-    return MageRange;
+    return MAGE_RANGE;
   }
 
   return null;
@@ -264,9 +273,9 @@ function rangedRangeFor(cls: string): number | null {
  * Decides whether a click on `target` should fire a ranged attack instead of
  * a move. Out of combat, or my class has no ranged weapon (fighter): always
  * a move. In combat with a ranged class: a rogue's bow only fires at a
- * hostile actually standing on the clicked hex, within BowRange — any other
+ * hostile actually standing on the clicked hex, within range — any other
  * click there still walks (mirrors the melee-bump flow). A mage's AoE magic
- * can be aimed at any hex within MageRange — the blast can land on empty
+ * can be aimed at any hex within range — the blast can land on empty
  * ground and still catch nearby hostiles — so any in-range click attacks.
  * Reads window.game (the same state the debug/test surface exposes) rather
  * than closed-over locals, so it stays correct regardless of when it's called.

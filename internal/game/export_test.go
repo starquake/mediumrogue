@@ -105,7 +105,9 @@ func (w *World) SetSeedForTest(seed int64) {
 // PlaceEntityForTest injects a player entity at a specific hex and returns its
 // id and bearer token, so conflict and AI tests can build exact board states
 // instead of depending on spawn geometry. The player is a level-1 Fighter (the
-// Join default), so its HP matches a plainly-joined player.
+// Join default), so its HP matches a plainly-joined player. It also grants
+// and equips the class's default items (mirroring Join), so a placed
+// Fighter bumps for iron-sword damage exactly like a joined one.
 func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -122,6 +124,7 @@ func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	}
 	w.entities[e.id] = e
 	w.byToken[token] = e
+	w.grantDefaultsLocked(e)
 
 	return e.id, token
 }
@@ -190,15 +193,21 @@ func (w *World) SetXPForTest(id int64, xp int) {
 	}
 }
 
-// SetClassForTest overwrites a player entity's class directly and resyncs its
-// max HP to the new class/level, so a melee test can pit different classes'
-// close weapons against the same board without going through Join.
+// SetClassForTest overwrites a player entity's class directly, resyncs its max
+// HP, and resets its inventory to the new class's default items (discarding
+// whatever it held before — an empty class grants nothing, leaving both
+// slots empty, so closeDefFor falls back to fists), so a melee test can pit
+// different classes' close weapons against the same board without going
+// through Join.
 func (w *World) SetClassForTest(id int64, class string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if e, ok := w.entities[id]; ok {
 		e.class = class
+		e.items = nil
+		e.closeSlot, e.rangedSlot = 0, 0
+		w.grantDefaultsLocked(e)
 		syncMaxHPLocked(e)
 	}
 }
@@ -312,19 +321,31 @@ func (w *World) DisconnectedAtForTest(token string) (time.Time, bool) {
 // scaling curve directly, independent of a live entity.
 func MaxHPForTest(class string, level int) int { return maxHPFor(class, level) }
 
-// CloseWeaponDamageForTest exposes a class's default close-weapon damage at a
-// given level (the melee/bump path Tasks 3/4 will read).
-func CloseWeaponDamageForTest(class string, level int) int {
-	return weaponDamage(closeWeapon(class), level)
+// ItemDamageForTest exposes a registry item's level-scaled damage by id, so a
+// black-box test can assert exact combat numbers without duplicating the
+// registry (content.go) inline.
+func ItemDamageForTest(id string, level int) int {
+	return itemDamage(itemDefByID[id], level)
 }
 
-// RangedWeaponForTest exposes a class's default ranged weapon. It returns, in
-// order, the level-scaled damage, range in hexes, AoE radius, and whether the
-// class has a ranged attack at all (false for Fighter and any classless entity).
-func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
-	w, ok := rangedWeapon(class)
+// ItemRangeForTest exposes a registry item's rangeHex by id.
+func ItemRangeForTest(id string) int { return itemDefByID[id].rangeHex }
 
-	return weaponDamage(w, level), w.rangeHex, w.aoeRadius, ok
+// ItemAoERadiusForTest exposes a registry item's aoeRadius by id.
+func ItemAoERadiusForTest(id string) int { return itemDefByID[id].aoeRadius }
+
+// RangedWeaponForTest exposes a class's default ranged item. It returns, in
+// order, the level-scaled damage, range in hexes, AoE radius, and whether the
+// class has a ranged default at all (false for Fighter and any classless
+// entity).
+func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
+	for _, id := range classDefaultIDs(class) {
+		if def := itemDefByID[id]; def.slot == protocol.ItemSlotRanged {
+			return itemDamage(def, level), def.rangeHex, def.aoeRadius, true
+		}
+	}
+
+	return 0, 0, 0, false
 }
 
 // ReachableWalkableForTest exposes reachableWalkable — the origin-connected
