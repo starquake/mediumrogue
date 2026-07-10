@@ -295,6 +295,52 @@ export interface TurnEvent {
    * to the one containing its own entity.
    */
   bubbles: BubbleView[];
+  /**
+   * Quests is the whole quest board, sorted by ID.
+   */
+  quests: QuestView[];
+}
+/**
+ * QuestState is a quest's lifecycle stage on the board.
+ */
+export type QuestState = string;
+/**
+ * The quest lifecycle. Completed quests stay completed — the board depletes
+ * (repeatable quests arrive with continuous monster spawning, later).
+ */
+export const QuestAvailable: QuestState = "available";
+/**
+ * The quest lifecycle. Completed quests stay completed — the board depletes
+ * (repeatable quests arrive with continuous monster spawning, later).
+ */
+export const QuestTaken: QuestState = "taken";
+/**
+ * The quest lifecycle. Completed quests stay completed — the board depletes
+ * (repeatable quests arrive with continuous monster spawning, later).
+ */
+export const QuestCompleted: QuestState = "completed";
+/**
+ * QuestView is one quest on the board as the client sees it. The whole board
+ * (~6 rows) rides every turn bundle (full-snapshot philosophy); the client
+ * picks out its own quest by holder id.
+ */
+export interface QuestView {
+  id: number /* int64 */;
+  name: string;
+  /**
+   * Kind is "kill" (slay TargetN monsters) or "reach" (stand on GoalHex).
+   */
+  kind: string;
+  targetN: number /* int */;
+  goalHex: Hex;
+  progress: number /* int */;
+  rewardXp: number /* int */;
+  state: QuestState;
+  /**
+   * The holder when taken: at most one of these is non-zero.
+   */
+  holderEntityId: number /* int64 */;
+  holderPartyId: number /* int64 */;
 }
 /**
  * Entity is one thing standing on the map: a player or a monster.

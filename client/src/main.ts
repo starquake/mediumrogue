@@ -13,7 +13,9 @@ import { fetchMap } from "./net/map";
 import { join, loadIdentity, submitIntent } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
-import type { Hex, TurnEvent } from "./protocol.gen";
+import type { Hex, QuestView, TurnEvent } from "./protocol.gen";
+import { mountQuests } from "./quest/QuestPanel";
+import { setQuests } from "./quest/store";
 import {
   BowRange,
   ClassFighter,
@@ -95,6 +97,10 @@ export interface GameDebug {
   party: string[];
   /** This client's entity's party id, from the latest bundle. 0 when solo. */
   partyId: number;
+  /** My active quest (taken by me or my party), from the latest bundle. Null when I hold none. */
+  quest: QuestView | null;
+  /** The whole quest board, from the latest bundle. */
+  quests: QuestView[];
 }
 
 declare global {
@@ -238,6 +244,8 @@ window.game = {
   sendChat: (text: string): Promise<void> => storeSendChat(text),
   party: [],
   partyId: 0,
+  quest: null,
+  quests: [],
 };
 
 /** The ranged weapon range for a class, or null for a class with no ranged weapon (fighter). */
@@ -291,6 +299,7 @@ async function start(): Promise<void> {
 
   mountChat(mustGet("chat-root"));
   mountRoster(mustGet("roster-root"));
+  mountQuests(mustGet("quest-root"));
 
   const app = new Application();
   await app.init({ background: "#0b0f0b", resizeTo: window, antialias: true });
@@ -452,6 +461,18 @@ async function start(): Promise<void> {
       setParty(partyNames);
       window.game.party = partyNames;
       window.game.partyId = myPartyId;
+
+      // Quest board: refreshed every turn from the bundle itself (full-snapshot
+      // philosophy — no separate quest-membership stream). My active quest is
+      // whichever "taken" quest is held by me or (if I'm in a party) my party.
+      window.game.quests = event.quests;
+      setQuests(event.quests, me.entityId, myPartyId);
+      window.game.quest =
+        event.quests.find(
+          (q) =>
+            q.state === "taken" &&
+            (q.holderEntityId === me.entityId || (myPartyId !== 0 && q.holderPartyId === myPartyId)),
+        ) ?? null;
 
       // Absent from this bundle: either a coalesced/momentary blip (ignore —
       // see MISSING_GRACE_MS) or the disconnect-grace sweep really removed

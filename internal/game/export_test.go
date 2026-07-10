@@ -142,6 +142,18 @@ func (w *World) PlaceMonsterForTest(hex protocol.Hex) int64 {
 	return w.nextID
 }
 
+// SetHexForTest overwrites an entity's position directly, so a quest test can
+// place an already-joined party member onto a reach quest's goal without
+// grinding out a multi-turn path.
+func (w *World) SetHexForTest(id int64, hex protocol.Hex) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.hex = hex
+	}
+}
+
 // SetHPForTest overwrites an entity's HP directly, so tests can drive exact
 // lethal-threshold scenarios (mutual kills, respawns) without grinding out
 // many turns of combat.

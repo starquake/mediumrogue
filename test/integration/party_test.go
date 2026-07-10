@@ -12,6 +12,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// systemSenderName is the Sender on a server-generated chat announcement
+// (party ops, quest board events) — mirrors internal/server's unexported
+// systemSender constant, which this black-box package cannot reference.
+const systemSenderName = "system"
+
 // entityInBundle opens a fresh /api/events connection (a joined client always
 // gets the current snapshot as its first frame — see events.go's writeTurn
 // called before the stream's select loop) and returns the entity with id, so
@@ -103,7 +108,7 @@ func formParty(t *testing.T, ts *httptest.Server) (protocol.JoinResponse, protoc
 
 	invited := readSystemChat(t, reader)
 
-	if got, want := invited.Sender, "system"; got != want {
+	if got, want := invited.Sender, systemSenderName; got != want {
 		t.Errorf("invite announcement sender = %q, want %q", got, want)
 	}
 
@@ -118,7 +123,7 @@ func formParty(t *testing.T, ts *httptest.Server) (protocol.JoinResponse, protoc
 
 	joined := readSystemChat(t, reader)
 
-	if got, want := joined.Sender, "system"; got != want {
+	if got, want := joined.Sender, systemSenderName; got != want {
 		t.Errorf("accept announcement sender = %q, want %q", got, want)
 	}
 

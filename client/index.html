@@ -312,6 +312,50 @@
         font-size: 0.85rem;
         line-height: 1.4;
       }
+      /* Quest overlay: mirrors #chat-root/#roster-root's click-through
+         discipline. Placed on the left edge below the HUD bar and above the
+         (much shorter, bottom-anchored) chat panel, so it never collides with
+         either — nor with the pre-join pickers, which live on the right and
+         only show before joining, while the quest board is visible from the
+         very first bundle. */
+      #quest-root {
+        position: fixed;
+        top: 8rem;
+        left: 1rem;
+        z-index: 10;
+        pointer-events: none;
+      }
+      #quest-panel {
+        pointer-events: auto;
+        width: 16rem;
+        background: rgba(11, 15, 11, 0.85);
+        border: 1px solid var(--dim);
+        padding: 0.4rem 0.6rem;
+        text-shadow: 0 1px 2px #000;
+      }
+      #quest-mine {
+        margin-bottom: 0.4rem;
+        padding-bottom: 0.4rem;
+        border-bottom: 1px solid var(--dim);
+      }
+      #quest-board-title {
+        margin-bottom: 0.25rem;
+        color: var(--dim);
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      .quest-title {
+        font-size: 0.85rem;
+      }
+      .quest-objective {
+        color: var(--dim);
+        font-size: 0.8rem;
+      }
+      .quest-row {
+        font-size: 0.8rem;
+        line-height: 1.4;
+      }
     </style>
   </head>
   <body>
@@ -343,6 +387,7 @@
     </div>
     <div id="chat-root"></div>
     <div id="roster-root"></div>
+    <div id="quest-root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

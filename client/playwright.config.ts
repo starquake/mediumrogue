@@ -31,6 +31,7 @@ const specs: { name: string; monsters?: number }[] = [
   { name: "procgen" },
   { name: "chat" },
   { name: "parties" },
+  { name: "quests" },
   { name: "combat", monsters: 3 },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },

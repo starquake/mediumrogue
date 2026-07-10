@@ -157,6 +157,14 @@ type World struct {
 	// turn selects the stream — so it's reproducible given the world + turn but
 	// unpredictable to players (they don't know the world seed).
 	seed int64
+	// quests is the quest board, generated once at construction from the world
+	// seed (deterministic given seed + map). Fixed size and id-sorted by
+	// construction; entries mutate in place as they are taken/progressed/completed.
+	quests []*quest
+	// announce is the chat hook for in-resolution quest events (completion,
+	// auto-abandon). Defaults to a no-op so tests without chat wiring pass; set
+	// via SetAnnounce.
+	announce func(sender, text string)
 }
 
 // NewWorld builds the world from a procedurally generated map (GenerateMap,
@@ -198,6 +206,8 @@ func NewWorld(
 		pendingInvites:  make(map[int64]int64),
 		bubbles:         make(map[int64]*bubble),
 		seed:            seed,
+		quests:          generateQuests(worldSeed, worldMap),
+		announce:        func(string, string) {},
 	}
 }
 
@@ -462,6 +472,7 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 		e := w.entities[id]
 
 		w.leavePartyLocked(e)
+		w.abandonPersonalQuestLocked(e)
 		delete(w.pendingInvites, id)
 
 		for invitee, inviter := range w.pendingInvites {
@@ -604,8 +615,18 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 	slices.SortFunc(bubbles, func(a, b protocol.BubbleView) int { return int(a.ID - b.ID) })
 
+	questViews := make([]protocol.QuestView, 0, len(w.quests))
+	for _, q := range w.quests {
+		questViews = append(questViews, protocol.QuestView{
+			ID: q.id, Name: q.name, Kind: q.kind, TargetN: q.targetN,
+			GoalHex: q.goalHex, Progress: q.progress, RewardXP: q.rewardXP,
+			State: q.state, HolderEntityID: q.holderEntity, HolderPartyID: q.holderParty,
+		})
+	}
+
 	return protocol.TurnEvent{
 		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
+		Quests: questViews,
 	}
 }
 
@@ -684,6 +705,7 @@ type pendingAttack struct {
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.resolveCombatLocked(members)
+	w.checkReachQuestsLocked()
 	w.turn++
 }
 
@@ -712,7 +734,11 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 				syncMaxHPLocked(e)
 			}
 		}
+
+		w.tickKillQuestsLocked(members, killed)
 	}
+
+	w.checkReachQuestsLocked()
 
 	clear(b.ready)
 	b.deadline = now.Add(w.combatPatience)
