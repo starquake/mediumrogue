@@ -36,9 +36,19 @@ const (
 const (
 	condChance           = "chance"           // n = percent
 	condTargetHPBelowPct = "targetHPBelowPct" // n = percent of maxHP
-	condTargetHPFull     = "targetHPFull"
-	condAllyInBubble     = "allyInBubble"
-	condTargetAdjacent   = "targetAdjacent"
+	// condTargetHPBelowFlat compares ABSOLUTE hp (n = hit points),
+	// deliberately not scaling with the target's maxHP: an execute/mop-up
+	// rule stays a mop-up rule against big monsters, where a percent
+	// threshold would quietly become a boss-killer. Designer decision from
+	// the first gear batch (Staff of the War Mage).
+	condTargetHPBelowFlat = "targetHPBelowFlat"
+	condTargetHPFull      = "targetHPFull"
+	condAllyInBubble      = "allyInBubble"
+	condTargetAdjacent    = "targetAdjacent"
+	// condAttackerSpecies (s = species) gates on who SWINGS the weapon —
+	// gear a whole class can use but that sings in one species' hands
+	// (Ancient Dwarven Mattock).
+	condAttackerSpecies = "attackerSpecies"
 )
 
 // Effect kinds. All adds apply before all multipliers (fold phases), so card
@@ -52,6 +62,9 @@ const (
 type condition struct {
 	kind string
 	n    int
+	// s is the string parameter for kinds that need one (condAttackerSpecies:
+	// a protocol.Species* value). Empty for numeric/parameterless kinds.
+	s string
 }
 
 type effect struct {
@@ -94,6 +107,10 @@ func conditionHolds(c condition, ctx ruleCtx) bool {
 		return ctx.rng.IntN(percentBase) < c.n
 	case condTargetHPBelowPct:
 		return ctx.victim != nil && ctx.victim.hp*percentBase < ctx.victim.maxHP*c.n
+	case condTargetHPBelowFlat:
+		return ctx.victim != nil && ctx.victim.hp < c.n
+	case condAttackerSpecies:
+		return ctx.attacker != nil && ctx.attacker.species == c.s
 	case condTargetHPFull:
 		return ctx.victim != nil && ctx.victim.hp >= ctx.victim.maxHP
 	case condAllyInBubble:

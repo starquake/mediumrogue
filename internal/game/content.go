@@ -93,6 +93,30 @@ var itemDefs = []*itemDef{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
 	},
+
+	// First designer batch (docs/rule-based-content-design.md's card format;
+	// review in the first-gear correspondence). Authored by the group's
+	// content designer — ids/names/numbers are his cards, transcribed.
+	{
+		id: "ancient-dwarven-mattock", name: "Ancient Dwarven Mattock", slot: protocol.ItemSlotClose,
+		class:  protocol.ClassFighter,
+		damage: 4, desc: "+3 damage in a dwarf's hands", dropWeight: 4,
+		rules: []ruleCard{
+			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
+				then: effect{kind: effAdd, n: 3}},
+		},
+	},
+	{
+		id: "war-mage-staff", name: "Staff of the War Mage", slot: protocol.ItemSlotRanged,
+		class:  protocol.ClassMage,
+		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP", dropWeight: 4,
+		rules: []ruleCard{
+			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
+			// boring tail of a fight, and never scales into a boss-killer.
+			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowFlat, n: 6}},
+				then: effect{kind: effMulPct, n: 200}},
+		},
+	},
 }
 
 // itemDefByID and dropTable are lookup tables derived from itemDefs at

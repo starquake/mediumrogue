@@ -392,3 +392,78 @@ func TestRealRegistryValidatesCleanly(t *testing.T) {
 
 	mustValidateContent()
 }
+
+// TestFirstGearCardsPinned pins the two designer cards from the first gear
+// batch (first-gear review v2): the Mattock's species gate and the War Mage
+// Staff's flat-threshold execute — id, base stats, weight, and rule shape.
+func TestFirstGearCardsPinned(t *testing.T) {
+	t.Parallel()
+
+	mattock, ok := itemDefByID["ancient-dwarven-mattock"]
+	if !ok {
+		t.Fatal("ancient-dwarven-mattock not registered")
+	}
+
+	if got, want := mattock.damage, 4; got != want {
+		t.Errorf("mattock damage = %d, want %d", got, want)
+	}
+
+	if got, want := mattock.dropWeight, 4; got != want {
+		t.Errorf("mattock dropWeight = %d, want %d", got, want)
+	}
+
+	if got, want := len(mattock.rules), 1; got != want {
+		t.Fatalf("mattock rules = %d, want %d", got, want)
+	}
+
+	if got, want := mattock.rules[0].when[0].kind, condAttackerSpecies; got != want {
+		t.Errorf("mattock condition = %q, want %q", got, want)
+	}
+
+	staff, ok := itemDefByID["war-mage-staff"]
+	if !ok {
+		t.Fatal("war-mage-staff not registered")
+	}
+
+	if got, want := staff.damage, 3; got != want {
+		t.Errorf("staff damage = %d, want %d", got, want)
+	}
+
+	if got, want := staff.rangeHex, 4; got != want {
+		t.Errorf("staff rangeHex = %d, want %d", got, want)
+	}
+
+	if got, want := staff.aoeRadius, 1; got != want {
+		t.Errorf("staff aoeRadius = %d, want %d", got, want)
+	}
+
+	if got, want := staff.rules[0].when[0].kind, condTargetHPBelowFlat; got != want {
+		t.Errorf("staff condition = %q, want %q", got, want)
+	}
+
+	if got, want := staff.rules[0].then.n, 200; got != want {
+		t.Errorf("staff effect = x%d pct, want %d", got, want)
+	}
+}
+
+// TestValidateItemDefsPanicsOnBadAttackerSpecies: a species-gated card whose
+// species string is not one of the three playable species is a content bug —
+// it would silently never hold. Fail at load.
+func TestValidateItemDefsPanicsOnBadAttackerSpecies(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if recover() == nil {
+			t.Error("validateItemDefs did not panic on an unknown attackerSpecies value")
+		}
+	}()
+
+	validateItemDefs([]*itemDef{{
+		id: "bad", name: "Bad", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
+		rules: []ruleCard{{
+			event: evDealDamage,
+			when:  []condition{{kind: condAttackerSpecies, s: "gnome"}},
+			then:  effect{kind: effAdd, n: 1},
+		}},
+	}})
+}
