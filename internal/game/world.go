@@ -861,6 +861,13 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 			}
 		}
 
+		// The chat stream doubles as the combat log: one kill summary per
+		// bubble turn (not per monster — a mage's AoE turn stays one line).
+		// The base XP is quoted because it's the only shared number (species
+		// bonuses are per-player), and nobody is named because kill credit
+		// deliberately does not exist (XP-by-presence, plan §5).
+		w.announce("system", killSummary(killed))
+
 		w.tickKillQuestsLocked(members, killed)
 	}
 
@@ -1224,6 +1231,17 @@ func (w *World) resolveAoELocked(
 	}
 }
 
+// killSummary renders one bubble turn's monster deaths for the chat/combat
+// log, quoting the shared base XP (see the call site's comment on why base
+// and why nameless).
+func killSummary(killed int) string {
+	if killed == 1 {
+		return fmt.Sprintf("a monster was slain (+%d XP to everyone in the fight)", protocol.MonsterXP)
+	}
+
+	return fmt.Sprintf("%d monsters were slain (+%d XP to everyone in the fight)", killed, killed*protocol.MonsterXP)
+}
+
 // levelFor returns the 1-based level for a cumulative XP total.
 func levelFor(xp int) int { return 1 + xp/protocol.XPPerLevel }
 
@@ -1282,7 +1300,13 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) int {
 
 		// Player: fall back to the start of the XP level you were in — keep the
 		// level, lose the within-level progress — then respawn in place of a
-		// re-join.
+		// re-join. The death is announced to the chat/combat log — previously
+		// the only combat event with zero textual feedback. Test-bridge
+		// players have no name; skip the announce rather than print " died".
+		if e.name != "" {
+			w.announce("system", e.name+" died")
+		}
+
 		e.xp = levelFloorXP(e.xp)
 
 		if spawn, err := w.spawnHexLocked(); err == nil {

@@ -1,6 +1,7 @@
 package game_test
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 
@@ -202,7 +203,12 @@ func TestKillDropPickedUpNextTurn(t *testing.T) {
 		t.Errorf("picked-up ItemView.Equipped = %v, want %v (owned, not auto-equipped)", got, want)
 	}
 
-	wantMsg := []string{"hero picked up " + killDropSeedDefName}
+	// Two lines in order: the kill summary from the turn the monster died,
+	// then the pickup announce from the walk-on a turn later.
+	wantMsg := []string{
+		fmt.Sprintf("a monster was slain (+%d XP to everyone in the fight)", protocol.MonsterXP),
+		"hero picked up " + killDropSeedDefName,
+	}
 	if !slices.Equal(announced, wantMsg) {
 		t.Errorf("announced = %v, want %v", announced, wantMsg)
 	}

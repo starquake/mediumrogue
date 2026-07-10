@@ -126,6 +126,13 @@ export interface GameDebug {
    * and the in-combat click filter; exposed for e2e.
    */
   combatMoves: Hex[];
+  /**
+   * The hexes within my equipped ranged weapon's reach this combat turn
+   * (excluding move/bump tiles — those act differently on click). Clicking
+   * one shoots when a hostile stands there (or regardless, for AoE). Empty
+   * outside a bubble or with no ranged weapon. Drives the red range wash.
+   */
+  combatRanged: Hex[];
 }
 
 declare global {
@@ -275,6 +282,7 @@ window.game = {
   groundItems: [],
   damage: [],
   combatMoves: [],
+  combatRanged: [],
 };
 
 // How many hexes an entity can cover in one action-gated combat turn. 1 is
@@ -540,28 +548,48 @@ async function start(): Promise<void> {
     return submitIntent(identity, target, IntentAttack).then(() => undefined);
   };
 
+  // lastReach mirrors the tactical overlay's move/bump split for click
+  // routing (window.game.combatMoves merges them for the e2e surface).
+  // Refreshed by onTurn alongside the overlay.
+  let lastReach: { moves: Hex[]; bumps: Hex[] } = { moves: [], bumps: [] };
+  const inList = (list: Hex[], h: Hex): boolean => list.some((x) => x.q === h.q && x.r === h.r);
+
   // clickTarget is the single decision point shared by canvas clicks and
   // window.game.tapHex, so tapHex genuinely mirrors "as if the hex were
-  // clicked" (including the ranged-attack UX) for tests. Out of combat, or
-  // for a class with no ranged weapon, this is always a move — identical to
-  // the pre-classes behavior. IN combat, non-attack clicks are restricted to
-  // the tiles reachable this turn (the tinted overlay): tactical turns are
-  // chosen one step at a time, not queued as a path across the battlefield.
+  // clicked" for tests. Out of combat this is the pre-classes behavior:
+  // click-anywhere pathing (ranged clicks only exist in combat). IN combat,
+  // the tinted overlay is the contract: blue = step there, strong red
+  // (adjacent hostile) = bump-attack, light red (weapon reach) = shoot when
+  // an enemy is on the hex (or anywhere in it, for AoE), own hex = stand
+  // still/cancel; anything else is not a valid selection. One deliberate
+  // class nuance: an AoE caster (mage) blasts an adjacent hostile rather
+  // than staff-bonking it — its ranged weapon IS its real weapon — while a
+  // bow user (rogue) bumps adjacent hostiles with the dagger, the plan's
+  // "weapon by distance" identity.
   const clickTarget = (target: Hex): Promise<void> => {
-    if (isRangedAttackClick(target)) {
-      clearEquipPending(); // a real intent replaces a queued in-bubble equip
-      return attackAt(target);
-    }
-
     if (window.game.inCombat) {
-      // My own hex is always selectable: "stand here" clears a queued path
-      // (Pathfind(from == to) is empty) — the tactical wait/cancel action.
       const self =
         window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
-      const reachable = window.game.combatMoves.some((h) => h.q === target.q && h.r === target.r);
-      if (!self && !reachable) {
-        return Promise.resolve(); // out of this turn's reach: not a valid selection
+
+      if (self || inList(lastReach.moves, target)) {
+        clearEquipPending(); // a real intent replaces a queued in-bubble equip
+        return walkTo(target);
       }
+
+      if (inList(lastReach.bumps, target)) {
+        clearEquipPending();
+        if (myRangedAoeRadius > 0 && isRangedAttackClick(target)) {
+          return attackAt(target); // mage: blast the adjacent hostile
+        }
+        return walkTo(target); // bump-attack: step in and swing
+      }
+
+      if (isRangedAttackClick(target)) {
+        clearEquipPending();
+        return attackAt(target);
+      }
+
+      return Promise.resolve(); // out of this turn's reach: not a valid selection
     }
 
     // A map click replaces a queued in-bubble equip server-side (latest
@@ -718,16 +746,39 @@ async function start(): Promise<void> {
       entityLayer.update(event.entities, me.entityId, mine?.partyId ?? 0, playbackMs);
       timer.onTurn(event.intervalMs, playbackMs);
 
-      // Tactical movement overlay: reachable tiles while in a bubble, nothing
-      // outside one. Computed last — it reads the me/positions/inCombat state
-      // this handler just refreshed.
+      // Tactical overlay: reachable tiles + ranged reach while in a bubble,
+      // nothing outside one. Computed last — it reads the me/positions/
+      // inCombat state this handler just refreshed.
       if (window.game.inCombat) {
         const reach = combatReach();
+        lastReach = reach;
         window.game.combatMoves = [...reach.moves, ...reach.bumps];
-        moveRangeLayer.update(reach.moves, reach.bumps);
+
+        // The equipped ranged weapon's reach: every map tile within range
+        // (distance-only, no LOS — matching the server's rule), minus the
+        // tiles that already act differently on click (moves, bumps, self).
+        const ranged: Hex[] = [];
+        const meNow = window.game.me;
+        if (meNow !== null && myRangedRangeHex !== null) {
+          for (const tile of map.tiles) {
+            const d = hexDistance(meNow.hex, tile.hex);
+            if (
+              d >= 1 &&
+              d <= myRangedRangeHex &&
+              !inList(reach.moves, tile.hex) &&
+              !inList(reach.bumps, tile.hex)
+            ) {
+              ranged.push(tile.hex);
+            }
+          }
+        }
+        window.game.combatRanged = ranged;
+        moveRangeLayer.update(reach.moves, reach.bumps, ranged);
       } else {
+        lastReach = { moves: [], bumps: [] };
         window.game.combatMoves = [];
-        moveRangeLayer.update([], []);
+        window.game.combatRanged = [];
+        moveRangeLayer.update([], [], []);
       }
     },
     onConnectionChange: (connected: boolean): void => {
@@ -773,7 +824,12 @@ async function start(): Promise<void> {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
-    app.canvas.style.cursor = isRangedAttackClick(pixelToHex({ x: worldX, y: worldY })) ? "crosshair" : "default";
+    // Crosshair only where a click would actually shoot — a bump tile with a
+    // single-target weapon swings instead (see clickTarget's routing).
+    const hover = pixelToHex({ x: worldX, y: worldY });
+    const wouldShoot =
+      isRangedAttackClick(hover) && !(myRangedAoeRadius === 0 && inList(lastReach.bumps, hover));
+    app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
   });
 }
 
