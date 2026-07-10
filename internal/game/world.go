@@ -72,8 +72,9 @@ type entity struct {
 	// loadout and base HP via the class.go helpers.
 	class string
 	// species is the player's species (protocol.SpeciesHuman/Elf/Dwarf), validated
-	// and set at Join; empty for monsters. It drives the combat passives in
-	// species.go (human XP bonus, elf crit, dwarf damage reduction).
+	// and set at Join; empty for monsters. It selects the passive rule cards
+	// (speciesCards in content.go: human XP bonus, elf crit, dwarf damage
+	// reduction) the pipeline (rules.go) applies at combat/XP events.
 	species string
 	hp      int
 	maxHP   int
@@ -724,12 +725,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 	if killed > 0 {
 		for _, e := range members {
 			if e.kind == protocol.EntityPlayer && e.hp > 0 {
-				award := killed * protocol.MonsterXP
-				if e.species == protocol.SpeciesHuman {
-					// Human passive: a flat +HumanXPBonusPercent on every kill award.
-					award = award * (percentBase + protocol.HumanXPBonusPercent) / percentBase
-				}
-
+				award := applyRules(evEarnXP, killed*protocol.MonsterXP, speciesCards(e.species), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
 			}
@@ -770,6 +766,37 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
 	w.attackLocked(rng, byHex, attacks)
 
 	return w.resolveDeathsLocked(members)
+}
+
+// allyInBubbleLocked reports whether another living same-faction entity shares
+// e's bubble — the pack-bow style condition. Callers hold w.mu.
+func (w *World) allyInBubbleLocked(e *entity) bool {
+	if e.bubbleID == 0 {
+		return false
+	}
+
+	b, ok := w.bubbles[e.bubbleID]
+	if !ok {
+		return false
+	}
+
+	for id := range b.members {
+		if o, ok := w.entities[id]; ok && o != e && o.kind == e.kind && o.hp > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// rollDamageLocked runs one hit through the pipeline: the attacker's
+// deal-damage cards (species + weapon, Task 3) then the victim's take-damage
+// cards. Every damage number in the game flows through here. Callers hold w.mu.
+func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, base int) int {
+	ctx := ruleCtx{attacker: attacker, victim: victim, allyInBubble: w.allyInBubbleLocked(attacker), rng: rng}
+	dealt := applyRules(evDealDamage, base, speciesCards(attacker.species), ctx)
+
+	return applyRules(evTakeDamage, dealt, speciesCards(victim.species), ctx)
 }
 
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
@@ -921,8 +948,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 
 		victim := victims[rng.IntN(len(victims))]
 		base := attackDamage(a.attacker)
-		crit := critMultiplier(a.attacker, rng)
-		damage[victim.id] += applyDR(victim, base*crit)
+		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, base)
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
@@ -995,29 +1021,37 @@ func (w *World) resolveBowLocked(
 
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
-	crit := critMultiplier(attacker, rng)
 	victim := victims[rng.IntN(len(victims))]
-	damage[victim.id] += applyDR(victim, dmg*crit)
+	damage[victim.id] += w.rollDamageLocked(rng, attacker, victim, dmg)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
 // entity within aoeRadius of the target hex. Same-faction entities (the caster
-// and friendly players) are skipped — no friendly fire. The crit is rolled once
-// for the caster (an elf's crit cast crits its whole splash) before the target
-// loop, then applied per target after each victim's damage reduction. Callers
-// hold w.mu.
+// and friendly players) are skipped — no friendly fire. Each victim rolls the
+// pipeline independently (an elf caster can crit some splash victims and not
+// others — per-victim rolls, not one shared roll for the whole cast), in id
+// order: byHex is populated by ranging w.entities (a map), so without a sort
+// the per-victim roll order — and thus the rng stream each victim consumes —
+// would depend on incidental map iteration order instead of the seed alone.
+// Callers hold w.mu.
 func (w *World) resolveAoELocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
 	attacker *entity, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
 ) {
-	crit := critMultiplier(attacker, rng)
+	var victims []*entity
 
 	for _, occs := range byHex {
 		for _, o := range occs {
 			if opposing(attacker, o) && HexDistance(target, o.hex) <= aoeRadius {
-				damage[o.id] += applyDR(o, dmg*crit)
+				victims = append(victims, o)
 			}
 		}
+	}
+
+	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
+
+	for _, o := range victims {
+		damage[o.id] += w.rollDamageLocked(rng, attacker, o, dmg)
 	}
 }
 

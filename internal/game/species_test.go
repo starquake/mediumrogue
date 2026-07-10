@@ -10,11 +10,13 @@ import (
 // Pinned seeds for the elf crit roll (rng.IntN(100) < ElfCritChancePercent).
 // Found by probing the exact draw order of each scenario: a crit seed forces the
 // roll under the threshold, a miss seed forces it over. Different scenarios draw
-// the rng differently (melee vs bow), so each has its own pair.
+// the rng differently (melee vs bow — the bow site now draws the victim-pick
+// roll before the crit-chance roll, pipeline order per rollDamageLocked), so
+// each has its own pair.
 const (
 	meleeCritSeed = 1 // elf melee bump crits at this seed
 	meleeMissSeed = 0 // elf melee bump misses (base damage) at this seed
-	bowCritSeed   = 4 // elf bow shot crits at this seed
+	bowCritSeed   = 1 // elf bow shot crits at this seed
 	bowMissSeed   = 0 // elf bow shot misses (base damage) at this seed
 )
 
