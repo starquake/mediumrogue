@@ -835,9 +835,35 @@ type pendingAttack struct {
 // the world domain — only possible via an anomalous faction-blind spawn/join
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
+	w.regenPlayersLocked(members)
 	w.resolveCombatLocked(members, w.allPlayersLocked())
 	w.checkReachQuestsLocked()
 	w.turn++
+}
+
+// regenPlayersLocked heals every out-of-combat player protocol.RegenPerTurn HP
+// on a WORLD-domain turn resolution — the passive recovery layer (plan §9):
+// staying alive and out of a fight is now itself a way to top up HP, instead
+// of death (a full-HP respawn) being the only heal. It never fires for a
+// bubbled player (mid-fight means no regen), a monster (they don't regen at
+// all), a dead entity (hp <= 0), or one already at max HP, and it never pushes
+// hp past maxHP. members is always the world-domain set here
+// (resolveWorldTurnLocked's only caller passes domainMembersLocked, already
+// filtered to bubbleID == 0), but the check below stays explicit rather than
+// relying on that — cheap, and it fails safe if a future caller ever passes a
+// mixed set. Callers hold w.mu.
+func (w *World) regenPlayersLocked(members []*entity) {
+	for _, e := range members {
+		if e.kind != protocol.EntityPlayer || e.bubbleID != 0 {
+			continue
+		}
+
+		if e.hp <= 0 || e.hp >= e.maxHP {
+			continue
+		}
+
+		e.hp = min(e.hp+protocol.RegenPerTurn, e.maxHP)
+	}
 }
 
 // resolveBubbleTurnLocked advances one combat bubble a single action-gated turn:

@@ -154,6 +154,15 @@ export const MonsterMaxHP = 10;
  */
 export const MonsterAttackDamage = 3;
 /**
+ * RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
+ * resolution while out of combat (bubbleID == 0) and below max HP — the
+ * passive recovery layer (plan §9). It kills the inverted incentive where
+ * dying (a full-HP respawn) was the only way to heal: standing around out of
+ * a fight now tops you up too, slowly. Monsters never regen; a bubbled player
+ * (mid-fight) does not either — being in a fight means no regen.
+ */
+export const RegenPerTurn = 1;
+/**
  * XPPerLevel is the XP needed to advance one level.
  */
 export const XPPerLevel = 100;
