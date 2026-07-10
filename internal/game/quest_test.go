@@ -10,6 +10,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// questKindKill mirrors the unexported game.questKindKill string constant —
+// this external test package can't reference it directly, and it recurs
+// often enough here to warrant a name instead of a repeated literal.
+const questKindKill = "kill"
+
 func TestQuestBoardIsDeterministicAndWellFormed(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +41,7 @@ func TestQuestBoardIsDeterministicAndWellFormed(t *testing.T) {
 		}
 
 		switch q.Kind {
-		case "kill":
+		case questKindKill:
 			kills++
 
 			if q.TargetN < 2 || q.TargetN > 4 {
@@ -167,20 +172,38 @@ func TestPartyTakeAndJoinAbandonsPersonalQuest(t *testing.T) {
 	}
 }
 
-// TestFormingPartyPromotesInviterQuest: alice (solo) takes a quest, then
+// TestFormingPartyPromotesInviterQuest: alice (solo) takes a KILL quest and
+// progresses it by actually killing a monster — proving Progress is a real,
+// non-zero value before promotion, not just its zero-value default. She then
 // invites bob and bob accepts. Rather than abandoning alice's PERSONAL quest
 // (the existing rule for the ACCEPTER's quest, exercised by
 // TestPartyTakeAndJoinAbandonsPersonalQuest), forming the party PROMOTES it —
 // the party forms around whatever alice had already pitched. Progress carries
-// over, and the one-slot invariant now covers both members: neither can take
-// a second quest.
+// over UNCHANGED (a buggy promotion that reset it to 0 would be caught here),
+// and the one-slot invariant now covers both members: neither can take a
+// second quest.
 func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 	t.Parallel()
 
 	w := newPartyWorld(t)
 	alice := joinNamed(t, w, "alice")
 	bob := joinNamed(t, w, "bob")
-	q1, q2 := firstAvailableQuests(t, w, 2)
+
+	// Pick a KILL quest explicitly — firstAvailableQuests may return reach
+	// quests, and this test needs one it can progress with a kill.
+	var q1 int64
+
+	for _, q := range w.Snapshot().Quests {
+		if q.Kind == questKindKill {
+			q1 = q.ID
+
+			break
+		}
+	}
+
+	if q1 == 0 {
+		t.Fatalf("no kill quest on the board")
+	}
 
 	if _, err := w.QuestTake(alice.Token, q1); err != nil {
 		t.Fatalf("alice take: %v", err)
@@ -188,6 +211,38 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 
 	if got, want := questByID(t, w, q1).HolderEntityID, alice.EntityID; got != want {
 		t.Fatalf("quest holder entity before party forms = %d, want alice %d", got, want)
+	}
+
+	// Alice progresses the quest SOLO, before any party exists: one monster,
+	// one kill (targetN is always >= 2, so this leaves the quest in progress
+	// rather than completing it out from under the test).
+	hexes := walkableNeighborsN(t, w, alice.Hex, 1)
+	monsterID := w.PlaceMonsterForTest(hexes[0])
+	w.SetHPForTest(monsterID, protocol.SwordDamage) // one bump is lethal
+
+	step(t, w) // forming turn: the monster chases into the bubble
+
+	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	step(t, w) // the kill
+
+	progressed := questByID(t, w, q1).Progress
+	if progressed == 0 {
+		t.Fatalf("progress after solo kill = 0, want > 0 (test setup did not land a kill)")
+	}
+
+	// A second available quest, distinct from q1, for the full-slot check below.
+	var q2 int64
+
+	for _, q := range w.Snapshot().Quests {
+		if q.State == protocol.QuestAvailable && q.ID != q1 {
+			q2 = q.ID
+
+			break
+		}
+	}
+
+	if q2 == 0 {
+		t.Fatalf("need a second available quest distinct from q1")
 	}
 
 	mustInviteAccept(t, w, alice, bob, "bob")
@@ -206,8 +261,8 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 		t.Errorf("quest HolderEntityID = %d, want %d (promoted off the inviter)", got, want)
 	}
 
-	if got, want := qv.Progress, 0; got != want {
-		t.Errorf("progress after promotion = %d, want %d (carried over unchanged)", got, want)
+	if got, want := qv.Progress, progressed; got != want {
+		t.Errorf("progress after promotion = %d, want %d (carried over unchanged from the solo kill)", got, want)
 	}
 
 	if got, want := qv.State, protocol.QuestTaken; got != want {
@@ -574,7 +629,7 @@ func killQuest(t *testing.T, w *game.World, want int) (int64, int) {
 	fallbackN := 0
 
 	for _, q := range w.Snapshot().Quests {
-		if q.Kind != "kill" {
+		if q.Kind != questKindKill {
 			continue
 		}
 

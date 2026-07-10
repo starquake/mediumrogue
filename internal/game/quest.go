@@ -328,7 +328,10 @@ func (w *World) checkReachQuestsLocked() {
 }
 
 // completeQuestLocked pays every current holder the full reward (the human
-// +XP% passive applies — quest XP is XP earned) and announces.
+// +XP% passive applies — quest XP is XP earned) and announces. The announce
+// text prints the base rewardXP, not each holder's actual award, since
+// holders can differ per-species (Human gets +HumanXPBonusPercent); the
+// wording says so explicitly rather than implying it is everyone's exact take.
 func (w *World) completeQuestLocked(q *quest) {
 	q.state = protocol.QuestCompleted
 
@@ -355,5 +358,7 @@ func (w *World) completeQuestLocked(q *quest) {
 	}
 
 	slices.Sort(names)
-	w.announce("system", fmt.Sprintf("Quest complete: %s — %s gain %d XP", q.name, strings.Join(names, ", "), q.rewardXP))
+	msg := fmt.Sprintf("Quest complete: %s — %s each gain %d XP (species bonuses apply)",
+		q.name, strings.Join(names, ", "), q.rewardXP)
+	w.announce("system", msg)
 }
