@@ -31,7 +31,7 @@ func rangedDamage(t *testing.T, class string) int {
 }
 
 // TestBowIntentDamagesHostileAtRange: a Rogue with a bow submits an attack at a
-// monster three hexes away (within BowRange, out of melee); the monster takes
+// monster three hexes away (within the shortbow's range, out of melee); the monster takes
 // exactly the level-1 bow damage and the rogue does not move (a shot replaces
 // the move). ResolveCombatOnlyForTest runs the combat phases without the monster
 // AI, so the monster holds its hex and the shot lands on a fixed target.
@@ -42,7 +42,7 @@ func TestBowIntentDamagesHostileAtRange(t *testing.T) {
 	w.SetSeedForTest(1)
 
 	rogueHex := protocol.Hex{Q: 0, R: 0}
-	monsterHex := protocol.Hex{Q: 3, R: 0} // distance 3 <= BowRange(4), not adjacent
+	monsterHex := protocol.Hex{Q: 3, R: 0} // distance 3 <= shortbow range (4), not adjacent
 
 	rogueID, token := w.PlaceEntityForTest(rogueHex)
 	w.SetClassForTest(rogueID, protocol.ClassRogue)
@@ -66,7 +66,7 @@ func TestBowIntentDamagesHostileAtRange(t *testing.T) {
 	}
 }
 
-// TestBowIntentOutOfRangeRejected: an attack aimed beyond BowRange is rejected at
+// TestBowIntentOutOfRangeRejected: an attack aimed beyond the shortbow's range is rejected at
 // submit with ErrOutOfRange, so no damage is queued.
 func TestBowIntentOutOfRangeRejected(t *testing.T) {
 	t.Parallel()
@@ -76,7 +76,7 @@ func TestBowIntentOutOfRangeRejected(t *testing.T) {
 	rogueID, token := w.PlaceEntityForTest(protocol.Hex{Q: 0, R: 0})
 	w.SetClassForTest(rogueID, protocol.ClassRogue)
 
-	// Distance 5 > BowRange(4).
+	// Distance 5 > shortbow range (4).
 	err := w.SubmitIntent(attackIntent(rogueID, token, protocol.Hex{Q: 5, R: 0}))
 	if got, want := err, game.ErrOutOfRange; !errors.Is(got, want) {
 		t.Errorf("err = %v, want %v", got, want)
@@ -100,7 +100,7 @@ func TestFighterHasNoRangedWeapon(t *testing.T) {
 }
 
 // TestMageAoEDamagesAllHostiles: a Mage AoE at a target hex hits every hostile
-// within MageAoERadius — two monsters (one on the hex, one on a neighbour) both
+// within the ember-focus's AoE radius — two monsters (one on the hex, one on a neighbour) both
 // take the level-1 magic damage.
 func TestMageAoEDamagesAllHostiles(t *testing.T) {
 	t.Parallel()
@@ -109,8 +109,8 @@ func TestMageAoEDamagesAllHostiles(t *testing.T) {
 	w.SetSeedForTest(1)
 
 	mageHex := protocol.Hex{Q: 0, R: 0}
-	target := protocol.Hex{Q: 3, R: 0}   // distance 3 <= MageRange(4)
-	neighbor := protocol.Hex{Q: 4, R: 0} // distance 1 from target <= MageAoERadius(1)
+	target := protocol.Hex{Q: 3, R: 0}   // distance 3 <= ember-focus range (4)
+	neighbor := protocol.Hex{Q: 4, R: 0} // distance 1 from target <= ember-focus AoE radius (1)
 
 	mageID, token := w.PlaceEntityForTest(mageHex)
 	w.SetClassForTest(mageID, protocol.ClassMage)

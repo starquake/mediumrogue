@@ -1,4 +1,5 @@
 import type { ChatRequest, ErrorResponse, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
+import { IntentEquip } from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
 
@@ -71,20 +72,8 @@ export async function join(
   return joined;
 }
 
-/**
- * Queues an intent for the next turn — "step to target" (kind "move") or a
- * ranged attack at target (kind "attack"). Resolves to true when the server
- * accepted the intent; false on rejection (not adjacent/not walkable for a
- * move, out of range/no ranged weapon for an attack, stale identity).
- * Movement itself only ever arrives via the turn bundle — the client never
- * moves an entity locally.
- */
-export async function submitIntent(
-  identity: Pick<Identity, "entityId" | "token">,
-  target: Hex,
-  kind: string,
-): Promise<boolean> {
-  const body: IntentRequest = { entityId: identity.entityId, token: identity.token, target, kind };
+/** POSTs an IntentRequest and reports whether the server accepted it (202). */
+async function postIntent(body: IntentRequest): Promise<boolean> {
   const resp = await fetch("/api/intent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -92,6 +81,42 @@ export async function submitIntent(
   });
 
   return resp.status === 202;
+}
+
+/**
+ * Queues an intent for the next turn — "step to target" (kind "move") or a
+ * ranged attack at target (kind "attack"). Resolves to true when the server
+ * accepted the intent; false on rejection (not adjacent/not walkable for a
+ * move, out of range/no ranged weapon for an attack, stale identity).
+ * Movement itself only ever arrives via the turn bundle — the client never
+ * moves an entity locally. itemId is unused by move/attack — see submitEquip.
+ */
+export async function submitIntent(
+  identity: Pick<Identity, "entityId" | "token">,
+  target: Hex,
+  kind: string,
+): Promise<boolean> {
+  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0 });
+}
+
+/**
+ * Queues an equip intent for an owned item. Outside a combat bubble the
+ * server applies the swap immediately (still just a 202 ack here — the
+ * result rides the next turn bundle's Entity.Items); inside one it becomes
+ * this turn's action, same as move/attack. target is unused by an equip
+ * intent server-side — the zero hex is sent to satisfy the wire shape.
+ */
+export async function submitEquip(
+  identity: Pick<Identity, "entityId" | "token">,
+  itemId: number,
+): Promise<boolean> {
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target: { q: 0, r: 0 },
+    kind: IntentEquip,
+    itemId,
+  });
 }
 
 /**

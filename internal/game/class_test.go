@@ -174,45 +174,12 @@ func TestRespawnScalesMaxHPToLevel(t *testing.T) {
 	}
 }
 
-// TestCloseWeaponByClass: each class's default close (bump) weapon deals its
-// distinct damage, and an unknown/empty class falls back to fists.
-func TestCloseWeaponByClass(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		class      string
-		wantDamage int
-	}{
-		{protocol.ClassFighter, protocol.SwordDamage},
-		{protocol.ClassRogue, protocol.DaggerDamage},
-		{protocol.ClassMage, protocol.StaffBonkDamage},
-		{"", protocol.FistsDamage},
-		{"necromancer", protocol.FistsDamage},
-	}
-
-	for _, tc := range cases {
-		if got, want := game.CloseWeaponDamageForTest(tc.class, 1), tc.wantDamage; got != want {
-			t.Errorf("CloseWeaponDamageForTest(%q, 1) = %d, want %d", tc.class, got, want)
-		}
-	}
-}
-
-// TestWeaponDamageScalesWithLevel: close-weapon damage grows by DamagePerLevel
-// per level above 1.
-func TestWeaponDamageScalesWithLevel(t *testing.T) {
-	t.Parallel()
-
-	const level = 3
-
-	got := game.CloseWeaponDamageForTest(protocol.ClassFighter, level)
-
-	if want := protocol.SwordDamage + protocol.DamagePerLevel*(level-1); got != want {
-		t.Errorf("CloseWeaponDamageForTest(fighter, %d) = %d, want %d", level, got, want)
-	}
-}
-
 // TestRangedWeaponByClass: Rogue has a bow (single-target, ranged), Mage has AoE
-// magic, and Fighter (and any other class) has no ranged weapon.
+// magic, and Fighter (and any other class) has no ranged weapon. (Close-weapon
+// defaults and level scaling are pinned directly against the registry in
+// items_test.go's TestClassDefaultDamageMatchesLiveBalance /
+// TestItemDamageScalesWithLevel — the closeWeapon/rangedWeapon helpers this
+// file used to exercise were replaced by the item registry in 6b.4.)
 func TestRangedWeaponByClass(t *testing.T) {
 	t.Parallel()
 
@@ -224,11 +191,11 @@ func TestRangedWeaponByClass(t *testing.T) {
 			t.Fatal("rogue should have a ranged weapon")
 		}
 
-		if got, want := dmg, protocol.BowDamage; got != want {
+		if got, want := dmg, game.ItemDamageForTest("shortbow", 1); got != want {
 			t.Errorf("rogue bow damage = %d, want %d", got, want)
 		}
 
-		if got, want := rangeHex, protocol.BowRange; got != want {
+		if got, want := rangeHex, game.ItemRangeForTest("shortbow"); got != want {
 			t.Errorf("rogue bow range = %d, want %d", got, want)
 		}
 
@@ -245,15 +212,15 @@ func TestRangedWeaponByClass(t *testing.T) {
 			t.Fatal("mage should have a ranged weapon")
 		}
 
-		if got, want := dmg, protocol.StaffMagicDamage; got != want {
+		if got, want := dmg, game.ItemDamageForTest("ember-focus", 1); got != want {
 			t.Errorf("mage magic damage = %d, want %d", got, want)
 		}
 
-		if got, want := rangeHex, protocol.MageRange; got != want {
+		if got, want := rangeHex, game.ItemRangeForTest("ember-focus"); got != want {
 			t.Errorf("mage magic range = %d, want %d", got, want)
 		}
 
-		if got, want := aoe, protocol.MageAoERadius; got != want {
+		if got, want := aoe, game.ItemAoERadiusForTest("ember-focus"); got != want {
 			t.Errorf("mage magic aoeRadius = %d, want %d", got, want)
 		}
 	})

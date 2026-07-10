@@ -10,11 +10,13 @@ import (
 // Pinned seeds for the elf crit roll (rng.IntN(100) < ElfCritChancePercent).
 // Found by probing the exact draw order of each scenario: a crit seed forces the
 // roll under the threshold, a miss seed forces it over. Different scenarios draw
-// the rng differently (melee vs bow), so each has its own pair.
+// the rng differently (melee vs bow — the bow site now draws the victim-pick
+// roll before the crit-chance roll, pipeline order per rollDamageLocked), so
+// each has its own pair.
 const (
 	meleeCritSeed = 1 // elf melee bump crits at this seed
 	meleeMissSeed = 0 // elf melee bump misses (base damage) at this seed
-	bowCritSeed   = 4 // elf bow shot crits at this seed
+	bowCritSeed   = 1 // elf bow shot crits at this seed
 	bowMissSeed   = 0 // elf bow shot misses (base damage) at this seed
 )
 
@@ -42,7 +44,7 @@ func TestHumanKillXPBonus(t *testing.T) {
 	w.SetSpeciesForTest(dwarf, protocol.SpeciesDwarf)
 
 	monsterID := w.PlaceMonsterForTest(center)
-	w.SetHPForTest(monsterID, protocol.SwordDamage) // dies to a single hit
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // dies to a single hit
 
 	// One world resolution forms the bubble around the two idle players and the
 	// monster; the kill then lands inside the bubble (kill XP is only earned in a
@@ -104,10 +106,12 @@ func elfBumpDamage(t *testing.T, seed int64) int {
 func TestElfCritMelee(t *testing.T) {
 	t.Parallel()
 
+	swordDamage := game.ItemDamageForTest("iron-sword", 1)
+
 	t.Run("crit", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := elfBumpDamage(t, meleeCritSeed), protocol.ElfCritMultiplier*protocol.SwordDamage; got != want {
+		if got, want := elfBumpDamage(t, meleeCritSeed), protocol.ElfCritMultiplier*swordDamage; got != want {
 			t.Errorf("elf crit bump = %d, want %d (%dx sword)", got, want, protocol.ElfCritMultiplier)
 		}
 	})
@@ -115,7 +119,7 @@ func TestElfCritMelee(t *testing.T) {
 	t.Run("miss", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := elfBumpDamage(t, meleeMissSeed), protocol.SwordDamage; got != want {
+		if got, want := elfBumpDamage(t, meleeMissSeed), swordDamage; got != want {
 			t.Errorf("elf non-crit bump = %d, want %d (base sword)", got, want)
 		}
 	})
@@ -131,7 +135,7 @@ func elfBowDamage(t *testing.T, seed int64) int {
 	w.SetSeedForTest(seed)
 
 	rogueHex := protocol.Hex{Q: 0, R: 0}
-	monsterHex := protocol.Hex{Q: 3, R: 0} // distance 3 <= BowRange(4), not adjacent
+	monsterHex := protocol.Hex{Q: 3, R: 0} // distance 3 <= shortbow range (4), not adjacent
 
 	rogueID, token := w.PlaceEntityForTest(rogueHex)
 	w.SetClassForTest(rogueID, protocol.ClassRogue)
@@ -161,10 +165,12 @@ func elfBowDamage(t *testing.T, seed int64) int {
 func TestElfCritBow(t *testing.T) {
 	t.Parallel()
 
+	bowDamage := game.ItemDamageForTest("shortbow", 1)
+
 	t.Run("crit", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := elfBowDamage(t, bowCritSeed), protocol.ElfCritMultiplier*protocol.BowDamage; got != want {
+		if got, want := elfBowDamage(t, bowCritSeed), protocol.ElfCritMultiplier*bowDamage; got != want {
 			t.Errorf("elf crit bow = %d, want %d (%dx bow)", got, want, protocol.ElfCritMultiplier)
 		}
 	})
@@ -172,7 +178,7 @@ func TestElfCritBow(t *testing.T) {
 	t.Run("miss", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := elfBowDamage(t, bowMissSeed), protocol.BowDamage; got != want {
+		if got, want := elfBowDamage(t, bowMissSeed), bowDamage; got != want {
 			t.Errorf("elf non-crit bow = %d, want %d (base bow)", got, want)
 		}
 	})
@@ -248,7 +254,7 @@ func TestDwarfDamageReductionRanged(t *testing.T) {
 		t.Fatalf("dwarf monster %d missing after a bow shot", monsterID)
 	}
 
-	if got, want := 100-monster.HP, protocol.BowDamage-protocol.DwarfDamageReduction; got != want {
+	if got, want := 100-monster.HP, game.ItemDamageForTest("shortbow", 1)-protocol.DwarfDamageReduction; got != want {
 		t.Errorf("dwarf ranged hit = %d, want %d (bow reduced by %d)",
 			got, want, protocol.DwarfDamageReduction)
 	}
@@ -270,7 +276,7 @@ func TestDwarfDamageReductionFloor(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, center)
 
 	pid, _ := w.PlaceEntityForTest(center)
-	w.SetClassForTest(pid, "") // unarmed: closeWeapon falls back to fists (1 damage)
+	w.SetClassForTest(pid, "") // unarmed: closeDefFor falls back to fists (1 damage)
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetSpeciesForTest(monsterID, protocol.SpeciesDwarf)
@@ -322,13 +328,13 @@ func TestElfCritThenDwarfDR(t *testing.T) {
 		t.Fatalf("dwarf monster %d missing after an elf crit bump", monsterID)
 	}
 
-	wantDealt := protocol.ElfCritMultiplier*protocol.SwordDamage - protocol.DwarfDamageReduction
+	wantDealt := protocol.ElfCritMultiplier*game.ItemDamageForTest("iron-sword", 1) - protocol.DwarfDamageReduction
 	if got := protocol.MonsterMaxHP - monster.HP; got != wantDealt {
 		t.Errorf("elf-crits-dwarf dealt = %d, want %d (crit THEN DR)", got, wantDealt)
 	}
 
 	// Guard against the reversed order producing the same number by accident.
-	reversed := (protocol.SwordDamage - protocol.DwarfDamageReduction) * protocol.ElfCritMultiplier
+	reversed := (game.ItemDamageForTest("iron-sword", 1) - protocol.DwarfDamageReduction) * protocol.ElfCritMultiplier
 	if reversed == wantDealt {
 		t.Fatalf("test cannot distinguish ordering: crit-then-DR (%d) == DR-then-crit (%d)", wantDealt, reversed)
 	}
@@ -377,7 +383,7 @@ func TestNonElfNeverCrits(t *testing.T) {
 					t.Fatalf("monster %d missing (seed %d, %s)", monsterID, seed, sp.name)
 				}
 
-				if got, want := protocol.MonsterMaxHP-monster.HP, protocol.SwordDamage; got != want {
+				if got, want := protocol.MonsterMaxHP-monster.HP, game.ItemDamageForTest("iron-sword", 1); got != want {
 					t.Fatalf("%s bump at seed %d = %d, want %d (no crit for non-elf)",
 						sp.name, seed, got, want)
 				}

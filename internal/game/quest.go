@@ -333,10 +333,11 @@ func (w *World) checkReachQuestsLocked() {
 	}
 }
 
-// completeQuestLocked pays every current holder the full reward (the human
-// +XP% passive applies — quest XP is XP earned) and announces. The announce
-// text prints the base rewardXP, not each holder's actual award, since
-// holders can differ per-species (Human gets +HumanXPBonusPercent); the
+// completeQuestLocked pays every current holder the full reward through the
+// modifier pipeline (evEarnXP — same event the kill award uses, so the human
+// +XP% passive and any future XP cards apply identically) and announces. The
+// announce text prints the base rewardXP, not each holder's actual award,
+// since holders can differ per-species (Human gets +HumanXPBonusPercent); the
 // wording says so explicitly rather than implying it is everyone's exact take.
 func (w *World) completeQuestLocked(q *quest) {
 	q.state = protocol.QuestCompleted
@@ -353,10 +354,7 @@ func (w *World) completeQuestLocked(q *quest) {
 			continue
 		}
 
-		award := q.rewardXP
-		if e.species == protocol.SpeciesHuman {
-			award = award * (percentBase + protocol.HumanXPBonusPercent) / percentBase
-		}
+		award := applyRules(evEarnXP, q.rewardXP, speciesCards(e.species), ruleCtx{})
 
 		e.xp += award
 		syncMaxHPLocked(e)

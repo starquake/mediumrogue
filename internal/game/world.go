@@ -37,6 +37,12 @@ var (
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
 	ErrOutOfRange = errors.New("target is out of range")
+	// ErrItemNotOwned rejects an equip intent naming an item instance id the
+	// entity does not own.
+	ErrItemNotOwned = errors.New("item not owned")
+	// ErrWrongClass rejects an equip intent naming an item whose class does not
+	// match the entity's class.
+	ErrWrongClass = errors.New("item is for a different class")
 	// ErrInvalidClass rejects a Join for a new entity whose Class is not one of
 	// ClassFighter, ClassRogue, ClassMage.
 	ErrInvalidClass = errors.New("invalid class")
@@ -68,12 +74,14 @@ type entity struct {
 	// fewer than two members dissolves (see leavePartyLocked).
 	partyID int64
 	// class is the player's class (protocol.ClassFighter/Rogue/Mage), validated
-	// and set at Join; empty for monsters. It selects the entity's weapon
-	// loadout and base HP via the class.go helpers.
+	// and set at Join; empty for monsters. It selects the entity's base HP
+	// (class.go's maxHPFor) and, via classDefaultIDs, the starting items
+	// grantDefaultsLocked equips at Join.
 	class string
 	// species is the player's species (protocol.SpeciesHuman/Elf/Dwarf), validated
-	// and set at Join; empty for monsters. It drives the combat passives in
-	// species.go (human XP bonus, elf crit, dwarf damage reduction).
+	// and set at Join; empty for monsters. It selects the passive rule cards
+	// (speciesCards in content.go: human XP bonus, elf crit, dwarf damage
+	// reduction) the pipeline (rules.go) applies at combat/XP events.
 	species string
 	hp      int
 	maxHP   int
@@ -100,6 +108,22 @@ type entity struct {
 	// time, before its first stream opens): the start of its removal-grace clock.
 	// Only consulted while streams == 0. Players only.
 	disconnectedAt time.Time
+	// items is every item instance this entity owns (players only; monsters own
+	// none — they fight with the flat monsterClawsDef profile). Granted at Join
+	// by grantDefaultsLocked; gear survives death (never cleared by respawn).
+	items []itemInstance
+	// closeSlot and rangedSlot are the instance ids currently equipped in each
+	// slot, or 0 for empty. 0 is never a valid instance id (nextID starts
+	// counting from 1). See equippedDef/closeDefFor/rangedDefFor (items.go).
+	closeSlot, rangedSlot int64
+	// pendingEquip is the item instance id queued by an equip intent submitted
+	// inside a combat bubble — the swap becomes this turn's action (see
+	// queueEquipLocked) instead of applying immediately. 0 means no equip is
+	// queued. Applied and cleared by resolveCombatLocked's pending-equip pass;
+	// also cleared on death (resolveDeathsLocked) as a safety net for
+	// resolution paths that skip that pass (e.g. the ResolveCombatOnlyForTest
+	// test bridge).
+	pendingEquip int64
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -165,6 +189,12 @@ type World struct {
 	// auto-abandon). Defaults to a no-op so tests without chat wiring pass; set
 	// via SetAnnounce.
 	announce func(sender, text string)
+	// groundItems is every dropped item currently lying on the map, keyed by
+	// hex. Populated by dropLootLocked (a slain monster's death hex), drained
+	// by pickupLocked (a player walking onto the hex takes everything there).
+	// Instance ids are minted from the same nextID sequence as entities and
+	// owned items — unique across the whole world.
+	groundItems map[protocol.Hex][]itemInstance
 }
 
 // NewWorld builds the world from a procedurally generated map (GenerateMap,
@@ -208,6 +238,7 @@ func NewWorld(
 		seed:            seed,
 		quests:          generateQuests(worldSeed, worldMap),
 		announce:        func(string, string) {},
+		groundItems:     make(map[protocol.Hex][]itemInstance),
 	}
 }
 
@@ -386,6 +417,7 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	}
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
+	w.grantDefaultsLocked(e)
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
@@ -495,7 +527,10 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 // hex — the server pathfinds from the entity's current position and the walk
 // advances one hex per resolved turn. An "attack" intent queues a ranged
 // attack at Target (bow single-target or mage AoE) and clears the route — you
-// shoot, you don't move. Any other Kind (including empty) is rejected with
+// shoot, you don't move. An "equip" intent (ItemID) swaps an owned item into
+// its slot: outside a combat bubble it is free and immediate; inside one it
+// is the player's action for the turn (clearing any queued move/attack, see
+// queueEquipLocked). Any other Kind (including empty) is rejected with
 // ErrInvalidIntentKind. For an entity inside a combat bubble the submission
 // also counts as a lock-in for the bubble's action-gated turn, and once every
 // player member has locked in the bubble resolves immediately. The latest
@@ -516,6 +551,10 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 		}
 	case protocol.IntentAttack:
 		if err := w.queueAttackLocked(e, req.Target); err != nil {
+			return err
+		}
+	case protocol.IntentEquip:
+		if err := w.queueEquipLocked(e, req.ItemID); err != nil {
 			return err
 		}
 	default:
@@ -543,8 +582,10 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 }
 
 // queueMoveLocked validates a move intent and sets the entity's route to a
-// walkable, reachable target, clearing any pending ranged attack (the latest
-// intent in the window wins). Callers hold w.mu.
+// walkable, reachable target, clearing any pending ranged attack or queued
+// equip (the latest intent in the window wins — the swap is a whole turn's
+// action, so a move submitted after an equip must displace it exactly as an
+// equip displaces a queued move). Callers hold w.mu.
 func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 	if !w.walkableLocked(target) {
 		return ErrNotWalkable
@@ -557,37 +598,106 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 
 	e.path = path
 	e.attackTarget = nil
+	e.pendingEquip = 0
 
 	return nil
 }
 
 // queueAttackLocked validates a ranged attack intent and queues it: the entity
-// must have a ranged weapon (else ErrNoRangedWeapon) and the target must be
-// within its reach at submit time (else ErrOutOfRange). On success it records
-// the target and clears the route — a ranged attack replaces the move for this
-// turn. The resolution-time re-check is defensive (nothing relocates a shooter
-// mid-turn today; it guards a future knockback/forced-move mechanic).
+// must have a ranged weapon equipped (else ErrNoRangedWeapon) and the target must
+// be within its reach at submit time (else ErrOutOfRange). On success it records
+// the target and clears the route and any queued equip — a ranged attack
+// replaces the move AND the swap for this turn (the latest intent in the
+// window wins). The resolution-time re-check is defensive (nothing relocates
+// a shooter mid-turn today; it guards a future knockback/forced-move
+// mechanic).
 //
-// INVARIANT: max(BowRange, MageRange+MageAoERadius) must stay <= CombatRadius, so
-// any entity a ranged attack can reach is always already in the shooter's combat
-// bubble. If a longer-reach weapon is ever added, a monster could be ranged-killed
-// in the WORLD domain (where resolveWorldTurnLocked awards no kill-XP) — add an
-// in-bubble/target-in-member-set guard here then. Callers hold w.mu.
+// INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
+// CombatRadius (validateMaxReach, run at content load by mustValidateContent),
+// so any entity a ranged attack can reach is always already in the shooter's
+// combat bubble. If that invariant were ever violated, a monster could be
+// ranged-killed in the WORLD domain (where resolveWorldTurnLocked awards no
+// kill-XP) — add an in-bubble/target-in-member-set guard here then. Callers
+// hold w.mu.
 func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
-	wpn, ok := rangedWeapon(e.class)
-	if !ok {
+	def := rangedDefFor(e)
+	if def == nil {
 		return ErrNoRangedWeapon
 	}
 
-	if HexDistance(e.hex, target) > wpn.rangeHex {
+	if HexDistance(e.hex, target) > def.rangeHex {
 		return ErrOutOfRange
 	}
 
 	t := target
 	e.attackTarget = &t
 	e.path = nil
+	e.pendingEquip = 0
 
 	return nil
+}
+
+// queueEquipLocked validates and applies/queues an equip. Outside a bubble the
+// swap is immediate and free — it also clears any stale pendingEquip left over
+// from a bubble that dissolved before its queued swap resolved, so that swap
+// can never resurrect and silently override this free equip on the entity's
+// next combat resolution. Inside a bubble, the swap becomes the player's
+// action this turn (clearing move/attack — you swap, you don't also act).
+// Callers hold w.mu.
+func (w *World) queueEquipLocked(e *entity, itemID int64) error {
+	inst, ok := e.itemByID(itemID)
+	if !ok {
+		return ErrItemNotOwned
+	}
+
+	def := itemDefByID[inst.defID]
+	if def.class != e.class {
+		return ErrWrongClass
+	}
+
+	if e.bubbleID == 0 {
+		e.applyEquip(inst.id, def.slot)
+		e.pendingEquip = 0
+
+		return nil
+	}
+
+	e.pendingEquip = itemID
+	e.path = nil
+	e.attackTarget = nil
+
+	return nil
+}
+
+// applyPendingEquip applies and clears e's queued equip, if any. Shared by
+// the resolution pass in resolveCombatLocked (the swap is the bubble-turn's
+// action) and by the bubble-dissolve branch of recomputeBubblesLocked (the
+// bubble vanished before its turn resolved — the player is back in world
+// time, where equips are free and immediate, so the queued swap applies now
+// instead of leaking into a later world turn as a silent late swap).
+func applyPendingEquip(e *entity) {
+	if e.pendingEquip == 0 {
+		return
+	}
+
+	if inst, ok := e.itemByID(e.pendingEquip); ok {
+		e.applyEquip(inst.id, itemDefByID[inst.defID].slot)
+	}
+
+	e.pendingEquip = 0
+}
+
+// applyEquip swaps instID into slot (protocol.ItemSlotClose or
+// ItemSlotRanged), replacing whatever instance was equipped there. Callers
+// must have already validated ownership and class (queueEquipLocked, or the
+// pending-equip pass in resolveCombatLocked).
+func (e *entity) applyEquip(instID int64, slot string) {
+	switch slot {
+	case protocol.ItemSlotClose:
+		e.closeSlot = instID
+	case protocol.ItemSlotRanged:
+		e.rangedSlot = instID
+	}
 }
 
 // Snapshot is the current turn bundle: turn number plus every entity,
@@ -601,6 +711,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: e.name, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
 			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
+			Items: itemViewsLocked(e),
 		})
 	}
 
@@ -624,10 +735,42 @@ func (w *World) Snapshot() protocol.TurnEvent {
 		})
 	}
 
+	groundItems := make([]protocol.GroundItemView, 0, len(w.groundItems))
+
+	for hex, items := range w.groundItems {
+		for _, it := range items {
+			def := itemDefByID[it.defID]
+			groundItems = append(groundItems, protocol.GroundItemView{ID: it.id, Hex: hex, DefID: it.defID, Name: def.name})
+		}
+	}
+
+	slices.SortFunc(groundItems, func(a, b protocol.GroundItemView) int { return int(a.ID - b.ID) })
+
 	return protocol.TurnEvent{
 		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
-		Quests: questViews,
+		Quests: questViews, GroundItems: groundItems,
 	}
+}
+
+// itemViewsLocked builds the wire item list for one entity: an ItemView per
+// owned item instance (Equipped true iff it currently fills the close or
+// ranged slot). Always a non-nil slice — empty (not null) for a monster
+// (which owns no items — see entity.items) or a player who owns none, so the
+// wire shape matches the generated TS type's non-optional ItemView[]. Callers
+// hold w.mu.
+func itemViewsLocked(e *entity) []protocol.ItemView {
+	views := make([]protocol.ItemView, 0, len(e.items))
+
+	for _, it := range e.items {
+		def := itemDefByID[it.defID]
+		views = append(views, protocol.ItemView{
+			ID: it.id, DefID: it.defID, Name: def.name, Slot: def.slot,
+			Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
+			Equipped: it.id == e.closeSlot || it.id == e.rangedSlot,
+		})
+	}
+
+	return views
 }
 
 // opposing reports whether a and b are of different factions (player vs
@@ -665,18 +808,6 @@ func removeEntity(occs []*entity, m *entity) []*entity {
 	}
 
 	return occs
-}
-
-// attackDamage is the melee/bump damage an attacker deals. A monster deals the
-// flat MonsterAttackDamage; a player deals its class close-weapon damage,
-// level-scaled (fighter = sword, rogue = dagger, mage = staff bonk, unarmed =
-// fists) via the class.go single source of truth.
-func attackDamage(e *entity) int {
-	if e.kind == protocol.EntityMonster {
-		return protocol.MonsterAttackDamage
-	}
-
-	return weaponDamage(closeWeapon(e.class), levelFor(e.xp))
 }
 
 // pendingBump is a move onto an opposing-held hex, re-checked post-move.
@@ -724,12 +855,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 	if killed > 0 {
 		for _, e := range members {
 			if e.kind == protocol.EntityPlayer && e.hp > 0 {
-				award := killed * protocol.MonsterXP
-				if e.species == protocol.SpeciesHuman {
-					// Human passive: a flat +HumanXPBonusPercent on every kill award.
-					award = award * (percentBase + protocol.HumanXPBonusPercent) / percentBase
-				}
-
+				award := applyRules(evEarnXP, killed*protocol.MonsterXP, speciesCards(e.species), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
 			}
@@ -757,6 +883,14 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
 	w.thinkMonstersLocked(members, monsterTargets)
 
+	// Pending equips are this turn's action for any member that queued one
+	// (queueEquipLocked, inside a bubble): apply the swap before any damage
+	// resolves — members arrive id-sorted, so this is deterministic like the
+	// rest of the phased resolution.
+	for _, e := range members {
+		applyPendingEquip(e)
+	}
+
 	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
 
@@ -767,9 +901,64 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity) int {
 	}
 
 	attacks := w.moveAndBumpLocked(rng, byHex, members)
+
+	// Walk-on pickup happens after movement lands and before damage: a player
+	// who just stepped onto a ground-item hex collects it this same turn, but
+	// an item dropped THIS turn (resolveDeathsLocked, below) is not visible
+	// to pick up until the earliest a player can walk onto that hex — next
+	// turn. members is id-sorted (every caller sorts before calling
+	// resolveCombatLocked), so two players landing on the same hex resolve
+	// lowest-id-first, mirroring every other simultaneous tie-break here.
+	w.pickupLocked(members)
+
 	w.attackLocked(rng, byHex, attacks)
 
-	return w.resolveDeathsLocked(members)
+	return w.resolveDeathsLocked(rng, members)
+}
+
+// allyInBubbleLocked reports whether another living same-faction entity shares
+// e's bubble — the pack-bow style condition. Callers hold w.mu.
+func (w *World) allyInBubbleLocked(e *entity) bool {
+	if e.bubbleID == 0 {
+		return false
+	}
+
+	b, ok := w.bubbles[e.bubbleID]
+	if !ok {
+		return false
+	}
+
+	for id := range b.members {
+		if o, ok := w.entities[id]; ok && o != e && o.kind == e.kind && o.hp > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// rollDamageLocked runs one hit through the pipeline: the attacker's
+// deal-damage cards (species + the acting weapon's rules) then the victim's
+// take-damage cards (species + the rules of BOTH the victim's equipped defs,
+// close then ranged — a hit lands on the whole entity, not just the slot that
+// happens to be attacking). weapon is the attacker's acting weapon def
+// (closeDefFor for a bump, rangedDefFor for a shot); it is never nil — every
+// combat site resolves a def (fists/claws fallback for close, a real
+// equipped item for ranged, since a nil ranged def never reaches here — see
+// queueAttackLocked/resolveRangedLocked). Every damage number in the game
+// flows through here. Callers hold w.mu.
+func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weapon *itemDef, base int) int {
+	ctx := ruleCtx{attacker: attacker, victim: victim, allyInBubble: w.allyInBubbleLocked(attacker), rng: rng}
+
+	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
+	dealt := applyRules(evDealDamage, base, attackerCards, ctx)
+
+	victimCards := slices.Concat(speciesCards(victim.species), closeDefFor(victim).rules)
+	if ranged := rangedDefFor(victim); ranged != nil {
+		victimCards = slices.Concat(victimCards, ranged.rules)
+	}
+
+	return applyRules(evTakeDamage, dealt, victimCards, ctx)
 }
 
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
@@ -920,9 +1109,15 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 		victim := victims[rng.IntN(len(victims))]
-		base := attackDamage(a.attacker)
-		crit := critMultiplier(a.attacker, rng)
-		damage[victim.id] += applyDR(victim, base*crit)
+
+		// Melee/bump damage: the attacker's equipped close-slot item (or the
+		// fists/claws fallback — closeDefFor), level-scaled via itemDamage. A
+		// monster's closeDefFor is always monsterClawsDef, reproducing the old
+		// flat MonsterAttackDamage (levelFor(0) == 1, so the level-scaling term
+		// is 0). Resolved once here (mirroring resolveRangedLocked's def :=
+		// rangedDefFor(e) below) so the def is looked up exactly once per hit.
+		weapon := closeDefFor(a.attacker)
+		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, weapon, itemDamage(weapon, levelFor(a.attacker.xp)))
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
@@ -960,24 +1155,24 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		target := *e.attackTarget
 		e.attackTarget = nil // resolved, whether it hits or fizzles
 
-		wpn, ok := rangedWeapon(e.class)
-		if !ok {
-			continue
+		def := rangedDefFor(e)
+		if def == nil {
+			continue // unequipped mid-turn (equip intent, Task 4) → fizzle
 		}
 
-		if HexDistance(e.hex, target) > wpn.rangeHex {
+		if HexDistance(e.hex, target) > def.rangeHex {
 			continue // moved out of range this turn → fizzle
 		}
 
-		dmg := weaponDamage(wpn, levelFor(e.xp))
+		dmg := itemDamage(def, levelFor(e.xp))
 
-		if wpn.aoeRadius == 0 {
-			w.resolveBowLocked(rng, byHex, e, target, dmg, damage)
+		if def.aoeRadius == 0 {
+			w.resolveBowLocked(rng, byHex, e, def, target, dmg, damage)
 
 			continue
 		}
 
-		w.resolveAoELocked(rng, byHex, e, target, wpn.aoeRadius, dmg, damage)
+		w.resolveAoELocked(rng, byHex, e, def, target, def.aoeRadius, dmg, damage)
 	}
 }
 
@@ -986,7 +1181,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 // stack. An empty or friendly-only target hex deals nothing. Callers hold w.mu.
 func (w *World) resolveBowLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
-	attacker *entity, target protocol.Hex, dmg int, damage map[int64]int,
+	attacker *entity, weapon *itemDef, target protocol.Hex, dmg int, damage map[int64]int,
 ) {
 	victims := opposingOccupants(byHex[target], attacker)
 	if len(victims) == 0 {
@@ -995,29 +1190,37 @@ func (w *World) resolveBowLocked(
 
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
-	crit := critMultiplier(attacker, rng)
 	victim := victims[rng.IntN(len(victims))]
-	damage[victim.id] += applyDR(victim, dmg*crit)
+	damage[victim.id] += w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
 // entity within aoeRadius of the target hex. Same-faction entities (the caster
-// and friendly players) are skipped — no friendly fire. The crit is rolled once
-// for the caster (an elf's crit cast crits its whole splash) before the target
-// loop, then applied per target after each victim's damage reduction. Callers
-// hold w.mu.
+// and friendly players) are skipped — no friendly fire. Each victim rolls the
+// pipeline independently (an elf caster can crit some splash victims and not
+// others — per-victim rolls, not one shared roll for the whole cast), in id
+// order: byHex is populated by ranging w.entities (a map), so without a sort
+// the per-victim roll order — and thus the rng stream each victim consumes —
+// would depend on incidental map iteration order instead of the seed alone.
+// Callers hold w.mu.
 func (w *World) resolveAoELocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
-	attacker *entity, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
+	attacker *entity, weapon *itemDef, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
 ) {
-	crit := critMultiplier(attacker, rng)
+	var victims []*entity
 
 	for _, occs := range byHex {
 		for _, o := range occs {
 			if opposing(attacker, o) && HexDistance(target, o.hex) <= aoeRadius {
-				damage[o.id] += applyDR(o, dmg*crit)
+				victims = append(victims, o)
 			}
 		}
+	}
+
+	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
+
+	for _, o := range victims {
+		damage[o.id] += w.rollDamageLocked(rng, attacker, o, weapon, dmg)
 	}
 }
 
@@ -1040,13 +1243,17 @@ func syncMaxHPLocked(e *entity) {
 func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
 
 // resolveDeathsLocked floors a dying player's XP to its level start, removes dead
-// monsters, and respawns dead players (full HP, fresh spawn hex, same id + token
-// — the client stays joined) among the given member set. It returns the number of
+// monsters (rolling each one's ground-loot drop first — dropLootLocked), and
+// respawns dead players (full HP, fresh spawn hex, same id + token — the
+// client stays joined) among the given member set. It returns the number of
 // monsters that died; the kill-XP award lives in the bubble-resolution path
 // (resolveBubbleTurnLocked), so a kill only pays inside a real fight. The
-// death-floor here still applies to ANY player death, world or bubble. Callers
-// hold w.mu.
-func (w *World) resolveDeathsLocked(members []*entity) int {
+// death-floor here still applies to ANY player death, world or bubble. rng is
+// the resolution's shared turn RNG (resolveCombatLocked/
+// ResolveCombatOnlyForTest) — one drop roll per dead monster, consumed in the
+// same id-sorted order as the rest of this pass, so a full turn stays
+// reproducible from the seed alone. Callers hold w.mu.
+func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) int {
 	var dead []*entity
 
 	monstersKilled := 0
@@ -1067,6 +1274,7 @@ func (w *World) resolveDeathsLocked(members []*entity) int {
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
+			w.dropLootLocked(rng, e.hex)
 			delete(w.entities, e.id)
 
 			continue
@@ -1086,9 +1294,61 @@ func (w *World) resolveDeathsLocked(members []*entity) int {
 		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
 		e.hp = e.maxHP
 		e.path = nil
+		e.pendingEquip = 0
 	}
 
 	return monstersKilled
+}
+
+// dropLootLocked rolls a slain monster's ground-loot drop: DropChancePercent
+// (out of percentBase) chance of anything at all, and if it hits, one
+// dropWeight-weighted def from dropTable (pickDrop) lands on at — the
+// monster's death hex — as a fresh item instance (id minted from the shared
+// nextID sequence, same as entities and owned items). A miss, or an empty
+// dropTable, drops nothing. Callers hold w.mu.
+func (w *World) dropLootLocked(rng *mrand.Rand, at protocol.Hex) {
+	if rng.IntN(percentBase) >= protocol.DropChancePercent {
+		return
+	}
+
+	def := pickDrop(rng)
+	if def == nil {
+		return
+	}
+
+	w.nextID++
+
+	inst := itemInstance{id: w.nextID, defID: def.id}
+	w.groundItems[at] = append(w.groundItems[at], inst)
+}
+
+// pickupLocked resolves the walk-on pickup phase: every living player in
+// members (id-sorted, per resolveCombatLocked's callers) that stands on a
+// hex holding ground items takes ALL of them and the hex clears. Two players
+// landing on the same hex the same turn resolve lowest-id-first, since
+// members arrives id-sorted. Runs after moveAndBumpLocked (post-move
+// positions) and before attackLocked (a walk-on pickup is not an action, so
+// it never displaces the turn's attack). Monsters never pick up (they own no
+// items — see entity.items). Each pickup announces via the chat hook.
+// Callers hold w.mu.
+func (w *World) pickupLocked(members []*entity) {
+	for _, e := range members {
+		if e.kind != protocol.EntityPlayer || e.hp <= 0 {
+			continue
+		}
+
+		items := w.groundItems[e.hex]
+		if len(items) == 0 {
+			continue
+		}
+
+		for _, it := range items {
+			e.items = append(e.items, it)
+			w.announce("system", e.name+" picked up "+itemDefByID[it.defID].name)
+		}
+
+		delete(w.groundItems, e.hex)
+	}
 }
 
 // spawnStream is a fixed PCG stream for monster placement, distinct from the

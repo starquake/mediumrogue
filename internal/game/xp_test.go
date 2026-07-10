@@ -50,7 +50,7 @@ func TestKillGrantsXP(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, protocol.SwordDamage) // one bump is lethal
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
 
 	// Kill XP is only earned inside a combat bubble (a real fight). One world
 	// resolution with the monster adjacent forms that bubble around the idle
@@ -103,7 +103,7 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	idB, _ := w.PlaceEntityForTest(ns[1])
 
 	monsterID := w.PlaceMonsterForTest(center)
-	w.SetHPForTest(monsterID, protocol.SwordDamage) // dies to a single hit
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // dies to a single hit
 
 	// Kill XP is only earned inside a combat bubble (a real fight). One world
 	// resolution forms the bubble around the two idle players and the monster; the
@@ -211,7 +211,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, protocol.SwordDamage)
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
 
 	// Kill XP is only earned inside a combat bubble; form it with one world
 	// resolution (player idle, monster survives), then land the kill inside it.
@@ -301,7 +301,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
 	// One hit each is lethal in both directions: a mutual kill.
-	w.SetHPForTest(monsterID, protocol.SwordDamage)
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
 	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage)
 
 	if !submitOK(w, me, monsterHex) {

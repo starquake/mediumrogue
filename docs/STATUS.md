@@ -1,19 +1,20 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-10, after milestone 8.3 quests landed — **milestone 8
-complete**. A seeded 6-quest board (3 kill 2–4 targets + 3 reach ≥8 hexes out,
-deterministic from `WORLD_SEED` with a tiny-world fallback), `/quest <id>` +
-`/abandon`, one-slot rules (joining a party abandons a personal quest;
-dissolve/sweep returns a quest to the board with progress reset), kill quests
-tick once-per-quest-per-turn via bubble presence, completion pays every
-current holder in full (the human +XP% passive applies), a `SetAnnounce`
-broker hook for quest chat announcements, and a SolidJS `<QuestPanel>`
-showing my quest + the board with XP rewards (XP jump visible in the stats
-HUD). **Milestone 9 (CRT shader filter) was built and then dropped unmerged**
-(PR #32 closed — the user disliked the look; a different post-processing pass
-may return later; see the `visual-features-need-preview` memory for the
-lesson and the strict-driver `highp` shader pitfall). Next per plan §8 is
-**10 polish & launch**. Update this file at the end of
+*Last updated: 2026-07-10, after milestone 6b.4 (gear & the modifier
+pipeline) landed as a post-milestone-8 follow-up — see the dedicated section
+below for the full writeup. In short: combat damage/take-damage/XP now flow
+through a data-driven rule pipeline instead of hardcoded species branches,
+species passives were migrated onto it unchanged, and items are real data —
+monsters drop them, players walk over drops to pick them up, own several,
+and equip one per slot via a new `<GearPanel>`. **Milestone 9 (CRT shader
+filter) was built and then dropped unmerged** (PR #32 closed — the user
+disliked the look; a different post-processing pass may return later; see
+the `visual-features-need-preview` memory for the lesson and the
+strict-driver `highp` shader pitfall). Next: the 6b.4 out-of-scope backlog
+(tracked on issue #36 — buffs/status effects, `attack-roll`/`on-kill`/
+`aggro-range` pipeline events, armor/trinket slots, inventory cap, item
+despawn, drop-on-death, per-monster loot tables) plus plan §8's **10 polish &
+launch**. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
@@ -268,6 +269,73 @@ player/party; dissolve/sweep returns a quest to the board with progress
 reset) — see plan §9. Also recorded but not built: the two tooling
 milestones above, and a **selected-path preview** render item (plan §6 —
 show my own route: goal + every hex, local-only).
+
+## Milestone 6b.4 — gear, drops & the modifier pipeline (post-milestone-8 follow-up)
+
+- **6b.4 — DONE** (this PR): the combat modifier pipeline (`internal/game/rules.go`)
+  replaces the per-trait combat branches with a pure fold over **rule cards** —
+  small `{event, when, then}` data literals, never closures (a §7 SQLite
+  persistence prerequisite). Three events implemented this slice: `deal-damage`,
+  `take-damage`, `earn-XP` (`applyRules`, called from `attackLocked`,
+  `resolveBowLocked`, `resolveAoELocked`, and the kill-XP award); `attack-roll`,
+  `on-kill`, and `aggro-range` are documented in the content guide but not
+  implemented — no card needs them yet. The three species passives
+  (human/elf/dwarf) were migrated onto the pipeline unchanged (`content.go`'s
+  `humanCards`/`elfCards`/`dwarfCards`), reproducing the old hardcoded numbers
+  exactly (pinned by `rules_test.go`).
+  **Items are now real content**: `internal/game/content.go`'s `itemDefs`
+  registry holds the 5 class defaults (iron sword, dagger, shortbow, oak
+  staff, ember focus — the "live balance" numbers carried forward from the
+  old protocol weapon constants) plus 5 starter drops — 4 with their own rule
+  cards (Butcher's Cleaver, Venom Fang, Pack Bow, Ember Staff) and one flat
+  upgrade with no rule card (Iron Warhammer) — validated at package init
+  (`mustValidateContent`). Every character has a **close** and a
+  **ranged** slot; class defaults are granted pre-equipped at join
+  (`grantDefaultsLocked`); a slain monster has a `DropChancePercent=30` chance
+  to drop a weighted-random item onto its death hex; walking onto a drop's hex
+  picks it up automatically (`pickupLocked`). **Equip is an intent**
+  (`kind:"equip"`, `IntentRequest.ItemID`): outside a combat bubble it applies
+  immediately (202, no turn consumed); inside one it's the player's committed
+  action for that turn, gated by the same readiness check as move/attack.
+  Gear survives death (only `pendingEquip` is cleared, never `items`).
+  Wire: `Entity.Items []ItemView` (id/defId/name/slot/damage/rangeHex/
+  aoeRadius/desc/equipped) and `TurnEvent.GroundItems []GroundItemView`
+  (id/hex/defId/name) ride every turn bundle.
+  Client: a fourth SolidJS component, `<GearPanel>`
+  (`client/src/gear/GearPanel.tsx`, mounted into `#gear-root`), lists my
+  inventory with an "equip"/"worn" button per row (disabled once equipped);
+  a new `render/items.ts` `GroundItemLayer` draws a small diamond marker per
+  dropped item under the entity layer, redrawn wholesale each turn from
+  `TurnEvent.GroundItems`. `main.ts` no longer mirrors weapon range/AoE as
+  client-side literals — the click-vs-move ranged-attack UX hint now reads
+  the equipped ranged item's `rangeHex`/`aoeRadius` straight off my entity's
+  `items` each bundle. `window.game.{inventory,groundItems}` exposed for
+  tests. Covered by unit tests (pipeline fold order, condition rng
+  determinism, species-cards-reproduce-old-numbers, registry validation,
+  weighted drop pick, pickup determinism, equip validation, gear-survives-death),
+  integration tests over real HTTP (`TestEquipOverHTTP`, `TestEquipValidation`,
+  `TestDropPickupLoop` — a pre-seeded monster ring farmed until a drop lands,
+  since the drop roll's RNG isn't reachable/pinnable from this package — see
+  `gear_test.go`'s determinism note), and `client/e2e/gear.spec.ts` (inventory
+  render + panel presence + an equipped item's button rendering disabled; the
+  full kill→drop→walk loop has no e2e monster-spawn hook, so it stays
+  integration-only).
+  **Deferred** (tracked on issue #36): buffs/status effects and durations;
+  the `attack-roll`/`on-kill`/`aggro-range` pipeline events; armor/trinket
+  slots; an inventory cap; item despawn; drop-on-death (corpse runs);
+  per-monster loot tables (one global table today); the milestone-12
+  per-modifier analytics trace.
+
+**Known bug (tracked on #36):** `World.SpawnMonsterAt`, called mid-run after
+players have already joined and bubbled, can stall — its occupancy check
+(`byHex` for the WORLD domain) doesn't see entities already inside a combat
+bubble, so a spawn can path a monster onto a hex it thinks is empty but
+isn't. `test/integration/gear_test.go`'s `startGearServerWithMonsterRing`
+works around it by placing every monster **before** `world.Run` starts and
+before any player joins (the same "startup only" contract `SpawnMonsterAt`
+already documents) — the real fix (making the occupancy check bubble-aware,
+or documenting/enforcing startup-only via the type system) is deferred to
+the #36 backlog rather than blocking this slice.
 
 ## Known placeholders / debt (all deliberate)
 

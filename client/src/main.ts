@@ -6,25 +6,24 @@ import { Application, Container } from "pixi.js";
 
 import { mountChat } from "./chat/ChatPanel";
 import { appendChat, messages as chatMessages, sendChat as storeSendChat, setChatToken } from "./chat/store";
+import { mountGear } from "./gear/GearPanel";
+import { setInventory } from "./gear/store";
 import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
 import { fetchMap } from "./net/map";
-import { join, loadIdentity, submitIntent } from "./net/session";
+import { join, loadIdentity, submitEquip, submitIntent } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
-import type { Hex, QuestView, TurnEvent } from "./protocol.gen";
+import type { GroundItemView, Hex, ItemView, QuestView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
-  BowRange,
   ClassFighter,
-  ClassMage,
-  ClassRogue,
   EntityMonster,
   IntentAttack,
   IntentMove,
-  MageRange,
+  ItemSlotRanged,
   PlaybackSeconds,
   SpeciesHuman,
   TurnSeconds,
@@ -32,6 +31,7 @@ import {
 } from "./protocol.gen";
 import { EntityLayer } from "./render/entities";
 import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
+import { GroundItemLayer } from "./render/items";
 import { buildMapLayer } from "./render/map";
 import { TurnTimer } from "./ui/timer";
 
@@ -101,6 +101,10 @@ export interface GameDebug {
   quest: QuestView | null;
   /** The whole quest board, from the latest bundle. */
   quests: QuestView[];
+  /** This client's entity's owned items (id/defId/equipped), from the latest bundle. Empty until joined. */
+  inventory: { id: number; defId: string; equipped: boolean }[];
+  /** Every item lying on the ground, from the latest bundle. */
+  groundItems: { id: number; hex: Hex }[];
 }
 
 declare global {
@@ -246,41 +250,42 @@ window.game = {
   partyId: 0,
   quest: null,
   quests: [],
+  inventory: [],
+  groundItems: [],
 };
 
-/** The ranged weapon range for a class, or null for a class with no ranged weapon (fighter). */
-function rangedRangeFor(cls: string): number | null {
-  if (cls === ClassRogue) {
-    return BowRange;
-  }
-  if (cls === ClassMage) {
-    return MageRange;
-  }
-
-  return null;
-}
+// My equipped ranged weapon's range/AoE radius, refreshed every turn bundle
+// from Entity.Items (Milestone 6b.4: weapon numbers now live in the server's
+// item registry, internal/game/content.go, not in a client-side literal
+// mirror) — null range means "no ranged weapon equipped" (a fighter, or a
+// rogue/mage that somehow unequipped theirs), which always resolves to a
+// move on click. These only drive the click-vs-move UX hint below; the
+// server independently re-checks the real equipped weapon on every attack
+// intent regardless.
+let myRangedRangeHex: number | null = null;
+let myRangedAoeRadius = 0;
 
 /**
  * Decides whether a click on `target` should fire a ranged attack instead of
- * a move. Out of combat, or my class has no ranged weapon (fighter): always
- * a move. In combat with a ranged class: a rogue's bow only fires at a
- * hostile actually standing on the clicked hex, within BowRange — any other
- * click there still walks (mirrors the melee-bump flow). A mage's AoE magic
- * can be aimed at any hex within MageRange — the blast can land on empty
- * ground and still catch nearby hostiles — so any in-range click attacks.
- * Reads window.game (the same state the debug/test surface exposes) rather
- * than closed-over locals, so it stays correct regardless of when it's called.
+ * a move. Out of combat, or no ranged weapon equipped: always a move. In
+ * combat with a ranged weapon equipped: a single-target weapon (a rogue's
+ * bow) only fires at a hostile actually standing on the clicked hex, within
+ * range — any other click there still walks (mirrors the melee-bump flow).
+ * An AoE weapon (a mage's staff, aoeRadius > 0) can be aimed at any hex
+ * within range — the blast can land on empty ground and still catch nearby
+ * hostiles — so any in-range click attacks. Reads window.game (the same
+ * state the debug/test surface exposes) rather than closed-over locals, so
+ * it stays correct regardless of when it's called.
  */
 function isRangedAttackClick(target: Hex): boolean {
   if (!window.game.inCombat) {
     return false;
   }
-  const range = rangedRangeFor(window.game.class);
   const me = window.game.me;
-  if (range === null || me === null || hexDistance(me.hex, target) > range) {
+  if (myRangedRangeHex === null || me === null || hexDistance(me.hex, target) > myRangedRangeHex) {
     return false;
   }
-  if (window.game.class === ClassMage) {
+  if (myRangedAoeRadius > 0) {
     return true;
   }
 
@@ -311,6 +316,11 @@ async function start(): Promise<void> {
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
+
+  // Ground-loot layer sits under the entity layer (added first) — a dropped
+  // item never occludes a player/monster dot standing over it.
+  const groundItemLayer = new GroundItemLayer();
+  world.addChild(groundItemLayer.container);
 
   const entityLayer = new EntityLayer(app.ticker);
   world.addChild(entityLayer.container);
@@ -344,6 +354,15 @@ async function start(): Promise<void> {
   window.game.name = selectedName;
   const identity = { entityId: me.entityId, token: me.token };
   setChatToken(identity.token);
+
+  // equipItem POSTs an equip intent for an owned item (the panel's own
+  // "equip" button). Outside a bubble it applies immediately (still just a
+  // 202 ack here — the swap shows up on the next turn bundle); inside one
+  // it becomes this turn's action, same as any other intent.
+  const equipItem = (itemId: number): void => {
+    void submitEquip(identity, itemId);
+  };
+  mountGear(mustGet("gear-root"), equipItem);
 
   // Re-join tracking: if this client's entity is absent from turn bundles for
   // a sustained spell, the disconnect-grace sweep removed it server-side (the
@@ -450,7 +469,28 @@ async function start(): Promise<void> {
         window.game.name = mine.name;
         const xpIntoLevel = mine.xp % XPPerLevel;
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
+
+        // Gear: my owned items ride Entity.Items every bundle (full-snapshot
+        // philosophy, same as everything else here). The equipped ranged
+        // item's range/AoE radius (if any) also drives the click-vs-move UX
+        // hint above (isRangedAttackClick) — read here rather than mirrored
+        // as a client-side literal (milestone 6b.4).
+        setInventory(mine.items);
+        window.game.inventory = mine.items.map((it: ItemView) => ({
+          id: it.id,
+          defId: it.defId,
+          equipped: it.equipped,
+        }));
+        const rangedItem = mine.items.find((it: ItemView) => it.slot === ItemSlotRanged && it.equipped);
+        myRangedRangeHex = rangedItem?.rangeHex ?? null;
+        myRangedAoeRadius = rangedItem?.aoeRadius ?? 0;
       }
+
+      // Ground loot: every dropped item currently lying on the map, redrawn
+      // wholesale each turn (full-snapshot philosophy) regardless of join
+      // status — a drop is visible to everyone, not just its eventual picker.
+      groundItemLayer.update(event.groundItems);
+      window.game.groundItems = event.groundItems.map((gi: GroundItemView) => ({ id: gi.id, hex: gi.hex }));
 
       // Party roster: refreshed every turn from the bundle itself (no separate
       // party-membership stream) — solo (partyId 0) always renders an empty

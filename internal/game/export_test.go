@@ -105,7 +105,9 @@ func (w *World) SetSeedForTest(seed int64) {
 // PlaceEntityForTest injects a player entity at a specific hex and returns its
 // id and bearer token, so conflict and AI tests can build exact board states
 // instead of depending on spawn geometry. The player is a level-1 Fighter (the
-// Join default), so its HP matches a plainly-joined player.
+// Join default), so its HP matches a plainly-joined player. It also grants
+// and equips the class's default items (mirroring Join), so a placed
+// Fighter bumps for iron-sword damage exactly like a joined one.
 func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -122,6 +124,7 @@ func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	}
 	w.entities[e.id] = e
 	w.byToken[token] = e
+	w.grantDefaultsLocked(e)
 
 	return e.id, token
 }
@@ -190,15 +193,21 @@ func (w *World) SetXPForTest(id int64, xp int) {
 	}
 }
 
-// SetClassForTest overwrites a player entity's class directly and resyncs its
-// max HP to the new class/level, so a melee test can pit different classes'
-// close weapons against the same board without going through Join.
+// SetClassForTest overwrites a player entity's class directly, resyncs its max
+// HP, and resets its inventory to the new class's default items (discarding
+// whatever it held before — an empty class grants nothing, leaving both
+// slots empty, so closeDefFor falls back to fists), so a melee test can pit
+// different classes' close weapons against the same board without going
+// through Join.
 func (w *World) SetClassForTest(id int64, class string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if e, ok := w.entities[id]; ok {
 		e.class = class
+		e.items = nil
+		e.closeSlot, e.rangedSlot = 0, 0
+		w.grantDefaultsLocked(e)
 		syncMaxHPLocked(e)
 	}
 }
@@ -258,7 +267,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 
 	attacks := w.moveAndBumpLocked(rng, byHex, members)
 	w.attackLocked(rng, byHex, attacks)
-	w.resolveDeathsLocked(members)
+	w.resolveDeathsLocked(rng, members)
 
 	w.turn++
 }
@@ -312,19 +321,95 @@ func (w *World) DisconnectedAtForTest(token string) (time.Time, bool) {
 // scaling curve directly, independent of a live entity.
 func MaxHPForTest(class string, level int) int { return maxHPFor(class, level) }
 
-// CloseWeaponDamageForTest exposes a class's default close-weapon damage at a
-// given level (the melee/bump path Tasks 3/4 will read).
-func CloseWeaponDamageForTest(class string, level int) int {
-	return weaponDamage(closeWeapon(class), level)
+// ItemDamageForTest exposes a registry item's level-scaled damage by id, so a
+// black-box test can assert exact combat numbers without duplicating the
+// registry (content.go) inline.
+func ItemDamageForTest(id string, level int) int {
+	return itemDamage(itemDefByID[id], level)
 }
 
-// RangedWeaponForTest exposes a class's default ranged weapon. It returns, in
-// order, the level-scaled damage, range in hexes, AoE radius, and whether the
-// class has a ranged attack at all (false for Fighter and any classless entity).
-func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
-	w, ok := rangedWeapon(class)
+// ItemRangeForTest exposes a registry item's rangeHex by id.
+func ItemRangeForTest(id string) int { return itemDefByID[id].rangeHex }
 
-	return weaponDamage(w, level), w.rangeHex, w.aoeRadius, ok
+// ItemAoERadiusForTest exposes a registry item's aoeRadius by id.
+func ItemAoERadiusForTest(id string) int { return itemDefByID[id].aoeRadius }
+
+// RangedWeaponForTest exposes a class's default ranged item. It returns, in
+// order, the level-scaled damage, range in hexes, AoE radius, and whether the
+// class has a ranged default at all (false for Fighter and any classless
+// entity).
+func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
+	for _, id := range classDefaultIDs(class) {
+		if def := itemDefByID[id]; def.slot == protocol.ItemSlotRanged {
+			return itemDamage(def, level), def.rangeHex, def.aoeRadius, true
+		}
+	}
+
+	return 0, 0, 0, false
+}
+
+// GrantItemForTest mints and grants (but does not equip) an item instance of
+// defID to the entity, returning the new instance id, so an equip test can
+// engineer an owned item beyond a class's Join defaults (e.g. an
+// owned-but-wrong-class item, or a second close-slot item to swap into) without
+// going through Join/SetClassForTest, which grants exactly one class's default
+// set.
+func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e, ok := w.entities[entityID]
+	if !ok {
+		return 0
+	}
+
+	w.nextID++
+	inst := itemInstance{id: w.nextID, defID: defID}
+	e.items = append(e.items, inst)
+
+	return inst.id
+}
+
+// EquippedSlotsForTest returns an entity's equipped close- and ranged-slot
+// item instance ids (0 = empty), so an equip test can assert a swap took (or
+// did not yet take) effect without waiting on the wire snapshot's item view
+// (not wired until a later task).
+func (w *World) EquippedSlotsForTest(id int64) (int64, int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.closeSlot, e.rangedSlot
+	}
+
+	return 0, 0
+}
+
+// SetPendingEquipForTest overwrites an entity's queued equip directly, so a
+// death test can engineer a pending equip surviving into a death/respawn
+// without depending on multi-player bubble timing (a solo bubble's equip
+// resolves — and clears pendingEquip — synchronously within the SubmitIntent
+// call that completes its lock-in).
+func (w *World) SetPendingEquipForTest(id, itemID int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.pendingEquip = itemID
+	}
+}
+
+// PendingEquipForTest returns an entity's queued equip item id (0 = none), so
+// a test can assert it was cleared.
+func (w *World) PendingEquipForTest(id int64) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.pendingEquip
+	}
+
+	return 0
 }
 
 // ReachableWalkableForTest exposes reachableWalkable — the origin-connected
@@ -337,4 +422,47 @@ func ReachableWalkableForTest(m protocol.MapResponse) map[protocol.Hex]bool {
 // a black-box test can assert map size without duplicating the formula.
 func TileCountForTest(radius int) int {
 	return tileCount(radius)
+}
+
+// PickDropForTest exposes pickDrop, seeded from a single uint64 (stream 0),
+// so a content test can enumerate the weighted-drop distribution over a
+// fixed seed range without depending on any World. Returns "" only if
+// dropTable is empty (pickDrop's defensive nil case).
+func PickDropForTest(seed uint64) string {
+	//nolint:gosec // deterministic test-only seed, not security-sensitive; reproducibility is required.
+	rng := mrand.New(mrand.NewPCG(seed, 0))
+
+	def := pickDrop(rng)
+	if def == nil {
+		return ""
+	}
+
+	return def.id
+}
+
+// DropTableIDsForTest returns every def id in dropTable (registry order), so
+// a content test can assert pickDrop's output set against the live registry
+// instead of a hand-duplicated literal list.
+func DropTableIDsForTest() []string {
+	ids := make([]string, len(dropTable))
+	for i, def := range dropTable {
+		ids[i] = def.id
+	}
+
+	return ids
+}
+
+// GroundItemForTest drops a fresh item instance of defID directly onto hex,
+// bypassing the death-roll (dropLootLocked) entirely, so a pickup test can
+// engineer an exact ground-item board state without seed-hunting a kill's
+// drop roll. Returns the new instance id.
+func (w *World) GroundItemForTest(hex protocol.Hex, defID string) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.nextID++
+	inst := itemInstance{id: w.nextID, defID: defID}
+	w.groundItems[hex] = append(w.groundItems[hex], inst)
+
+	return inst.id
 }
