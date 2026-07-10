@@ -1,0 +1,14 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "ORIGIN_PLACEHOLDER",
+      "localStorage": [
+        {
+          "name": "mediumrogue.identity",
+          "value": "{\"entityId\":0,\"token\":\"\",\"class\":\"fighter\",\"species\":\"human\",\"name\":\"traveler\"}"
+        }
+      ]
+    }
+  ]
+}

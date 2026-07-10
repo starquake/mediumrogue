@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { GameDebug } from "../src/main";
-import { ClassFighter, ClassMage, ClassRogue } from "../src/protocol.gen";
+import { ClassMage, SpeciesElf } from "../src/protocol.gen";
 
 declare global {
   interface Window {
@@ -10,52 +10,66 @@ declare global {
 }
 
 // This file runs on the CORE (monster-free) server — see playwright.config.ts's
-// combatSpecs regex, which this filename does not match. Class selection/
-// exposure has nothing to do with combat, so it doesn't need to contend with
-// the fixed, non-respawning monster pool the combat project shares.
+// specs list, where "class" has no `monsters` entry.
+//
+// Every OTHER project's browser context is pre-seeded (playwright.config.ts's
+// storageStateFor) with a "remembered" identity, so the start screen never
+// appears for them and they all auto-join exactly as before that screen
+// existed. THIS spec is the one place the screen itself gets exercised, so it
+// deliberately clears storageState — a brand-new player, exactly as if
+// they'd never visited before.
+test.use({ storageState: { cookies: [], origins: [] } });
 
-test("a fresh join exposes window.game.class as a valid, deterministic class", async ({ page }) => {
+test("a brand-new player sees the start screen, picks class/species, and joins only on Enter", async ({
+  page,
+}) => {
   await page.goto("/");
 
+  await expect(page.locator("#start-screen")).toBeVisible();
+
+  // No join fires just from the screen being up and the map loading behind
+  // it — window.game.me stays null for a real couple of seconds, not just
+  // "hasn't happened yet on this tick".
+  await page.waitForTimeout(2_000);
+  expect(await page.evaluate(() => window.game.me)).toBeNull();
+  await expect(page.locator("#start-screen")).toBeVisible();
+
+  // Fighter/Human are preselected by default.
+  await expect(page.locator('.card[data-class="fighter"]')).toHaveClass(/selected/);
+  await expect(page.locator('.card[data-species="human"]')).toHaveClass(/selected/);
+
+  await page.locator("#start-name").fill("Starquake");
+  await page.locator('.card[data-class="mage"]').click();
+  await page.locator('.card[data-species="elf"]').click();
+
+  await expect(page.locator('.card[data-class="mage"]')).toHaveClass(/selected/);
+  await expect(page.locator('.card[data-class="fighter"]')).not.toHaveClass(/selected/);
+  await expect(page.locator('.card[data-species="elf"]')).toHaveClass(/selected/);
+  await expect(page.locator('.card[data-species="human"]')).not.toHaveClass(/selected/);
+
+  await page.locator("#start-enter").click();
+
+  await expect(page.locator("#start-screen")).toBeHidden();
   await expect
     .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
     .toBe(true);
+  await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassMage);
+  await expect.poll(() => page.evaluate(() => window.game.species)).toBe(SpeciesElf);
+  expect(await page.evaluate(() => window.game.name)).toBe("Starquake");
 
-  // No picker interaction here — a brand-new page load joins with whichever
-  // class is selected by default (Fighter: src/main.ts calls
-  // selectClass(ClassFighter) at module init, before any click). That makes
-  // this deterministic on any server/run, not a guess: the assertion is a
-  // real round trip through join -> server normalization -> the turn bundle
-  // -> window.game.class, so it would fail if that plumbing broke (e.g. the
-  // server stopped echoing Class, or the client stopped reading mine.class).
-  const cls = await page.evaluate(() => window.game.class);
-  expect([ClassFighter, ClassRogue, ClassMage]).toContain(cls);
-  expect(cls).toBe(ClassFighter);
-});
+  const entityId = await page.evaluate(() => window.game.me!.id);
 
-test("clicking a class-picker button before join changes window.game.class", async ({ page }) => {
-  // src/main.ts shows the picker (classPickerEl.hidden = false) as soon as
-  // the page decides this is a new player, then hides it again and fires
-  // join() right after `await fetchMap()` resolves — in practice that round
-  // trip is fast enough (a local dev/CI server) that a real click can miss
-  // the window entirely. Delay the map response deliberately so the picker
-  // is reliably still visible when Playwright's click lands, without
-  // touching src/main.ts itself — this is testing the picker-to-join wiring,
-  // not how fast the network happens to be.
-  await page.route("**/api/map", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await route.continue();
-  });
+  // Reload: identity is now remembered (join() persisted it to localStorage)
+  // — the screen must not reappear, and the same character is reclaimed
+  // (same entity id, same class/species/name) rather than a fresh one.
+  await page.reload();
 
-  await page.goto("/");
-
-  const rogueButton = page.locator('#class-picker button[data-class="rogue"]');
-  await expect(rogueButton).toBeVisible();
-  await rogueButton.click();
-
+  await expect(page.locator("#start-screen")).toBeHidden();
   await expect
     .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
     .toBe(true);
-
-  await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassRogue);
+  expect(await page.evaluate(() => window.game.me!.id)).toBe(entityId);
+  await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassMage);
+  await expect.poll(() => page.evaluate(() => window.game.species)).toBe(SpeciesElf);
+  expect(await page.evaluate(() => window.game.name)).toBe("Starquake");
 });
