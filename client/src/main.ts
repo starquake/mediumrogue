@@ -7,7 +7,7 @@ import { Application, Container } from "pixi.js";
 import { mountChat } from "./chat/ChatPanel";
 import { appendChat, messages as chatMessages, sendChat as storeSendChat, setChatToken } from "./chat/store";
 import { mountGear } from "./gear/GearPanel";
-import { setInventory } from "./gear/store";
+import { clearEquipPending, setInventory } from "./gear/store";
 import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
@@ -21,6 +21,7 @@ import { setQuests } from "./quest/store";
 import {
   ClassFighter,
   EntityMonster,
+  EntityPlayer,
   IntentAttack,
   IntentMove,
   ItemSlotRanged,
@@ -29,7 +30,9 @@ import {
   TurnSeconds,
   XPPerLevel,
 } from "./protocol.gen";
+import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
+import { FeedbackLayer } from "./render/feedback";
 import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { GroundItemLayer } from "./render/items";
 import { buildMapLayer } from "./render/map";
@@ -105,6 +108,13 @@ export interface GameDebug {
   inventory: { id: number; defId: string; equipped: boolean }[];
   /** Every item lying on the ground, from the latest bundle. */
   groundItems: { id: number; hex: Hex }[];
+  /**
+   * Damage inferred from the latest bundle by diffing HP against the previous
+   * one (the wire carries state, not hit events): one entry per entity that
+   * lost HP, plus one per monster that vanished (its killing blow, shown as
+   * the HP it had left). Drives the floating combat numbers; exposed for e2e.
+   */
+  damage: { id: number; amount: number }[];
 }
 
 declare global {
@@ -252,6 +262,7 @@ window.game = {
   quests: [],
   inventory: [],
   groundItems: [],
+  damage: [],
 };
 
 // My equipped ranged weapon's range/AoE radius, refreshed every turn bundle
@@ -322,8 +333,17 @@ async function start(): Promise<void> {
   const groundItemLayer = new GroundItemLayer();
   world.addChild(groundItemLayer.container);
 
+  // Click feedback (destination ring, attack flash) sits under the entities:
+  // acknowledgement, not occlusion.
+  const feedbackLayer = new FeedbackLayer(app.ticker);
+  world.addChild(feedbackLayer.container);
+
   const entityLayer = new EntityLayer(app.ticker);
   world.addChild(entityLayer.container);
+
+  // Floating damage numbers render above everything on the map.
+  const damageLayer = new DamageNumberLayer(app.ticker);
+  world.addChild(damageLayer.container);
 
   // Camera follows my entity's *live* (per-frame interpolated) position rather
   // than snapping to its hex once per turn, so the pan is as smooth as the
@@ -396,6 +416,7 @@ async function start(): Promise<void> {
       me.hex = rejoined.hex;
       window.game.me = { id: rejoined.entityId, hex: rejoined.hex };
       window.game.destination = null;
+      feedbackLayer.setDestination(null);
       setChatToken(identity.token);
       // The token just changed — the stream must reconnect under the new one
       // (a stream opened under the stale token no longer maps to any entity).
@@ -411,32 +432,69 @@ async function start(): Promise<void> {
   // it — unless a newer walkTo has already replaced the destination meanwhile.
   const walkTo = (target: Hex): Promise<void> => {
     window.game.destination = target;
+    // Instant acknowledgement — the ring appears on click, not on the next
+    // turn bundle. Cleared alongside window.game.destination everywhere.
+    feedbackLayer.setDestination(target);
 
     return submitIntent(identity, target, IntentMove).then((accepted) => {
       const pending = window.game.destination;
       if (!accepted && pending !== null && pending.q === target.q && pending.r === target.r) {
         window.game.destination = null;
+        feedbackLayer.setDestination(null);
       }
     });
   };
 
   // attackAt fires a ranged attack intent at target: no destination bookkeeping
-  // (the attacker doesn't move onto it), just submit and let the turn bundle's
-  // HP changes speak for the result.
-  const attackAt = (target: Hex): Promise<void> => submitIntent(identity, target, IntentAttack).then(() => undefined);
+  // (the attacker doesn't move onto it) — a one-shot flash on the target hex
+  // acknowledges the click; the turn bundle's HP changes speak for the result.
+  const attackAt = (target: Hex): Promise<void> => {
+    feedbackLayer.flashAttack(target);
+
+    return submitIntent(identity, target, IntentAttack).then(() => undefined);
+  };
 
   // clickTarget is the single decision point shared by canvas clicks and
   // window.game.tapHex, so tapHex genuinely mirrors "as if the hex were
   // clicked" (including the ranged-attack UX) for tests. Out of combat, or
   // for a class with no ranged weapon, this is always a move — identical to
   // the pre-classes behavior.
-  const clickTarget = (target: Hex): Promise<void> =>
-    isRangedAttackClick(target) ? attackAt(target) : walkTo(target);
+  const clickTarget = (target: Hex): Promise<void> => {
+    // A map click replaces a queued in-bubble equip server-side (latest
+    // intent wins) — release its button's pending "…" to match.
+    clearEquipPending();
+
+    return isRangedAttackClick(target) ? attackAt(target) : walkTo(target);
+  };
 
   window.game.tapHex = (q, r): Promise<void> => clickTarget({ q, r });
 
   eventsController = connectEvents(() => identity.token, {
     onTurn: (event: TurnEvent): void => {
+      // Derive floating damage numbers by diffing this bundle's HP against the
+      // previous one (still in window.game from the last onTurn): an entity
+      // with less HP took a hit; a monster missing entirely died, its killing
+      // blow shown as the HP it had left. First bundle diffs against nothing.
+      const prevHp = window.game.hp;
+      const prevPositions = window.game.positions;
+      const damage: { id: number; amount: number }[] = [];
+      const present = new Set(event.entities.map((e) => e.id));
+      for (const e of event.entities) {
+        const before = prevHp[e.id];
+        if (before !== undefined && e.hp < before) {
+          damage.push({ id: e.id, amount: before - e.hp });
+          damageLayer.spawn(e.hex, before - e.hp, e.kind === EntityPlayer);
+        }
+      }
+      for (const p of prevPositions) {
+        const before = prevHp[p.id];
+        if (!present.has(p.id) && p.kind === EntityMonster && before !== undefined && before > 0) {
+          damage.push({ id: p.id, amount: before });
+          damageLayer.spawn(p.hex, before, false);
+        }
+      }
+      window.game.damage = damage;
+
       window.game.turn = event.turn;
       window.game.entities = event.entities.length;
       window.game.monsters = event.entities.filter((e) => e.kind === EntityMonster).length;
@@ -460,6 +518,7 @@ async function start(): Promise<void> {
           mine.hex.r === window.game.destination.r
         ) {
           window.game.destination = null;
+          feedbackLayer.setDestination(null);
         }
 
         window.game.xp = mine.xp;
