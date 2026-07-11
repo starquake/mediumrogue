@@ -30,6 +30,7 @@ import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
+  CombatRadius,
   EntityMonster,
   EntityPlayer,
   IntentAttack,
@@ -1162,19 +1163,34 @@ async function start(): Promise<void> {
       isRangedAttackClick(hover) && !(myRangedAoeRadius === 0 && inList(lastReach.bumps, hover));
     app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
 
-    // Enemy hover tooltip (item 13): kind display name + "HP cur/max", near
-    // the cursor. pointer-events: none on the tooltip itself (index.html)
-    // means it can never intercept the click it's floating over.
+    // Enemy hover tooltip (item 13, playtest batch 2): kind display name +
+    // "HP cur/max", near the cursor. pointer-events: none on the tooltip
+    // itself (index.html) means it can never intercept the click it's
+    // floating over.
+    //
+    // Hover gating (item 6, playtest feedback batch 3): the HP line only
+    // shows within CombatRadius of my own entity — scouting a distant
+    // monster shouldn't read its exact health through the fog of distance.
+    // Beyond that (or before I've joined) it's name-only.
     const monster = window.game.positions.find(
       (p) => p.kind === EntityMonster && p.hex.q === hover.q && p.hex.r === hover.r,
     );
     if (monster === undefined) {
       hoverTooltipEl.hidden = true;
     } else {
-      const hp = window.game.hp[monster.id] ?? 0;
-      const maxHp = window.game.maxHp[monster.id] ?? 0;
+      const me = window.game.me;
+      const inRange = me !== null && hexDistance(me.hex, monster.hex) <= CombatRadius;
+
       hoverTooltipKindEl.textContent = monster.name;
-      hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}`;
+      if (inRange) {
+        const hp = window.game.hp[monster.id] ?? 0;
+        const maxHp = window.game.maxHp[monster.id] ?? 0;
+        hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}`;
+        hoverTooltipHPEl.hidden = false;
+      } else {
+        hoverTooltipHPEl.textContent = "";
+        hoverTooltipHPEl.hidden = true;
+      }
       hoverTooltipEl.style.left = `${ev.clientX + 14}px`;
       hoverTooltipEl.style.top = `${ev.clientY + 14}px`;
       hoverTooltipEl.hidden = false;

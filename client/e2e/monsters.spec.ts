@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { GameDebug } from "../src/main";
+import { CombatRadius } from "../src/protocol.gen";
 
 declare global {
   interface Window {
@@ -24,7 +25,15 @@ test("monsters spawned server-side reach the client and render", async ({ page }
 });
 
 // Item 13, playtest batch 2: hovering a monster's hex shows a small DOM
-// tooltip near the cursor with its kind display name + "HP cur/max".
+// tooltip near the cursor with its kind display name + "HP cur/max". Item 6
+// (playtest feedback batch 3): the HP line is now gated by distance — only
+// shown within CombatRadius of my own entity, name-only beyond it (scouting
+// shouldn't read exact health through the fog of distance). The e2e server's
+// monsters spawn randomly (SanctuaryRadius keeps them away from the origin,
+// where I spawn), so which side of the gate a given run lands on isn't
+// fixed — this test computes the real hex distance itself and asserts
+// whichever outcome that implies, exercising the actual gating logic either
+// way instead of assuming one side.
 //
 // Dispatches a synthetic "pointermove" directly on the canvas (rather than
 // driving a real OS-level page.mouse.move) with clientX/clientY computed
@@ -36,7 +45,7 @@ test("monsters spawned server-side reach the client and render", async ({ page }
 // to be within the actual visible viewport — a real mouse move can't reach
 // off-screen coordinates, but a synthetic event can carry any clientX/Y and
 // main.ts's listener does the same math regardless.
-test("hovering a monster shows its kind and HP in a tooltip", async ({ page }) => {
+test("hovering a monster shows its kind, and its HP only within CombatRadius", async ({ page }) => {
   await page.goto("/");
 
   await expect
@@ -49,9 +58,13 @@ test("hovering a monster shows its kind and HP in a tooltip", async ({ page }) =
       x: HEX_SIZE * 1.5 * hex.q,
       y: HEX_SIZE * ((Math.sqrt(3) / 2) * hex.q + Math.sqrt(3) * hex.r),
     });
+    // Axial hex distance — same formula as render/hex.ts's hexDistance.
+    const hexDistance = (a: { q: number; r: number }, b: { q: number; r: number }): number =>
+      (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
 
     const monster = window.game.positions.find((p) => p.kind === "monster");
-    if (monster === undefined) {
+    const me = window.game.me;
+    if (monster === undefined || me === null) {
       return null;
     }
 
@@ -68,8 +81,10 @@ test("hovering a monster shows its kind and HP in a tooltip", async ({ page }) =
       name: monster.name,
       hp: window.game.hp[monster.id],
       maxHp: window.game.maxHp[monster.id],
+      distance: hexDistance(me.hex, monster.hex),
       hidden: tooltip.hidden,
       kindText: tooltip.querySelector(".tooltip-kind")?.textContent ?? "",
+      hpHidden: (tooltip.querySelector(".tooltip-hp") as HTMLElement | null)?.hidden ?? true,
       hpText: tooltip.querySelector(".tooltip-hp")?.textContent ?? "",
     };
   });
@@ -77,7 +92,14 @@ test("hovering a monster shows its kind and HP in a tooltip", async ({ page }) =
   expect(hover).not.toBeNull();
   expect(hover?.hidden).toBe(false);
   expect(hover?.kindText).toBe(hover?.name);
-  expect(hover?.hpText).toBe(`HP ${hover?.hp}/${hover?.maxHp}`);
+
+  if ((hover?.distance ?? Infinity) <= CombatRadius) {
+    expect(hover?.hpHidden).toBe(false);
+    expect(hover?.hpText).toBe(`HP ${hover?.hp}/${hover?.maxHp}`);
+  } else {
+    expect(hover?.hpHidden).toBe(true);
+    expect(hover?.hpText).toBe("");
+  }
 
   // Hovering somewhere with no entity hides it again.
   const hiddenAfter = await page.evaluate(() => {
