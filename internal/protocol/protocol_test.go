@@ -141,6 +141,35 @@ func TestMonsterAggroRadiusExceedsCombatRadius(t *testing.T) {
 	}
 }
 
+// TestEntityMonsterKindRoundTripOnWire proves Entity.MonsterKind (milestone
+// 6c) survives a JSON encode/decode cycle — a monster's kind registry id
+// (empty for a player), alongside its kind-display Name.
+func TestEntityMonsterKindRoundTripOnWire(t *testing.T) {
+	t.Parallel()
+
+	want := protocol.Entity{
+		ID: 5, Kind: protocol.EntityMonster, Name: "Dragon", MonsterKind: "dragon", HP: 60, MaxHP: 60,
+	}
+
+	raw, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("json.Marshal(Entity) = %v, want nil error", err)
+	}
+
+	var got protocol.Entity
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("json.Unmarshal(Entity) = %v, want nil error", err)
+	}
+
+	if got, want := got.Name, want.Name; got != want {
+		t.Errorf("Entity.Name = %q, want %q", got, want)
+	}
+
+	if got, want := got.MonsterKind, want.MonsterKind; got != want {
+		t.Errorf("Entity.MonsterKind = %q, want %q", got, want)
+	}
+}
+
 // TestIntentRequestItemIDRoundTrip proves IntentEquip and IntentRequest's new
 // ItemID field survive a JSON round trip — an equip intent names the item to
 // equip, not a target hex.

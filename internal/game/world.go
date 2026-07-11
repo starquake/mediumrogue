@@ -705,6 +705,25 @@ func (e *entity) applyEquip(instID int64, slot string) {
 	}
 }
 
+// entityNameLocked is the wire Name for e: a player's chosen display name,
+// or a monster's kind's display name ("Wolf", "Dragon", ...) — monsters'
+// Name was always empty until 6c (no field collision: a player's name and
+// a monster's kind name occupy the same wire field, but nothing produces
+// both for the same entity). kindOf(e) nil (a malformed monster fixture)
+// falls back to empty, matching the pre-6c wire shape rather than panicking
+// on a Snapshot call. Callers hold w.mu.
+func entityNameLocked(e *entity) string {
+	if e.kind != protocol.EntityMonster {
+		return e.name
+	}
+
+	if k := kindOf(e); k != nil {
+		return k.name
+	}
+
+	return ""
+}
+
 // Snapshot is the current turn bundle: turn number plus every entity,
 // sorted by ID for a deterministic wire shape.
 func (w *World) Snapshot() protocol.TurnEvent {
@@ -714,9 +733,9 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, Name: e.name, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
-			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
-			Items: itemViewsLocked(e),
+			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
+			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
+			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
 		})
 	}
 

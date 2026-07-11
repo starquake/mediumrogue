@@ -306,3 +306,46 @@ func TestWyrmslayerDamageMultiplierVsDragon(t *testing.T) {
 		t.Errorf("wyrmslayer dealt %d to a dragon, want %d (4 * 150%%)", got, want)
 	}
 }
+
+// TestSnapshotMonsterNameAndKind: a monster's wire Entity carries its
+// kind's display name (Name) and registry id (MonsterKind) — previously
+// Name was always empty for a monster and MonsterKind did not exist. A
+// player's MonsterKind stays empty (no field collision with its own Name).
+func TestSnapshotMonsterNameAndKind(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me := joinNamed(t, w, "hero")
+
+	trollHex := walkableNeighbor(t, w, me.Hex)
+	trollID := w.PlaceMonsterKindForTest(trollHex, kindTroll)
+
+	snap := w.Snapshot()
+
+	troll, ok := entityOfSnap(snap, trollID)
+	if !ok {
+		t.Fatalf("troll %d missing from snapshot", trollID)
+	}
+
+	if got, want := troll.Name, "Troll"; got != want {
+		t.Errorf("troll Name = %q, want %q", got, want)
+	}
+
+	if got, want := troll.MonsterKind, kindTroll; got != want {
+		t.Errorf("troll MonsterKind = %q, want %q", got, want)
+	}
+
+	player, ok := entityOfSnap(snap, me.EntityID)
+	if !ok {
+		t.Fatalf("player %d missing from snapshot", me.EntityID)
+	}
+
+	if got, want := player.Name, "hero"; got != want {
+		t.Errorf("player Name = %q, want %q", got, want)
+	}
+
+	if got, want := player.MonsterKind, ""; got != want {
+		t.Errorf("player MonsterKind = %q, want %q", got, want)
+	}
+}

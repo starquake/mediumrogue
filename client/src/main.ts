@@ -54,8 +54,13 @@ export interface GameDebug {
   entities: number;
   /** Monster count from the latest turn bundle. */
   monsters: number;
-  /** Every entity in the latest bundle, for cross-client observation in tests. */
-  positions: { id: number; hex: Hex; kind: string }[];
+  /**
+   * Every entity in the latest bundle, for cross-client observation in
+   * tests. monsterKind is the monster-kind registry id ("wolf", "dragon",
+   * ...), empty for a player — lets an e2e spec assert distinct kinds
+   * actually rendered (milestone 6c).
+   */
+  positions: { id: number; hex: Hex; kind: string; monsterKind: string }[];
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;
   /** This client's entity's XP, from the latest bundle. 0 until joined. */
@@ -664,7 +669,12 @@ async function start(): Promise<void> {
       window.game.turn = event.turn;
       window.game.entities = event.entities.length;
       window.game.monsters = event.entities.filter((e) => e.kind === EntityMonster).length;
-      window.game.positions = event.entities.map((e) => ({ id: e.id, hex: e.hex, kind: e.kind }));
+      window.game.positions = event.entities.map((e) => ({
+        id: e.id,
+        hex: e.hex,
+        kind: e.kind,
+        monsterKind: e.monsterKind,
+      }));
       window.game.hp = Object.fromEntries(event.entities.map((e) => [e.id, e.hp]));
       window.game.intervalMs = event.intervalMs;
       turnEl.textContent = String(event.turn);

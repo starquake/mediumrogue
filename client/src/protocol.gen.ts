@@ -425,7 +425,9 @@ export interface Entity {
    */
   level: number /* int */;
   /**
-   * Name is the player's display name; empty for monsters.
+   * Name is the entity's display name: the player's chosen name for a
+   * player, or the monster kind's display name ("Wolf", "Dragon", ...)
+   * for a monster (milestone 6c — previously always empty for monsters).
    */
   name: string;
   /**
@@ -438,6 +440,11 @@ export interface Entity {
    * Items is the entity's owned items. Players only; monsters send none.
    */
   items: ItemView[];
+  /**
+   * MonsterKind is the monster-kind registry id ("wolf", "dragon", ...);
+   * empty for players. Drives per-kind client rendering (color/glyph).
+   */
+  monsterKind: string;
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its

@@ -326,7 +326,9 @@ type Entity struct {
 	XP int `json:"xp"`
 	// Level is server-authoritative; monsters send 1, players send their actual level.
 	Level int `json:"level"`
-	// Name is the player's display name; empty for monsters.
+	// Name is the entity's display name: the player's chosen name for a
+	// player, or the monster kind's display name ("Wolf", "Dragon", ...)
+	// for a monster (milestone 6c — previously always empty for monsters).
 	Name string `json:"name"`
 	// PartyID groups players into a party (≥2 members share a non-zero id);
 	// 0 means solo. Monsters are always 0. The roster and on-map partymate
@@ -334,6 +336,9 @@ type Entity struct {
 	PartyID int64 `json:"partyId"`
 	// Items is the entity's owned items. Players only; monsters send none.
 	Items []ItemView `json:"items"`
+	// MonsterKind is the monster-kind registry id ("wolf", "dragon", ...);
+	// empty for players. Drives per-kind client rendering (color/glyph).
+	MonsterKind string `json:"monsterKind"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its
