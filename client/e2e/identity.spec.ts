@@ -69,6 +69,40 @@ test("a copied character link rejoins the SAME character on a second browser con
   await ctxB.close();
 });
 
+test("importing a link with an unknown token falls back to the start screen instead of wedging", async ({
+  browser,
+}) => {
+  // A blank context importing a token the server has never seen — the exact
+  // shape of following a character link after the server lost its state
+  // (snapshot off across a restart, or a rejected version/seed mismatch).
+  // The import stores class:""/species:"" alongside the token; join sends
+  // them as-is, so an unknown token is REJECTED (422) instead of silently
+  // minting a default fighter — and the client must recover: clear the dead
+  // identity, show the start screen, and let a normal join proceed. Before
+  // the fix this wedged forever: the 422 killed start(), and the broken
+  // identity persisted so every refresh re-failed.
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const page = await ctx.newPage();
+
+  await page.goto("/#t=deadbeef");
+
+  // The fragment is stripped regardless of what happens next.
+  expect(new URL(page.url()).hash).toBe("");
+
+  // The rejected join surfaces the start screen — not a dead error state.
+  await expect(page.locator("#start-screen")).toBeVisible({ timeout: 15_000 });
+
+  // And a normal join from it works; the dead identity is gone.
+  await page.locator("#start-enter").click();
+  await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
+
+  const raw = await page.evaluate(() => localStorage.getItem("mediumrogue.identity"));
+  expect(raw).not.toBeNull();
+  expect(raw).not.toContain("deadbeef");
+
+  await ctx.close();
+});
+
 test("the copy-link button is hidden until joined, then reveals a link and flashes 'copied!' on click", async ({
   page,
 }) => {

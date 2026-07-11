@@ -60,6 +60,30 @@ export function loadIdentity(): Identity | null {
 }
 
 /**
+ * Discards the persisted identity. Used by the join-rejection recovery path
+ * (main.ts): a stored identity the server refuses (e.g. an imported
+ * character link whose token the server no longer knows) must not survive to
+ * re-fail every subsequent page load.
+ */
+export function clearIdentity(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+/**
+ * The server REJECTED the join as invalid (a 4xx) — as opposed to a network
+ * failure or a server-side error, after which the stored identity may still
+ * be perfectly good. Callers use this distinction to decide whether to
+ * discard the stored identity (see main.ts's recovery path): only a
+ * deliberate rejection may clear it; a flaky network never should.
+ */
+export class JoinRejectedError extends Error {
+  constructor(status: number) {
+    super(`POST /api/join rejected: ${status}`);
+    this.name = "JoinRejectedError";
+  }
+}
+
+/**
  * Claims an entity: re-sends the stored token so a page refresh keeps the
  * same character (and the same class/species — the server ignores Class and
  * Species entirely on a token match, so a returning player's stored choices
@@ -68,6 +92,16 @@ export function loadIdentity(): Identity | null {
  * restart just becomes a fresh entity, joined as `chosenClass`/`chosenSpecies`).
  * `chosenName` is likewise only used for a new/orphaned token — the server
  * ignores Name on a reclaim (an existing entity already has its name).
+ *
+ * DELIBERATE: a link-imported identity (class/species stored as "" by
+ * importIdentityFromFragment) sends those empty strings as-is — this is a
+ * reclaim-or-fail contract, not an oversight. The server ignores class and
+ * species entirely for a token it recognizes (live or archived), so a valid
+ * imported link reclaims cleanly; for an UNKNOWN token the empty class is
+ * rejected (422) rather than silently minting a default-class stranger the
+ * player never asked for. The rejection throws JoinRejectedError, and
+ * main.ts's recovery path clears the dead identity and falls back to the
+ * start screen.
  */
 export async function join(
   chosenName: string,
@@ -86,6 +120,9 @@ export async function join(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (resp.status >= 400 && resp.status < 500) {
+    throw new JoinRejectedError(resp.status);
+  }
   if (!resp.ok) {
     throw new Error(`POST /api/join failed: ${resp.status}`);
   }

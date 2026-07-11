@@ -159,9 +159,13 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   player." The fragment is stripped from the address bar via
   `history.replaceState` immediately: a URL hash is never sent in an HTTP
   request, so the token never reaches the server via the link itself, and
-  nothing echoes it into chat. **Trust note**: the token is a
-  shoulder-surfable bearer secret, like the stored one already was —
-  acceptable for the 15-friend trust model (the VPS is the trust boundary).
+  nothing echoes it into chat. A **dead link** (the server no longer knows
+  the token — state lost with persistence off, or a rejected snapshot) is
+  refused rather than silently minting a default character: the client
+  clears the dead identity and falls back to the start screen. **Trust
+  note**: the token is a shoulder-surfable bearer secret, like the stored
+  one already was — acceptable for the 15-friend trust model (the VPS is
+  the trust boundary).
 - **Disconnect archive** (milestone 10a): a player absent past the
   `DISCONNECT_GRACE` (default 20s) is **archived** — identity, XP, and gear
   saved — instead of deleted; rejoining with the same token **restores** the
@@ -182,9 +186,11 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   opts in). When enabled: the snapshot loads at startup, before the control
   loop starts; a background saver writes it every `SNAPSHOT_INTERVAL`
   (default 60s); a final write happens after the HTTP drain on graceful
-  shutdown (SIGINT/SIGTERM). Writes are atomic (temp file +
-  `os.Rename` in the same directory) — a crash mid-write never leaves a
-  corrupt snapshot on disk.
+  shutdown (SIGINT/SIGTERM), after the periodic saver has been joined — an
+  in-flight periodic write can never land over the shutdown snapshot. Writes
+  are atomic and durable (temp file, fsynced, then `os.Rename` in the same
+  directory): a process crash or power loss mid-write leaves the previous
+  snapshot intact at the live path instead of a corrupt one.
 - **What persists**: every entity — players **and** monsters (a restart must
   not respawn a healed, repositioned monster population mid-expedition) —
   ground items, the quest board, the disconnect archive, and the turn/id
@@ -199,10 +205,17 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   at load instead of sweeping every restored player instantly.
 - **Fresh-on-mismatch**: a snapshot whose version, `WORLD_SEED`, or
   `WORLD_RADIUS` doesn't match the running configuration is rejected —
-  logged, and the server starts fresh. No migrations pre-launch (the wire's
+  logged loudly, **moved aside to `<path>.rejected-<unix-ts>`** (so the
+  fresh world's periodic saver can't overwrite the only copy — a config typo
+  never erases everyone's characters; fix the config and `mv` it back), and
+  the server starts fresh. No migrations pre-launch (the wire's
   no-backward-compatibility rule applies to disk exactly as it does to the
   protocol); a save or load error always logs and continues, never crashes
   the game loop.
+- **Archive growth is unbounded** (deliberate): tokens that never return
+  accumulate in the disconnect archive and thus in the snapshot forever.
+  Fine at 15-friends scale (a few hundred bytes per character); revisit with
+  the planned SQLite-for-state upgrade.
 
 ---
 

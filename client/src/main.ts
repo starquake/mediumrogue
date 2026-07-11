@@ -12,7 +12,15 @@ import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
 import { fetchMap } from "./net/map";
-import { importIdentityFromFragment, join, loadIdentity, submitEquip, submitIntent } from "./net/session";
+import {
+  clearIdentity,
+  importIdentityFromFragment,
+  join,
+  JoinRejectedError,
+  loadIdentity,
+  submitEquip,
+  submitIntent,
+} from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
 import type { GroundItemView, Hex, ItemView, QuestView, TurnEvent } from "./protocol.gen";
@@ -520,7 +528,29 @@ async function start(): Promise<void> {
     await waitForEnter();
   }
   startScreenEl.hidden = true;
-  const me = await join(selectedName, selectedClass, selectedSpecies);
+
+  let me;
+  try {
+    me = await join(selectedName, selectedClass, selectedSpecies);
+  } catch (err) {
+    // A REJECTED join (4xx) means the stored identity itself is dead — most
+    // plausibly a character link whose token the server no longer knows
+    // (snapshot off across a restart, or discarded on a version/seed
+    // mismatch): the import stores class/species as "", which the server
+    // only accepts alongside a token it recognizes (see session.join's
+    // reclaim-or-fail contract). Clear the dead identity so refreshes stop
+    // re-failing, and fall back to the start screen for a proper new
+    // character. Anything else (network down, world full) rethrows — the
+    // stored identity may still be perfectly good, so it must survive.
+    if (!(err instanceof JoinRejectedError)) {
+      throw err;
+    }
+    clearIdentity();
+    startScreenEl.hidden = false;
+    await waitForEnter();
+    startScreenEl.hidden = true;
+    me = await join(selectedName, selectedClass, selectedSpecies);
+  }
   window.game.me = { id: me.entityId, hex: me.hex };
   window.game.name = selectedName;
   const identity = { entityId: me.entityId, token: me.token };
