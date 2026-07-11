@@ -8,10 +8,14 @@ package protocol
 // server resolution, then a playback window on the client. Inside a combat
 // time bubble the cadence is suspended and turns are action-gated instead.
 const (
-	// TurnSeconds is the full world-turn period out of combat.
-	TurnSeconds = 5
+	// TurnSeconds is the full world-turn period out of combat. Lowered 5→4
+	// (playtest feedback batch 3, item 1; playtest 2026-07-11: a 3 s input
+	// window felt slow) — the plan's §9 "feel-test the cadence" decision
+	// landing at 2 s input / 2 s playback.
+	TurnSeconds = 4
 	// InputWindowSeconds is the slice of the turn in which intents are accepted.
-	InputWindowSeconds = 3
+	// Lowered 3→2 alongside TurnSeconds (see above).
+	InputWindowSeconds = 2
 	// PlaybackSeconds is the client-side animation window after resolution.
 	PlaybackSeconds = 2
 )

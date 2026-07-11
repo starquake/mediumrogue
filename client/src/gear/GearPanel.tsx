@@ -30,7 +30,7 @@ function GearPanel(props: { equip: (itemId: number) => void }): JSXElement {
         <div id="gear-title">Gear</div>
         {/* Index, not For: main.ts rebuilds a fresh ItemView[] every turn
             bundle (new object references even when nothing changed) — For
-            keys by reference and would remount every row's DOM every ~5s
+            keys by reference and would remount every row's DOM every ~4s
             (250ms in e2e), losing in-flight hover/click state (a click can
             miss with "element was detached from the DOM"). Index keys by
             array position instead, which is stable here: a player's own

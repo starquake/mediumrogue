@@ -26,7 +26,7 @@ export interface EventsController {
 }
 
 // Liveness window: a stream is dead after this long with no data. Turn-scaled so
-// a slow production cadence (5s turns → 20s window) is never mistaken for a
+// a slow production cadence (4s turns → 16s window) is never mistaken for a
 // drop; floored for the pre-first-bundle window.
 const LIVENESS_FLOOR_MS = 3_000;
 const LIVENESS_TURNS = 4;

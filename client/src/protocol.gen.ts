@@ -12,13 +12,17 @@ generated file must never be edited by hand.
 */
 
 /**
- * TurnSeconds is the full world-turn period out of combat.
+ * TurnSeconds is the full world-turn period out of combat. Lowered 5→4
+ * (playtest feedback batch 3, item 1; playtest 2026-07-11: a 3 s input
+ * window felt slow) — the plan's §9 "feel-test the cadence" decision
+ * landing at 2 s input / 2 s playback.
  */
-export const TurnSeconds = 5;
+export const TurnSeconds = 4;
 /**
  * InputWindowSeconds is the slice of the turn in which intents are accepted.
+ * Lowered 3→2 alongside TurnSeconds (see above).
  */
-export const InputWindowSeconds = 3;
+export const InputWindowSeconds = 2;
 /**
  * PlaybackSeconds is the client-side animation window after resolution.
  */

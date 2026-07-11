@@ -11,7 +11,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 ## 1. Game mechanics (what players experience)
 
 ### Time: WeGo turns & combat bubbles
-- One shared **world turn every 5 s** (3 s input window, ~2 s playback).
+- One shared **world turn every 4 s** (2 s input window, ~2 s playback).
   No input = stand still; queued click-to-move paths auto-advance. Latency
   and reflexes are irrelevant by design.
 - **Combat time bubbles**: when a player and a hostile come within 6 hexes,
@@ -330,7 +330,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | Var | Default | Meaning |
 |---|---|---|
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
-| `TURN_INTERVAL` | `5s` | world-turn period (tests shrink it) |
+| `TURN_INTERVAL` | `4s` | world-turn period (tests shrink it) |
 | `HEARTBEAT_INTERVAL` | `15s` | SSE keep-alive cadence |
 | `MONSTER_COUNT` | `0` | monsters spawned at startup |
 | `COMBAT_PATIENCE` | `30s` | bubble AFK fallback before auto-resolve |
@@ -345,7 +345,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 
 | Constant | Value | |
 |---|---|---|
-| `TurnSeconds` / `InputWindowSeconds` / `PlaybackSeconds` | 5 / 3 / 2 | turn anatomy |
+| `TurnSeconds` / `InputWindowSeconds` / `PlaybackSeconds` | 4 / 2 / 2 | turn anatomy |
 | `CombatRadius` | 6 | bubble trigger distance |
 | `StackCap` | 5 | max friendly entities per hex |
 | `MaxNameLen` / `MaxChatLen` | 24 / 500 | input caps (runes) |
