@@ -45,8 +45,12 @@ test("a fresh player starts at level 1 with 0 XP, exposed on window.game and the
   expect(level).toBe(1);
   expect(xp).toBe(0);
 
-  // The stats HUD paints what window.game reports.
-  await expect(page.locator("#stats")).toHaveText(`Lv 1 · 0/${XPPerLevel} XP`);
+  // The stats HUD paints what window.game reports, including the live
+  // position readout (item 9, playtest batch 2) — the spawn hex varies per
+  // run, so read it from window.game.me rather than hardcoding one.
+  const hex = await page.evaluate(() => window.game.me?.hex ?? null);
+  expect(hex).not.toBeNull();
+  await expect(page.locator("#stats")).toHaveText(`Lv 1 · 0/${XPPerLevel} XP · (${hex?.q}, ${hex?.r})`);
 });
 
 test("the hex world renders from server map data", async ({ page }) => {

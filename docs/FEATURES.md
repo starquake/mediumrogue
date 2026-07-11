@@ -106,6 +106,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   camera **cuts** to the respawn instead of panning.
 - **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
+- **HUD stats line** (item 9, playtest batch 2): `Lv L · xp/XPPerLevel XP ·
+  (q, r)` — my entity's hex, live per turn bundle.
 
 ### Gear (milestone 6b.4, loot model updated 6c)
 - **Items are content data** (registry in `internal/game/content.go`): 5

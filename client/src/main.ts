@@ -835,7 +835,9 @@ async function start(): Promise<void> {
         window.game.species = mine.species;
         window.game.name = mine.name;
         const xpIntoLevel = mine.xp % XPPerLevel;
-        statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
+        // Position readout (item 9, playtest batch 2): live per bundle, so
+        // it never drifts from the server-authoritative hex even mid-tween.
+        statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP · (${mine.hex.q}, ${mine.hex.r})`;
 
         // Gear: my owned items ride Entity.Items every bundle (full-snapshot
         // philosophy, same as everything else here). The equipped ranged
