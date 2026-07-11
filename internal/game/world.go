@@ -163,6 +163,13 @@ type World struct {
 	// radius is the world's hex radius (from Config.WorldRadius), the loop
 	// bound for spawnHexLocked's outward spiral.
 	radius int
+	// worldSeed is the procedural-map generation seed (Config.WorldSeed),
+	// kept (in addition to feeding GenerateMap/generateQuests at
+	// construction) so a snapshot restore can gate on it: a snapshot taken
+	// under a different seed or radius describes a different map, and
+	// RestoreState refuses to load it rather than silently mismatching
+	// terrain against persisted positions. See snapshot.go.
+	worldSeed uint64
 	// spawnable is the origin-reachable walkable region (BFS from origin over
 	// walkable tiles, computed once at construction) — spawnHexLocked only
 	// places players on hexes in this set, so a spawn can never land in a
@@ -268,6 +275,7 @@ func NewWorld(
 		terrain:         terrain,
 		worldMap:        worldMap,
 		radius:          radius,
+		worldSeed:       worldSeed,
 		spawnable:       reachableWalkable(worldMap),
 		entities:        make(map[int64]*entity),
 		byToken:         make(map[string]*entity),

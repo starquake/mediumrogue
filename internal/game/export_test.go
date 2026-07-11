@@ -275,6 +275,47 @@ func (w *World) SetSpeciesForTest(id int64, species string) {
 	}
 }
 
+// PathForTest returns an entity's queued path (nil if idle), so a
+// snapshot-restore test can assert this transient field is zeroed on a
+// restored entity without depending on its side effects during resolution.
+func (w *World) PathForTest(id int64) []protocol.Hex {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.path
+	}
+
+	return nil
+}
+
+// SetAttackTargetForTest overwrites an entity's pending ranged-attack target
+// directly, so a snapshot-restore test can engineer a non-zero attackTarget
+// (normally only set mid-turn by an "attack" intent) and assert it is zeroed
+// on a restored entity.
+func (w *World) SetAttackTargetForTest(id int64, target protocol.Hex) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.attackTarget = &target
+	}
+}
+
+// HasAttackTargetForTest reports whether an entity currently has a pending
+// ranged-attack target queued, so a test can assert the field's presence or
+// absence without exposing the target hex itself.
+func (w *World) HasAttackTargetForTest(id int64) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.attackTarget != nil
+	}
+
+	return false
+}
+
 // SetPathForTest overwrites an entity's queued path directly. A monster's path
 // is normally computed fresh by thinkMonstersLocked every turn (which holds a
 // monster in place whenever it's adjacent to a player — attacking is
