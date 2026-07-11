@@ -212,10 +212,22 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   // SPACE = wait (item 11): the same own-hex move a click already
   // waits/cancels with. Pressing it must not move this entity, and — item
   // 6 — window.game.committedAction reports the wait glyph's shape
-  // immediately (set synchronously inside walkTo, before the intent POST's
-  // async round trip even starts).
-  await page.keyboard.press("Space");
-  expect(await page.evaluate(() => window.game.committedAction)).toEqual({ kind: "wait", target: hexAtFreeze });
+  // immediately. Dispatched as a synthetic keydown AND read back inside one
+  // page.evaluate call (rather than Playwright's page.keyboard.press
+  // followed by a separate evaluate) so the read happens on the exact same
+  // synchronous JS turn as the dispatch — bindMovementKeys' listener sets
+  // committedAction synchronously, before the intent POST's async round
+  // trip even starts, but a live 250ms turn cadence means a REAL two-round-
+  // trip gap between a keyboard.press and a follow-up evaluate can let the
+  // next turn bundle land first and clear it (item 6's "cleared on the next
+  // turn bundle" rule, working as designed) — a flake this atomic dispatch
+  // avoids without changing that production behavior.
+  const committed = await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", bubbles: true, cancelable: true }));
+
+    return window.game.committedAction;
+  });
+  expect(committed).toEqual({ kind: "wait", target: hexAtFreeze });
   expect(await page.evaluate(() => window.game.me?.hex ?? null)).toEqual(hexAtFreeze);
 
   // Stop this entity's walk immediately: the chase loop above left a queued
