@@ -26,6 +26,10 @@ test("a second tab joining as a different player triggers the first tab to reloa
   context,
   page,
 }) => {
+  // Two full page boots plus a triggered reload-and-rejoin: give it CI
+  // headroom (3x the default budget), same rationale as chat.spec.ts.
+  test.slow();
+
   // Tab 1: the seeded storageState identity auto-joins (fighter/human/
   // traveler, no token yet — see playwright.config.ts's storageStateFor).
   await page.goto("/");
@@ -50,14 +54,6 @@ test("a second tab joining as a different player triggers the first tab to reloa
   await page2.locator('.card[data-class="rogue"]').click();
   await page2.locator('.card[data-species="elf"]').click();
 
-  // Tab 1 must react to the `storage` event (fires only in OTHER tabs, i.e.
-  // exactly here) by reloading — never keep running under a token tab 2 is
-  // now using. Register the listener BEFORE the click that triggers tab 2's
-  // join (whose localStorage write fires the reload): registering after can
-  // race a fast reload and time out waiting for a load that already
-  // happened.
-  const tab1Reloaded = page.waitForEvent("load", { timeout: 10_000 });
-
   await page2.locator("#start-enter").click();
 
   await expect.poll(() => page2.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
@@ -68,9 +64,34 @@ test("a second tab joining as a different player triggers the first tab to reloa
   );
   expect(tokenB).not.toBe(tokenA);
 
-  await tab1Reloaded;
+  // Tab 1 must react to the `storage` event (fires only in OTHER tabs, i.e.
+  // exactly here) by reloading — never keep running under a token tab 2 is
+  // now using. Poll a post-reload OBSERVABLE instead of waitForEvent("load"):
+  // an event listener is inherently racy against an indirectly-triggered
+  // reload (fire before registration → timeout; this bit CI). The current
+  // document's navigation entry is state, not an event — it reads "navigate"
+  // on the original load and "reload" on the reloaded document, no matter
+  // when we look. The evaluate is wrapped so a mid-navigation destroyed
+  // context reads as "not yet" and the poll simply retries.
+  await expect
+    .poll(
+      () =>
+        page
+          .evaluate(() => {
+            const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
 
-  await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
+            return nav?.type ?? "";
+          })
+          .catch(() => ""),
+      { timeout: 15_000 },
+    )
+    .toBe("reload");
+
+  // Generous timeout: the reloaded tab must re-fetch the app, reclaim, and
+  // see a first turn bundle — slow under CI-grade parallel contention.
+  await expect
+    .poll(() => page.evaluate(() => window.game.me?.id ?? null), { timeout: 15_000 })
+    .not.toBeNull();
 
   // After the reload, tab 1 comes back up consistent with whatever is now
   // on disk (tab 2's identity, since it wrote last) — its rendered state and
