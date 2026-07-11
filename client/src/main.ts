@@ -859,8 +859,28 @@ async function start(): Promise<void> {
 
   window.game.tapHex = (q, r): Promise<void> => clickTarget({ q, r });
 
+  // World-reset signal (item 4, playtest feedback batch 3): remember the
+  // first WorldID this session ever sees. A later bundle carrying a
+  // DIFFERENT WorldID means the world underneath this client changed — a
+  // restart with no matching snapshot/archive entry, not an ordinary
+  // reconnect (a restore keeps its predecessor's WorldID — see
+  // World.worldID's doc, internal/game/world.go). A full reload is the
+  // simplest correct recovery: it re-runs this whole module from scratch,
+  // and the existing dead-token reclaim-or-fail path (this function's
+  // catch block, above) already falls back to the start screen if the
+  // server truly no longer knows this identity's token — no separate
+  // clear-identity step needed here.
+  let firstWorldID: string | null = null;
+
   eventsController = connectEvents(() => identity.token, {
     onTurn: (event: TurnEvent): void => {
+      if (firstWorldID === null) {
+        firstWorldID = event.worldId;
+      } else if (event.worldId !== firstWorldID) {
+        window.location.reload();
+        return;
+      }
+
       // Committed-action indicator (item 6): clear on the next turn bundle,
       // whether it resolved my action or not — a fresh bundle always means
       // "no longer showing what I chose last time," the simplest rule that

@@ -42,6 +42,32 @@ func step(t *testing.T, w *game.World) protocol.TurnEvent {
 	return w.Snapshot()
 }
 
+// TestNewWorldMintsDistinctWorldIDs is the fresh-boot half of item 4's
+// (playtest feedback batch 3) world-reset signal: two independently
+// constructed worlds (no snapshot involved — the same scenario as two
+// separate `go run` boots, or a restart with SNAPSHOT_PATH unset) get
+// different, non-empty worldIDs, and Snapshot() actually carries it on the
+// wire. The restore-keeps-the-same-worldID half is
+// TestSnapshotRoundTrip (snapshot_test.go).
+func TestNewWorldMintsDistinctWorldIDs(t *testing.T) {
+	t.Parallel()
+
+	a := newWorld()
+	b := newWorld()
+
+	if got := a.WorldIDForTest(); got == "" {
+		t.Error("worldID is empty")
+	}
+
+	if got, want := b.WorldIDForTest(), a.WorldIDForTest(); got == want {
+		t.Errorf("two independently constructed worlds minted the same worldID %q", got)
+	}
+
+	if got, want := a.Snapshot().WorldID, a.WorldIDForTest(); got != want {
+		t.Errorf("Snapshot().WorldID = %q, want %q (World.worldID)", got, want)
+	}
+}
+
 func TestJoinCreatesEntityOnWalkableHex(t *testing.T) {
 	t.Parallel()
 

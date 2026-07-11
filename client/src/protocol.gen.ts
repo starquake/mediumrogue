@@ -335,6 +335,18 @@ export interface TurnEvent {
    * GroundItems is every dropped item currently lying on the map.
    */
   groundItems: GroundItemView[];
+  /**
+   * WorldID identifies this running world instance — a random hex string
+   * minted once at world creation and persisted in the snapshot (so a
+   * restored world is still considered the SAME world). It never changes
+   * while the process/snapshot lineage is unbroken, and rides every turn
+   * bundle so a client can tell a genuine world reset (a restart with no
+   * matching snapshot, or a fresh world under a different snapshot lineage)
+   * from an ordinary reconnect: if a bundle's WorldID differs from the
+   * first one this client ever saw, the world underneath it changed (item
+   * 4, playtest feedback batch 3).
+   */
+  worldId: string;
 }
 /**
  * QuestState is a quest's lifecycle stage on the board.

@@ -83,6 +83,22 @@ var (
 // tokenBytes sizes the bearer token: 16 random bytes = 128 bits.
 const tokenBytes = 16
 
+// worldIDBytes sizes World.worldID: 8 random bytes = 64 bits, hex-encoded —
+// plenty of entropy to tell world instances apart (it is an identity signal,
+// not a secret) while staying short in logs/turn bundles.
+const worldIDBytes = 8
+
+// newWorldID mints a random hex worldID for a freshly constructed World (see
+// World.worldID's doc). A failed crypto read leaves a zero-valued (all
+// zeros, still a valid non-empty hex string) id — worse entropy, never a
+// crash, matching NewWorld's existing worldSeed fallback above.
+func newWorldID() string {
+	buf := make([]byte, worldIDBytes)
+	_, _ = rand.Read(buf)
+
+	return hex.EncodeToString(buf)
+}
+
 // entity is the server-side entity record. The wire shape is
 // protocol.Entity; the token never leaves this package except via Join.
 type entity struct {
@@ -210,6 +226,14 @@ type World struct {
 	// RestoreState refuses to load it rather than silently mismatching
 	// terrain against persisted positions. See snapshot.go.
 	worldSeed uint64
+	// worldID identifies this running world instance to clients (item 4,
+	// playtest feedback batch 3) — a random hex string minted once in
+	// NewWorld and, unlike worldSeed/radius, PERSISTED in the snapshot (see
+	// snapshot.go): a restored world keeps its predecessor's worldID because
+	// it IS the same world, not a new one. Rides every TurnEvent so a client
+	// can distinguish an ordinary reconnect from a genuine world reset (a
+	// restart with no matching snapshot).
+	worldID string
 	// spawnable is the origin-reachable walkable region (BFS from origin over
 	// walkable tiles, computed once at construction) — spawnHexLocked only
 	// places players on hexes in this set, so a spawn can never land in a
@@ -305,6 +329,8 @@ func NewWorld(
 	//nolint:gosec // a random world seed can be any 64-bit value; the sign is irrelevant.
 	seed := int64(binary.BigEndian.Uint64(seedBuf[:]))
 
+	worldID := newWorldID()
+
 	return &World{
 		interval:        interval,
 		ticks:           ticks,
@@ -317,6 +343,7 @@ func NewWorld(
 		worldMap:        worldMap,
 		radius:          radius,
 		worldSeed:       worldSeed,
+		worldID:         worldID,
 		spawnable:       reachableWalkable(worldMap),
 		entities:        make(map[int64]*entity),
 		byToken:         make(map[string]*entity),
@@ -973,7 +1000,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 	return protocol.TurnEvent{
 		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
-		Quests: questViews, GroundItems: groundItems,
+		Quests: questViews, GroundItems: groundItems, WorldID: w.worldID,
 	}
 }
 
