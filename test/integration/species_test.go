@@ -98,8 +98,8 @@ func TestHumanEarnsMoreXPThanDwarfOverHTTP(t *testing.T) {
 	events := get(t, ts, "/api/events")
 	reader := bufio.NewReader(events.Body)
 
-	wantHumanXP := protocol.MonsterXP * (100 + protocol.HumanXPBonusPercent) / 100
-	wantDwarfXP := protocol.MonsterXP
+	wantHumanXP := wolfKillXP * (100 + protocol.HumanXPBonusPercent) / 100
+	wantDwarfXP := wolfKillXP
 
 	deadline := time.Now().Add(10 * time.Second)
 

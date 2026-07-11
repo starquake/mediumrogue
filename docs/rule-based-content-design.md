@@ -87,9 +87,10 @@ These are the moments the engine will expose. Every rule must name one:
 
 | Event | Live? | The moment… | Example rules that hook here |
 |---|---|---|---|
-| **deal-damage** | yes | …your hit's damage number is computed | weapon enchantments, "bonus vs undead", damage buffs, **elf's crit** (a chance-conditioned ×2 — see the note below) |
+| **deal-damage** | yes | …your hit's damage number is computed | weapon enchantments, **"bonus vs undead"** (shipped as **Wyrmslayer Greatsword**, ×1.5 vs dragons — see `targetKind` below), damage buffs, **elf's crit** (a chance-conditioned ×2 — see the note below) |
 | **take-damage** | yes | …an incoming hit's damage is applied to you | dwarf toughness, armor, shields, vulnerabilities |
 | **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
+| **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards; no card uses this yet — future sneaky/loud gear |
 | **attack-roll** | not yet | …an attack is being aimed: hit chance, crit chance, crit size | "lucky" weapons, accuracy debuffs, a miss chance |
 | **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
 
@@ -117,8 +118,10 @@ Every rule is three fill-in-the-blank slots.
 
 **IF — conditions (optional, combinable).** Things a rule can check:
 
-- *About the actors:* attacker/target species, class, level, monster type,
-  current HP ("below half health"), party membership.
+- *About the actors:* attacker/target species, class, level, **monster kind**
+  (shipped as `targetKind` — the target is a monster of a specific
+  registered kind, e.g. "dragon"; validated against the monster registry at
+  load), current HP ("below half health"), party membership.
 - *About the situation:* distance to target, target adjacent or not, number
   of enemies in the bubble, allies on your hex, melee vs. ranged hit.
 - *Chance:* "30% of the time" — the dice-roll condition (elf crits work
@@ -167,6 +170,12 @@ For class:   fighter / rogue / mage / any
 Base stats:  damage, range in hexes (0 = melee), area radius (0 = single target)
 Rules:       0 or more when/if/then rules
 Drops from:  what kind of monster/place should yield this?
+             (real since milestone 6c: loot authority lives on the MONSTER,
+             not the item — each monster kind owns its own weighted drop
+             table (`monsterDef.drops`) and its own drop chance, so this
+             line on a gear card is now a literal transcription instruction:
+             "add {defID, weight} to kind X's table", not aspirational
+             flavor text)
 Intent:      the one-line reason this item exists
 ```
 

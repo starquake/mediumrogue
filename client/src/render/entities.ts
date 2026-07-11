@@ -13,6 +13,10 @@ const TELEPORT_HEX_DISTANCE = 8;
 const OTHER_COLOR = 0xc8b458;
 const ME_COLOR = 0x8fd0ff;
 const PARTY_COLOR = 0x8fe08f;
+// MONSTER_COLOR is the fallback for an unrecognized monsterKind (a future
+// kind the client hasn't been taught yet, or a monster wire shape from an
+// older/newer server) — the pre-6c flat monster color, kept so an unknown
+// kind still reads unambiguously as "hostile", never mistaken for a player.
 const MONSTER_COLOR = 0xd6544f;
 const HP_BAR_BG = 0x1a1f1a;
 const HP_BAR_FG = 0x4fd66c;
@@ -20,8 +24,7 @@ const COMBAT_RING_COLOR = 0xffcc33;
 const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
 
 // A one-letter glyph per class, drawn centered on a player's dot so classes
-// are distinguishable at a glance. Monsters have no class (empty string on
-// the wire) and simply get no glyph.
+// are distinguishable at a glance.
 const CLASS_GLYPH: Record<string, string> = {
   [ClassFighter]: "F",
   [ClassRogue]: "R",
@@ -33,6 +36,23 @@ const CLASS_LABEL_STYLE = {
   fontWeight: "bold",
   fill: 0x0b0f0b,
 } as const;
+
+// Per-kind monster look (milestone 6c): a distinct dot color plus the
+// registry's own one-letter glyph (content.go's monsterDef.glyph), so
+// danger is legible at a glance — a troll reads differently from a rat
+// well before either is close enough to matter. Keyed by
+// Entity.monsterKind (the registry id); wolf keeps the pre-6c flat
+// MONSTER_COLOR so its look doesn't change out from under existing
+// players. An unrecognized kind (KIND_STYLE has no entry) falls back to
+// MONSTER_COLOR with no glyph, mirroring CLASS_GLYPH's unknown-class
+// fallback.
+const KIND_STYLE: Record<string, { color: number; glyph: string }> = {
+  rat: { color: 0x9a8a6a, glyph: "r" },
+  wolf: { color: MONSTER_COLOR, glyph: "w" },
+  ghoul: { color: 0x7cbf6a, glyph: "g" },
+  troll: { color: 0xd68a3f, glyph: "T" },
+  dragon: { color: 0xd63fc9, glyph: "D" },
+};
 
 interface Dot {
   gfx: Graphics;
@@ -49,6 +69,18 @@ interface Dot {
   hp: number;
   maxHp: number;
   inCombat: boolean;
+  monsterKind: string;
+}
+
+// glyphFor is the one-letter label a dot draws: the class glyph for a
+// player, or the kind's own glyph for a monster (KIND_STYLE — "" for an
+// unrecognized kind, mirroring CLASS_GLYPH's unknown-class fallback).
+function glyphFor(e: Entity): string {
+  if (e.kind === EntityPlayer) {
+    return CLASS_GLYPH[e.class] ?? "";
+  }
+
+  return KIND_STYLE[e.monsterKind]?.glyph ?? "";
 }
 
 /**
@@ -87,7 +119,7 @@ export class EntityLayer {
         // First sighting: appear in place, no tween.
         const gfx = new Graphics();
         this.container.addChild(gfx);
-        const label = new Text({ text: CLASS_GLYPH[e.class] ?? "", style: CLASS_LABEL_STYLE });
+        const label = new Text({ text: glyphFor(e), style: CLASS_LABEL_STYLE });
         label.anchor.set(0.5);
         this.container.addChild(label);
         dot = {
@@ -105,6 +137,7 @@ export class EntityLayer {
           hp: e.hp,
           maxHp: e.maxHp,
           inCombat: e.inCombat,
+          monsterKind: e.monsterKind,
         };
         this.dots.set(e.id, dot);
       } else {
@@ -127,7 +160,8 @@ export class EntityLayer {
         dot.hp = e.hp;
         dot.maxHp = e.maxHp;
         dot.inCombat = e.inCombat;
-        dot.label.text = CLASS_GLYPH[e.class] ?? "";
+        dot.monsterKind = e.monsterKind;
+        dot.label.text = glyphFor(e);
       }
 
       this.drawDot(dot);
@@ -218,7 +252,7 @@ export class EntityLayer {
   private drawDot(dot: Dot): void {
     const { x, y } = dot.current;
     const color = dot.hostile
-      ? MONSTER_COLOR
+      ? (KIND_STYLE[dot.monsterKind]?.color ?? MONSTER_COLOR)
       : dot.mine
         ? ME_COLOR
         : dot.partymate

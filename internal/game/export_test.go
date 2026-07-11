@@ -133,17 +133,41 @@ func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 // its id, so AI tests can build exact monster/player geometries without
 // depending on SpawnMonsters' random placement.
 func (w *World) PlaceMonsterForTest(hex protocol.Hex) int64 {
+	return w.PlaceMonsterKindForTest(hex, defaultMonsterKindID)
+}
+
+// PlaceMonsterKindForTest is PlaceMonsterForTest for a caller-chosen monster
+// kind (content.go's monsterDefs id), so a test can build an exact board
+// state with a non-default kind (e.g. a dragon, for the Wyrmslayer pin).
+// Panics if kind is not registered.
+func (w *World) PlaceMonsterKindForTest(hex protocol.Hex, kind string) int64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	k, ok := monsterDefByID[kind]
+	if !ok {
+		panic("game: PlaceMonsterKindForTest unknown monster kind " + kind)
+	}
 
 	w.nextID++
 	w.entities[w.nextID] = &entity{
 		id: w.nextID, hex: hex,
-		kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
 	}
 
 	return w.nextID
 }
+
+// MonsterMaxHPForTest, MonsterDamageForTest, MonsterXPForTest,
+// MonsterDropChanceForTest, and MonsterAggroRadiusForTest expose a
+// registered monster kind's stats by id, so black-box tests can assert
+// combat numbers without duplicating the registry (content.go) inline —
+// mirrors ItemDamageForTest et al. Panics if kind is not registered.
+func MonsterMaxHPForTest(kind string) int       { return monsterDefByID[kind].maxHP }
+func MonsterDamageForTest(kind string) int      { return monsterDefByID[kind].damage }
+func MonsterXPForTest(kind string) int          { return monsterDefByID[kind].xp }
+func MonsterDropChanceForTest(kind string) int  { return monsterDefByID[kind].dropChance }
+func MonsterAggroRadiusForTest(kind string) int { return monsterDefByID[kind].aggroRadius }
 
 // SetHexForTest overwrites an entity's position directly, so a quest test can
 // place an already-joined party member onto a reach quest's goal without
@@ -451,29 +475,34 @@ func TileCountForTest(radius int) int {
 	return tileCount(radius)
 }
 
-// PickDropForTest exposes pickDrop, seeded from a single uint64 (stream 0),
-// so a content test can enumerate the weighted-drop distribution over a
-// fixed seed range without depending on any World. Returns "" only if
-// dropTable is empty (pickDrop's defensive nil case).
-func PickDropForTest(seed uint64) string {
-	//nolint:gosec // deterministic test-only seed, not security-sensitive; reproducibility is required.
-	rng := mrand.New(mrand.NewPCG(seed, 0))
-
-	def := pickDrop(rng)
-	if def == nil {
+// PickDropForTest exposes pickDropFrom over a named monster kind's own drop
+// table, seeded from a single uint64 (stream 0), so a content test can
+// enumerate the weighted-drop distribution over a fixed seed range without
+// depending on any World. Returns "" if kind is unregistered, its table is
+// empty, or every weight is zero (pickDropFrom's defensive case).
+func PickDropForTest(kind string, seed uint64) string {
+	k, ok := monsterDefByID[kind]
+	if !ok {
 		return ""
 	}
 
-	return def.id
+	//nolint:gosec // deterministic test-only seed, not security-sensitive; reproducibility is required.
+	rng := mrand.New(mrand.NewPCG(seed, 0))
+
+	return pickDropFrom(rng, k.drops)
 }
 
-// DropTableIDsForTest returns every def id in dropTable (registry order), so
-// a content test can assert pickDrop's output set against the live registry
+// DropTableIDsForTest returns every def id in a named monster kind's own
+// drops table (registry order, duplicates included when a kind lists the
+// same item at more than one weight bucket — none do today), so a content
+// test can assert pickDropFrom's output set against the live registry
 // instead of a hand-duplicated literal list.
-func DropTableIDsForTest() []string {
+func DropTableIDsForTest(kind string) []string {
+	dropTable := monsterDefByID[kind].drops
+
 	ids := make([]string, len(dropTable))
-	for i, def := range dropTable {
-		ids[i] = def.id
+	for i, d := range dropTable {
+		ids[i] = d.defID
 	}
 
 	return ids
@@ -492,4 +521,53 @@ func (w *World) GroundItemForTest(hex protocol.Hex, defID string) int64 {
 	w.groundItems[hex] = append(w.groundItems[hex], inst)
 
 	return inst.id
+}
+
+// RingOfForTest exposes ringOf (worldgen.go), so a black-box test can pin
+// the ring-band math at various world radii without depending on any World.
+func RingOfForTest(h protocol.Hex, worldRadius int) int {
+	return ringOf(h, worldRadius)
+}
+
+// MonsterKindForTest returns the monster-kind registry id of the entity
+// with id (empty for a player, or an unknown id), so a ring/spawn test can
+// assert on WHICH kind landed where without waiting for Entity.MonsterKind
+// to ride the wire (6c Task 4).
+func (w *World) MonsterKindForTest(id int64) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.monsterKind
+	}
+
+	return ""
+}
+
+// MonsterRingsForTest returns the rings a registered monster kind spawns
+// in, so a ring/spawn test can check "this kind is valid for the ring its
+// hex fell into" without duplicating the registry inline. Panics if kind
+// is not registered.
+func MonsterRingsForTest(kind string) []int {
+	return monsterDefByID[kind].rings
+}
+
+// KillSummaryForTest exposes killSummary over a list of monster-kind ids
+// (resolved through monsterDefByID, in the given order — killSummary's
+// grouping is order-sensitive, see its doc comment), so a black-box test
+// can assert the exact chat/combat-log announce text without duplicating
+// the pipeline inline. Panics if any id is unregistered.
+func KillSummaryForTest(kindIDs ...string) string {
+	slain := make([]*monsterDef, len(kindIDs))
+
+	for i, id := range kindIDs {
+		k, ok := monsterDefByID[id]
+		if !ok {
+			panic("game: KillSummaryForTest unknown monster kind " + id)
+		}
+
+		slain[i] = k
+	}
+
+	return killSummary(slain)
 }

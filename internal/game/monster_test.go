@@ -53,6 +53,14 @@ func sortedHexes(hexes []protocol.Hex) []protocol.Hex {
 	return out
 }
 
+// TestSpawnMonstersPlacesWalkableMonsters: SpawnMonsters places the
+// requested count on walkable hexes, each spawned at full HP for ITS OWN
+// kind (ring-distributed placement since 6c means spawned kinds vary —
+// rat/wolf/ghoul/troll/dragon each carry a different maxHP — so this
+// asserts internal consistency (HP == MaxHP, both positive) rather than a
+// single flat constant; TestSpawnMonstersDistributesAcrossRings and
+// TestSpawnMonstersRingKindsAreValid (rings_test.go) pin the per-kind/
+// per-ring distribution itself).
 func TestSpawnMonstersPlacesWalkableMonsters(t *testing.T) {
 	t.Parallel()
 
@@ -74,12 +82,12 @@ func TestSpawnMonstersPlacesWalkableMonsters(t *testing.T) {
 	}
 
 	for _, m := range monsters {
-		if got, want := m.HP, protocol.MonsterMaxHP; got != want {
-			t.Errorf("monster %d HP = %d, want %d", m.ID, got, want)
+		if m.MaxHP <= 0 {
+			t.Errorf("monster %d MaxHP = %d, want > 0", m.ID, m.MaxHP)
 		}
 
-		if got, want := m.MaxHP, protocol.MonsterMaxHP; got != want {
-			t.Errorf("monster %d MaxHP = %d, want %d", m.ID, got, want)
+		if got, want := m.HP, m.MaxHP; got != want {
+			t.Errorf("monster %d HP = %d, want %d (its own kind's full MaxHP)", m.ID, got, want)
 		}
 
 		if !isWalkable(w, m.Hex) {

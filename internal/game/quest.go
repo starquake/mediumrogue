@@ -29,7 +29,7 @@ const (
 	questKillMin             = 2
 	questKillMax             = 4
 	questReachMinDist        = 8
-	questKillRewardPerTarget = protocol.MonsterXP
+	questKillRewardPerTarget = protocol.QuestKillRewardPerTarget
 	questReachRewardXP       = 20
 )
 

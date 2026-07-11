@@ -45,6 +45,27 @@ export const MonsterAggroRadius = 10;
  */
 export const StackCap = 5;
 /**
+ * RingCount is the number of distance-based difficulty rings worldgen
+ * bands the map into (milestone 6c): ring 0 (home) through RingCount-1
+ * (frontier). Monster-kind registry validation requires every ring to
+ * have at least one kind that spawns in it.
+ */
+export const RingCount = 3;
+/**
+ * SanctuaryRadius is the hex distance from the origin within which no
+ * hostile monster spawns (milestone 6c) — the seed of a future trade
+ * hub (plan §9 recovery entry). Deliberately smaller than CombatRadius:
+ * the player-proximity spawn guard (#36) already keeps a fresh spawn
+ * clear of an instant fight, so the sanctuary's job is the PERMANENT
+ * safe zone, not spawn-moment safety.
+ */
+export const SanctuaryRadius = 5;
+/**
+ * DragonCount is the maximum number of dragons SpawnMonsters places in
+ * one world — the rare, ring-2 boss kind.
+ */
+export const DragonCount = 1;
+/**
  * MaxChatLen caps a chat message length in runes (defence-in-depth; the
  * client also caps input). MaxNameLen caps a player's display name.
  */
@@ -145,25 +166,21 @@ export const ItemSlotClose = "close";
  */
 export const ItemSlotRanged = "ranged";
 /**
- * DropChancePercent is the chance (out of 100) that a slain monster drops an
- * item onto its death hex. Tuning knob.
- */
-export const DropChancePercent = 30;
-/**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
+ * MonsterMaxHP is superseded by per-kind maxHP (internal/game's monsterDef
+ * registry, milestone 6c) — wolf's entry carries this exact value forward —
+ * but stays here as the historical baseline several tests still pin against.
  */
 export const PlayerMaxHP = 20;
 /**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
+ * MonsterMaxHP is superseded by per-kind maxHP (internal/game's monsterDef
+ * registry, milestone 6c) — wolf's entry carries this exact value forward —
+ * but stays here as the historical baseline several tests still pin against.
  */
 export const MonsterMaxHP = 10;
-/**
- * MonsterAttackDamage is a monster's flat melee damage per attack. (Player melee
- * is per-class weapon damage since 6b.2 — see the class weapon constants below.)
- */
-export const MonsterAttackDamage = 3;
 /**
  * RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
  * resolution while out of combat (bubbleID == 0) and below max HP — the
@@ -178,10 +195,13 @@ export const RegenPerTurn = 1;
  */
 export const XPPerLevel = 100;
 /**
- * MonsterXP is awarded to every player in the fight when a monster dies —
- * the full amount each, not divided.
+ * QuestKillRewardPerTarget is the flat per-target XP a kill quest's
+ * reward is built from (targetN * QuestKillRewardPerTarget), independent
+ * of which monster kind actually gets killed toward it — deliberately
+ * decoupled from monsterDef.xp (a kind's own combat kill award) since
+ * 6c introduced per-kind XP.
  */
-export const MonsterXP = 20;
+export const QuestKillRewardPerTarget = 20;
 /**
  * FighterMaxHP is the level-1 max HP for Fighter class (tanky melee).
  */
@@ -405,7 +425,9 @@ export interface Entity {
    */
   level: number /* int */;
   /**
-   * Name is the player's display name; empty for monsters.
+   * Name is the entity's display name: the player's chosen name for a
+   * player, or the monster kind's display name ("Wolf", "Dragon", ...)
+   * for a monster (milestone 6c — previously always empty for monsters).
    */
   name: string;
   /**
@@ -418,6 +440,11 @@ export interface Entity {
    * Items is the entity's owned items. Players only; monsters send none.
    */
   items: ItemView[];
+  /**
+   * MonsterKind is the monster-kind registry id ("wolf", "dragon", ...);
+   * empty for players. Drives per-kind client rendering (color/glyph).
+   */
+  monsterKind: string;
 }
 /**
  * JoinRequest is the body of POST /api/join. A returning client sends its

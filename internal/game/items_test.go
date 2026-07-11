@@ -43,10 +43,6 @@ func TestClassDefaultDamageMatchesLiveBalance(t *testing.T) {
 		if got, want := def.aoeRadius, tc.aoeRadius; got != want {
 			t.Errorf("%s aoeRadius = %d, want %d", tc.id, got, want)
 		}
-
-		if got, want := def.dropWeight, 0; got != want {
-			t.Errorf("%s dropWeight = %d, want %d (class defaults never drop)", tc.id, got, want)
-		}
 	}
 }
 
@@ -134,14 +130,21 @@ func TestCloseDefForFallsBackToFists(t *testing.T) {
 }
 
 // TestCloseDefForMonsterIsClaws: a monster (which owns no items) always bumps
-// with claws, regardless of its close slot bookkeeping.
+// with its kind's own claws profile, regardless of its close slot
+// bookkeeping — the exact same *itemDef pointer every time (monsters.go's
+// buildMonsterIndex builds it once per kind, not fresh per call).
 func TestCloseDefForMonsterIsClaws(t *testing.T) {
 	t.Parallel()
 
-	e := &entity{kind: protocol.EntityMonster}
+	e := &entity{kind: protocol.EntityMonster, monsterKind: idKindWolf}
 
-	if got := closeDefFor(e); got != monsterClawsDef {
-		t.Errorf("closeDefFor(monster) = %v, want monsterClawsDef", got)
+	got := closeDefFor(e)
+	if got != monsterDefByID[idKindWolf].claws {
+		t.Errorf("closeDefFor(wolf) = %v, want the wolf kind's claws profile", got)
+	}
+
+	if got, want := got.damage, monsterDefByID[idKindWolf].damage; got != want {
+		t.Errorf("closeDefFor(wolf).damage = %d, want %d", got, want)
 	}
 }
 
@@ -423,10 +426,10 @@ func TestFirstGearCardsPinned(t *testing.T) {
 		t.Errorf("mattock damage = %d, want %d", got, want)
 	}
 
-	if got, want := mattock.dropWeight, 4; got != want {
-		t.Errorf("mattock dropWeight = %d, want %d", got, want)
-	}
-
+	// Loot authority moved monster-side in 6c: the mattock's drop weight now
+	// lives in wolf's own table (its weight there is unchanged, 4 — see
+	// TestWolfCarriesTodaysExactNumbers, monsters_test.go), not on the item
+	// itself.
 	if got, want := len(mattock.rules), 1; got != want {
 		t.Fatalf("mattock rules = %d, want %d", got, want)
 	}
@@ -481,4 +484,81 @@ func TestValidateItemDefsPanicsOnBadAttackerSpecies(t *testing.T) {
 			then:  effect{kind: effAdd, n: 1},
 		}},
 	}})
+}
+
+// TestValidateItemDefsPanicsOnUnknownTargetKind: a targetKind gate naming an
+// unregistered monster id is a content bug — it would silently never hold.
+func TestValidateItemDefsPanicsOnUnknownTargetKind(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if recover() == nil {
+			t.Error("validateItemDefs did not panic on an unknown targetKind value")
+		}
+	}()
+
+	validateItemDefs([]*itemDef{{
+		id: "bad", name: "Bad", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
+		rules: []ruleCard{{
+			event: evDealDamage,
+			when:  []condition{{kind: condTargetKind, s: "griffin"}},
+			then:  effect{kind: effMulPct, n: 150},
+		}},
+	}})
+}
+
+// TestWyrmslayerGreatswordPinned pins the first designer card's full intent
+// (milestone 6c, previously blocked on monster kinds existing): fighter
+// close, damage 4, ×1.5 vs dragons via condTargetKind, and a dragon-only
+// drop (present in dragon's table, absent from every other kind's).
+func TestWyrmslayerGreatswordPinned(t *testing.T) {
+	t.Parallel()
+
+	sword, ok := itemDefByID[idWyrmslayerGreatsword]
+	if !ok {
+		t.Fatal("wyrmslayer-greatsword not registered")
+	}
+
+	if got, want := sword.class, protocol.ClassFighter; got != want {
+		t.Errorf("sword class = %q, want %q", got, want)
+	}
+
+	if got, want := sword.damage, 4; got != want {
+		t.Errorf("sword damage = %d, want %d", got, want)
+	}
+
+	if got, want := len(sword.rules), 1; got != want {
+		t.Fatalf("sword rules = %d, want %d", got, want)
+	}
+
+	rule := sword.rules[0]
+	if got, want := rule.when[0].kind, condTargetKind; got != want {
+		t.Errorf("sword condition = %q, want %q", got, want)
+	}
+
+	if got, want := rule.when[0].s, idKindDragon; got != want {
+		t.Errorf("sword condition target = %q, want %q", got, want)
+	}
+
+	if got, want := rule.then.n, 150; got != want {
+		t.Errorf("sword effect = x%d pct, want %d", got, want)
+	}
+
+	for _, def := range monsterDefs {
+		present := false
+
+		for _, d := range def.drops {
+			if d.defID == idWyrmslayerGreatsword {
+				present = true
+			}
+		}
+
+		if def.id == idKindDragon && !present {
+			t.Errorf("dragon's drops must include %s", idWyrmslayerGreatsword)
+		}
+
+		if def.id != idKindDragon && present {
+			t.Errorf("%s's drops must NOT include the dragon-only %s", def.id, idWyrmslayerGreatsword)
+		}
+	}
 }

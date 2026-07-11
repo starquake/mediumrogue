@@ -1,28 +1,36 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-10 (evening), after a full design-and-build day on
-top of the morning's 6b.4 merge. **Landed since 6b.4** (PRs #38–#42):
-combat-feel batch (instant click feedback, Diablo-style floating damage
-numbers, tactical move-range overlay with ranged-reach marking and
-restricted in-bubble clicks, deaths/kills in the chat log); the **first
-designer gear batch** (Ancient Dwarven Mattock, Staff of the War Mage —
-each adding a pipeline condition: `attackerSpecies`, `targetHPBelowFlat`);
-and four decision batches in the plan doc: **toolbox progression** (flat
-level curve — retune `HPPerLevel`/`DamagePerLevel` pending; power = the
-gear/skill toolbox), **gear always survives death**, **scaling** (density
-tracks online count + spatial difficulty rings; bubble scaling in reserve),
-**recovery layers** (passive regen → potions → rests → sanctuary hub with
-trade), and **skills as the level-up reward** (First Aid, Make Camp;
-bounded tiers, never use-leveled) with the **downed/revive** direction.
-**In flight:** the playtest-ready batch (passive regen, monster aggro
-range, spawn guards + random spawns, respawn camera cut — PR pending) and
-the monster-kinds + difficulty-rings slice (spec/plan awaiting review).
-**Requested next:** a character-creation start screen (species/class —
-mockup first per the `visual-features-need-preview` rule). Then plan §8's
-**10 polish & launch**: identity + persistence across restarts are the real
-launch gates (§7 JSON snapshot). Backlog: issue #36. Milestone 9 (CRT
-shader) remains dropped. Update this file at the end of every working
-session (milestone landed, decisions made, next step).*
+*Last updated: 2026-07-11, after milestone 6c (monster kinds & difficulty
+rings) landed on top of the playtest-ready batch (#45) and the FEATURES.md
+reference doc (#46). **6c, this session:** the single anonymous monster is
+now a **registry of 5 kinds** (rat/wolf/ghoul/troll/dragon —
+`internal/game/content.go`'s `monsterDefs`, exactly like items), each with
+its own HP/damage/XP/aggro radius/loot table; **loot authority moved fully
+monster-side** (item `dropWeight` and the global drop table/chance
+retired — every monster kind owns its own weighted table and drop chance);
+**difficulty rings** (`RingCount=3`, banded by hex distance from the
+origin, weighted-by-area spawn distribution) with a monster-free
+**sanctuary** zone (`SanctuaryRadius=5`) and a per-world dragon cap
+(`DragonCount=1`); the **`targetKind`** pipeline condition and its proof,
+the **Wyrmslayer Greatsword** (fighter, ×1.5 vs dragons) — the first
+designer gear card that needed monster kinds to exist; per-kind client
+looks (dot color + glyph) and kind-naming kill announces. wolf carries the
+pre-6c flat numbers forward unchanged, so existing balance holds. See spec:
+`docs/superpowers/specs/2026-07-10-m6c-monster-kinds-rings-design.md`.
+**Landed before that** (PRs #38–#46): combat-feel batch, the first
+designer gear batch (Ancient Dwarven Mattock, Staff of the War Mage),
+four plan-doc decision batches (toolbox progression, gear survives death,
+scaling, recovery layers, skills-as-reward + downed/revive direction), the
+playtest-ready batch (passive regen, monster aggro range, spawn guards +
+random spawns, respawn camera cut), and `docs/FEATURES.md` (the
+what-is-real reference — keep it in sync alongside this file per
+CLAUDE.md's same-PR convention). **Requested next:** a character-creation
+start screen is **done** (landed pre-6c, `#44`); plan §8's **10 polish &
+launch** is next: identity + persistence across restarts are the real
+launch gates (§7 JSON snapshot). Backlog: issue #36, monster-kind passives
+(the `rules` seam on `monsterDef` ships empty), ring UI indicators.
+Milestone 9 (CRT shader) remains dropped. Update this file at the end of
+every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
 
@@ -328,10 +336,10 @@ show my own route: goal + every hex, local-only).
   full kill→drop→walk loop has no e2e monster-spawn hook, so it stays
   integration-only).
   **Deferred** (tracked on issue #36): buffs/status effects and durations;
-  the `attack-roll`/`on-kill`/`aggro-range` pipeline events; armor/trinket
-  slots; an inventory cap; item despawn; drop-on-death (corpse runs);
-  per-monster loot tables (one global table today); the milestone-12
-  per-modifier analytics trace.
+  the `attack-roll`/`on-kill` pipeline events (`aggro-range` shipped in 6c);
+  armor/trinket slots; an inventory cap; item despawn; drop-on-death (corpse
+  runs); per-monster loot tables (**shipped in 6c** — see below); the
+  milestone-12 per-modifier analytics trace.
 
 **Known bug (tracked on #36):** `World.SpawnMonsterAt`, called mid-run after
 players have already joined and bubbled, can stall — its occupancy check
@@ -343,6 +351,75 @@ before any player joins (the same "startup only" contract `SpawnMonsterAt`
 already documents) — the real fix (making the occupancy check bubble-aware,
 or documenting/enforcing startup-only via the type system) is deferred to
 the #36 backlog rather than blocking this slice.
+
+## Milestone 6c — monster kinds & difficulty rings
+
+- **6c — DONE** (this PR): replaces the single anonymous monster
+  (`internal/game/content.go`'s old flat `protocol.MonsterMaxHP`/
+  `MonsterAttackDamage`/`MonsterXP`/`DropChancePercent`) with a **registry
+  of 5 monster kinds** (`monsterDefs`, mirroring `itemDefs`): rat, wolf,
+  ghoul, troll, dragon — each with its own `maxHP`, `damage`, `xp`,
+  `aggroRadius` (overrides the shared `MonsterAggroRadius` default; 0 = use
+  it), `dropChance`, and its **own weighted loot table**. **wolf carries the
+  exact pre-6c flat numbers forward** (10 HP, 3 damage, 20 XP, aggro 10,
+  30% drop, the original starter-drop table in its original order/weights),
+  so existing balance and nearly every seeded test survived unchanged.
+  Validated at process init (`validateMonsterDefs`, the same
+  `mustValidateContent` idiom as items): unique ids, drops reference
+  registered items, every ring covered by ≥1 kind, `aggroRadius` is 0 or
+  strictly > `CombatRadius`.
+  **Loot moved fully monster-side**: `itemDef.dropWeight` and the global
+  `dropTable`/`protocol.DropChancePercent` are deleted; `dropLootLocked`
+  rolls the slain kind's own `dropChance` and draws from its own table
+  (`pickDropFrom`).
+  **Combat reads the kind**: `closeDefFor`'s monster branch returns the
+  kind's own claws profile (built once per kind at init); kill XP sums the
+  slain kinds' `xp` (not a flat per-kill constant); `killSummary` names the
+  slain kind(s) in the chat/combat log ("a wolf was slain (+20 XP to
+  everyone in the fight)", "a wolf and a troll were slain (+80 XP…)", "2
+  ghouls were slain (+70 XP…)" — grouping handles non-adjacent repeats).
+  New **`targetKind`** pipeline condition (victim is a monster of a
+  specific registered kind id), validated against the registry. Ships the
+  **Wyrmslayer Greatsword** (fighter, damage 4, ×1.5 vs dragons via
+  `targetKind:"dragon"`, dragon-only drop) — the first designer gear card
+  that needed monster kinds to exist.
+  **Difficulty rings**: worldgen bands the map into `RingCount=3` distance
+  bands from the origin (`ringOf`) — at the default `WORLD_RADIUS=24` that's
+  ring 0 = 0–7 (home), ring 1 = 8–15, ring 2 = 16–24 (frontier); small radii
+  degrade gracefully. `SpawnMonsters` distributes placements across rings
+  weighted by each ring's walkable-candidate count (an area proxy, naturally
+  terrain-aware) and picks a kind uniformly among the kinds registered for
+  the chosen ring, capping dragon at `DragonCount=1` per world.
+  **Sanctuary**: no hostile spawn within `SanctuaryRadius=5` of the
+  origin — the seed of the future trade-hub recovery layer (plan §9) —
+  folded into the existing player-proximity spawn guard's safe/unguarded
+  fallback (a fully-sanctuary tiny map still places monsters via the same
+  fallback tier that already handled a fully player-guarded tiny map).
+  Wire: `Entity.MonsterKind` (the registry id, empty for players); a
+  monster's `Name` is now its kind's display name ("Wolf", "Dragon", …)
+  instead of always empty. Client: `entities.ts`'s `KIND_STYLE` gives each
+  kind a distinct dot color + one-letter glyph (falling back to the old
+  flat monster red with no glyph for an unrecognized kind — forward
+  compatible); `window.game.positions` entries gain `monsterKind`.
+  Covered by unit tests (registry validation, per-kind damage/XP/loot/aggro,
+  `targetKind` + the Wyrmslayer pin, kill-summary text variants, ring math
+  at real and tiny radii, sanctuary/dragon-cap/seeded-reproducibility),
+  a `protocol.gen.ts` contract test, an HTTP integration test (kill a seeded
+  **troll** specifically → its own XP + its own kind-naming announce, both
+  over real SSE), and `client/e2e/kinds.spec.ts` (a 30-monster server proves
+  ≥2 distinct kinds reach the client and render).
+  **Deviations from the plan** (both noted inline in their commits): rat's
+  `aggroRadius` is `CombatRadius+1` (7), not the spec table's flat 6 (6
+  violates the aggro-radius invariant this file shares with
+  `protocol.MonsterAggroRadius`); the per-kind aggro-radius wiring landed in
+  the Task 2 commit (per-kind combat) rather than Task 1 (registry), to keep
+  it grouped with the rest of "combat reads the kind."
+  **Deferred**: monster-kind passives (the `rules` seam on `monsterDef`
+  ships empty — zero cost until a card uses it), ring UI indicators,
+  continuous spawning with density-tracks-players (this slice + the
+  playtest-batch spawn guards are its prerequisite), terrain-blocked LOS,
+  boss mechanics beyond stats, per-kind movement speeds, the sanctuary hub
+  itself (only its monster-free zone).
 
 ## Known placeholders / debt (all deliberate)
 

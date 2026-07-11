@@ -66,6 +66,11 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
+	// monsterKind is the monster-kind registry id (content.go's monsterDefs,
+	// e.g. "wolf"); empty for players. Set at spawn (SpawnMonsters,
+	// SpawnMonsterAt, PlaceMonsterForTest); kindOf resolves it back to the
+	// def that carries this entity's stats, loot table, and aggro radius.
+	monsterKind string
 	// name is the player's display name (chat sender label), validated and set
 	// at Join; empty for monsters.
 	name string
@@ -109,8 +114,9 @@ type entity struct {
 	// Only consulted while streams == 0. Players only.
 	disconnectedAt time.Time
 	// items is every item instance this entity owns (players only; monsters own
-	// none — they fight with the flat monsterClawsDef profile). Granted at Join
-	// by grantDefaultsLocked; gear survives death (never cleared by respawn).
+	// none — they fight with their kind's own claws profile, monsterDef.claws).
+	// Granted at Join by grantDefaultsLocked; gear survives death (never
+	// cleared by respawn).
 	items []itemInstance
 	// closeSlot and rangedSlot are the instance ids currently equipped in each
 	// slot, or 0 for empty. 0 is never a valid instance id (nextID starts
@@ -700,6 +706,25 @@ func (e *entity) applyEquip(instID int64, slot string) {
 	}
 }
 
+// entityNameLocked is the wire Name for e: a player's chosen display name,
+// or a monster's kind's display name ("Wolf", "Dragon", ...) — monsters'
+// Name was always empty until 6c (no field collision: a player's name and
+// a monster's kind name occupy the same wire field, but nothing produces
+// both for the same entity). kindOf(e) nil (a malformed monster fixture)
+// falls back to empty, matching the pre-6c wire shape rather than panicking
+// on a Snapshot call. Callers hold w.mu.
+func entityNameLocked(e *entity) string {
+	if e.kind != protocol.EntityMonster {
+		return e.name
+	}
+
+	if k := kindOf(e); k != nil {
+		return k.name
+	}
+
+	return ""
+}
+
 // Snapshot is the current turn bundle: turn number plus every entity,
 // sorted by ID for a deterministic wire shape.
 func (w *World) Snapshot() protocol.TurnEvent {
@@ -709,9 +734,9 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, Name: e.name, Class: e.class, Species: e.species, HP: e.hp, MaxHP: e.maxHP,
-			InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
-			Items: itemViewsLocked(e),
+			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
+			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
+			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
 		})
 	}
 
@@ -830,7 +855,7 @@ type pendingAttack struct {
 // flees one) still acts exactly once, in the phase it belonged to when the pass
 // captured its members. Callers hold w.mu.
 //
-// The monsters-killed count from resolveCombatLocked is deliberately dropped:
+// The slain-kinds list resolveCombatLocked returns is deliberately dropped:
 // kill XP is scoped to a real fight (a combat bubble), so a monster that dies in
 // the world domain — only possible via an anomalous faction-blind spawn/join
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
@@ -872,29 +897,35 @@ func (w *World) regenPlayersLocked(members []*entity) {
 // for the next turn. Like resolveWorldTurnLocked it does NOT recompute — see that
 // method. Callers hold w.mu.
 func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.Time) {
-	killed := w.resolveCombatLocked(members, playersOf(members), false)
+	slain := w.resolveCombatLocked(members, playersOf(members), false)
 
 	// Kill XP belongs to the fight: every player who survived this bubble-turn
-	// earns the FULL MonsterXP for each monster that fell — no last-hit
-	// competition, helping always pays, and the award is not divided. A player who
-	// died this same turn is not surviving (hp<=0), so earns nothing.
-	if killed > 0 {
+	// earns the FULL sum of the slain kinds' xp — no last-hit competition,
+	// helping always pays, and the award is not divided. A player who died
+	// this same turn is not surviving (hp<=0), so earns nothing.
+	if len(slain) > 0 {
+		totalXP := 0
+		for _, k := range slain {
+			totalXP += k.xp
+		}
+
 		for _, e := range members {
 			if e.kind == protocol.EntityPlayer && e.hp > 0 {
-				award := applyRules(evEarnXP, killed*protocol.MonsterXP, speciesCards(e.species), ruleCtx{})
+				award := applyRules(evEarnXP, totalXP, speciesCards(e.species), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
 			}
 		}
 
 		// The chat stream doubles as the combat log: one kill summary per
-		// bubble turn (not per monster — a mage's AoE turn stays one line).
-		// The base XP is quoted because it's the only shared number (species
-		// bonuses are per-player), and nobody is named because kill credit
-		// deliberately does not exist (XP-by-presence, plan §5).
-		w.announce("system", killSummary(killed))
+		// bubble turn (not per monster — a mage's AoE turn stays one line),
+		// naming the slain kinds. The summed base XP is quoted because it's
+		// the only shared number (species bonuses are per-player), and
+		// nobody is named because kill credit deliberately does not exist
+		// (XP-by-presence, plan §5).
+		w.announce("system", killSummary(slain))
 
-		w.tickKillQuestsLocked(members, killed)
+		w.tickKillQuestsLocked(members, len(slain))
 	}
 
 	w.checkReachQuestsLocked()
@@ -913,9 +944,10 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 // thinkMonstersLocked's aggro gating (true for the world domain, false inside
 // a bubble — see that function's doc comment). It does not recompute bubbles
 // or advance the turn — the two resolve callers own that. It returns the
-// number of monsters that died this resolution, which the bubble path turns
-// into the shared kill-XP award. Callers hold w.mu.
-func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDomain bool) int {
+// kinds of every monster that died this resolution (one entry per dead
+// monster, not deduplicated), which the bubble path turns into the shared
+// kill-XP award and the kill-summary announce. Callers hold w.mu.
+func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDomain bool) []*monsterDef {
 	// Built before thinkMonstersLocked (unlike pre-6.4, when the rng was built
 	// after) so a future aggro-range rule card using a condChance condition has
 	// a real, turn-seeded rng to consume instead of a nil one — see
@@ -1151,10 +1183,11 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 
 		// Melee/bump damage: the attacker's equipped close-slot item (or the
 		// fists/claws fallback — closeDefFor), level-scaled via itemDamage. A
-		// monster's closeDefFor is always monsterClawsDef, reproducing the old
-		// flat MonsterAttackDamage (levelFor(0) == 1, so the level-scaling term
-		// is 0). Resolved once here (mirroring resolveRangedLocked's def :=
-		// rangedDefFor(e) below) so the def is looked up exactly once per hit.
+		// monster's closeDefFor is its KIND's own claws profile (6c —
+		// monsterDef.claws, e.g. a rat's 1 vs a dragon's 9); levelFor(0) == 1
+		// keeps the level-scaling term 0 for monsters. Resolved once here
+		// (mirroring resolveRangedLocked's def := rangedDefFor(e) below) so
+		// the def is looked up exactly once per hit.
 		weapon := closeDefFor(a.attacker)
 		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, weapon, itemDamage(weapon, levelFor(a.attacker.xp)))
 	}
@@ -1264,14 +1297,82 @@ func (w *World) resolveAoELocked(
 }
 
 // killSummary renders one bubble turn's monster deaths for the chat/combat
-// log, quoting the shared base XP (see the call site's comment on why base
-// and why nameless).
-func killSummary(killed int) string {
-	if killed == 1 {
-		return fmt.Sprintf("a monster was slain (+%d XP to everyone in the fight)", protocol.MonsterXP)
+// log, naming the slain kinds and quoting their summed base XP (see the call
+// site's comment on why base and why nameless). slain arrives in the order
+// resolveDeathsLocked collected it (members' id-sorted iteration order) —
+// killPhrase groups same-kind entries wherever they fall in that order, so
+// two wolves dying non-consecutively (a wolf, then a troll, then a second
+// wolf) still read as "2 wolves and a troll", not three separate clauses.
+func killSummary(slain []*monsterDef) string {
+	// Unreachable from resolveBubbleTurnLocked (its len(slain) > 0 gate),
+	// but the exported-for-test wrapper (KillSummaryForTest) can reach it —
+	// return an empty line instead of letting killPhrase's join panic.
+	if len(slain) == 0 {
+		return ""
 	}
 
-	return fmt.Sprintf("%d monsters were slain (+%d XP to everyone in the fight)", killed, killed*protocol.MonsterXP)
+	total := 0
+	for _, k := range slain {
+		total += k.xp
+	}
+
+	was := "were"
+	if len(slain) == 1 {
+		was = "was"
+	}
+
+	return fmt.Sprintf("%s %s slain (+%d XP to everyone in the fight)", killPhrase(slain), was, total)
+}
+
+// killPhrase joins slain into an English noun-phrase list — "a wolf",
+// "2 ghouls", "a wolf and a troll", "a wolf, a troll and a dragon" — using
+// each kind's first-appearance position in slain to order the groups (a
+// stable, deterministic order given a deterministic slain, without forcing
+// an unrelated alphabetical resort).
+func killPhrase(slain []*monsterDef) string {
+	counts := make(map[string]int, len(slain))
+
+	var order []string
+
+	for _, k := range slain {
+		if counts[k.id] == 0 {
+			order = append(order, k.id)
+		}
+
+		counts[k.id]++
+	}
+
+	phrases := make([]string, 0, len(order))
+
+	for _, id := range order {
+		if n := counts[id]; n == 1 {
+			phrases = append(phrases, "a "+id)
+		} else {
+			phrases = append(phrases, fmt.Sprintf("%d %s", n, pluralizeKind(id)))
+		}
+	}
+
+	//nolint:mnd // list-grammar arities (one phrase, a pair, three-or-more), not tuning knobs.
+	switch len(phrases) {
+	case 1:
+		return phrases[0]
+	case 2:
+		return phrases[0] + " and " + phrases[1]
+	default:
+		return strings.Join(phrases[:len(phrases)-1], ", ") + " and " + phrases[len(phrases)-1]
+	}
+}
+
+// pluralizeKind returns a monster-kind id's plural noun for the kill
+// summary: irregular where English needs it (wolf -> wolves), a simple
+// appended "s" otherwise (every other launch kind — rat, ghoul, troll,
+// dragon — pluralizes regularly).
+func pluralizeKind(id string) string {
+	if id == idKindWolf {
+		return "wolves"
+	}
+
+	return id + "s"
 }
 
 // levelFor returns the 1-based level for a cumulative XP total.
@@ -1295,25 +1396,28 @@ func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPP
 // resolveDeathsLocked floors a dying player's XP to its level start, removes dead
 // monsters (rolling each one's ground-loot drop first — dropLootLocked), and
 // respawns dead players (full HP, fresh spawn hex, same id + token — the
-// client stays joined) among the given member set. It returns the number of
-// monsters that died; the kill-XP award lives in the bubble-resolution path
-// (resolveBubbleTurnLocked), so a kill only pays inside a real fight. The
-// death-floor here still applies to ANY player death, world or bubble. rng is
-// the resolution's shared turn RNG (resolveCombatLocked/
-// ResolveCombatOnlyForTest) — one drop roll per dead monster, consumed in the
-// same id-sorted order as the rest of this pass, so a full turn stays
-// reproducible from the seed alone. Callers hold w.mu.
-func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) int {
+// client stays joined) among the given member set. It returns the kind of
+// every monster that died, one entry per dead monster in members' id-sorted
+// order (not deduplicated) — the kill-XP award and kill-summary announce
+// live in the bubble-resolution path (resolveBubbleTurnLocked), so a kill
+// only pays inside a real fight. The death-floor here still applies to ANY
+// player death, world or bubble. rng is the resolution's shared turn RNG
+// (resolveCombatLocked/ResolveCombatOnlyForTest) — one drop roll per dead
+// monster, consumed in the same id-sorted order as the rest of this pass, so
+// a full turn stays reproducible from the seed alone. Callers hold w.mu.
+func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) []*monsterDef {
 	var dead []*entity
 
-	monstersKilled := 0
+	var slain []*monsterDef
 
 	for _, e := range members {
 		if e.hp <= 0 {
 			dead = append(dead, e)
 
 			if e.kind == protocol.EntityMonster {
-				monstersKilled++
+				if k := kindOf(e); k != nil {
+					slain = append(slain, k)
+				}
 			}
 		}
 	}
@@ -1324,7 +1428,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) int {
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
-			w.dropLootLocked(rng, e.hex)
+			w.dropLootLocked(rng, kindOf(e), e.hex)
 			delete(w.entities, e.id)
 
 			continue
@@ -1353,28 +1457,34 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) int {
 		e.pendingEquip = 0
 	}
 
-	return monstersKilled
+	return slain
 }
 
-// dropLootLocked rolls a slain monster's ground-loot drop: DropChancePercent
-// (out of percentBase) chance of anything at all, and if it hits, one
-// dropWeight-weighted def from dropTable (pickDrop) lands on at — the
-// monster's death hex — as a fresh item instance (id minted from the shared
-// nextID sequence, same as entities and owned items). A miss, or an empty
-// dropTable, drops nothing. Callers hold w.mu.
-func (w *World) dropLootLocked(rng *mrand.Rand, at protocol.Hex) {
-	if rng.IntN(percentBase) >= protocol.DropChancePercent {
+// dropLootLocked rolls a slain monster's ground-loot drop: k's own
+// dropChance (out of percentBase) chance of anything at all, and if it
+// hits, one weight-weighted def from k's own drops table (pickDropFrom)
+// lands on at — the monster's death hex — as a fresh item instance (id
+// minted from the shared nextID sequence, same as entities and owned
+// items). A miss, or an empty drops table, drops nothing. k nil (a
+// malformed monster entity — never produced by a real spawn path) is a
+// defensive no-op. Callers hold w.mu.
+func (w *World) dropLootLocked(rng *mrand.Rand, k *monsterDef, at protocol.Hex) {
+	if k == nil {
 		return
 	}
 
-	def := pickDrop(rng)
-	if def == nil {
+	if rng.IntN(percentBase) >= k.dropChance {
+		return
+	}
+
+	defID := pickDropFrom(rng, k.drops)
+	if defID == "" {
 		return
 	}
 
 	w.nextID++
 
-	inst := itemInstance{id: w.nextID, defID: def.id}
+	inst := itemInstance{id: w.nextID, defID: defID}
 	w.groundItems[at] = append(w.groundItems[at], inst)
 }
 
@@ -1459,20 +1569,104 @@ func (w *World) tooCloseToPlayerLocked(h protocol.Hex) bool {
 	return false
 }
 
-// SpawnMonsters adds n monster entities at random walkable hexes, chosen with
-// the world seed so a given seed is reproducible. Skips hexes already at
+// tooCloseToSanctuaryLocked reports whether h is within protocol.SanctuaryRadius
+// of the origin — the permanent monster-free zone (milestone 6c, the seed of
+// a future trade hub), distinct from tooCloseToPlayerLocked's spawn-moment
+// player-proximity guard. Reads no entity state; named -Locked and given a
+// receiver for symmetry with the other spawn guards it's always applied
+// alongside. Callers hold w.mu.
+func (*World) tooCloseToSanctuaryLocked(h protocol.Hex) bool {
+	return HexDistance(protocol.Hex{Q: 0, R: 0}, h) <= protocol.SanctuaryRadius
+}
+
+// SpawnMonsters adds n monster entities at random walkable hexes, chosen
+// with the world seed so a given seed is reproducible: placement is
+// distributed across the map's difficulty rings (ringOf, worldgen.go)
+// weighted by each ring's candidate-hex count (a proxy for its area that is
+// naturally terrain-aware — water/rock reduce a ring's usable area too),
+// and each placement picks a kind uniformly among the kinds registered for
+// that ring (content.go's monsterDefs' own rings field), capping dragon at
+// protocol.DragonCount for the whole call. Skips hexes already at
 // StackCap and, when at least one candidate allows it, hexes on/within
-// CombatRadius of a living player (tooCloseToPlayerLocked — #36); if EVERY
-// walkable hex is too close to a player, the guard is dropped entirely for
-// this call rather than placing nothing (the pre-#36 behavior, so a tiny or
-// crowded map never silently spawns fewer monsters than requested for lack of
-// a "safe" hex). Intended for **startup, before any player joins** (server
-// startup via MONSTER_COUNT, or tests), where the guard is inert today — it
-// exists for a future continuous/respawn spawner called mid-run.
+// CombatRadius of a living player (tooCloseToPlayerLocked — #36) or within
+// protocol.SanctuaryRadius of the origin (tooCloseToSanctuaryLocked — 6c);
+// if EVERY walkable hex fails one of those guards, both are dropped
+// entirely for this call rather than placing nothing (the pre-#36
+// behavior, so a tiny or crowded map never silently spawns fewer monsters
+// than requested for lack of a "safe" hex). Intended for **startup, before
+// any player joins** (server startup via MONSTER_COUNT, or tests), where
+// the player guard is inert today — it exists for a future
+// continuous/respawn spawner called mid-run.
 func (w *World) SpawnMonsters(n int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
+
+	byRing, ringWeights := w.spawnCandidatesByRingLocked(rng)
+	kindsByRing := kindsPerRing()
+
+	// The dragon cap is per WORLD, not per call: start from the dragons
+	// already alive (a previous SpawnMonsters call, or a SpawnMonsterKindAt-
+	// seeded one), so the future continuous/density spawner calling this
+	// again mid-run can never stack a second dragon past DragonCount.
+	dragonsPlaced := w.livingDragonsLocked()
+	placed := 0
+
+	for placed < n {
+		h, r, ok := nextSpawnHexLocked(rng, byRing, ringWeights)
+		if !ok {
+			break // every ring is out of both weight and candidates
+		}
+
+		if w.occupancyLocked(h) >= protocol.StackCap {
+			continue
+		}
+
+		kindID, ok := pickSpawnKind(rng, kindsByRing[r], dragonsPlaced)
+		if !ok {
+			continue // ring exhausted of spawnable kinds (dragon-only ring, cap reached)
+		}
+
+		if kindID == idKindDragon {
+			dragonsPlaced++
+		}
+
+		k := monsterDefByID[kindID]
+
+		w.nextID++
+		w.entities[w.nextID] = &entity{
+			id: w.nextID, hex: h,
+			kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
+		}
+		placed++
+	}
+}
+
+// livingDragonsLocked counts the living dragon-kind monsters currently in
+// the world — SpawnMonsters' starting point for the per-WORLD dragon cap
+// (protocol.DragonCount), so repeated spawn calls (or a test/future-spawner
+// mix of SpawnMonsterKindAt and SpawnMonsters) never accumulate dragons
+// past the cap. Callers hold w.mu.
+func (w *World) livingDragonsLocked() int {
+	n := 0
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster && e.hp > 0 && e.monsterKind == idKindDragon {
+			n++
+		}
+	}
+
+	return n
+}
+
+// spawnCandidatesByRingLocked gathers every walkable candidate hex (the
+// safe/unguarded-fallback tiers SpawnMonsters' doc comment describes),
+// shuffles each ring's bucket with rng, and returns the per-ring hex
+// buckets alongside their initial weights (candidate count — the area
+// proxy). Callers hold w.mu.
+func (w *World) spawnCandidatesByRingLocked(rng *mrand.Rand) ([][]protocol.Hex, []int) {
 	var safe, unguarded []protocol.Hex
 
 	for _, t := range w.worldMap.Tiles {
@@ -1482,7 +1676,7 @@ func (w *World) SpawnMonsters(n int) {
 
 		unguarded = append(unguarded, t.Hex)
 
-		if !w.tooCloseToPlayerLocked(t.Hex) {
+		if !w.tooCloseToPlayerLocked(t.Hex) && !w.tooCloseToSanctuaryLocked(t.Hex) {
 			safe = append(safe, t.Hex)
 		}
 	}
@@ -1494,28 +1688,64 @@ func (w *World) SpawnMonsters(n int) {
 
 	slices.SortFunc(walkable, compareHexQR)
 
-	//nolint:gosec // deterministic seeded placement, not security-sensitive.
-	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
-	rng.Shuffle(len(walkable), func(i, j int) { walkable[i], walkable[j] = walkable[j], walkable[i] })
-
-	placed := 0
+	byRing := make([][]protocol.Hex, protocol.RingCount)
 
 	for _, h := range walkable {
-		if placed >= n {
-			break
+		r := ringOf(h, w.radius)
+		byRing[r] = append(byRing[r], h)
+	}
+
+	ringWeights := make([]int, protocol.RingCount)
+
+	for r, hexes := range byRing {
+		rng.Shuffle(len(hexes), func(i, j int) { hexes[i], hexes[j] = hexes[j], hexes[i] })
+		ringWeights[r] = len(hexes)
+	}
+
+	return byRing, ringWeights
+}
+
+// nextSpawnHexLocked draws one ring-weighted hex from byRing, popping it
+// off that ring's bucket and zeroing the ring's weight once its bucket
+// empties (so it's never picked again). ok is false once every ring is out
+// of both weight and candidates. Callers hold w.mu (byRing/ringWeights are
+// SpawnMonsters-local, but ringOf/occupancy-adjacent state justifies the
+// same locking discipline as its caller).
+func nextSpawnHexLocked(rng *mrand.Rand, byRing [][]protocol.Hex, ringWeights []int) (protocol.Hex, int, bool) {
+	for {
+		r, ok := weightedRingPick(rng, ringWeights)
+		if !ok {
+			return protocol.Hex{}, 0, false
 		}
 
-		if w.occupancyLocked(h) >= protocol.StackCap {
+		if len(byRing[r]) == 0 {
+			ringWeights[r] = 0 // exhausted candidates; never pick this ring again
+
 			continue
 		}
 
-		w.nextID++
-		w.entities[w.nextID] = &entity{
-			id: w.nextID, hex: h,
-			kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
-		}
-		placed++
+		h := byRing[r][len(byRing[r])-1]
+		byRing[r] = byRing[r][:len(byRing[r])-1]
+
+		return h, r, true
 	}
+}
+
+// pickSpawnKind draws one kind uniformly from ringKinds, excluding dragon
+// once dragonsPlaced has reached protocol.DragonCount. ok is false if that
+// exclusion leaves nothing to pick (a dragon-only ring whose cap is
+// already reached).
+func pickSpawnKind(rng *mrand.Rand, ringKinds []string, dragonsPlaced int) (string, bool) {
+	kinds := ringKinds
+	if dragonsPlaced >= protocol.DragonCount {
+		kinds = excludeKind(kinds, idKindDragon)
+	}
+
+	if len(kinds) == 0 {
+		return "", false
+	}
+
+	return kinds[rng.IntN(len(kinds))], true
 }
 
 // SpawnMonsterAt spawns a single monster at h, returning whether it spawned. It
@@ -1537,8 +1767,21 @@ func (w *World) SpawnMonsters(n int) {
 // (tooCloseToPlayerLocked is unexported, but SpawnMonsters' random search
 // already does this). Holds w.mu.
 func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
+	return w.SpawnMonsterKindAt(h, defaultMonsterKindID)
+}
+
+// SpawnMonsterKindAt is SpawnMonsterAt for a caller-chosen monster kind
+// (content.go's monsterDefs id) — lets a test or a future ring-aware spawner
+// seed a specific kind at a specific hex. Panics if kind is not registered
+// (a content bug, not a runtime condition a caller should need to handle).
+func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	k, ok := monsterDefByID[kind]
+	if !ok {
+		panic("game: SpawnMonsterKindAt unknown monster kind " + kind)
+	}
 
 	if !w.walkableLocked(h) || w.occupancyLocked(h) >= protocol.StackCap {
 		return false
@@ -1547,7 +1790,7 @@ func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
 	w.nextID++
 	w.entities[w.nextID] = &entity{
 		id: w.nextID, hex: h,
-		kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
 	}
 
 	return true
@@ -1585,7 +1828,7 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 
 		var target *entity
 		if worldDomain {
-			target = w.nearestAggroedPlayerLocked(rng, m.hex, targets)
+			target = w.nearestAggroedPlayerLocked(rng, m, targets)
 			if target == nil {
 				m.path = nil // nobody within their own aggro range: stand still
 
@@ -1606,20 +1849,22 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 	}
 }
 
-// nearestAggroedPlayerLocked returns the player nearest `from` among
-// `players`, considering only players within THEIR OWN effective aggro radius
-// of `from` (aggroRadiusForLocked — gear/species can make one player more or
-// less noticeable than another), ties broken by lowest id like nearestPlayer.
-// Returns nil if no player qualifies — the monster notices nobody. Callers
-// hold w.mu.
-func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, from protocol.Hex, players []*entity) *entity {
+// nearestAggroedPlayerLocked returns the player nearest monster m among
+// `players`, considering only players within THEIR OWN effective aggro
+// radius of m (aggroRadiusForLocked, based on m's kind's own aggroRadius —
+// gear/species can further make one player more or less noticeable than
+// another), ties broken by lowest id like nearestPlayer. Returns nil if no
+// player qualifies — the monster notices nobody. Callers hold w.mu.
+func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, m *entity, players []*entity) *entity {
+	base := baseAggroRadiusFor(m)
+
 	var best *entity
 
 	bestDist := 0
 
 	for _, p := range players {
-		d := HexDistance(from, p.hex)
-		if d > aggroRadiusForLocked(rng, p) {
+		d := HexDistance(m.hex, p.hex)
+		if d > aggroRadiusForLocked(rng, base, p) {
 			continue
 		}
 
@@ -1631,21 +1876,36 @@ func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, from protocol.Hex, p
 	return best
 }
 
-// aggroRadiusForLocked returns the hex radius at which a WORLD-domain monster
-// notices player p: protocol.MonsterAggroRadius folded through p's own
-// noticeability rule cards (species + both equipped items' rules — mirroring
-// rollDamageLocked's victimCards fold: any gear on the entity can contribute,
-// not just the "acting" slot) via the evAggroRange event. No content defines
-// an evAggroRange card yet, so this is a no-op fold today — the hook exists so
-// a future sneaky/loud item can shrink or grow it without touching this
-// call site. Callers hold w.mu.
-func aggroRadiusForLocked(rng *mrand.Rand, p *entity) int {
+// baseAggroRadiusFor returns monster m's own base aggro radius before any
+// player-side noticeability fold: its kind's aggroRadius override
+// (monsterDef.aggroRadius) if non-zero, else the shared
+// protocol.MonsterAggroRadius default. m is assumed to be a monster (the
+// only caller, nearestAggroedPlayerLocked, only ever calls this for one);
+// kindOf(m) nil (a malformed fixture) falls back to the default too.
+func baseAggroRadiusFor(m *entity) int {
+	if k := kindOf(m); k != nil && k.aggroRadius != 0 {
+		return k.aggroRadius
+	}
+
+	return protocol.MonsterAggroRadius
+}
+
+// aggroRadiusForLocked returns the hex radius at which a WORLD-domain
+// monster with base aggro radius `base` (baseAggroRadiusFor — per-kind since
+// 6c) notices player p: base folded through p's own noticeability rule
+// cards (species + both equipped items' rules — mirroring
+// rollDamageLocked's victimCards fold: any gear on the entity can
+// contribute, not just the "acting" slot) via the evAggroRange event. No
+// content defines an evAggroRange card yet, so this is a no-op fold today —
+// the hook exists so a future sneaky/loud item can shrink or grow it
+// without touching this call site. Callers hold w.mu.
+func aggroRadiusForLocked(rng *mrand.Rand, base int, p *entity) int {
 	cards := slices.Concat(speciesCards(p.species), closeDefFor(p).rules)
 	if ranged := rangedDefFor(p); ranged != nil {
 		cards = slices.Concat(cards, ranged.rules)
 	}
 
-	return applyRules(evAggroRange, protocol.MonsterAggroRadius, cards, ruleCtx{attacker: p, rng: rng})
+	return applyRules(evAggroRange, base, cards, ruleCtx{attacker: p, rng: rng})
 }
 
 // playersOf filters the player entities out of a member set, preserving order.

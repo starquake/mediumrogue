@@ -5,12 +5,14 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // TestMonsterKillAnnouncedInChat: a bubble turn that kills monsters announces
-// a kill summary through the chat hook (the de facto combat log). Uses the
-// miss seed so no pickup announce muddies the capture; the summary quotes the
+// a kill summary through the chat hook (the de facto combat log), naming the
+// slain kind (oneHitKillBubble's default spawn is wolf). Uses the miss seed
+// so no pickup announce muddies the capture; the summary quotes the
 // per-player base XP (species bonuses are per-player, so the base is the only
 // honest shared number — and no kill credit exists by design, so nobody is
 // named).
@@ -25,7 +27,7 @@ func TestMonsterKillAnnouncedInChat(t *testing.T) {
 
 	oneHitKillBubble(t, w, killMissSeed)
 
-	want := fmt.Sprintf("a monster was slain (+%d XP to everyone in the fight)", protocol.MonsterXP)
+	want := fmt.Sprintf("a wolf was slain (+%d XP to everyone in the fight)", game.MonsterXPForTest("wolf"))
 	if !slices.Contains(announced, want) {
 		t.Errorf("announced = %v, want to contain %q", announced, want)
 	}

@@ -33,6 +33,21 @@ const (
 	// StackCap is the maximum number of friendly entities on one hex — sized
 	// so a full party fits.
 	StackCap = 5
+	// RingCount is the number of distance-based difficulty rings worldgen
+	// bands the map into (milestone 6c): ring 0 (home) through RingCount-1
+	// (frontier). Monster-kind registry validation requires every ring to
+	// have at least one kind that spawns in it.
+	RingCount = 3
+	// SanctuaryRadius is the hex distance from the origin within which no
+	// hostile monster spawns (milestone 6c) — the seed of a future trade
+	// hub (plan §9 recovery entry). Deliberately smaller than CombatRadius:
+	// the player-proximity spawn guard (#36) already keeps a fresh spawn
+	// clear of an instant fight, so the sanctuary's job is the PERMANENT
+	// safe zone, not spawn-moment safety.
+	SanctuaryRadius = 5
+	// DragonCount is the maximum number of dragons SpawnMonsters places in
+	// one world — the rare, ring-2 boss kind.
+	DragonCount = 1
 	// MaxChatLen caps a chat message length in runes (defence-in-depth; the
 	// client also caps input). MaxNameLen caps a player's display name.
 	MaxChatLen = 500
@@ -106,20 +121,15 @@ const (
 	ItemSlotRanged = "ranged"
 )
 
-// DropChancePercent is the chance (out of 100) that a slain monster drops an
-// item onto its death hex. Tuning knob.
-const DropChancePercent = 30
-
 // Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
 // the client can show health bars once combat (6.3) starts changing it.
+// MonsterMaxHP is superseded by per-kind maxHP (internal/game's monsterDef
+// registry, milestone 6c) — wolf's entry carries this exact value forward —
+// but stays here as the historical baseline several tests still pin against.
 const (
 	PlayerMaxHP  = 20
 	MonsterMaxHP = 10
 )
-
-// MonsterAttackDamage is a monster's flat melee damage per attack. (Player melee
-// is per-class weapon damage since 6b.2 — see the class weapon constants below.)
-const MonsterAttackDamage = 3
 
 // RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
 // resolution while out of combat (bubbleID == 0) and below max HP — the
@@ -130,13 +140,18 @@ const MonsterAttackDamage = 3
 const RegenPerTurn = 1
 
 // XP & leveling (milestone 6b.1). Flat curve for now; per-class/species tuning
-// is 6b.2/6b.3.
+// is 6b.2/6b.3. Per-kill XP is monster-kind content data since 6c
+// (internal/game's monsterDef.xp) — wolf carries the old flat MonsterXP
+// value (20) forward unchanged; there is no single flat award anymore.
 const (
 	// XPPerLevel is the XP needed to advance one level.
 	XPPerLevel = 100
-	// MonsterXP is awarded to every player in the fight when a monster dies —
-	// the full amount each, not divided.
-	MonsterXP = 20
+	// QuestKillRewardPerTarget is the flat per-target XP a kill quest's
+	// reward is built from (targetN * QuestKillRewardPerTarget), independent
+	// of which monster kind actually gets killed toward it — deliberately
+	// decoupled from monsterDef.xp (a kind's own combat kill award) since
+	// 6c introduced per-kind XP.
+	QuestKillRewardPerTarget = 20
 )
 
 // Per-class base stats (level 1). Level scaling: MaxHP += HPPerLevel * (level - 1).
@@ -311,7 +326,9 @@ type Entity struct {
 	XP int `json:"xp"`
 	// Level is server-authoritative; monsters send 1, players send their actual level.
 	Level int `json:"level"`
-	// Name is the player's display name; empty for monsters.
+	// Name is the entity's display name: the player's chosen name for a
+	// player, or the monster kind's display name ("Wolf", "Dragon", ...)
+	// for a monster (milestone 6c — previously always empty for monsters).
 	Name string `json:"name"`
 	// PartyID groups players into a party (≥2 members share a non-zero id);
 	// 0 means solo. Monsters are always 0. The roster and on-map partymate
@@ -319,6 +336,9 @@ type Entity struct {
 	PartyID int64 `json:"partyId"`
 	// Items is the entity's owned items. Players only; monsters send none.
 	Items []ItemView `json:"items"`
+	// MonsterKind is the monster-kind registry id ("wolf", "dragon", ...);
+	// empty for players. Drives per-kind client rendering (color/glyph).
+	MonsterKind string `json:"monsterKind"`
 }
 
 // JoinRequest is the body of POST /api/join. A returning client sends its

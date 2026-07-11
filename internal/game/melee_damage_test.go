@@ -102,9 +102,10 @@ func TestBumpDamageScalesWithLevel(t *testing.T) {
 	}
 }
 
-// TestMonsterBumpDamageUnchanged: a monster's melee is still the flat
-// MonsterAttackDamage — classes changed only the player side of the bump. A
-// monster bumping a Fighter drops the Fighter by exactly MonsterAttackDamage.
+// TestMonsterBumpDamageUnchanged: a monster's melee is its kind's own claws
+// damage (wolf here — the default spawn kind, carrying the old flat number
+// forward unchanged) — classes changed only the player side of the bump. A
+// wolf bumping a Fighter drops the Fighter by exactly wolf's claws damage.
 func TestMonsterBumpDamageUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -130,7 +131,7 @@ func TestMonsterBumpDamageUnchanged(t *testing.T) {
 		t.Fatalf("player %d missing after a monster bump", pid)
 	}
 
-	if got, want := player.HP, protocol.FighterMaxHP-protocol.MonsterAttackDamage; got != want {
+	if got, want := player.HP, protocol.FighterMaxHP-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("player HP after monster bump = %d, want %d (monster melee flat, unchanged)", got, want)
 	}
 }

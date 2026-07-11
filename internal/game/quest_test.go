@@ -399,7 +399,7 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 		t.Fatalf("state after first kill = %q, want %q", got, want)
 	}
 
-	wantPerKill := protocol.MonsterXP * (100 + protocol.HumanXPBonusPercent) / 100
+	wantPerKill := game.MonsterXPForTest("wolf") * (100 + protocol.HumanXPBonusPercent) / 100
 
 	if got, want := w.XPForTest(alice.EntityID), wantPerKill; got != want {
 		t.Errorf("alice XP after first kill = %d, want %d", got, want)
@@ -487,7 +487,7 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 		t.Fatalf("state after final kill = %q, want %q", got, want)
 	}
 
-	wantPerKill := protocol.MonsterXP * (100 + protocol.HumanXPBonusPercent) / 100
+	wantPerKill := game.MonsterXPForTest("wolf") * (100 + protocol.HumanXPBonusPercent) / 100
 	wantReward := qv.RewardXP * (100 + protocol.HumanXPBonusPercent) / 100
 	wantBob := wantPerKill + wantReward // bob only stood for the final kill
 

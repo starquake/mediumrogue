@@ -38,6 +38,14 @@ const specs: { name: string; monsters?: number }[] = [
   { name: "combat", monsters: 3 },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },
+  // kinds needs several distinct monster kinds actually spawned to prove
+  // per-kind rendering (milestone 6c). WORLD_SEED only drives map/quest
+  // generation, not SpawnMonsters' kind pick (still crypto/random per
+  // server start — see the drop-roll determinism note in
+  // test/integration/gear_test.go), so there is no env knob to force
+  // specific kinds; a large count instead makes "at least 2 distinct
+  // kinds among them" a near-certainty rather than a coin flip.
+  { name: "kinds", monsters: 30 },
 ];
 
 const portFor = (i: number): number => BASE_PORT + i;

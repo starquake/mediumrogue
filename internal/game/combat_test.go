@@ -210,7 +210,7 @@ func TestBumpMutualKill(t *testing.T) {
 
 	// One hit each is lethal in both directions.
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
-	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage)
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
 
 	if !submitOK(w, me, monsterHex) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")
@@ -261,7 +261,7 @@ func TestBumpPlayerDeathRespawns(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage) // exactly lethal
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf")) // exactly lethal
 	w.SetPathForTest(monsterID, []protocol.Hex{me.Hex})
 	w.ResolveCombatOnlyForTest()
 
@@ -368,7 +368,8 @@ func TestBumpRandomVictimOnStackedHexIsReproducible(t *testing.T) {
 // already adjacent to the sole player now bumps into it (milestone 6.3 Task
 // 3) instead of holding position (6.2's behaviour) — thinkMonstersLocked
 // steps onto the player's hex, and the move phase converts that into an
-// attack. The player takes MonsterAttackDamage and the monster stays put.
+// attack. The player takes the monster's claws damage (wolf's, here) and
+// the monster stays put.
 func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 	t.Parallel()
 
@@ -390,7 +391,7 @@ func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 		t.Fatalf("player %d missing from snapshot after a single monster attack", me.EntityID)
 	}
 
-	if got, want := player.HP, protocol.FighterMaxHP-protocol.MonsterAttackDamage; got != want {
+	if got, want := player.HP, protocol.FighterMaxHP-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("player HP = %d, want %d", got, want)
 	}
 

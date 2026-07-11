@@ -161,3 +161,24 @@ func reachableWalkable(m protocol.MapResponse) map[protocol.Hex]bool {
 func tileCount(radius int) int {
 	return 3*radius*(radius+1) + 1
 }
+
+// ringOf returns the difficulty ring (milestone 6c, spec: ring 0 = home,
+// ring protocol.RingCount-1 = frontier) hex h belongs to at world radius
+// worldRadius: bands at even fractions of the radius. At WORLD_RADIUS 24
+// (RingCount 3) this gives ring 0 = distance 0-7, ring 1 = 8-15, ring 2 =
+// 16-24 — the spec's table. worldRadius is config-enforced >= 1, so this
+// never divides by zero; a small worldRadius just narrows the bands (more
+// hexes fall into ring 0 as an integer-division artifact — "tiny maps
+// collapse toward ring 0", per the spec) without ever panicking or
+// indexing out of [0,RingCount).
+func ringOf(h protocol.Hex, worldRadius int) int {
+	origin := protocol.Hex{Q: 0, R: 0}
+	dist := HexDistance(origin, h)
+
+	ring := dist * protocol.RingCount / worldRadius
+	if ring >= protocol.RingCount {
+		ring = protocol.RingCount - 1
+	}
+
+	return ring
+}
