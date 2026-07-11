@@ -20,9 +20,11 @@ import (
 // award is genuinely per-kind and not just wolf's flat, well-tested number.
 const trollKillXP = 60
 
-// wantTrollKillAnnounce is killSummary's exact text for a single slain
+// wantTrollKillAnnounce is killSoloSummary's exact text for a single slain
 // troll (internal/game/world.go) — the kind-naming combat log line 6c adds.
-const wantTrollKillAnnounce = "a troll was slain (+60 XP to everyone in the fight)"
+// Only "tester" ever joins this server (startServerWithKindAt spawns no
+// other players), so the bubble is solo — playtest item 3 names the killer.
+const wantTrollKillAnnounce = testerName + " slew a troll (+60 XP)"
 
 // startServerWithKindAt boots the handler tree with a single monster of a
 // caller-chosen KIND (not just the default wolf) at hex, via

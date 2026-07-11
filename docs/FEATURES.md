@@ -50,9 +50,13 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   attack clicks, pending "…" on equip buttons, Diablo-style **floating damage
   numbers** (white over hostiles, red over players; killing blows shown as
   remaining HP — derived client-side by diffing bundles), kill summaries and
-  player deaths announced in chat, naming the slain **kind(s)** ("a wolf was
-  slain (+20 XP to everyone in the fight)", "a wolf and a troll were slain
-  (+80 XP …)", "2 ghouls were slain (+70 XP …)", "NAME died").
+  player deaths announced in chat, naming the slain **kind(s)**. Two or more
+  players in the bubble at award time: nameless ("a wolf was slain (+20 XP to
+  everyone in the fight)", "a wolf and a troll were slain (+80 XP …)", "2
+  ghouls were slain (+70 XP …)") — no kill credit exists. **Exactly one**
+  player in the bubble (item 3, playtest batch 2): named, active voice
+  ("NAME slew a wolf (+20 XP)", mixed kinds group the same way — "NAME slew
+  a wolf and a troll (+80 XP)"). Player deaths: "NAME died".
 
 ### Classes & species (chosen on the start screen)
 | | Weapons (defaults) | HP | Role |

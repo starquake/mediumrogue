@@ -9,14 +9,15 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// TestMonsterKillAnnouncedInChat: a bubble turn that kills monsters announces
-// a kill summary through the chat hook (the de facto combat log), naming the
-// slain kind (oneHitKillBubble's default spawn is wolf). Uses the miss seed
-// so no pickup announce muddies the capture; the summary quotes the
-// per-player base XP (species bonuses are per-player, so the base is the only
-// honest shared number — and no kill credit exists by design, so nobody is
-// named).
-func TestMonsterKillAnnouncedInChat(t *testing.T) {
+// TestMonsterKillAnnouncedInChatSolo: a bubble turn that kills monsters
+// announces a kill summary through the chat hook (the de facto combat log),
+// naming the slain kind (oneHitKillBubble's default spawn is wolf). Uses the
+// miss seed so no pickup announce muddies the capture. oneHitKillBubble
+// places exactly one player ("hero"), so — playtest item 3 — the announce
+// names the killer: "hero slew a wolf (+20 XP)", not the nameless
+// everyone-in-the-fight wording (that stays for 2+ players — see
+// TestMonsterKillAnnouncedInChatNamesNobodyForTwoPlayers).
+func TestMonsterKillAnnouncedInChatSolo(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -26,6 +27,41 @@ func TestMonsterKillAnnouncedInChat(t *testing.T) {
 	w.SetAnnounce(func(_, text string) { announced = append(announced, text) })
 
 	oneHitKillBubble(t, w, killMissSeed)
+
+	want := fmt.Sprintf("hero slew a wolf (+%d XP)", game.MonsterXPForTest("wolf"))
+	if !slices.Contains(announced, want) {
+		t.Errorf("announced = %v, want to contain %q", announced, want)
+	}
+}
+
+// TestMonsterKillAnnouncedInChatNamesNobodyForTwoPlayers: with two or more
+// players in the bubble at award time, the nameless "everyone in the fight"
+// wording is unchanged (playtest item 3 only names a solo killer) — no kill
+// credit exists for a shared fight.
+func TestMonsterKillAnnouncedInChatNamesNobodyForTwoPlayers(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(killMissSeed)
+
+	var announced []string
+
+	w.SetAnnounce(func(_, text string) { announced = append(announced, text) })
+
+	idA, tokA, _, _, monsterID, form := twoPlayerBubble(t, w)
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
+
+	target := hexOfSnap(form, monsterID)
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: idA, Token: tokA, Kind: protocol.IntentMove, Target: target,
+	}); err != nil {
+		t.Fatalf("SubmitIntent move: %v", err)
+	}
+
+	// ResolveTurnForTest is ungated (lock-in/patience are exercised
+	// elsewhere) — it resolves this bubble-turn regardless of B's lock-in
+	// state, so A's bump alone one-hit-kills the monster here.
+	w.ResolveTurnForTest()
 
 	want := fmt.Sprintf("a wolf was slain (+%d XP to everyone in the fight)", game.MonsterXPForTest("wolf"))
 	if !slices.Contains(announced, want) {

@@ -625,3 +625,23 @@ func KillSummaryForTest(kindIDs ...string) string {
 
 	return killSummary(slain)
 }
+
+// KillSoloSummaryForTest exposes killSoloSummary the same way
+// KillSummaryForTest exposes killSummary (playtest item 3's named-solo-
+// killer wording), so a black-box test can pin the exact text — including a
+// mixed-kind solo kill — without duplicating the pipeline inline. Panics if
+// any id is unregistered.
+func KillSoloSummaryForTest(playerName string, kindIDs ...string) string {
+	slain := make([]*monsterDef, len(kindIDs))
+
+	for i, id := range kindIDs {
+		k, ok := monsterDefByID[id]
+		if !ok {
+			panic("game: KillSoloSummaryForTest unknown monster kind " + id)
+		}
+
+		slain[i] = k
+	}
+
+	return killSoloSummary(playerName, slain)
+}

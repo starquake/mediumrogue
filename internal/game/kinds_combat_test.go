@@ -263,6 +263,33 @@ func TestKillSummaryNamesKinds(t *testing.T) {
 	}
 }
 
+// TestKillSoloSummaryNamesKiller pins killSoloSummary's exact announce text
+// (playtest item 3: a solo killer is named, active voice, no "everyone in
+// the fight" wording) for a single kind and a mixed-kind kill in the same
+// bubble-turn (e.g. a mage's AoE catching two different kinds at once).
+func TestKillSoloSummaryNamesKiller(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		kinds []string
+		want  string
+	}{
+		{"single wolf", []string{kindWolf}, "hero slew a wolf (+20 XP)"},
+		{"mixed kinds", []string{kindWolf, kindTroll}, "hero slew a wolf and a troll (+80 XP)"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got, want := game.KillSoloSummaryForTest("hero", tc.kinds...), tc.want; got != want {
+				t.Errorf("killSoloSummary(%v) = %q, want %q", tc.kinds, got, want)
+			}
+		})
+	}
+}
+
 // TestWyrmslayerDamageMultiplierVsDragon: the Wyrmslayer Greatsword's
 // condTargetKind rule spikes damage ×1.5 vs a dragon specifically — a
 // fighter wielding it deals its flat 4 damage to a wolf, but 6 (4*150/100)

@@ -1066,10 +1066,17 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 		// The chat stream doubles as the combat log: one kill summary per
 		// bubble turn (not per monster — a mage's AoE turn stays one line),
 		// naming the slain kinds. The summed base XP is quoted because it's
-		// the only shared number (species bonuses are per-player), and
-		// nobody is named because kill credit deliberately does not exist
-		// (XP-by-presence, plan §5).
-		w.announce("system", killSummary(slain))
+		// the only shared number (species bonuses are per-player). Kill
+		// credit deliberately does not exist for a MULTI-player bubble — the
+		// nameless wording stays. But when exactly one player is in the
+		// bubble at award time (playtest item 3), there is no competing
+		// credit to avoid: name them ("NAME slew a wolf (+20 XP)") — a solo
+		// hunt reads better attributed.
+		if players := playersOf(members); len(players) == 1 {
+			w.announce("system", killSoloSummary(players[0].name, slain))
+		} else {
+			w.announce("system", killSummary(slain))
+		}
 
 		w.tickKillQuestsLocked(members, len(slain))
 	}
@@ -1496,6 +1503,26 @@ func killSummary(slain []*monsterDef) string {
 	}
 
 	return fmt.Sprintf("%s %s slain (+%d XP to everyone in the fight)", killPhrase(slain), was, total)
+}
+
+// killSoloSummary renders one bubble turn's monster deaths for the chat/
+// combat log when exactly one player was in the bubble at award time
+// (playtest item 3): named, past-tense, active voice — "NAME slew a wolf
+// (+20 XP)" — instead of killSummary's nameless passive wording (which
+// stays for a multi-player bubble, where kill credit deliberately does not
+// exist). Mirrors killSummary's grouping (killPhrase) and summed-XP quoting
+// for mixed-kind kills in the same turn.
+func killSoloSummary(playerName string, slain []*monsterDef) string {
+	if len(slain) == 0 {
+		return ""
+	}
+
+	total := 0
+	for _, k := range slain {
+		total += k.xp
+	}
+
+	return fmt.Sprintf("%s slew %s (+%d XP)", playerName, killPhrase(slain), total)
 }
 
 // killPhrase joins slain into an English noun-phrase list — "a wolf",
