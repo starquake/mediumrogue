@@ -41,7 +41,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 
 	w, clk := newSnapshotWorld(t)
 
-	alice, err := w.Join("", "alice", protocol.ClassRogue, protocol.SpeciesElf)
+	alice, err := w.Join("", testAliceName, protocol.ClassRogue, protocol.SpeciesElf)
 	if err != nil {
 		t.Fatalf("Join alice: %v", err)
 	}
@@ -95,8 +95,23 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	}
 
 	w2, _ := newSnapshotWorld(t)
+
+	if got, want := w2.WorldIDForTest(), w.WorldIDForTest(); got == want {
+		t.Fatalf("w2's freshly-minted worldID already equals w's before restoring — test fixture bug")
+	}
+
 	if err := w2.RestoreState(data); err != nil {
 		t.Fatalf("RestoreState: %v", err)
+	}
+
+	// item 4 (playtest feedback batch 3): a restored world is the SAME
+	// world — it keeps w's original worldID, not a freshly-minted one.
+	if got, want := w2.WorldIDForTest(), w.WorldIDForTest(); got != want {
+		t.Errorf("restored worldID = %q, want %q (w's own, unchanged)", got, want)
+	}
+
+	if got := w2.Snapshot().WorldID; got == "" {
+		t.Error("restored TurnEvent.WorldID is empty")
 	}
 
 	if got, want := w2.Snapshot().Turn, beforeTurn; got != want {
@@ -127,7 +142,7 @@ func checkRestoredAlice(
 		t.Errorf("restored alice Hex = %v, want %v", got, want)
 	}
 
-	if got, want := restored.Name, "alice"; got != want {
+	if got, want := restored.Name, testAliceName; got != want {
 		t.Errorf("restored alice Name = %q, want %q", got, want)
 	}
 

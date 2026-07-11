@@ -11,7 +11,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 ## 1. Game mechanics (what players experience)
 
 ### Time: WeGo turns & combat bubbles
-- One shared **world turn every 5 s** (3 s input window, ~2 s playback).
+- One shared **world turn every 4 s** (2 s input window, ~2 s playback).
   No input = stand still; queued click-to-move paths auto-advance. Latency
   and reflexes are irrelevant by design.
 - **Combat time bubbles**: when a player and a hostile come within 6 hexes,
@@ -26,6 +26,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   form/merge/dissolve as connected components; **only players extend a
   bubble's reach**. Walking into a bubble's radius joins the fight —
   reinforcement is a core mechanic; fleeing beyond the radius escapes it.
+  The "In combat — waiting for: …" panel names the stragglers by **display
+  name** (item 3, playtest batch 3 — was raw entity ids), mapped client-side
+  from the bundle's entities with a `#id` fallback for an unknown id.
 
 ### Movement
 - Flat-top hex grid, axial coordinates, grid-locked. **Click-to-move**
@@ -160,6 +163,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   hex shows a small DOM tooltip near the cursor — kind display name + "HP
   cur/max". Client-side only (positions/hp/maxHp already ride every turn
   bundle); `pointer-events: none` throughout, so it never blocks a click.
+  **HP is distance-gated** (item 6, playtest batch 3): the HP line only
+  shows when the hovered monster is within `CombatRadius` of my own
+  entity — name only beyond that (scouting doesn't read exact health
+  through the fog of distance).
 - **Difficulty rings**: the map bands into 3 concentric rings by hex
   distance from the origin (`RingCount`) — at the default `WORLD_RADIUS=24`
   that's ring 0 = 0–7 (home), ring 1 = 8–15, ring 2 = 16–24 (frontier).
@@ -231,6 +238,16 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   progression intact. Party membership and any personal quest do **not**
   survive a sweep — they dissolve / return to the board, exactly as before
   (session-scoped social state, not progression).
+- **Multi-tab safety** (item 2, playtest batch 3 — the "players swapped
+  identities" fix): a reclaim/rejoin always sends the tab's **own known
+  token**, never a re-read of localStorage (which two tabs on one origin
+  share — the root cause: one tab's rejoin could silently pick up another
+  tab's freshly-written token and start controlling that character). A
+  `storage`-event listener reloads any tab whose stored identity is
+  overwritten by another tab with a different token — split-brain becomes an
+  obvious, consistent reload. A rejoin whose token the server no longer
+  knows at all reloads to the start screen instead of silently minting a
+  fresh level-1 character in the old one's place.
 
 ### World
 - **Procedural generation**: seeded value-noise biomes (elevation+moisture →
@@ -251,9 +268,11 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   snapshot intact at the live path instead of a corrupt one.
 - **What persists**: every entity — players **and** monsters (a restart must
   not respawn a healed, repositioned monster population mid-expedition) —
-  ground items, the quest board, the disconnect archive, and the turn/id
+  ground items, the quest board, the disconnect archive, the turn/id
   counters (so SSE ids and entity/item instance ids stay monotonic and
-  collision-free across a restart). The map itself is **never** persisted —
+  collision-free across a restart), and the **worldId** (item 4, playtest
+  batch 3 — snapshot version 2; a restored world keeps its identity, see
+  the world-reset signal below). The map itself is **never** persisted —
   it regenerates deterministically from `WORLD_SEED`/`WORLD_RADIUS`.
 - **What stays transient**: queued move paths, a pending ranged-attack
   target, a queued equip, and combat-bubble membership (bubbles are never
@@ -288,6 +307,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   GET `/api/map` (once), `/api/events` (SSE: full-snapshot turn bundles with
   turn-number ids, chat events, named heartbeats). Reconnect =
   resync-to-latest (`Last-Event-ID` as watermark only). JSON everywhere.
+- **World-reset signal** (item 4, playtest batch 3): every turn bundle
+  carries `worldId` — a random hex string minted once at world creation and
+  **persisted in the snapshot** (a restored world keeps its predecessor's
+  id: it IS the same world). The client remembers the first `worldId` it
+  sees per session and does a full page reload if a later bundle's differs —
+  a genuine world reset (restart with no matching snapshot), never an
+  ordinary reconnect. The reload re-runs the reclaim-or-fail join path,
+  which falls back to the start screen if the stored token is truly dead.
 - **Protocol single source of truth**: `internal/protocol` → tygo-generated
   `client/src/protocol.gen.ts` (never hand-edited; `make protocol`).
 - **Modifier pipeline** (`internal/game/rules.go`): combat values fold
@@ -322,6 +349,18 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   `event` attribute. `World.SetLogger` installs the sink (defaults to
   `slog.Default()`, mirrors `SetAnnounce`); `cmd/rogue/app` wires the
   process logger in.
+- **Identity audit log** (item 7, playtest batch 3 — same filterable
+  convention, msg key `"identity"`): every identity lifecycle decision
+  emits `slog.Info("identity", "event", ...)` — `join-new` (id, name,
+  class), `join-reclaim` (live token), `join-restore` (archived token),
+  `join-rejected` (reason: `invalid_name`/`invalid_class`/
+  `invalid_species`/`no_spawn_hex`), `sweep-archive` (id, name), and
+  `snapshot-restore` (player count, archive count, worldId). Token-bearing
+  events carry a `token_prefix` of the first **8 chars only** — never the
+  full bearer secret (a full token in a log file would be a
+  character-theft vector). Purpose: a future cross-machine "players
+  swapped" report gets diagnosed from the server log's join/sweep/restore
+  sequence instead of hypothesized.
 
 ---
 
@@ -330,7 +369,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | Var | Default | Meaning |
 |---|---|---|
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
-| `TURN_INTERVAL` | `5s` | world-turn period (tests shrink it) |
+| `TURN_INTERVAL` | `4s` | world-turn period (tests shrink it) |
 | `HEARTBEAT_INTERVAL` | `15s` | SSE keep-alive cadence |
 | `MONSTER_COUNT` | `0` | monsters spawned at startup |
 | `COMBAT_PATIENCE` | `30s` | bubble AFK fallback before auto-resolve |
@@ -345,7 +384,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 
 | Constant | Value | |
 |---|---|---|
-| `TurnSeconds` / `InputWindowSeconds` / `PlaybackSeconds` | 5 / 3 / 2 | turn anatomy |
+| `TurnSeconds` / `InputWindowSeconds` / `PlaybackSeconds` | 4 / 2 / 2 | turn anatomy |
 | `CombatRadius` | 6 | bubble trigger distance |
 | `StackCap` | 5 | max friendly entities per hex |
 | `MaxNameLen` / `MaxChatLen` | 24 / 500 | input caps (runes) |

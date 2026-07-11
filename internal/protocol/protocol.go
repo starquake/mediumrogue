@@ -8,10 +8,14 @@ package protocol
 // server resolution, then a playback window on the client. Inside a combat
 // time bubble the cadence is suspended and turns are action-gated instead.
 const (
-	// TurnSeconds is the full world-turn period out of combat.
-	TurnSeconds = 5
+	// TurnSeconds is the full world-turn period out of combat. Lowered 5→4
+	// (playtest feedback batch 3, item 1; playtest 2026-07-11: a 3 s input
+	// window felt slow) — the plan's §9 "feel-test the cadence" decision
+	// landing at 2 s input / 2 s playback.
+	TurnSeconds = 4
 	// InputWindowSeconds is the slice of the turn in which intents are accepted.
-	InputWindowSeconds = 3
+	// Lowered 3→2 alongside TurnSeconds (see above).
+	InputWindowSeconds = 2
 	// PlaybackSeconds is the client-side animation window after resolution.
 	PlaybackSeconds = 2
 )
@@ -255,6 +259,16 @@ type TurnEvent struct {
 	Quests []QuestView `json:"quests"`
 	// GroundItems is every dropped item currently lying on the map.
 	GroundItems []GroundItemView `json:"groundItems"`
+	// WorldID identifies this running world instance — a random hex string
+	// minted once at world creation and persisted in the snapshot (so a
+	// restored world is still considered the SAME world). It never changes
+	// while the process/snapshot lineage is unbroken, and rides every turn
+	// bundle so a client can tell a genuine world reset (a restart with no
+	// matching snapshot, or a fresh world under a different snapshot lineage)
+	// from an ordinary reconnect: if a bundle's WorldID differs from the
+	// first one this client ever saw, the world underneath it changed (item
+	// 4, playtest feedback batch 3).
+	WorldID string `json:"worldId"`
 }
 
 // QuestState is a quest's lifecycle stage on the board.

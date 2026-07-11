@@ -102,6 +102,15 @@ func (w *World) SetSeedForTest(seed int64) {
 	w.seed = seed
 }
 
+// WorldIDForTest exposes w's minted/restored worldID (item 4, playtest
+// feedback batch 3) for snapshot round-trip and reset-signal tests.
+func (w *World) WorldIDForTest() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.worldID
+}
+
 // PlaceEntityForTest injects a player entity at a specific hex and returns its
 // id and bearer token, so conflict and AI tests can build exact board states
 // instead of depending on spawn geometry. The player is a level-1 Fighter (the

@@ -25,7 +25,11 @@ import (
 // RestoreState return errSnapshotMismatch — there are no migrations
 // pre-launch; the no-backward-compatibility rule applies to disk exactly as
 // it does to the wire (see CLAUDE.md / the no-backward-compatibility memory).
-const snapshotVersion = 1
+//
+// v2 (item 4, playtest feedback batch 3): added WorldID — persisted so a
+// restored world keeps its predecessor's identity instead of looking like a
+// reset to clients.
+const snapshotVersion = 2
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -42,9 +46,13 @@ var errSnapshotMismatch = errors.New("snapshot: version/seed/radius does not mat
 // persisted — it regenerates deterministically from (WorldSeed, WorldRadius),
 // which is exactly why a mismatch on either invalidates the whole snapshot.
 type snapshotDTO struct {
-	Version      int    `json:"version"`
-	WorldSeed    uint64 `json:"worldSeed"`
-	WorldRadius  int    `json:"worldRadius"`
+	Version     int    `json:"version"`
+	WorldSeed   uint64 `json:"worldSeed"`
+	WorldRadius int    `json:"worldRadius"`
+	// WorldID is NOT part of the mismatch gate (unlike WorldSeed/WorldRadius):
+	// a restored world IS the same world, by definition, whatever id it was
+	// minted with — see World.worldID's doc. Round-tripped as-is.
+	WorldID      string `json:"worldId"`
 	Turn         int64  `json:"turn"`
 	NextID       int64  `json:"nextId"`
 	NextBubbleID int64  `json:"nextBubbleId"`
@@ -168,7 +176,7 @@ func (w *World) toDTOLocked() snapshotDTO {
 	}
 
 	return snapshotDTO{
-		Version: snapshotVersion, WorldSeed: w.worldSeed, WorldRadius: w.radius,
+		Version: snapshotVersion, WorldSeed: w.worldSeed, WorldRadius: w.radius, WorldID: w.worldID,
 		Turn: w.turn, NextID: w.nextID, NextBubbleID: w.nextBubbleID, NextPartyID: w.nextPartyID,
 		Entities: entities, GroundItems: groundItems, Quests: quests, Archive: archive,
 	}
@@ -212,6 +220,7 @@ func (w *World) RestoreState(data []byte) error {
 	entities, byToken := entitiesFromDTO(dto.Entities, w.now())
 
 	w.turn = dto.Turn
+	w.worldID = dto.WorldID
 	w.nextID = dto.NextID
 	w.nextBubbleID = dto.NextBubbleID
 	w.nextPartyID = dto.NextPartyID
@@ -226,6 +235,20 @@ func (w *World) RestoreState(data []byte) error {
 	// depend on the caller having constructed w with NewWorld a moment ago.
 	w.bubbles = make(map[int64]*bubble)
 	w.pendingInvites = make(map[int64]int64)
+
+	players := 0
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer {
+			players++
+		}
+	}
+
+	// Identity audit trail (item 7, playtest feedback batch 3): what a
+	// restart actually restored, correlatable with the join-* events that
+	// follow — see identityLogMsg (world.go).
+	w.logger.Info(identityLogMsg, "event", identityEventSnapshotRestore,
+		"players", players, "archived", len(w.archive), "world_id", w.worldID)
 
 	return nil
 }

@@ -83,38 +83,8 @@ export class JoinRejectedError extends Error {
   }
 }
 
-/**
- * Claims an entity: re-sends the stored token so a page refresh keeps the
- * same character (and the same class/species — the server ignores Class and
- * Species entirely on a token match, so a returning player's stored choices
- * always win over whatever the pickers currently have selected), and stores
- * whatever identity the server answers with (a stale token after a server
- * restart just becomes a fresh entity, joined as `chosenClass`/`chosenSpecies`).
- * `chosenName` is likewise only used for a new/orphaned token — the server
- * ignores Name on a reclaim (an existing entity already has its name).
- *
- * DELIBERATE: a link-imported identity (class/species stored as "" by
- * importIdentityFromFragment) sends those empty strings as-is — this is a
- * reclaim-or-fail contract, not an oversight. The server ignores class and
- * species entirely for a token it recognizes (live or archived), so a valid
- * imported link reclaims cleanly; for an UNKNOWN token the empty class is
- * rejected (422) rather than silently minting a default-class stranger the
- * player never asked for. The rejection throws JoinRejectedError, and
- * main.ts's recovery path clears the dead identity and falls back to the
- * start screen.
- */
-export async function join(
-  chosenName: string,
-  chosenClass: string,
-  chosenSpecies: string,
-): Promise<JoinResponse> {
-  const stored = loadIdentity();
-  const body: JoinRequest = {
-    token: stored?.token ?? "",
-    name: chosenName,
-    class: stored?.class ?? chosenClass,
-    species: stored?.species ?? chosenSpecies,
-  };
+/** POSTs /api/join and maps a 4xx to JoinRejectedError. Shared by join/reclaim. */
+async function postJoin(body: JoinRequest): Promise<JoinResponse> {
   const resp = await fetch("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -127,16 +97,104 @@ export async function join(
     throw new Error(`POST /api/join failed: ${resp.status}`);
   }
 
-  const joined = (await resp.json()) as JoinResponse;
+  return (await resp.json()) as JoinResponse;
+}
+
+/**
+ * Claims a BRAND-NEW entity: always sends an empty token (never reads
+ * localStorage — see `reclaim` below for returning players), so the server
+ * mints a fresh character named/classed/specied as given. Stores the
+ * resulting identity. Callers: the start-screen flow (a genuinely new
+ * player, or a rejected/dead stored identity that was just cleared).
+ */
+export async function join(
+  chosenName: string,
+  chosenClass: string,
+  chosenSpecies: string,
+): Promise<JoinResponse> {
+  const joined = await postJoin({ token: "", name: chosenName, class: chosenClass, species: chosenSpecies });
   const identity: Identity = {
     entityId: joined.entityId,
     token: joined.token,
-    class: stored?.class ?? chosenClass,
-    species: stored?.species ?? chosenSpecies,
+    class: chosenClass,
+    species: chosenSpecies,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
 
   return joined;
+}
+
+/**
+ * Reclaims an ALREADY-KNOWN identity by its own token, passed explicitly by
+ * the caller — deliberately never re-reads `loadIdentity()` for the token to
+ * send. Two browser tabs sharing one origin share localStorage; if a reclaim
+ * re-read the token from disk, tab A reclaiming right after tab B overwrote
+ * the shared key would silently reclaim tab B's character instead of its
+ * own — the seam behind the "players swapped identities" playtest report
+ * (item 2, playtest feedback batch 3). Every caller here already has its own
+ * trusted `identity` value in memory (from its own prior join/reclaim, never
+ * from a fresh disk read), so that's what gets sent.
+ *
+ * Sends empty name/class/species: the reclaim-or-fail contract. The server
+ * ignores all three for a token it still recognizes (live reclaim or
+ * archived restore), so this always succeeds for a real returning player.
+ * For a token the server no longer knows at all (item 4: the world reset
+ * out from under this client, e.g. a restart with no matching snapshot/
+ * archive entry), the empty name — checked first by the server, before the
+ * equally-empty class/species — is invalid for a NEW entity, so the server
+ * REJECTS with 422 (JoinRejectedError) instead of silently minting a
+ * brand-new, level-1 stranger in the old character's place — callers must
+ * treat that rejection as "this identity is truly gone" (main.ts clears it
+ * and falls back to the start screen), never retry-and-mint.
+ *
+ * identity.class/species are never sent to the server (which ignores them on
+ * a reclaim/restore) — they're only echoed back into the freshly persisted
+ * record, since JoinResponse doesn't carry them and a restored/reclaimed
+ * character's class/species never change.
+ */
+export async function reclaim(identity: Pick<Identity, "token" | "class" | "species">): Promise<JoinResponse> {
+  const joined = await postJoin({ token: identity.token, name: "", class: "", species: "" });
+  const next: Identity = {
+    entityId: joined.entityId,
+    token: joined.token,
+    class: identity.class,
+    species: identity.species,
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+
+  return joined;
+}
+
+/**
+ * Registers a `storage` event listener (fires only in OTHER tabs/windows —
+ * never the one that made the write) that invokes onForeignChange whenever
+ * the persisted identity is overwritten with a DIFFERENT token than
+ * currentToken() currently returns. Multi-tab hardening for item 2
+ * (playtest feedback batch 3): `reclaim` above closes the "silently
+ * reclaims a foreign token" seam, but a tab whose OWN identity gets
+ * clobbered by another tab's join/reclaim (e.g. two different people
+ * sharing one browser) would otherwise keep running with a token no longer
+ * safe to trust — every subsequent intent it sends would race the other
+ * tab's. Rather than try to patch that up in place, the recommended
+ * onForeignChange is a full page reload: a clean reinitialization beats a
+ * silently-corrupted one, and is immediately legible to whoever's at the
+ * keyboard instead of manifesting as unexplained rubber-banding.
+ */
+export function onForeignIdentityChange(currentToken: () => string, onForeignChange: () => void): void {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== STORAGE_KEY || e.newValue === null) {
+      return;
+    }
+    try {
+      const next = JSON.parse(e.newValue) as Identity;
+      if (next.token !== currentToken()) {
+        onForeignChange();
+      }
+    } catch {
+      // Malformed value written by another tab — ignore; our own identity
+      // stays authoritative until something concrete forces a reload.
+    }
+  });
 }
 
 /** POSTs an IntentRequest and reports whether the server accepted it (202). */

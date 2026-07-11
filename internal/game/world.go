@@ -35,6 +35,40 @@ const (
 	combatEventXP     = "xp_award"
 )
 
+// identityLogMsg is the slog message every identity-lifecycle log line
+// carries (slog.Info("identity", "event", ...)) — the same filterable
+// convention as combatLogMsg, added for item 7 of playtest feedback batch 3
+// so the next cross-machine "players swapped" report gets diagnosed from
+// server logs instead of hypothesized. identityEvent* names the "event"
+// attribute's fixed vocabulary; the sixth event, "snapshot-restore", is
+// emitted from RestoreState (snapshot.go).
+const identityLogMsg = "identity"
+
+const (
+	identityEventJoinNew         = "join-new"
+	identityEventJoinReclaim     = "join-reclaim"
+	identityEventJoinRestore     = "join-restore"
+	identityEventJoinRejected    = "join-rejected"
+	identityEventSweepArchive    = "sweep-archive"
+	identityEventSnapshotRestore = "snapshot-restore"
+)
+
+// tokenPrefixLen is how many leading characters of a bearer token identity
+// log lines carry — enough to correlate a client across joins/sweeps in the
+// logs, never the full secret (a full token in a log file would be a
+// character-theft vector; the log is not the trust boundary the VPS disk
+// is).
+const tokenPrefixLen = 8
+
+// tokenPrefix truncates token for audit logging — see tokenPrefixLen.
+func tokenPrefix(token string) string {
+	if len(token) <= tokenPrefixLen {
+		return token
+	}
+
+	return token[:tokenPrefixLen]
+}
+
 // Intent validation errors, mapped to HTTP statuses by the API layer.
 var (
 	// ErrUnauthorized covers unknown entities and bad tokens alike, so a
@@ -82,6 +116,22 @@ var (
 
 // tokenBytes sizes the bearer token: 16 random bytes = 128 bits.
 const tokenBytes = 16
+
+// worldIDBytes sizes World.worldID: 8 random bytes = 64 bits, hex-encoded —
+// plenty of entropy to tell world instances apart (it is an identity signal,
+// not a secret) while staying short in logs/turn bundles.
+const worldIDBytes = 8
+
+// newWorldID mints a random hex worldID for a freshly constructed World (see
+// World.worldID's doc). A failed crypto read leaves a zero-valued (all
+// zeros, still a valid non-empty hex string) id — worse entropy, never a
+// crash, matching NewWorld's existing worldSeed fallback above.
+func newWorldID() string {
+	buf := make([]byte, worldIDBytes)
+	_, _ = rand.Read(buf)
+
+	return hex.EncodeToString(buf)
+}
 
 // entity is the server-side entity record. The wire shape is
 // protocol.Entity; the token never leaves this package except via Join.
@@ -210,6 +260,14 @@ type World struct {
 	// RestoreState refuses to load it rather than silently mismatching
 	// terrain against persisted positions. See snapshot.go.
 	worldSeed uint64
+	// worldID identifies this running world instance to clients (item 4,
+	// playtest feedback batch 3) — a random hex string minted once in
+	// NewWorld and, unlike worldSeed/radius, PERSISTED in the snapshot (see
+	// snapshot.go): a restored world keeps its predecessor's worldID because
+	// it IS the same world, not a new one. Rides every TurnEvent so a client
+	// can distinguish an ordinary reconnect from a genuine world reset (a
+	// restart with no matching snapshot).
+	worldID string
 	// spawnable is the origin-reachable walkable region (BFS from origin over
 	// walkable tiles, computed once at construction) — spawnHexLocked only
 	// places players on hexes in this set, so a spawn can never land in a
@@ -305,6 +363,8 @@ func NewWorld(
 	//nolint:gosec // a random world seed can be any 64-bit value; the sign is irrelevant.
 	seed := int64(binary.BigEndian.Uint64(seedBuf[:]))
 
+	worldID := newWorldID()
+
 	return &World{
 		interval:        interval,
 		ticks:           ticks,
@@ -317,6 +377,7 @@ func NewWorld(
 		worldMap:        worldMap,
 		radius:          radius,
 		worldSeed:       worldSeed,
+		worldID:         worldID,
 		spawnable:       reachableWalkable(worldMap),
 		entities:        make(map[int64]*entity),
 		byToken:         make(map[string]*entity),
@@ -481,6 +542,9 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 		// StreamOpened.
 		e.disconnectedAt = w.now()
 
+		w.logger.Info(identityLogMsg, "event", identityEventJoinReclaim,
+			"id", e.id, "name", e.name, "token_prefix", tokenPrefix(token))
+
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 	}
 
@@ -489,20 +553,15 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	}
 
 	name = strings.TrimSpace(name)
-	if !validName(name) {
-		return protocol.JoinResponse{}, ErrInvalidName
-	}
-
-	if !validClass(class) {
-		return protocol.JoinResponse{}, ErrInvalidClass
-	}
-
-	if !validSpecies(species) {
-		return protocol.JoinResponse{}, ErrInvalidSpecies
+	if err := w.validateNewJoinLocked(token, name, class, species); err != nil {
+		return protocol.JoinResponse{}, err
 	}
 
 	spawn, err := w.spawnHexLocked()
 	if err != nil {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "no_spawn_hex", "name", name, "token_prefix", tokenPrefix(token))
+
 		return protocol.JoinResponse{}, err
 	}
 
@@ -526,7 +585,39 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	w.byToken[e.token] = e
 	w.grantDefaultsLocked(e)
 
+	w.logger.Info(identityLogMsg, "event", identityEventJoinNew,
+		"id", e.id, "name", e.name, "class", e.class, "token_prefix", tokenPrefix(e.token))
+
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+}
+
+// validateNewJoinLocked checks a NEW player's name/class/species (name
+// already trimmed by the caller), logging a "join-rejected" identity audit
+// event with the failing reason before returning the matching sentinel.
+// Callers hold w.mu.
+func (w *World) validateNewJoinLocked(token, name, class, species string) error {
+	if !validName(name) {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "invalid_name", "token_prefix", tokenPrefix(token))
+
+		return ErrInvalidName
+	}
+
+	if !validClass(class) {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "invalid_class", "name", name, "token_prefix", tokenPrefix(token))
+
+		return ErrInvalidClass
+	}
+
+	if !validSpecies(species) {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "invalid_species", "name", name, "token_prefix", tokenPrefix(token))
+
+		return ErrInvalidSpecies
+	}
+
+	return nil
 }
 
 // restoreArchivedLocked implements Join's archived-token branch: a fresh
@@ -558,6 +649,9 @@ func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protoc
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
 	delete(w.archive, token)
+
+	w.logger.Info(identityLogMsg, "event", identityEventJoinRestore,
+		"id", e.id, "name", e.name, "token_prefix", tokenPrefix(token))
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
@@ -649,6 +743,9 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 		e := w.entities[id]
 
 		w.archive[e.token] = archiveLocked(e)
+
+		w.logger.Info(identityLogMsg, "event", identityEventSweepArchive,
+			"id", e.id, "name", e.name, "token_prefix", tokenPrefix(e.token))
 
 		w.leavePartyLocked(e)
 		w.abandonPersonalQuestLocked(e)
@@ -973,7 +1070,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 	return protocol.TurnEvent{
 		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
-		Quests: questViews, GroundItems: groundItems,
+		Quests: questViews, GroundItems: groundItems, WorldID: w.worldID,
 	}
 }
 

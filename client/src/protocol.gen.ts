@@ -12,13 +12,17 @@ generated file must never be edited by hand.
 */
 
 /**
- * TurnSeconds is the full world-turn period out of combat.
+ * TurnSeconds is the full world-turn period out of combat. Lowered 5→4
+ * (playtest feedback batch 3, item 1; playtest 2026-07-11: a 3 s input
+ * window felt slow) — the plan's §9 "feel-test the cadence" decision
+ * landing at 2 s input / 2 s playback.
  */
-export const TurnSeconds = 5;
+export const TurnSeconds = 4;
 /**
  * InputWindowSeconds is the slice of the turn in which intents are accepted.
+ * Lowered 3→2 alongside TurnSeconds (see above).
  */
-export const InputWindowSeconds = 3;
+export const InputWindowSeconds = 2;
 /**
  * PlaybackSeconds is the client-side animation window after resolution.
  */
@@ -331,6 +335,18 @@ export interface TurnEvent {
    * GroundItems is every dropped item currently lying on the map.
    */
   groundItems: GroundItemView[];
+  /**
+   * WorldID identifies this running world instance — a random hex string
+   * minted once at world creation and persisted in the snapshot (so a
+   * restored world is still considered the SAME world). It never changes
+   * while the process/snapshot lineage is unbroken, and rides every turn
+   * bundle so a client can tell a genuine world reset (a restart with no
+   * matching snapshot, or a fresh world under a different snapshot lineage)
+   * from an ordinary reconnect: if a bundle's WorldID differs from the
+   * first one this client ever saw, the world underneath it changed (item
+   * 4, playtest feedback batch 3).
+   */
+  worldId: string;
 }
 /**
  * QuestState is a quest's lifecycle stage on the board.

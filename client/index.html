@@ -26,14 +26,35 @@
       canvas {
         display: block;
       }
-      /* HUD floats over the canvas: the HTML-over-WebGL split is the plan's
-         §6 design — social/status UI stays DOM, the world stays canvas. */
-      #hud {
+      /* Left column: the HUD (turn/status/stats/timer/combat-panel) stacked
+         above the quest/gear panels, as ONE fixed-position flex column
+         (item 5, playtest feedback batch 3 — was two INDEPENDENT
+         position:fixed boxes, #hud anchored at the top and #left-panels
+         hardcoded to start at top:8rem, a guess at the HUD's height. The
+         HUD's actual height varies — the combat panel, the copy-link
+         button, and multi-line "waiting for" text all grow it past that
+         guess — so the quest panel would render UNDER/behind the timer.
+         A shared flex column has no guess to be wrong: #left-panels always
+         starts exactly where the HUD's real rendered content ends, however
+         tall that turns out to be.) The HTML-over-WebGL split itself is the
+         plan's §6 design — social/status UI stays DOM, the world stays
+         canvas. */
+      #left-column {
         position: fixed;
         top: 0.75rem;
         left: 1rem;
         z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
         pointer-events: none;
+        /* Stop above the bottom-anchored chat panel's zone (~12.2rem tall +
+           1rem offset + breathing room) so a tall quest board scrolls inside
+           #left-panels (see below) instead of running underneath the chat
+           box on a short window. */
+        max-height: calc(100vh - 0.75rem - 14.5rem);
+      }
+      #hud {
         text-shadow: 0 1px 2px #000;
       }
       #hud h1 {
@@ -383,22 +404,21 @@
         font-size: 0.85rem;
         line-height: 1.4;
       }
-      /* Left panel column: quest + gear stack in one fixed flex column on
-         the left edge, below the HUD bar and above the (much shorter,
-         bottom-anchored) chat panel. Flex flow — not per-panel fixed
-         offsets — is what keeps them from ever overlapping: a tall quest
-         board simply pushes the gear panel down. The column itself is
-         click-through (pointer-events: none); only the visible panels
-         re-enable pointer events, same discipline as #chat-root. */
+      /* Quest + gear stack below the HUD, both inside #left-column (see
+         above) — no fixed position/offset of their own any more. Flex flow
+         — not per-panel fixed offsets — is what keeps them from ever
+         overlapping each other: a tall quest board simply pushes the gear
+         panel down. Scrolls internally (rather than pushing off-screen)
+         once the column's max-height is hit; individual panels stay
+         click-through (pointer-events: none) except the visible panel
+         content itself, same discipline as #chat-root. */
       #left-panels {
-        position: fixed;
-        top: 8rem;
-        left: 1rem;
-        z-index: 10;
         display: flex;
         flex-direction: column;
         gap: 0.75rem;
         pointer-events: none;
+        overflow-y: auto;
+        scrollbar-width: thin;
       }
       #quest-root,
       #gear-root {
@@ -406,7 +426,10 @@
       }
       #quest-panel {
         pointer-events: auto;
-        width: 20rem;
+        /* 23rem (was 20rem, item 5 playtest feedback batch 3): wide enough
+           that a typical one-quest row ("#4 Scout the far shore: reach
+           (0, 13) · 20 XP") fits on one line instead of wrapping. */
+        width: 23rem;
         background: rgba(11, 15, 11, 0.85);
         border: 1px solid var(--dim);
         padding: 0.4rem 0.6rem;
@@ -456,7 +479,10 @@
          same opaque-panel-in-click-through-root discipline as the others. */
       #gear-panel {
         pointer-events: auto;
-        width: 20rem;
+        /* 23rem, matching #quest-panel (item 5): keeps long item descs
+           ("+3 damage while an ally shares the bubble") to one wrap at
+           most. */
+        width: 23rem;
         background: rgba(11, 15, 11, 0.85);
         border: 1px solid var(--dim);
         padding: 0.4rem 0.6rem;
@@ -547,21 +573,29 @@
     </style>
   </head>
   <body>
-    <header id="hud">
-      <h1>Medium Rogue</h1>
-      <div id="turn-row">turn <span id="turn">—</span></div>
-      <div id="status" data-connected="false">connecting…</div>
-      <div id="stats">Lv — · —/— XP</div>
-      <button id="copy-link" type="button" hidden>copy character link</button>
-      <div id="turn-timer" data-phase="input"><div id="turn-timer-fill"></div></div>
-      <div id="combat-panel" hidden>
-        In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
+    <div id="left-column">
+      <header id="hud">
+        <h1>Medium Rogue</h1>
+        <div id="turn-row">turn <span id="turn">—</span></div>
+        <div id="status" data-connected="false">connecting…</div>
+        <div id="stats">Lv — · —/— XP</div>
+        <button id="copy-link" type="button" hidden>copy character link</button>
+        <div id="turn-timer" data-phase="input"><div id="turn-timer-fill"></div></div>
+        <div id="combat-panel" hidden>
+          In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
+        </div>
+      </header>
+      <div id="left-panels">
+        <div id="quest-root"></div>
+        <div id="gear-root"></div>
       </div>
-    </header>
+    </div>
     <div id="start-screen" hidden>
       <div id="start-panel">
         <h1>Medium Rogue</h1>
-        <div class="tagline">a shared world · one turn every five seconds · bring friends</div>
+        <!-- Derive-free wording (PR #50 review): no literal cadence number
+             here to go stale when TurnSeconds is retuned again. -->
+        <div class="tagline">a shared world · everyone moves on the same beat · bring friends</div>
 
         <label class="label" for="start-name">Your name</label>
         <input id="start-name" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />
@@ -610,10 +644,6 @@
     </div>
     <div id="chat-root"></div>
     <div id="roster-root"></div>
-    <div id="left-panels">
-      <div id="quest-root"></div>
-      <div id="gear-root"></div>
-    </div>
     <div id="hover-tooltip" hidden>
       <span class="tooltip-kind"></span><span class="tooltip-hp"></span>
     </div>

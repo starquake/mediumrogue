@@ -1,7 +1,7 @@
 # Multiplayer Roguelike — Project Plan
 
 **Genre target:** Shared-world roguelike with **simultaneous turns** (WeGo) — procgen, tile-based; death stings (XP setback) but is not permanent
-**Simulation model:** One world turn every **5 seconds** (3 s input → instant resolution → ~2 s playback); near hostiles the clock **stops locally** and turns become action-gated (combat time bubbles)
+**Simulation model:** One world turn every **4 seconds** (2 s input → instant resolution → ~2 s playback); near hostiles the clock **stops locally** and turns become action-gated (combat time bubbles)
 **Visual style:** Hex-tile-based, Caves of Qud–inspired mood, with a post-processing filter
 **Stack:** Go server (single binary) + TypeScript/PixiJS browser client
 **Transport:** HTTP POST (intents up) + SSE (turn bundles & chat down)
@@ -17,7 +17,7 @@
 
 **The world.** A shared fantasy world built on hexagon tiles, with deliberately simple, chunky retro graphics under a CRT-style filter — think old-school roguelike charm rather than modern polish. All ~15 of us are in the same world at the same time, each with our own character.
 
-**How time works — the heartbeat.** The world moves in shared beats: every 5 seconds, one "turn" happens for everyone at once. During the first 3 seconds you can choose an action; then everything everyone chose plays out together in a short animation. In practice you barely notice the rhythm while exploring: you click somewhere on the map and your character walks there on their own, beat by beat, while you chat. You never have to be quick — if you do nothing, you simply stand still. Nobody has an advantage for having fast reflexes or a better internet connection; the game is closer to a board game where everyone moves their piece simultaneously than to an action game.
+**How time works — the heartbeat.** The world moves in shared beats: every 4 seconds, one "turn" happens for everyone at once. During the first 2 seconds you can choose an action; then everything everyone chose plays out together in a short animation. In practice you barely notice the rhythm while exploring: you click somewhere on the map and your character walks there on their own, beat by beat, while you chat. You never have to be quick — if you do nothing, you simply stand still. Nobody has an advantage for having fast reflexes or a better internet connection; the game is closer to a board game where everyone moves their piece simultaneously than to an action game.
 
 **When danger appears — time stops (for you).** The moment you and a monster spot each other within 6 tiles, the clock freezes *locally* — for you, the monster, and anyone standing nearby. The fight now plays like a proper turn-based tactics game: you can stare at the battlefield and think as long as you like. The turn advances when everyone in the fight has locked in their choice (with a patience limit of about a minute, so one distracted player can't stall the fight forever).
 
@@ -46,7 +46,7 @@ The real goal: a fun game for our own group of **~15 people** — a kind of **mi
 
 - **Graphics stay very simple and hex-tile-based** — deliberately, since graphics skills are limited. Aesthetic effort goes into the shader/filter pass, not art assets.
 - **A walkable shared world with quests, in two types.** **Player quests** are personal: each player picks their own. **Party quests** are shared: a party works on them together, and players can invite others to join their quest. Parties form organically around the quest someone pitches in chat — no assigned teams.
-- **The whole game runs on simultaneous 5-second turns.** Everyone chooses an action in the same 3-second window; the server resolves everything at once; everyone watches the outcome together. It plays like a board game night, not a twitch game.
+- **The whole game runs on simultaneous 4-second turns.** Everyone chooses an action in the same 2-second window; the server resolves everything at once; everyone watches the outcome together. It plays like a board game night, not a twitch game.
 - **The group may split into ~3 parties** that each tackle quests, rather than 15 people in one blob.
 - **Three classes: rogue, fighter, mage.** Enough identity to make parties feel composed ("we need a mage for this") without ballooning the design. Each has a hard weapon identity:
   - **Rogue** — dagger *or* bow, chosen automatically by distance: adjacent target → dagger, distant target → bow. **High single-target damage, squishy.** The flexible mid-liner.
@@ -67,7 +67,7 @@ The real goal: a fun game for our own group of **~15 people** — a kind of **mi
 
 **Design implications to keep in mind:**
 - ~15 concurrent players is the *actual* scale target — tiny by MMO standards. Don't over-engineer for scale; optimize for fun and for sessions where most of the group is online at once.
-- The shared turn cadence is the great equalizer: mixed reflexes and skill levels don't matter, network latency is irrelevant (200 ms ping vs a 3000 ms window), and there's natural room to chat between turns.
+- The shared turn cadence is the great equalizer: mixed reflexes and skill levels don't matter, network latency is irrelevant (200 ms ping vs a 2000 ms window), and there's natural room to chat between turns.
 - Quest/party systems are first-class features, not stretch goals: shared quest state, party membership, and proximity logic all need protocol support.
 - AFK handling falls out of the model naturally: no input = "wait" (or continue a queued path). No turn ever blocks on a missing player.
 
@@ -75,7 +75,7 @@ The real goal: a fun game for our own group of **~15 people** — a kind of **mi
 
 The stack decision evolved (Rust/Bevy → Go/Ebitengine → this) as the design got clearer. The reasons that settled it:
 
-- **The turn model removed every performance argument.** The server resolves ~15 players' intents once per 5 seconds — any language handles that. The original "no GC pauses, real-time entity ticking" rationale for Rust no longer applies.
+- **The turn model removed every performance argument.** The server resolves ~15 players' intents once per 4 seconds — any language handles that. The original "no GC pauses, real-time entity ticking" rationale for Rust no longer applies.
 - **Distribution is the real constraint** for a casual 15-friend group across Windows/macOS/Linux. A browser client turns distribution into *a URL*: no installers, no code-signing, no "which download do I click," and every update reaches everyone instantly.
 - **AI-verifiability drove the client choice.** A TypeScript/PixiJS client can be driven end-to-end with Playwright: click hexes, press keys, then *query live game state directly* and read console errors — far stronger verification than screenshot-squinting at an opaque canvas (the Ebitengine/WASM weakness). Since AI does the heavy lifting here, a testable client is a faster, safer project.
 - **HTML/CSS for the social surface.** Chat, quest log, party UI, and the turn timer — the parts this game actually lives on — are ordinary DOM elements floating over the canvas, not widgets hand-drawn in a game engine.
@@ -86,7 +86,7 @@ The stack decision evolved (Rust/Bevy → Go/Ebitengine → this) as the design 
 ```
 +----------------------+        HTTP POST /intent        +----------------------+
 |  Browser client      |  ---------------------------->  |  Go server           |
-|  - PixiJS hex render |                                 |  - Turn loop (5 s)   |
+|  - PixiJS hex render |                                 |  - Turn loop (4 s)   |
 |  - HTML UI (chat,    |  <----------------------------  |  - Authoritative     |
 |    quest log, timer) |     SSE stream: turn bundles,   |    resolution        |
 |  - Playback anim     |     chat, world events          |  - RNG / procgen     |
@@ -142,7 +142,7 @@ mediumrogue/
 
 ## 4. Transport: SSE + POST (decided)
 
-The wire carries one small intent up per ≤5 s and one turn bundle down per 5 s — not a realtime workload. That makes **Server-Sent Events + plain HTTP POST** the best fit:
+The wire carries one small intent up per ≤4 s and one turn bundle down per 4 s — not a realtime workload. That makes **Server-Sent Events + plain HTTP POST** the best fit:
 
 | | Why it wins here |
 |---|---|
@@ -159,22 +159,22 @@ The wire carries one small intent up per ≤5 s and one turn bundle down per 5 s
 
 ## 5. World & Simulation Model — Simultaneous Turns (WeGo)
 
-The core of the design. Every 5 seconds, one world turn:
+The core of the design. Every 4 seconds, one world turn:
 
 ```
-|<---------- 3 s input window ---------->|<-- resolve -->|<------ ~2 s playback ------>|
- players choose/queue actions              server computes  clients animate the outcome
- (move, attack, interact, wait)            (microseconds)   everyone sees the same turn
+|<------ 2 s input window ------>|<-- resolve -->|<------ ~2 s playback ------>|
+ players choose/queue actions      server computes  clients animate the outcome
+ (move, attack, interact, wait)    (microseconds)   everyone sees the same turn
 ```
 
-1. **Input window (3 s):** each client sends at most one intent for its player. Queued click-to-move paths auto-submit the next step, so walking costs zero attention. No input = wait (or continue queued path).
+1. **Input window (2 s):** each client sends at most one intent for its player. Queued click-to-move paths auto-submit the next step, so walking costs zero attention. No input = wait (or continue queued path). **(Playtest feedback batch 3, item 1: lowered from 3 s — playtest 2026-07-11 found 3 s felt slow.)**
 2. **Resolution (instant):** the server applies all intents simultaneously under deterministic conflict rules, runs AI/NPC intents the same way, and produces a turn result: everything that happened this turn.
 3. **Playback (~2 s):** clients animate the turn result — moves slide, attacks land, deaths resolve — then the next input window opens. The 2 s is presentation time, not computation time.
 
 **Clock policy — DECIDED: local combat time bubbles.**
-- Out of danger, world turns auto-advance on the 5 s cadence above.
+- Out of danger, world turns auto-advance on the 4 s cadence above.
 - When a player and a hostile gain **mutual line of sight within `COMBAT_RADIUS` hexes** (**6** for now, config constant), a **local time bubble** forms around them: entities in the bubble stop auto-advancing, and their turns become **action-gated** — the bubble's turn resolves when every player in it has committed an intent, with a fallback timeout (**30 s, decided post-playtest — item 4, playtest feedback batch 2; was ~60 s**) that auto-waits AFK players. NPCs commit instantly. **Turn floor (item 5, same batch):** a bubble-turn never resolves sooner than `TURN_INTERVAL` after its own previous resolution, even with every player locked in — closes a solo-player action-spam exploit (resolving faster than the world's own cadence) without slowing a genuine multi-player fight, where lock-ins rarely land inside one interval anyway.
-- **The rest of the world keeps its 5 s heartbeat — deliberately, so friends can keep moving and walk into the fight to help.** Crossing into a bubble's radius (or entering its LOS) pulls you into its time domain: walking in *is* joining the fight, no enrollment mechanic needed.
+- **The rest of the world keeps its 4 s heartbeat — deliberately, so friends can keep moving and walk into the fight to help.** Crossing into a bubble's radius (or entering its LOS) pulls you into its time domain: walking in *is* joining the fight, no enrollment mechanic needed.
 - **Cross-domain interactions: interaction absorbs.** Any attempt to interact with a bubble from outside — attacking into it, targeting an entity inside, healing a combatant — first pulls the actor into the bubble's time domain; the intent then resolves as a normal bubble turn. Nobody acts on a frozen fight from world-clock speed.
 - **Same turn everywhere.** Intents, resolution, conflict rules, and playback are identical inside and outside bubbles; only the metronome differs. There is no combat screen and no separate ruleset — the server just runs one turn loop per time domain.
 - **Bubble lifecycle:** form on trigger; **merge** when two bubbles come within trigger range or share an entity; **dissolve** when no player↔hostile pair remains in mutual LOS within the radius. Fleeing beyond the radius or breaking LOS is therefore a real, legible escape mechanic.
@@ -239,7 +239,7 @@ The core of the design. Every 5 seconds, one world turn:
 
 1. **Skeleton:** Go server serving an embedded Vite-built page, bootstrapped from the topbanana chassis (Makefile, golangci, app bootstrap, server layer, SSE hub, CI); client opens an SSE stream and receives heartbeat events; `make dev` loop works; tygo generation + contract test wired into CI.
 2. **Static hex world render:** client renders a hardcoded hex map from a server-sent bundle. No movement yet.
-3. **The turn loop:** server runs the 5 s cadence (input window → resolve → broadcast); one client POSTs a move intent and sees its entity step on the next turn. **This is the heart of the game — everything after builds on it.**
+3. **The turn loop:** server runs the world-turn cadence (input window → resolve → broadcast; 4 s since playtest batch 3, was 5 s when this milestone was built); one client POSTs a move intent and sees its entity step on the next turn. **This is the heart of the game — everything after builds on it.**
 4. **Playback & feel:** turn results animate over the ~2 s playback window; visible turn timer; click-to-move with queued paths; QWE/ASD keys. First Playwright e2e: click a hex, assert the entity arrives.
 5. **Multiplayer:** two+ clients connected, intents resolving simultaneously, both watching the same playback; reconnect/resync via `Last-Event-ID` proven with a pulled-plug test. First test of conflict-resolution rules.
 6. **Combat, time bubbles & death:** bump-to-attack, deterministic resolution order. Local clock-stop bubbles: form on mutual LOS, action-gated turns with timeout, join-by-walking-in, merge, dissolve on flee. Death → respawn with fall-back-to-level-start XP penalty.
@@ -262,9 +262,9 @@ The core of the design. Every 5 seconds, one world turn:
 - [x] ~~Language/stack~~ → **Decided: Go server + TypeScript/PixiJS browser client** (see §1; the "learn Rust" goal was retired when the design stopped needing Rust)
 - [x] ~~Transport~~ → **Decided: SSE down + HTTP POST up, JSON payloads** (see §4)
 - [x] ~~Grid-locked movement vs. free positioning~~ → **Decided: flat-top hex grid, grid-locked; click-to-move primary, QWE/ASD keyboard (no wait key)** (see §5)
-- [x] ~~Tick rate~~ → **Decided: simultaneous 5 s turns (3 s input / ~2 s playback).** Keep the cadence a server config constant — feel-test 4 s vs 6 s with the group.
+- [x] ~~Tick rate~~ → **Decided: simultaneous 4 s turns (2 s input / ~2 s playback).** Keep the cadence a server config constant. **Feel-tested (playtest feedback batch 3, item 1, 2026-07-11):** the original 5 s/3 s split (`TurnSeconds`/`InputWindowSeconds`) felt slow in play — lowered to 4 s/2 s; `PlaybackSeconds` unchanged at 2 s.
 - [x] ~~Snapshot vs. delta-based state replication~~ → **Mooted by the turn model:** one turn-result bundle per turn.
-- [x] ~~Reconnect/resync~~ → **Decided (milestone 5): resync-to-latest** — full-snapshot turn bundles + a coalescing hub mean a reconnecting client just needs the current snapshot; `Last-Event-ID` is honoured only as a watermark, no replay buffer or separate resync endpoint (see §4).
+- [x] ~~Reconnect/resync~~ → **Decided (milestone 5): resync-to-latest** — full-snapshot turn bundles + a coalescing hub mean a reconnecting client just needs the current snapshot; `Last-Event-ID` is honoured only as a watermark, no replay buffer or separate resync endpoint (see §4). **Extended (item 4, playtest feedback batch 3): a world-reset signal** — every turn bundle carries a `worldId` (random, minted at world creation, persisted in the snapshot so a restored world keeps its identity); a client seeing a different `worldId` mid-session reloads outright, so a restart-without-snapshot reads as a legible reset instead of a silently inconsistent reconnect.
 - [x] ~~Stacking~~ → **Decided: `STACK_CAP = 5` (a full party fits on one hex); random-member hit distribution; count-badge rendering** (see §5)
 - [x] ~~Combat pacing~~ → **Decided: local combat time bubbles** — clock stops locally on mutual LOS within `COMBAT_RADIUS = 6`; action-gated turns; the surrounding world keeps ticking so friends can walk in and help (see §5)
 - [x] ~~Conflict-resolution rules~~ → **Decided: phased — all moves, then all attacks; seeded-RNG tie-break on hex overflow; attacks resolve against post-move positions** (see §5)

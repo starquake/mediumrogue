@@ -38,6 +38,12 @@ function pickWalkableNeighbor(map: MapResponse, start: Hex): Hex | null {
 test("chat: cross-client delivery, /here, readable command errors, and map clicks still work", async ({
   browser,
 }) => {
+  // Deliberately one long multi-part journey (two browser contexts, five
+  // numbered sections, several 15s message-delivery polls): under CI-grade
+  // CPU contention its cumulative wall time can legitimately exceed the
+  // default 30s test budget without anything being wrong. 3x it.
+  test.slow();
+
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
   const a = await ctxA.newPage();
@@ -115,10 +121,43 @@ test("chat: cross-client delivery, /here, readable command errors, and map click
   // 4.5. Typing must not move the character (item 10, playtest batch 2 — a
   // real bug report): w/a/s/d are movement keys AND ordinary letters. Typing
   // "wasd" into the focused chat input must leave A's hex untouched.
-  const hexBeforeTyping = await a.evaluate(() => window.game.me!.hex);
+  //
+  // De-raced for CI (slow runners): A can legitimately still be WALKING here
+  // (e.g. a retried run reclaims the same token, whose server-side queued
+  // path from a previous attempt's map click is still draining), which made
+  // the baseline hex a moving target. Cancel any queued movement first (an
+  // own-hex tap is the wait/cancel; tapHex resolves once the intent POST
+  // settles), then poll on the TURN COUNTER until the hex holds still across
+  // two consecutive turn bundles before taking the baseline. No sleeps.
+  await a.evaluate(() => window.game.tapHex(window.game.me!.hex.q, window.game.me!.hex.r));
+
+  const readTurnHex = (): Promise<{ turn: number; hex: Hex }> =>
+    a.evaluate(() => ({ turn: window.game.turn, hex: window.game.me!.hex }));
+
+  let hexBeforeTyping: Hex | null = null;
+  for (let i = 0; i < 40 && hexBeforeTyping === null; i++) {
+    const before = await readTurnHex();
+    await expect
+      .poll(() => a.evaluate(() => window.game.turn), { timeout: 15_000 })
+      .toBeGreaterThan(before.turn);
+    const after = await readTurnHex();
+    if (after.hex.q === before.hex.q && after.hex.r === before.hex.r) {
+      hexBeforeTyping = after.hex;
+    }
+  }
+  expect(hexBeforeTyping, "A's hex never stabilized across two consecutive turn bundles").not.toBeNull();
+
   await a.locator("#chat-input").click();
   await a.locator("#chat-input").pressSequentially("wasd");
   await expect(a.locator("#chat-input")).toHaveValue("wasd");
+
+  // Assert across a FULL further bundle, not instantaneously: a move intent
+  // the typing had wrongly queued would only surface as a hex change on the
+  // next resolution, which an immediate read could miss.
+  const turnAfterTyping = await a.evaluate(() => window.game.turn);
+  await expect
+    .poll(() => a.evaluate(() => window.game.turn), { timeout: 15_000 })
+    .toBeGreaterThan(turnAfterTyping);
   expect(await a.evaluate(() => window.game.me!.hex)).toEqual(hexBeforeTyping);
   await a.locator("#chat-input").fill(""); // don't pollute the map-click step below
 

@@ -18,6 +18,8 @@ import {
   join,
   JoinRejectedError,
   loadIdentity,
+  onForeignIdentityChange,
+  reclaim,
   submitEquip,
   submitIntent,
 } from "./net/session";
@@ -28,6 +30,7 @@ import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
+  CombatRadius,
   EntityMonster,
   EntityPlayer,
   IntentAttack,
@@ -134,6 +137,14 @@ export interface GameDebug {
    * that actually matters — the link string itself, and the join it drives.
    */
   identityLink: string;
+  /**
+   * Force one attemptRejoin pass NOW (drives e2e — the real trigger, my
+   * entity being absent from bundles for MISSING_GRACE_MS after a
+   * disconnect-grace sweep, is impractical to arrange in a browser test).
+   * Same code path as the organic trigger: reclaim() with this tab's own
+   * in-memory identity. Null until joined.
+   */
+  forceRejoin: (() => Promise<void>) | null;
   /** The global chat log, mirrored live from the chat store's signal. */
   chat: { seq: number; sender: string; text: string }[];
   /** Send a chat line as if typed into the panel (drives e2e). */
@@ -377,6 +388,7 @@ window.game = {
   tapHex: (): Promise<void> => Promise.resolve(),
   name: "",
   identityLink: "",
+  forceRejoin: null,
   get chat(): { seq: number; sender: string; text: string }[] {
     return chatMessages();
   },
@@ -580,28 +592,46 @@ async function start(): Promise<void> {
 
   // A brand-new player's join waits here for the start screen's Enter — the
   // map/engine above are already loaded, so the world is ready the instant
-  // they commit. A returning player skips straight through: join() fires
-  // immediately with whichever name/class/species happen to be selected
-  // (irrelevant for them — join() resends their token, and the server
-  // ignores Name/Class/Species entirely on a token match).
+  // they commit. A returning player (storedIdentity has a token) skips
+  // straight through and reclaims by that exact token (see session.reclaim's
+  // doc — never re-reads localStorage, so a stale start-screen picker
+  // selection is irrelevant either way).
   if (isNewPlayer) {
     await waitForEnter();
   }
   startScreenEl.hidden = true;
 
   let me;
+  let joinedClass: string;
+  let joinedSpecies: string;
   try {
-    me = await join(selectedName, selectedClass, selectedSpecies);
+    if (storedIdentity !== null && storedIdentity.token !== "") {
+      me = await reclaim(storedIdentity);
+      joinedClass = storedIdentity.class;
+      joinedSpecies = storedIdentity.species;
+    } else {
+      // No token to reclaim (nothing stored, or a class/species-only
+      // pre-seeded identity with an empty token — a technique some e2e
+      // specs use to join deterministically without touching the start
+      // screen): a brand-new join, but a stored class/species preference
+      // (if any) still wins over the picker's live selection, same as
+      // before this batch's reclaim/join split — there is no token
+      // involved here, so no cross-tab reclaim hazard to guard against.
+      joinedClass = storedIdentity?.class || selectedClass;
+      joinedSpecies = storedIdentity?.species || selectedSpecies;
+      me = await join(selectedName, joinedClass, joinedSpecies);
+    }
   } catch (err) {
-    // A REJECTED join (4xx) means the stored identity itself is dead — most
-    // plausibly a character link whose token the server no longer knows
-    // (snapshot off across a restart, or discarded on a version/seed
-    // mismatch): the import stores class/species as "", which the server
-    // only accepts alongside a token it recognizes (see session.join's
-    // reclaim-or-fail contract). Clear the dead identity so refreshes stop
-    // re-failing, and fall back to the start screen for a proper new
-    // character. Anything else (network down, world full) rethrows — the
-    // stored identity may still be perfectly good, so it must survive.
+    // A REJECTED reclaim (4xx) means the stored identity itself is dead —
+    // most plausibly a character link whose token the server no longer
+    // knows, or a world reset (snapshot off across a restart, or discarded
+    // on a version/seed/worldId mismatch — see item 4, playtest feedback
+    // batch 3): reclaim()'s reclaim-or-fail contract only accepts an empty
+    // class/species alongside a token the server still recognizes. Clear the
+    // dead identity so refreshes stop re-failing, and fall back to the start
+    // screen for a proper new character. Anything else (network down, world
+    // full) rethrows — the stored identity may still be perfectly good, so
+    // it must survive.
     if (!(err instanceof JoinRejectedError)) {
       throw err;
     }
@@ -610,15 +640,32 @@ async function start(): Promise<void> {
     await waitForEnter();
     startScreenEl.hidden = true;
     me = await join(selectedName, selectedClass, selectedSpecies);
+    joinedClass = selectedClass;
+    joinedSpecies = selectedSpecies;
   }
   window.game.me = { id: me.entityId, hex: me.hex };
   window.game.name = selectedName;
-  const identity = { entityId: me.entityId, token: me.token };
+  const identity = { entityId: me.entityId, token: me.token, class: joinedClass, species: joinedSpecies };
   setChatToken(identity.token);
+
+  // Multi-tab hardening (item 2, playtest feedback batch 3): if another tab
+  // sharing this browser's localStorage overwrites the persisted identity
+  // with a different token (a different person joining in a second tab, or
+  // that tab's own re-join racing ours), reload rather than keep running
+  // with a token another tab may already be reclaiming/using — see
+  // session.onForeignIdentityChange's doc.
+  onForeignIdentityChange(
+    () => identity.token,
+    () => {
+      window.location.reload();
+    },
+  );
 
   // Character link: reveal the copy button now that there is an identity to
   // link (hidden until joined — see index.html), and keep it in sync across
-  // a re-join (attemptRejoin below), which mints a new token.
+  // a re-join (attemptRejoin below — a reclaim keeps the same token since
+  // item 2's fix, but the link is re-derived alongside the rest of the
+  // adopted identity regardless).
   const COPY_LABEL = "copy character link";
   const COPIED_LABEL = "copied!";
   let copiedFlashTimer: ReturnType<typeof setTimeout> | undefined;
@@ -664,22 +711,36 @@ async function start(): Promise<void> {
   let rejoining = false;
   let eventsController: EventsController;
 
-  // attemptRejoin re-sends the (now-orphaned) stored token: the server won't
-  // recognize it and mints a fresh entity of the same class (existing
-  // behaviour — see session.join()). Adopts the new identity in place (so
-  // every closure that captured `identity`/`me` sees the update) and forces
-  // the event stream to reconnect with the new token. Guarded by `rejoining`
-  // so an in-flight re-join can't be started twice.
+  // attemptRejoin reclaims OUR OWN already-known token (never re-reads
+  // localStorage — see session.reclaim's doc, item 2 playtest feedback
+  // batch 3) after the disconnect-grace sweep archived this entity. A
+  // successful reclaim keeps the same token but restores a fresh entity
+  // (new id, new spawn hex, progression intact) — adopted in place so every
+  // closure that captured `identity`/`me` sees the update, then the event
+  // stream reconnects (its Last-Event-ID watermark is now stale for the new
+  // entity's turn history). Guarded by `rejoining` so an in-flight re-join
+  // can't be started twice. If the server no longer knows our token AT ALL
+  // (reclaim's reclaim-or-fail contract rejects with JoinRejectedError), the
+  // world reset out from under us (item 4) — reload rather than silently
+  // mint a brand-new, level-1 stranger in this character's place; a
+  // non-rejection error (network blip) rethrows for the caller's
+  // `.catch(() => {})` to swallow, so the missing-streak just retries.
   const attemptRejoin = async (): Promise<void> => {
     if (rejoining) {
       return;
     }
     rejoining = true;
     try {
-      const rejoinName = window.game.name !== "" ? window.game.name : selectedName;
-      const rejoinClass = window.game.class !== "" ? window.game.class : selectedClass;
-      const rejoinSpecies = window.game.species !== "" ? window.game.species : selectedSpecies;
-      const rejoined = await join(rejoinName, rejoinClass, rejoinSpecies);
+      let rejoined;
+      try {
+        rejoined = await reclaim(identity);
+      } catch (err) {
+        if (err instanceof JoinRejectedError) {
+          window.location.reload();
+          return;
+        }
+        throw err;
+      }
       identity.entityId = rejoined.entityId;
       identity.token = rejoined.token;
       me.entityId = rejoined.entityId;
@@ -690,13 +751,12 @@ async function start(): Promise<void> {
       feedbackLayer.setDestination(null);
       setChatToken(identity.token);
       setIdentityLink(identity.token);
-      // The token just changed — the stream must reconnect under the new one
-      // (a stream opened under the stale token no longer maps to any entity).
       eventsController.reconnect();
     } finally {
       rejoining = false;
     }
   };
+  window.game.forceRejoin = attemptRejoin;
 
   // walkTo submits a move destination and records it for the HUD/tests. The
   // world's answer (movement) only ever arrives via turn bundles. A rejected
@@ -812,8 +872,28 @@ async function start(): Promise<void> {
 
   window.game.tapHex = (q, r): Promise<void> => clickTarget({ q, r });
 
+  // World-reset signal (item 4, playtest feedback batch 3): remember the
+  // first WorldID this session ever sees. A later bundle carrying a
+  // DIFFERENT WorldID means the world underneath this client changed — a
+  // restart with no matching snapshot/archive entry, not an ordinary
+  // reconnect (a restore keeps its predecessor's WorldID — see
+  // World.worldID's doc, internal/game/world.go). A full reload is the
+  // simplest correct recovery: it re-runs this whole module from scratch,
+  // and the existing dead-token reclaim-or-fail path (this function's
+  // catch block, above) already falls back to the start screen if the
+  // server truly no longer knows this identity's token — no separate
+  // clear-identity step needed here.
+  let firstWorldID: string | null = null;
+
   eventsController = connectEvents(() => identity.token, {
     onTurn: (event: TurnEvent): void => {
+      if (firstWorldID === null) {
+        firstWorldID = event.worldId;
+      } else if (event.worldId !== firstWorldID) {
+        window.location.reload();
+        return;
+      }
+
       // Committed-action indicator (item 6): clear on the next turn bundle,
       // whether it resolved my action or not — a fresh bundle always means
       // "no longer showing what I chose last time," the simplest rule that
@@ -977,7 +1057,15 @@ async function start(): Promise<void> {
       if (myBubble !== null) {
         turnTimerEl.hidden = true;
         combatPanelEl.hidden = false;
-        combatWaitingEl.textContent = myBubble.waitingForIds.join(", ");
+        // Item 3 (playtest feedback batch 3): the panel used to list raw
+        // entity ids ("waiting for: 3, 7") — map each to its display name
+        // from this bundle's entities, falling back to "#id" for anything
+        // not present (shouldn't happen — a bubble member always rides the
+        // same bundle — but keeps the panel legible instead of blank/NaN if
+        // it ever does).
+        combatWaitingEl.textContent = myBubble.waitingForIds
+          .map((id) => event.entities.find((e) => e.id === id)?.name ?? `#${id}`)
+          .join(", ");
         combatPatienceEl.textContent = (myBubble.patienceRemainingMs / 1000).toFixed(1);
       } else {
         combatPanelEl.hidden = true;
@@ -1087,19 +1175,34 @@ async function start(): Promise<void> {
       isRangedAttackClick(hover) && !(myRangedAoeRadius === 0 && inList(lastReach.bumps, hover));
     app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
 
-    // Enemy hover tooltip (item 13): kind display name + "HP cur/max", near
-    // the cursor. pointer-events: none on the tooltip itself (index.html)
-    // means it can never intercept the click it's floating over.
+    // Enemy hover tooltip (item 13, playtest batch 2): kind display name +
+    // "HP cur/max", near the cursor. pointer-events: none on the tooltip
+    // itself (index.html) means it can never intercept the click it's
+    // floating over.
+    //
+    // Hover gating (item 6, playtest feedback batch 3): the HP line only
+    // shows within CombatRadius of my own entity — scouting a distant
+    // monster shouldn't read its exact health through the fog of distance.
+    // Beyond that (or before I've joined) it's name-only.
     const monster = window.game.positions.find(
       (p) => p.kind === EntityMonster && p.hex.q === hover.q && p.hex.r === hover.r,
     );
     if (monster === undefined) {
       hoverTooltipEl.hidden = true;
     } else {
-      const hp = window.game.hp[monster.id] ?? 0;
-      const maxHp = window.game.maxHp[monster.id] ?? 0;
+      const me = window.game.me;
+      const inRange = me !== null && hexDistance(me.hex, monster.hex) <= CombatRadius;
+
       hoverTooltipKindEl.textContent = monster.name;
-      hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}`;
+      if (inRange) {
+        const hp = window.game.hp[monster.id] ?? 0;
+        const maxHp = window.game.maxHp[monster.id] ?? 0;
+        hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}`;
+        hoverTooltipHPEl.hidden = false;
+      } else {
+        hoverTooltipHPEl.textContent = "";
+        hoverTooltipHPEl.hidden = true;
+      }
       hoverTooltipEl.style.left = `${ev.clientX + 14}px`;
       hoverTooltipEl.style.top = `${ev.clientY + 14}px`;
       hoverTooltipEl.hidden = false;

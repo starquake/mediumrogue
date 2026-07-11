@@ -19,8 +19,8 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("Addr = %q, want :8080", got)
 	}
 
-	if got, want := cfg.TurnInterval, 5*time.Second; got != want {
-		t.Errorf("TurnInterval = %s, want 5s", got)
+	if got, want := cfg.TurnInterval, 4*time.Second; got != want {
+		t.Errorf("TurnInterval = %s, want 4s", got)
 	}
 
 	if got, want := cfg.HeartbeatInterval, 15*time.Second; got != want {
