@@ -23,6 +23,15 @@ const HP_BAR_FG = 0x4fd66c;
 const COMBAT_RING_COLOR = 0xffcc33;
 const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
 
+// Player name labels (item 8, playtest batch 2): always-on, styled like the
+// count badge (same font/size), recolored by relationship to me — a
+// partymate tints the same green as their dot, mine is a brighter shade of
+// my own dot's blue (so it pops slightly above everyone else's), anyone
+// else gets the neutral near-white the badge itself uses.
+const NAME_LABEL_STYLE = { fontFamily: "Courier New", fontSize: 11, fill: 0xe8f0e8 } as const;
+const NAME_LABEL_MINE_COLOR = 0xd6efff;
+const NAME_LABEL_OTHER_COLOR = 0xe8f0e8;
+
 // A one-letter glyph per class, drawn centered on a player's dot so classes
 // are distinguishable at a glance.
 const CLASS_GLYPH: Record<string, string> = {
@@ -57,6 +66,9 @@ const KIND_STYLE: Record<string, { color: number; glyph: string }> = {
 interface Dot {
   gfx: Graphics;
   label: Text;
+  // nameLabel is the always-on name tag above a PLAYER dot (item 8) — null
+  // for a monster (monsters get hover info instead, item 13).
+  nameLabel: Text | null;
   hex: Hex;
   from: Point;
   to: Point;
@@ -122,9 +134,20 @@ export class EntityLayer {
         const label = new Text({ text: glyphFor(e), style: CLASS_LABEL_STYLE });
         label.anchor.set(0.5);
         this.container.addChild(label);
+
+        // Name label (item 8): PLAYERS only — monsters get hover info
+        // instead (item 13). Created once per dot, moves with its tween.
+        let nameLabel: Text | null = null;
+        if (e.kind === EntityPlayer) {
+          nameLabel = new Text({ text: e.name, style: { ...NAME_LABEL_STYLE } });
+          nameLabel.anchor.set(0.5, 1);
+          this.container.addChild(nameLabel);
+        }
+
         dot = {
           gfx,
           label,
+          nameLabel,
           hex: e.hex,
           from: to,
           to,
@@ -162,6 +185,9 @@ export class EntityLayer {
         dot.inCombat = e.inCombat;
         dot.monsterKind = e.monsterKind;
         dot.label.text = glyphFor(e);
+        if (dot.nameLabel !== null) {
+          dot.nameLabel.text = e.name;
+        }
       }
 
       this.drawDot(dot);
@@ -172,6 +198,7 @@ export class EntityLayer {
       if (!present.has(id)) {
         dot.gfx.destroy();
         dot.label.destroy();
+        dot.nameLabel?.destroy();
         this.dots.delete(id);
       }
     }
@@ -264,6 +291,17 @@ export class EntityLayer {
       .fill(color)
       .stroke({ width: 2, color: 0x0b0f0b });
     dot.label.position.set(x, y);
+
+    // Player name label (item 8): always on, above the dot (a fixed offset
+    // regardless of whether the HP bar happens to be showing this frame, so
+    // it doesn't jitter up/down as HP crosses full) — party-color-tinted for
+    // a partymate, a brighter shade of my own dot color for mine, neutral
+    // near-white (the badge's own color) for anyone else. Moves with the
+    // tween since drawDot runs every animation frame while a dot is moving.
+    if (dot.nameLabel !== null) {
+      dot.nameLabel.position.set(x, y - HEX_SIZE * 1.05);
+      dot.nameLabel.style.fill = dot.mine ? NAME_LABEL_MINE_COLOR : dot.partymate ? PARTY_COLOR : NAME_LABEL_OTHER_COLOR;
+    }
 
     // A combat time bubble freezes its members — a ring around the dot lets
     // world players see a frozen fight in progress, distinct from a stopped

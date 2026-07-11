@@ -31,6 +31,11 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   (server BFS pathfinding, one hex per turn, re-validated each turn) or
   **QWE/ASD** keys for single steps. Up to **5 friendly entities stack** per
   hex (a full party moves as one blob; count badge rendered).
+- **Player name labels** (item 8, playtest batch 2): a small always-on name
+  tag above every PLAYER dot (not monsters — they get hover info instead,
+  item 13), styled like the count badge and moving with the dot's tween.
+  Party-color-tinted for a partymate, a brighter shade of my own dot's blue
+  for mine, neutral near-white for anyone else.
 - **In combat**: click-anywhere is replaced by tactical selection — only the
   tiles reachable this turn are clickable, tinted **blue** (open moves) /
   **strong red** (adjacent hostile = bump-attack); the equipped ranged
