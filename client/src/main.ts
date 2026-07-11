@@ -1024,7 +1024,15 @@ async function start(): Promise<void> {
       if (myBubble !== null) {
         turnTimerEl.hidden = true;
         combatPanelEl.hidden = false;
-        combatWaitingEl.textContent = myBubble.waitingForIds.join(", ");
+        // Item 3 (playtest feedback batch 3): the panel used to list raw
+        // entity ids ("waiting for: 3, 7") — map each to its display name
+        // from this bundle's entities, falling back to "#id" for anything
+        // not present (shouldn't happen — a bubble member always rides the
+        // same bundle — but keeps the panel legible instead of blank/NaN if
+        // it ever does).
+        combatWaitingEl.textContent = myBubble.waitingForIds
+          .map((id) => event.entities.find((e) => e.id === id)?.name ?? `#${id}`)
+          .join(", ");
         combatPatienceEl.textContent = (myBubble.patienceRemainingMs / 1000).toFixed(1);
       } else {
         combatPanelEl.hidden = true;
