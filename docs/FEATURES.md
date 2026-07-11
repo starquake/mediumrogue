@@ -94,9 +94,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   ITS kind's table. Items land on the death hex, render as map markers, and
   are **picked up by walking over them** (announced in chat). Inventory is
   unbounded; own many, equip one per slot (close / ranged).
-- **Equip**: free & instant out of combat; **your whole turn inside a
-  bubble** (a later move/attack replaces a queued swap; bubble dissolve
-  applies it). Gear panel lists items with stats, rule text, equipped state.
+- **Equip / unequip toggle** (item 2, playtest batch 2): free & instant out
+  of combat; **your whole turn inside a bubble** (a later move/attack
+  replaces a queued swap; bubble dissolve applies it). An equip intent
+  naming an item **already in its slot unequips it** instead of re-equipping
+  (slot → 0: fists fallback for close, no ranged weapon at all for ranged)
+  — the same free-outside/turn-inside rules apply to the toggle-off
+  direction. Gear panel lists items with stats, rule text, equipped state;
+  the "equipped" button is an active toggle (not disabled), amber on hover.
 
 ### Monsters (kinds & difficulty rings — milestone 6c)
 - **Five kinds**, content data in `internal/game/content.go` (`monsterDefs`),

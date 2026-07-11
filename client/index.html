@@ -485,6 +485,18 @@
       .gear-equipped .gear-name {
         color: #7cb342;
       }
+      /* The "equipped" button is an active unequip toggle (item 2), not a
+         disabled label: green baseline like the equipped name, amber on
+         hover to signal the click's effect flips (equip -> unequip). */
+      .gear-equip-toggle {
+        color: #7cb342;
+        border-color: #4a6b2f;
+      }
+      .gear-equip-toggle:hover:not(:disabled) {
+        background: #3d2f16;
+        border-color: #c98a2b;
+        color: #e0a94a;
+      }
       .gear-stats {
         color: var(--dim);
       }

@@ -766,13 +766,17 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
 	return nil
 }
 
-// queueEquipLocked validates and applies/queues an equip. Outside a bubble the
-// swap is immediate and free — it also clears any stale pendingEquip left over
-// from a bubble that dissolved before its queued swap resolved, so that swap
-// can never resurrect and silently override this free equip on the entity's
-// next combat resolution. Inside a bubble, the swap becomes the player's
-// action this turn (clearing move/attack — you swap, you don't also act).
-// Callers hold w.mu.
+// queueEquipLocked validates and applies/queues an equip OR unequip. An equip
+// intent naming an item instance ALREADY in its slot toggles it OFF instead
+// of re-equipping it (the slot falls back to 0 — fists for the close slot,
+// no ranged weapon at all for the ranged slot); any other owned, class-
+// matching item toggles ON, swapping into its slot. Outside a bubble the
+// toggle is immediate and free — it also clears any stale pendingEquip left
+// over from a bubble that dissolved before its queued swap resolved, so that
+// swap can never resurrect and silently override this free toggle on the
+// entity's next combat resolution. Inside a bubble, the toggle becomes the
+// player's action this turn (clearing move/attack — you swap, you don't
+// also act). Callers hold w.mu.
 func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	inst, ok := e.itemByID(itemID)
 	if !ok {
@@ -785,7 +789,7 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	}
 
 	if e.bubbleID == 0 {
-		e.applyEquip(inst.id, def.slot)
+		e.toggleEquip(inst.id, def.slot)
 		e.pendingEquip = 0
 
 		return nil
@@ -798,34 +802,51 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	return nil
 }
 
-// applyPendingEquip applies and clears e's queued equip, if any. Shared by
-// the resolution pass in resolveCombatLocked (the swap is the bubble-turn's
-// action) and by the bubble-dissolve branch of recomputeBubblesLocked (the
-// bubble vanished before its turn resolved — the player is back in world
-// time, where equips are free and immediate, so the queued swap applies now
-// instead of leaking into a later world turn as a silent late swap).
+// applyPendingEquip applies and clears e's queued equip/unequip toggle, if
+// any. Shared by the resolution pass in resolveCombatLocked (the swap is the
+// bubble-turn's action) and by the bubble-dissolve branch of
+// recomputeBubblesLocked (the bubble vanished before its turn resolved — the
+// player is back in world time, where toggles are free and immediate, so
+// the queued swap applies now instead of leaking into a later world turn as
+// a silent late swap).
 func applyPendingEquip(e *entity) {
 	if e.pendingEquip == 0 {
 		return
 	}
 
 	if inst, ok := e.itemByID(e.pendingEquip); ok {
-		e.applyEquip(inst.id, itemDefByID[inst.defID].slot)
+		e.toggleEquip(inst.id, itemDefByID[inst.defID].slot)
 	}
 
 	e.pendingEquip = 0
 }
 
-// applyEquip swaps instID into slot (protocol.ItemSlotClose or
-// ItemSlotRanged), replacing whatever instance was equipped there. Callers
-// must have already validated ownership and class (queueEquipLocked, or the
-// pending-equip pass in resolveCombatLocked).
-func (e *entity) applyEquip(instID int64, slot string) {
+// toggleEquip swaps instID into slot (protocol.ItemSlotClose or
+// ItemSlotRanged), replacing whatever instance was equipped there — unless
+// instID is ALREADY equipped in that slot, in which case it clears the slot
+// (0 = unequipped: fists fallback for close, no ranged weapon at all for
+// ranged — see closeDefFor/rangedDefFor). Re-derives the toggle direction
+// from the entity's CURRENT slot state at call time rather than a decision
+// cached at queue time: nothing else can change e's own slots between a
+// queued equip intent and its resolution (only this same pending action
+// touches them), so the two are equivalent, and this way queueEquipLocked's
+// free path and applyPendingEquip's queued path share one rule instead of
+// two. Callers must have already validated ownership and class
+// (queueEquipLocked, or the pending-equip pass in resolveCombatLocked).
+func (e *entity) toggleEquip(instID int64, slot string) {
 	switch slot {
 	case protocol.ItemSlotClose:
-		e.closeSlot = instID
+		if e.closeSlot == instID {
+			e.closeSlot = 0
+		} else {
+			e.closeSlot = instID
+		}
 	case protocol.ItemSlotRanged:
-		e.rangedSlot = instID
+		if e.rangedSlot == instID {
+			e.rangedSlot = 0
+		} else {
+			e.rangedSlot = instID
+		}
 	}
 }
 
