@@ -1411,29 +1411,88 @@ func (w *World) pickupLocked(members []*entity) {
 // per-turn move-shuffle stream (which uses the turn number).
 const spawnStream uint64 = 0x5EED
 
+// tooCloseToMonsterLocked reports whether h is occupied by, or within
+// CombatRadius of, any living monster — spawning a player there would either
+// land them ON a monster or form an instant, faction-blind combat bubble the
+// moment they appear (both observed live, #36). Callers hold w.mu.
+func (w *World) tooCloseToMonsterLocked(h protocol.Hex) bool {
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster && e.hp > 0 && HexDistance(h, e.hex) <= protocol.CombatRadius {
+			return true
+		}
+	}
+
+	return false
+}
+
+// occupiedByMonsterLocked reports whether h is directly on a living
+// monster's hex — the distance-0 case tooCloseToMonsterLocked also covers,
+// split out because spawnHexLocked's fallback ladder relaxes the "within
+// CombatRadius" preference (a crowded clearing may leave no hex outside it)
+// before it EVER relaxes "not literally on top of one": a monster co-located
+// with its own target pathfinds itself-to-itself (empty path) and never
+// bumps (thinkMonstersLocked's co-location dormancy), so landing a spawn
+// there doesn't just risk an instant bubble — it can silently stall combat
+// forever. Callers hold w.mu.
+func (w *World) occupiedByMonsterLocked(h protocol.Hex) bool {
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster && e.hp > 0 && e.hex == h {
+			return true
+		}
+	}
+
+	return false
+}
+
+// tooCloseToPlayerLocked mirrors tooCloseToMonsterLocked for monster
+// placement: h must not be occupied by, or within CombatRadius of, any living
+// player, so a spawned monster can't stall a run by landing on top of (or
+// instantly bubbling with) someone (#36, the task-6 testing mid-run stall).
+// Callers hold w.mu.
+func (w *World) tooCloseToPlayerLocked(h protocol.Hex) bool {
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer && e.hp > 0 && HexDistance(h, e.hex) <= protocol.CombatRadius {
+			return true
+		}
+	}
+
+	return false
+}
+
 // SpawnMonsters adds n monster entities at random walkable hexes, chosen with
 // the world seed so a given seed is reproducible. Skips hexes already at
-// StackCap. Intended for **startup, before any player joins** (server startup
-// via MONSTER_COUNT, or tests) — it does not avoid player-occupied hexes, so a
-// later caller (continuous spawning, respawn) must add that guard.
+// StackCap and, when at least one candidate allows it, hexes on/within
+// CombatRadius of a living player (tooCloseToPlayerLocked — #36); if EVERY
+// walkable hex is too close to a player, the guard is dropped entirely for
+// this call rather than placing nothing (the pre-#36 behavior, so a tiny or
+// crowded map never silently spawns fewer monsters than requested for lack of
+// a "safe" hex). Intended for **startup, before any player joins** (server
+// startup via MONSTER_COUNT, or tests), where the guard is inert today — it
+// exists for a future continuous/respawn spawner called mid-run.
 func (w *World) SpawnMonsters(n int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	walkable := make([]protocol.Hex, 0, len(w.worldMap.Tiles))
+	var safe, unguarded []protocol.Hex
+
 	for _, t := range w.worldMap.Tiles {
-		if w.walkableLocked(t.Hex) {
-			walkable = append(walkable, t.Hex)
+		if !w.walkableLocked(t.Hex) {
+			continue
+		}
+
+		unguarded = append(unguarded, t.Hex)
+
+		if !w.tooCloseToPlayerLocked(t.Hex) {
+			safe = append(safe, t.Hex)
 		}
 	}
 
-	slices.SortFunc(walkable, func(a, b protocol.Hex) int {
-		if a.Q != b.Q {
-			return a.Q - b.Q
-		}
+	walkable := safe
+	if len(walkable) == 0 {
+		walkable = unguarded
+	}
 
-		return a.R - b.R
-	})
+	slices.SortFunc(walkable, compareHexQR)
 
 	//nolint:gosec // deterministic seeded placement, not security-sensitive.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
@@ -1463,11 +1522,20 @@ func (w *World) SpawnMonsters(n int) {
 // refuses a non-walkable hex or one already at StackCap. Unlike SpawnMonsters
 // (random, world-seeded placement) it puts a monster at a caller-chosen hex, so
 // a caller can seed a known-position monster — e.g. an integration test that
-// needs a monster a couple hexes from where players spawn, for a short,
-// deterministic chase. It mirrors SpawnMonsters' entity shape (kind monster,
-// MonsterMaxHP). Like SpawnMonsters it is a startup primitive meant to run
-// before Run: it does not recompute bubbles (Run does that each tick) and does
-// not avoid opposing occupants. Holds w.mu.
+// needs a monster a couple hexes from where a player is (or will be), for a
+// short, deterministic chase or an immediate fight. It mirrors SpawnMonsters'
+// entity shape (kind monster, MonsterMaxHP). Like SpawnMonsters it is a
+// startup primitive meant to run before Run: it does not recompute bubbles
+// (Run does that each tick) and does not avoid opposing occupants.
+//
+// Unlike SpawnMonsters/spawnHexLocked it does NOT apply the #36
+// too-close-to-a-player guard: this API names exactly one caller-chosen hex
+// with no alternative candidate to fall back to, and both of those guarded
+// callers fall back to placing anyway when nothing else qualifies — applying
+// the same guard here would only ever produce that same fallback, silently.
+// A caller that needs a guaranteed-clear hex should choose one itself
+// (tooCloseToPlayerLocked is unexported, but SpawnMonsters' random search
+// already does this). Holds w.mu.
 func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -1625,16 +1693,94 @@ func nearestPlayer(from protocol.Hex, players []*entity) *entity {
 	return best
 }
 
-// spawnHexLocked finds the free walkable hex nearest the origin, spiraling
-// outward. Callers hold w.mu.
+// spawnPointStream is a fixed PCG stream salt for player spawn-point
+// selection, distinct from spawnStream (initial monster placement). Combined
+// with w.nextID (ever-increasing — it advances on every entity/item mint), it
+// gives each spawnHexLocked call its own draw while staying reproducible for
+// a fixed world seed and call sequence (#36 — random spawn points instead of
+// every join/respawn racing to pile onto the exact same tile).
+const spawnPointStream uint64 = 0x50A5
+
+// spawnHexLocked picks a hex for a player join or respawn: a random
+// walkable, capacity-available hex in the origin's forced clearing
+// (worldgen.go's clearingRadius) that is not occupied by, or within
+// CombatRadius of, a living monster (tooCloseToMonsterLocked) — so a spawn
+// can never land a player ON a monster or form an instant combat bubble the
+// moment they appear (both observed live, #36). Random, not the old
+// spiral-nearest-to-origin search: players (and respawns) no longer pile
+// deterministically onto the same hex.
 //
-// Faction-blind by design (for now): Join and player respawn can land a player
-// on a monster-occupied hex (opposing co-occupancy, a §5 MUST). It is inert only
-// because a co-located monster's think step gets Pathfind(from==to)==∅ and holds
-// (never bumps) — the moment continuous/faction-aware spawning or monster-wander
-// logic lands (6b), that dormancy breaks and this must skip opposing-occupied
-// hexes. See docs/STATUS.md "known placeholders".
+// Four tiers, each engaged only if the one above yields nothing, so a small
+// or crowded map never fails a join outright — but "not literally on top of a
+// monster" is relaxed dead last, since that specific case can silently stall
+// combat forever (occupiedByMonsterLocked's doc comment), not just risk an
+// instant bubble:
+//  1. clearing hexes clear of monsters entirely (the common case)
+//  2. clearing hexes not occupied by one, ignoring the CombatRadius
+//     preference (a monster-dense clearing may leave nothing outside it)
+//  3. clearing hexes at all, ignoring both monster checks (the clearing
+//     itself is saturated — every hex in it has a monster standing on it)
+//  4. spawnHexSpiralLocked over the WHOLE reachable region, ignoring every
+//     guard — the pre-#36 search, kept verbatim as the last resort so "a
+//     crowded tiny test map must not break joins" still holds
+//
+// Callers hold w.mu.
 func (w *World) spawnHexLocked() (protocol.Hex, error) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	var clearingSafe, clearingUnoccupied, clearingAny []protocol.Hex
+
+	for h := range w.spawnable {
+		if HexDistance(origin, h) > clearingRadius || w.occupancyLocked(h) >= protocol.StackCap {
+			continue
+		}
+
+		clearingAny = append(clearingAny, h)
+
+		if w.occupiedByMonsterLocked(h) {
+			continue
+		}
+
+		clearingUnoccupied = append(clearingUnoccupied, h)
+
+		if !w.tooCloseToMonsterLocked(h) {
+			clearingSafe = append(clearingSafe, h)
+		}
+	}
+
+	candidates := clearingSafe
+	if len(candidates) == 0 {
+		candidates = clearingUnoccupied
+	}
+
+	if len(candidates) == 0 {
+		candidates = clearingAny
+	}
+
+	if len(candidates) == 0 {
+		return w.spawnHexSpiralLocked()
+	}
+
+	slices.SortFunc(candidates, compareHexQR)
+
+	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnPointStream+uint64(w.nextID)))
+
+	return candidates[rng.IntN(len(candidates))], nil
+}
+
+// spawnHexSpiralLocked is the pre-#36 search: the free walkable hex nearest
+// the origin, spiraling outward, ignoring the monster guard entirely — the
+// tier-3 fallback spawnHexLocked reaches for only when neither clearing tier
+// above yields a single candidate (an extremely crowded or tiny map), so a
+// join never hard-fails just because the origin clearing is exhausted.
+// Callers hold w.mu.
+//
+// Faction-blind by design in this fallback path: it can land a player on a
+// monster-occupied hex (opposing co-occupancy, a §5 MUST in the rare case it
+// is ever reached). It is inert only because a co-located monster's think
+// step gets Pathfind(from==to)==∅ and holds (never bumps).
+func (w *World) spawnHexSpiralLocked() (protocol.Hex, error) {
 	origin := protocol.Hex{Q: 0, R: 0}
 
 	for radius := 0; radius <= w.radius; radius++ {

@@ -16,7 +16,7 @@ import (
 //
 //nolint:paralleltest // deterministic monster placement (see #22): private server, no parallel siblings.
 func TestKillQuestTicksOverHTTP(t *testing.T) {
-	ts := startServerWithMonstersAt(t, 15*time.Millisecond, protocol.Hex{Q: 1, R: 0})
+	ts := startServerWithMonstersAt(t, protocol.Hex{Q: 1, R: 0})
 
 	me := join(t, ts, "")
 

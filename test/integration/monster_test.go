@@ -3,10 +3,15 @@ package integration_test
 import (
 	"bufio"
 	"encoding/json"
+	"log/slog"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/server"
 )
 
 // TestMonstersAppearInTurnBundle proves MONSTER_COUNT wiring end to end: a
@@ -64,21 +69,54 @@ func TestMonstersAppearInTurnBundle(t *testing.T) {
 // over real HTTP: once a player joins, a monster's hex changes across
 // successive turn bundles as it paths toward the player.
 //
-// The monster is seeded nine hexes from the origin (where the player spawns)
-// — outside CombatRadius so it hunts and steps in the WORLD domain (no bubble
-// to freeze it in place) for a few world ticks before it ever reaches combat
-// range, but within MonsterAggroRadius (#36) so a WORLD-domain monster
-// actually notices the player and moves at all. Its hex changes on the very
-// first world tick, and the world-domain runway leaves a window to observe a
-// step before the eventual freeze, regardless of the seed or connect latency.
-// The test is not parallel so its tick loop is not starved by sibling servers
-// under a loaded runner (#22).
+// The player spawn hex is random since #36 (no longer always the origin), so
+// this test joins FIRST over HTTP to learn where it actually landed, then
+// seeds the monster nine hexes out from THAT hex via a direct world
+// reference — outside CombatRadius so it hunts and steps in the WORLD domain
+// (no bubble to freeze it in place) for a few world ticks before it ever
+// reaches combat range, but within MonsterAggroRadius (#36) so a
+// WORLD-domain monster actually notices the player and moves at all. It
+// tries a small spread of directions in case one lands on water/rock. Its
+// hex changes on the very first world tick, and the world-domain runway
+// leaves a window to observe a step before the eventual freeze, regardless
+// of the seed or connect latency. The test is not parallel so its tick loop
+// is not starved by sibling servers under a loaded runner (#22).
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestMonsterHuntsPlayer(t *testing.T) {
-	ts := startServerWithMonstersAt(t, 20*time.Millisecond, protocol.Hex{Q: -9, R: 0})
+	ticks := hub.New()
+	world := game.NewWorld(20*time.Millisecond, time.Minute, 5*time.Millisecond, testDisconnectGrace, 0xC0FFEE, 12, ticks)
 
-	join(t, ts, "")
+	chatBroker := newAnnouncingChatBroker(world)
+	go world.Run(t.Context())
+
+	handler := server.New(server.Deps{
+		Logger: slog.New(slog.DiscardHandler), World: world, Ticks: ticks, Chat: chatBroker,
+		HeartbeatInterval: time.Hour,
+	})
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	me := join(t, ts, "")
+
+	offsets := []protocol.Hex{{Q: -9}, {Q: 9}, {R: -9}, {R: 9}, {Q: -9, R: 9}, {Q: 9, R: -9}}
+
+	placed := false
+
+	for _, off := range offsets {
+		h := protocol.Hex{Q: me.Hex.Q + off.Q, R: me.Hex.R + off.R}
+		if world.SpawnMonsterAt(h) {
+			placed = true
+
+			break
+		}
+	}
+
+	if !placed {
+		t.Fatal("SpawnMonsterAt refused every offset direction near the player's spawn " +
+			"(water/rock/StackCap) — widen the offset set")
+	}
 
 	events := get(t, ts, "/api/events")
 	reader := bufio.NewReader(events.Body)

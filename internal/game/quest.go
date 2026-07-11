@@ -89,13 +89,7 @@ func generateQuests(seed uint64, m protocol.MapResponse) []*quest {
 		goals = append(goals, origin)
 	}
 
-	slices.SortFunc(goals, func(a, b protocol.Hex) int {
-		if a.Q != b.Q {
-			return a.Q - b.Q
-		}
-
-		return a.R - b.R
-	})
+	slices.SortFunc(goals, compareHexQR)
 
 	quests := make([]*quest, 0, questCount)
 

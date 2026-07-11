@@ -90,7 +90,7 @@ func TestSpeciesOnWire(t *testing.T) {
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestHumanEarnsMoreXPThanDwarfOverHTTP(t *testing.T) {
-	ts := startServerWithMonstersAt(t, 15*time.Millisecond, protocol.Hex{Q: 1, R: 0})
+	ts := startServerWithMonstersAt(t, protocol.Hex{Q: 1, R: 0})
 
 	human := joinSpecies(t, ts, protocol.SpeciesHuman)
 	dwarf := joinSpecies(t, ts, protocol.SpeciesDwarf)
