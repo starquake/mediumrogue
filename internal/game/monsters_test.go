@@ -72,6 +72,10 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		{defID: idEmberStaff, weight: 4},
 		{defID: idAncientDwarvenMattock, weight: 4},
 		{defID: idWarMageStaff, weight: 4},
+		// Appended by the inventory-slots milestone (task 3): the low-weight
+		// healing potion — recovery layer 2. Appended LAST so the pre-existing
+		// entries keep their cumulative-weight positions.
+		{defID: idHealingPotion, weight: 2},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {

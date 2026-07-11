@@ -386,7 +386,7 @@ func (w *World) completeQuestLocked(q *quest) {
 			continue
 		}
 
-		award := applyRules(evEarnXP, q.rewardXP, speciesCards(e.species), ruleCtx{})
+		award := applyRules(evEarnXP, q.rewardXP, earnXPCards(e), ruleCtx{})
 
 		e.xp += award
 		syncMaxHPLocked(e)

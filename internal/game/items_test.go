@@ -906,3 +906,103 @@ func TestWyrmslayerGreatswordPinned(t *testing.T) {
 		}
 	}
 }
+
+// TestStarterInventoryContentPinned pins the inventory-slots starter
+// content's cards (task 3): leather-armor (body, fighter OR rogue — the
+// first multi-class wearability card — take-damage −1), headband-of-learning
+// (head, any class, earn-XP ×1.05), and healing-potion (consumable, heal 5,
+// no rules), plus the potion's low-weight presence in the rat and wolf drop
+// tables (recovery layer 2).
+func TestStarterInventoryContentPinned(t *testing.T) {
+	t.Parallel()
+
+	armor, ok := itemDefByID[idLeatherArmor]
+	if !ok {
+		t.Fatal("leather-armor not registered")
+	}
+
+	if got, want := armor.itemType, protocol.ItemTypeBody; got != want {
+		t.Errorf("armor itemType = %q, want %q", got, want)
+	}
+
+	wantWear := []string{protocol.ClassFighter, protocol.ClassRogue}
+	if got, want := len(armor.wearableBy), len(wantWear); got != want {
+		t.Fatalf("armor wearableBy lists %d classes, want %d", got, want)
+	}
+
+	for i, c := range wantWear {
+		if got, want := armor.wearableBy[i], c; got != want {
+			t.Errorf("armor wearableBy[%d] = %q, want %q", i, got, want)
+		}
+	}
+
+	if got, want := len(armor.rules), 1; got != want {
+		t.Fatalf("armor rules = %d, want %d", got, want)
+	}
+
+	if got, want := armor.rules[0].event, evTakeDamage; got != want {
+		t.Errorf("armor rule event = %q, want %q", got, want)
+	}
+
+	if got, want := armor.rules[0].then, (effect{kind: effAdd, n: -1}); got != want {
+		t.Errorf("armor rule effect = %+v, want %+v", got, want)
+	}
+
+	band, ok := itemDefByID[idHeadbandOfLearning]
+	if !ok {
+		t.Fatal("headband-of-learning not registered")
+	}
+
+	if got, want := band.itemType, protocol.ItemTypeHead; got != want {
+		t.Errorf("headband itemType = %q, want %q", got, want)
+	}
+
+	if got, want := len(band.wearableBy), 0; got != want {
+		t.Errorf("headband wearableBy lists %d classes, want %d (any)", got, want)
+	}
+
+	if got, want := len(band.rules), 1; got != want {
+		t.Fatalf("headband rules = %d, want %d", got, want)
+	}
+
+	if got, want := band.rules[0].event, evEarnXP; got != want {
+		t.Errorf("headband rule event = %q, want %q", got, want)
+	}
+
+	if got, want := band.rules[0].then, (effect{kind: effMulPct, n: 105}); got != want {
+		t.Errorf("headband rule effect = %+v, want %+v", got, want)
+	}
+
+	potion, ok := itemDefByID[idHealingPotion]
+	if !ok {
+		t.Fatal("healing-potion not registered")
+	}
+
+	if got, want := potion.itemType, protocol.ItemTypeConsumable; got != want {
+		t.Errorf("potion itemType = %q, want %q", got, want)
+	}
+
+	if got, want := potion.heal, 5; got != want {
+		t.Errorf("potion heal = %d, want %d", got, want)
+	}
+
+	if got, want := len(potion.rules), 0; got != want {
+		t.Errorf("potion rules = %d, want %d (drinking is an action, not a pipeline event)", got, want)
+	}
+
+	wantTables := map[string]int{idKindRat: 1, idKindWolf: 2}
+
+	for _, def := range monsterDefs {
+		weight := 0
+
+		for _, d := range def.drops {
+			if d.defID == idHealingPotion {
+				weight = d.weight
+			}
+		}
+
+		if got, want := weight, wantTables[def.id]; got != want {
+			t.Errorf("%s potion drop weight = %d, want %d", def.id, got, want)
+		}
+	}
+}

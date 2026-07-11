@@ -1288,7 +1288,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 
 		for _, e := range members {
 			if e.kind == protocol.EntityPlayer && e.hp > 0 {
-				award := applyRules(evEarnXP, totalXP, speciesCards(e.species), ruleCtx{})
+				award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
 
@@ -1429,6 +1429,15 @@ func victimGearCards(e *entity) []ruleCard {
 	}
 
 	return equippedRuleCards(e)
+}
+
+// earnXPCards returns the cards folded over an XP award for player e:
+// species passives plus every equipped item's rules (canonicalSlotOrder —
+// deterministic), so gear like the Headband of Learning modifies XP the same
+// way species passives do. Shared by the kill award
+// (resolveBubbleTurnLocked) and quest completion payouts (quest.go).
+func earnXPCards(e *entity) []ruleCard {
+	return slices.Concat(speciesCards(e.species), equippedRuleCards(e))
 }
 
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted

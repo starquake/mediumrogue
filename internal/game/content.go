@@ -150,11 +150,34 @@ var itemDefs = []*itemDef{
 	// Healing Potion (inventory-slots task 2): the first consumable — heal is
 	// a def field consumed by the drink ACTION (inventory.go), not a combat
 	// pipeline event. Registered with the action machinery (its stack/drink
-	// tests need a real consumable); it enters the rat/wolf drop tables in
-	// task 3 alongside the armor cards (recovery layer 2 begins).
+	// tests need a real consumable); it rides the rat/wolf drop tables at low
+	// weight (task 3 — recovery layer 2 begins).
 	{
 		id: idHealingPotion, name: "Healing Potion", itemType: protocol.ItemTypeConsumable,
 		heal: 5, desc: "drink: +5 HP; stacks to 5",
+	},
+
+	// Inventory-slots starter armor (task 3, the designer's cards): the first
+	// non-weapon gear — leather-armor is the first multi-class WEARABILITY
+	// card (fighter OR rogue; characters stay single-class), and
+	// headband-of-learning defaults to "any" (empty wearableBy, the
+	// armor/jewelry rule).
+	{
+		id: idLeatherArmor, name: "Leather Armor", itemType: protocol.ItemTypeBody,
+		wearableBy: []string{protocol.ClassFighter, protocol.ClassRogue},
+		desc:       "take a little less from every hit",
+		rules: []ruleCard{
+			// take-damage −1; applyRules' event-level clamp keeps every landed
+			// hit ≥1 (the card's "floor 1").
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -1}},
+		},
+	},
+	{
+		id: idHeadbandOfLearning, name: "Headband of Learning", itemType: protocol.ItemTypeHead,
+		desc: "earn 5% more XP",
+		rules: []ruleCard{
+			{event: evEarnXP, then: effect{kind: effMulPct, n: percentBase + 5}},
+		},
 	},
 }
 
@@ -184,7 +207,11 @@ var monsterDefs = []*monsterDef{
 		// (a monster must notice a player before it can close into a combat
 		// bubble, or it sits frozen just outside its own aggro range forever).
 		maxHP: 4, damage: 1, xp: 8, aggroRadius: protocol.CombatRadius + 1, dropChance: 10,
-		drops: []drop{{defID: idButchersCleaver, weight: 1}},
+		drops: []drop{
+			{defID: idButchersCleaver, weight: 1},
+			// Low-weight potion (inventory-slots task 3): recovery layer 2.
+			{defID: idHealingPotion, weight: 1},
+		},
 		rings: []int{0, 1},
 	},
 	{
@@ -200,6 +227,11 @@ var monsterDefs = []*monsterDef{
 			{defID: idEmberStaff, weight: 4},
 			{defID: idAncientDwarvenMattock, weight: 4},
 			{defID: idWarMageStaff, weight: 4},
+			// Low-weight potion (inventory-slots task 3): appended LAST so the
+			// pre-existing entries keep their cumulative-weight positions and
+			// the pinned killDropSeed/killMissSeed (drops_test.go) survive
+			// where possible.
+			{defID: idHealingPotion, weight: 2},
 		},
 		rings: []int{1},
 	},
