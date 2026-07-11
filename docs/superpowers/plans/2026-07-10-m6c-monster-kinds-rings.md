@@ -58,7 +58,7 @@
 
 ### Task 5: Integration tests, docs, gate
 
-**Files:** `test/integration/kinds_test.go` (kill a seeded specific kind over HTTP → its XP lands, its announce text observed — mirror `gear_test.go`'s harness); docs: STATUS.md session note, plan §8 (add the 6c line as landed), `docs/rule-based-content-design.md` (§4 "Drops from:" note → point at monster-side tables as now real; add `targetKind` to the live-conditions list).
+**Files:** `test/integration/kinds_test.go` (kill a seeded specific kind over HTTP → its XP lands, its announce text observed — mirror `gear_test.go`'s harness); docs: STATUS.md session note, plan §8 (add the 6c line as landed), `docs/rule-based-content-design.md` (§4 "Drops from:" note → point at monster-side tables as now real; add `targetKind` to the live-conditions list), and **`docs/FEATURES.md`** (monster-kinds section, rings, per-kind constants table, Wyrmslayer in the content list — per the CLAUDE.md same-PR convention).
 
 - [ ] Integration test green under repetition (no flake); docs updated; full `make check` + `make e2e`; commit `test(integration)+docs: monster kinds end to end; 6c recorded`.
 
