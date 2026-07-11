@@ -20,21 +20,17 @@ function hexDistance(a: Hex, b: Hex): number {
 }
 
 test("quests: take a reach quest, walk to its goal, and it completes with a visible XP jump", async ({ page }) => {
-  // Species must be picked BEFORE join so this run is a non-human (dwarf) —
-  // no XP% passive — making the reward XP an exact, predictable number to
-  // assert against. Same delay trick as species.spec.ts: delay /api/map so
-  // the picker is still visible when the click lands (src/main.ts hides the
-  // picker and joins right after fetchMap() resolves).
-  await page.route("**/api/map", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await route.continue();
+  // Species must be a non-human (dwarf) — no XP% passive — so the reward XP
+  // is an exact, predictable number to assert against. Seed a "returning
+  // player" identity (no token) requesting Dwarf, same technique as
+  // ranged.spec.ts/gear.spec.ts, deterministic without touching the start
+  // screen itself (whose own species-selection UX is exercised in
+  // class.spec.ts).
+  await page.addInitScript(() => {
+    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", species: "dwarf" }));
   });
 
   await page.goto("/");
-
-  const dwarfButton = page.locator('#species-picker button[data-species="dwarf"]');
-  await expect(dwarfButton).toBeVisible();
-  await dwarfButton.click();
 
   await expect
     .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))

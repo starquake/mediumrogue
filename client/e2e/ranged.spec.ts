@@ -34,11 +34,10 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
 }) => {
   // Seed the "returning player" identity localStorage read at module load
   // (src/net/session.ts's loadIdentity/join), so this joins as Rogue
-  // deterministically without racing the class-picker UI (that race is
-  // exercised on its own, and fixed with route interception, in
-  // class.spec.ts). An empty stored token still reaches the server as a
-  // brand-new join — Join() only reclaims an existing entity for a token it
-  // recognizes — but with the requested class.
+  // deterministically without touching the start screen (its own
+  // class-selection UX is exercised in class.spec.ts). An empty stored token
+  // still reaches the server as a brand-new join — Join() only reclaims an
+  // existing entity for a token it recognizes — but with the requested class.
   await page.addInitScript(() => {
     localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "rogue" }));
   });

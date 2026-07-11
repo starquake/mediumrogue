@@ -23,19 +23,17 @@ declare global {
 // un-equipped item here to click a real "equip" on).
 
 test("gear panel renders class-default inventory with equipped items disabled", async ({ page }) => {
-  // Same delay trick as class.spec.ts: keep the picker visible long enough
-  // for a real click to land (src/main.ts hides it and joins right after
-  // fetchMap() resolves).
-  await page.route("**/api/map", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await route.continue();
+  // Seed a "returning player" identity (no token) requesting Rogue, same
+  // technique as ranged.spec.ts — deterministic without touching the start
+  // screen (whose own class-selection UX is exercised in class.spec.ts). An
+  // empty stored token still reaches the server as a brand-new join (Join()
+  // only reclaims an existing entity for a token it recognizes), but with the
+  // requested class.
+  await page.addInitScript(() => {
+    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "rogue" }));
   });
 
   await page.goto("/");
-
-  const rogueButton = page.locator('#class-picker button[data-class="rogue"]');
-  await expect(rogueButton).toBeVisible();
-  await rogueButton.click();
 
   await expect
     .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
