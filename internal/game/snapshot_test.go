@@ -41,7 +41,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 
 	w, clk := newSnapshotWorld(t)
 
-	alice, err := w.Join("", "alice", protocol.ClassRogue, protocol.SpeciesElf)
+	alice, err := w.Join("", testAliceName, protocol.ClassRogue, protocol.SpeciesElf)
 	if err != nil {
 		t.Fatalf("Join alice: %v", err)
 	}
@@ -127,7 +127,7 @@ func checkRestoredAlice(
 		t.Errorf("restored alice Hex = %v, want %v", got, want)
 	}
 
-	if got, want := restored.Name, "alice"; got != want {
+	if got, want := restored.Name, testAliceName; got != want {
 		t.Errorf("restored alice Name = %q, want %q", got, want)
 	}
 

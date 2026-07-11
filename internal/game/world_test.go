@@ -21,6 +21,15 @@ const (
 	testDisconnectGrace = time.Hour
 )
 
+// Shared two-character names for the identity-swap regression tests
+// (goconst: keeping these as one constant each, rather than repeated
+// literals, is what it takes to compare two distinct named players across
+// several assertions each).
+const (
+	testAliceName = "alice"
+	testBobName   = "bob"
+)
+
 func newWorld() *game.World {
 	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 12, hub.New())
 }
@@ -106,6 +115,162 @@ func TestJoinRejectsEmptyName(t *testing.T) {
 	_, err := w.Join("", "   ", protocol.ClassFighter, protocol.SpeciesHuman)
 	if got, want := err, game.ErrInvalidName; !errors.Is(got, want) {
 		t.Errorf("err = %v, want %v", got, want)
+	}
+}
+
+// TestJoinIdentityNeverCrossesTokens pins the server-side invariant behind
+// item 2's investigation (playtest feedback batch 3, "players swapped
+// identities"): a live-token reclaim ALWAYS returns the entity that owns the
+// exact token in the request — never a different, unrelated live entity's —
+// no matter how many other characters are live at the same time. The
+// client-side defect this batch found and fixed (net/session.ts's reclaim()
+// used to re-read a possibly-clobbered token from localStorage instead of
+// the caller's own known token) could only ever manifest if this
+// server-side mapping were unreliable; it isn't, but the seam is real
+// enough to deserve a permanent regression test — see the client-side fix's
+// doc comments for the full
+// story. Mirrors the reclaim contract the client actually uses: empty name/
+// class/species alongside a known token.
+func TestJoinIdentityNeverCrossesTokens(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	alice, err := w.Join("", testAliceName, protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("join alice: %v", err)
+	}
+
+	bob, err := w.Join("", testBobName, protocol.ClassRogue, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("join bob: %v", err)
+	}
+
+	if alice.Token == bob.Token || alice.EntityID == bob.EntityID {
+		t.Fatalf("alice and bob must be distinct: %+v vs %+v", alice, bob)
+	}
+
+	// Reclaim alice's token — must always come back as alice, never bob, no
+	// matter that bob joined more recently / has a higher entity id.
+	reclaimedAlice, err := w.Join(alice.Token, "", "", "")
+	if err != nil {
+		t.Fatalf("reclaim alice: %v", err)
+	}
+
+	if got, want := reclaimedAlice.EntityID, alice.EntityID; got != want {
+		t.Errorf("reclaim(alice.Token).EntityID = %d, want %d (alice)", got, want)
+	}
+
+	if got, want := reclaimedAlice.Token, alice.Token; got != want {
+		t.Errorf("reclaim(alice.Token).Token = %q, want %q (alice's own)", got, want)
+	}
+
+	aliceEntity, ok := entityOfSnap(w.Snapshot(), reclaimedAlice.EntityID)
+	if !ok {
+		t.Fatalf("reclaimed alice entity %d not in snapshot", reclaimedAlice.EntityID)
+	}
+
+	if got, want := aliceEntity.Name, testAliceName; got != want {
+		t.Errorf("reclaimed entity Name = %q, want %q — identity swap", got, want)
+	}
+
+	// Same check in the other direction — reclaiming bob's token must never
+	// hand back alice's record.
+	reclaimedBob, err := w.Join(bob.Token, "", "", "")
+	if err != nil {
+		t.Fatalf("reclaim bob: %v", err)
+	}
+
+	if got, want := reclaimedBob.EntityID, bob.EntityID; got != want {
+		t.Errorf("reclaim(bob.Token).EntityID = %d, want %d (bob)", got, want)
+	}
+
+	bobEntity, ok := entityOfSnap(w.Snapshot(), reclaimedBob.EntityID)
+	if !ok {
+		t.Fatalf("reclaimed bob entity %d not in snapshot", reclaimedBob.EntityID)
+	}
+
+	if got, want := bobEntity.Name, testBobName; got != want {
+		t.Errorf("reclaimed entity Name = %q, want %q — identity swap", got, want)
+	}
+
+	if got, want := bobEntity.Class, protocol.ClassRogue; got != want {
+		t.Errorf("reclaimed bob Class = %q, want %q — identity swap", got, want)
+	}
+}
+
+// TestJoinArchivedRestoreNeverCrossesTokens is the archived-restore half of
+// TestJoinIdentityNeverCrossesTokens: two independently swept/archived
+// characters must each restore under their own token only, even though both
+// archive entries exist at once and restoreArchivedLocked mints entity ids
+// from the same shared counter.
+func TestJoinArchivedRestoreNeverCrossesTokens(t *testing.T) {
+	t.Parallel()
+
+	w, clk := newTimedWorld(t)
+	w.SetDisconnectGraceForTest(archiveGrace)
+
+	alice, err := w.Join("", testAliceName, protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("join alice: %v", err)
+	}
+
+	bob, err := w.Join("", testBobName, protocol.ClassRogue, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("join bob: %v", err)
+	}
+
+	// Both go quiet and get swept/archived together.
+	w.StreamOpened(alice.Token)
+	w.StreamClosed(alice.Token)
+	w.StreamOpened(bob.Token)
+	w.StreamClosed(bob.Token)
+	clk.advance(archiveGrace + time.Second)
+
+	if got, want := w.SweepForTest(clk.now()), true; got != want {
+		t.Fatalf("SweepForTest removed = %v, want %v", got, want)
+	}
+
+	if !w.ArchivedForTest(alice.Token) || !w.ArchivedForTest(bob.Token) {
+		t.Fatalf("both tokens must be archived after sweep")
+	}
+
+	// Restore bob FIRST (opposite order from how they joined), then alice —
+	// each must come back as itself.
+	restoredBob, err := w.Join(bob.Token, "", "", "")
+	if err != nil {
+		t.Fatalf("restore bob: %v", err)
+	}
+
+	bobEntity, ok := entityOfSnap(w.Snapshot(), restoredBob.EntityID)
+	if !ok {
+		t.Fatalf("restored bob entity %d not in snapshot", restoredBob.EntityID)
+	}
+
+	if got, want := bobEntity.Name, testBobName; got != want {
+		t.Errorf("restored Name = %q, want %q — identity swap", got, want)
+	}
+
+	restoredAlice, err := w.Join(alice.Token, "", "", "")
+	if err != nil {
+		t.Fatalf("restore alice: %v", err)
+	}
+
+	if got, want := restoredAlice.Token, alice.Token; got != want {
+		t.Errorf("restored alice Token = %q, want %q (own token)", got, want)
+	}
+
+	aliceEntity, ok := entityOfSnap(w.Snapshot(), restoredAlice.EntityID)
+	if !ok {
+		t.Fatalf("restored alice entity %d not in snapshot", restoredAlice.EntityID)
+	}
+
+	if got, want := aliceEntity.Name, testAliceName; got != want {
+		t.Errorf("restored Name = %q, want %q — identity swap", got, want)
+	}
+
+	if got, want := aliceEntity.Class, protocol.ClassFighter; got != want {
+		t.Errorf("restored alice Class = %q, want %q — identity swap", got, want)
 	}
 }
 

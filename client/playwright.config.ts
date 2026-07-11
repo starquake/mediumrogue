@@ -36,6 +36,7 @@ const specs: { name: string; monsters?: number }[] = [
   { name: "quests" },
   { name: "gear" },
   { name: "identity" },
+  { name: "identity-multitab" },
   { name: "combat", monsters: 3 },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },
