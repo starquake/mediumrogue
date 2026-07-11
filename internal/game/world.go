@@ -54,6 +54,13 @@ var (
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
 	ErrOutOfRange = errors.New("target is out of range")
+	// ErrAttackTargetNotFound rejects an entity-targeted attack intent
+	// (item 7) naming an entity id that does not exist or is already dead.
+	ErrAttackTargetNotFound = errors.New("target entity not found")
+	// ErrAttackTargetNotHostile rejects an entity-targeted attack intent
+	// (item 7) naming a same-faction entity — ranged attacks only ever hit
+	// hostiles.
+	ErrAttackTargetNotHostile = errors.New("target is not hostile")
 	// ErrItemNotOwned rejects an equip intent naming an item instance id the
 	// entity does not own.
 	ErrItemNotOwned = errors.New("item not owned")
@@ -114,10 +121,21 @@ type entity struct {
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
-	// attackTarget is a pending ranged-attack target hex for this turn, or nil
-	// for none. Set by an "attack" intent (which clears path — you shoot, you
-	// don't move), resolved and cleared in the attack phase.
+	// attackTarget is a pending GROUND-targeted ranged-attack hex for this
+	// turn, or nil for none — a mage's AoE cast, ground-targeted by nature
+	// (the blast radius centers on a hex, not a victim). Set by an "attack"
+	// intent with no TargetEntityID (which clears path — you shoot, you
+	// don't move), resolved and cleared in the attack phase. Mutually
+	// exclusive with attackTargetEntity; see queueAttackLocked.
 	attackTarget *protocol.Hex
+	// attackTargetEntity is a pending single-target (bow) ranged attack's
+	// victim, named by entity id (item 7, playtest batch 2) — 0 for none, or
+	// for a ground-targeted attack (see attackTarget). Resolution re-aims at
+	// this entity's CURRENT (post-move) hex rather than trusting the hex
+	// captured at submit time, so a sidestepping or retreating victim is
+	// tracked: hits if still within the weapon's range from the shooter's
+	// own post-move hex, else fizzles (resolveEntityTargetedLocked).
+	attackTargetEntity int64
 	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
 	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
 	bubbleID int64
@@ -679,7 +697,7 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 			return err
 		}
 	case protocol.IntentAttack:
-		if err := w.queueAttackLocked(e, req.Target); err != nil {
+		if err := w.queueAttackLocked(e, req.Target, req.TargetEntityID); err != nil {
 			return err
 		}
 	case protocol.IntentEquip:
@@ -734,19 +752,26 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 
 	e.path = path
 	e.attackTarget = nil
+	e.attackTargetEntity = 0
 	e.pendingEquip = 0
 
 	return nil
 }
 
-// queueAttackLocked validates a ranged attack intent and queues it: the entity
-// must have a ranged weapon equipped (else ErrNoRangedWeapon) and the target must
-// be within its reach at submit time (else ErrOutOfRange). On success it records
-// the target and clears the route and any queued equip — a ranged attack
-// replaces the move AND the swap for this turn (the latest intent in the
-// window wins). The resolution-time re-check is defensive (nothing relocates
-// a shooter mid-turn today; it guards a future knockback/forced-move
-// mechanic).
+// queueAttackLocked validates a ranged attack intent and queues it: the
+// entity must have a ranged weapon equipped (else ErrNoRangedWeapon). A
+// single-target weapon (aoeRadius 0, a bow) with a non-zero targetEntityID
+// (item 7, playtest batch 2) is ENTITY-targeted: the named entity must exist
+// and be alive (else ErrAttackTargetNotFound), be a hostile — opposing faction
+// (else ErrAttackTargetNotHostile), and be within the weapon's reach from e's
+// current hex at submit time (else ErrOutOfRange); resolution re-aims at
+// the victim's post-move hex (resolveEntityTargetedLocked) rather than
+// trusting this submit-time position, so a sidestep or retreat is tracked.
+// Anything else (an AoE cast, or targetEntityID 0 — e.g. a defensive/legacy
+// hex-only bow shot) is GROUND-targeted at target, checked the same way
+// against e's current hex. On success it records the target and clears the
+// route and any queued equip — a ranged attack replaces the move AND the
+// swap for this turn (the latest intent in the window wins).
 //
 // INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
 // CombatRadius (validateMaxReach, run at content load by mustValidateContent),
@@ -755,10 +780,32 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // ranged-killed in the WORLD domain (where resolveWorldTurnLocked awards no
 // kill-XP) — add an in-bubble/target-in-member-set guard here then. Callers
 // hold w.mu.
-func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
+func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID int64) error {
 	def := rangedDefFor(e)
 	if def == nil {
 		return ErrNoRangedWeapon
+	}
+
+	if targetEntityID != 0 && def.aoeRadius == 0 {
+		victim, ok := w.entities[targetEntityID]
+		if !ok || victim.hp <= 0 {
+			return ErrAttackTargetNotFound
+		}
+
+		if !opposing(e, victim) {
+			return ErrAttackTargetNotHostile
+		}
+
+		if HexDistance(e.hex, victim.hex) > def.rangeHex {
+			return ErrOutOfRange
+		}
+
+		e.attackTargetEntity = targetEntityID
+		e.attackTarget = nil
+		e.path = nil
+		e.pendingEquip = 0
+
+		return nil
 	}
 
 	if HexDistance(e.hex, target) > def.rangeHex {
@@ -766,6 +813,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
 	}
 
 	t := target
+	e.attackTargetEntity = 0
 	e.attackTarget = &t
 	e.path = nil
 	e.pendingEquip = 0
@@ -805,6 +853,7 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	e.pendingEquip = itemID
 	e.path = nil
 	e.attackTarget = nil
+	e.attackTargetEntity = 0
 
 	return nil
 }
@@ -1395,20 +1444,28 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 // resolveRangedLocked folds every pending ranged attack into the shared damage
 // map (against pre-attack HP, so a bow shot lands simultaneously with bumps).
 // Shooters are processed in id order so the seeded single-target victim pick is
-// reproducible regardless of map iteration order. Range is re-checked against
-// post-move positions in byHex: a shot that is now out of range fizzles. A bow
-// (aoeRadius 0) damages one opposing occupant at the target hex — a stack picks
-// one hostile with rng, mirroring the bump victim pick. Magic (aoeRadius > 0)
-// damages every opposing-faction entity within aoeRadius of the target hex — no
-// friendly fire. Every shooter's pending target is cleared, hit or fizzle.
-// byHex holds exactly the resolving member set, so targets outside the domain
-// are naturally unreachable. Callers hold w.mu.
+// reproducible regardless of map iteration order. An ENTITY-targeted attack
+// (item 7, playtest batch 2 — attackTargetEntity != 0, a single-target bow
+// shot aimed at a specific victim rather than a hex) delegates to
+// resolveEntityTargetedLocked, which re-aims at the victim's post-move hex.
+// Everything else is GROUND-targeted at attackTarget's hex, re-checked
+// against post-move positions in byHex: a shot that is now out of range
+// fizzles. A bow (aoeRadius 0) shot this way damages one opposing occupant at
+// the target hex — a stack picks one hostile with rng, mirroring the bump
+// victim pick (this is the legacy/defensive hex-only bow path — kept for the
+// SetAttackTargetForTest bridge and any future hex-only ranged use; a real
+// client always sends an entity id for a single-target weapon). Magic
+// (aoeRadius > 0) damages every opposing-faction entity within aoeRadius of
+// the target hex — no friendly fire, ground-targeted by nature. Every
+// shooter's pending target is cleared, hit or fizzle. byHex holds exactly the
+// resolving member set, so targets outside the domain are naturally
+// unreachable. Callers hold w.mu.
 func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int) {
 	var shooters []*entity
 
 	for _, occs := range byHex {
 		for _, e := range occs {
-			if e.attackTarget != nil {
+			if e.attackTarget != nil || e.attackTargetEntity != 0 {
 				shooters = append(shooters, e)
 			}
 		}
@@ -1417,17 +1474,26 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 	slices.SortFunc(shooters, func(a, b *entity) int { return int(a.id - b.id) })
 
 	for _, e := range shooters {
-		target := *e.attackTarget
+		targetEntityID := e.attackTargetEntity
+		hexTarget := e.attackTarget
 		e.attackTarget = nil // resolved, whether it hits or fizzles
+		e.attackTargetEntity = 0
 
 		def := rangedDefFor(e)
 		if def == nil {
 			// unequipped mid-turn (equip intent, Task 4) → fizzle
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped",
-				"attacker", e.id, "target_hex", target)
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped", "attacker", e.id)
 
 			continue
 		}
+
+		if targetEntityID != 0 {
+			w.resolveEntityTargetedLocked(rng, e, def, targetEntityID, damage)
+
+			continue
+		}
+
+		target := *hexTarget
 
 		if HexDistance(e.hex, target) > def.rangeHex {
 			// moved out of range this turn → fizzle
@@ -1447,6 +1513,48 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 
 		w.resolveAoELocked(rng, byHex, e, def, target, def.aoeRadius, dmg, damage)
 	}
+}
+
+// resolveEntityTargetedLocked resolves one entity-targeted single-target
+// ranged attack (item 7, playtest batch 2): re-aims at the victim's CURRENT
+// (post-move) hex rather than trusting the hex it happened to occupy at
+// submit time, so a sidestepping or retreating target is tracked the way a
+// hex-pinned shot never could — hits if the victim is still within the
+// weapon's range from the shooter's own post-move hex, else fizzles
+// (reason out_of_range, same as the ground-targeted path). A victim that
+// died or vanished this same turn — a simultaneous kill by another attacker,
+// resolved earlier in this same damage-accumulation pass — also fizzles
+// (reason target_gone) rather than panicking on a missing entity; damage
+// application happens all-at-once after every attack accumulates
+// (attackLocked), so "vanished" here really means removed by a PRIOR
+// resolution this turn (deaths, not this pass — resolveDeathsLocked runs
+// after this), i.e. any entity that already left w.entities entirely, which
+// resolveCombatLocked never does mid-attack-phase; this guard is therefore
+// mostly defensive, matching resolveBowLocked's own empty-hex no-op. Callers
+// hold w.mu.
+func (w *World) resolveEntityTargetedLocked(
+	rng *mrand.Rand, attacker *entity, weapon *itemDef, targetEntityID int64, damage map[int64]int,
+) {
+	victim, ok := w.entities[targetEntityID]
+	if !ok || victim.hp <= 0 {
+		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "target_gone", "attacker", attacker.id)
+
+		return
+	}
+
+	if HexDistance(attacker.hex, victim.hex) > weapon.rangeHex {
+		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range",
+			"attacker", attacker.id, "weapon", weapon.id, "victim", victim.id)
+
+		return
+	}
+
+	dmg := itemDamage(weapon, levelFor(attacker.xp))
+	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+	damage[victim.id] += dealt
+
+	w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
+		"weapon", weapon.id, "base", dmg, "dealt", dealt)
 }
 
 // resolveBowLocked accumulates single-target ranged damage: the opposing-faction

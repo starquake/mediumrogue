@@ -504,6 +504,17 @@ export interface IntentRequest {
    * ItemID names the item to equip. Equip intents only.
    */
   itemId: number /* int64 */;
+  /**
+   * TargetEntityID names a single-target ranged attack's victim by entity
+   * id instead of a hex (item 7, playtest batch 2): 0 = none (ground-
+   * targeted — a mage's AoE cast, whose blast radius makes a hex the
+   * natural target). A bow-class attack (aoeRadius 0) sets this instead of
+   * relying on Target; the server re-aims at the named entity's post-move
+   * hex at resolution time, so a sidestepping shooter's shot still tracks
+   * a fleeing target the way a hex-pinned shot never could. Attack intents
+   * only.
+   */
+  targetEntityId: number /* int64 */;
 }
 /**
  * ChatMessage is the payload of an EventChat frame: one line in the global

@@ -42,6 +42,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **No separate combat screen** — same map, same intents. **Bump-to-attack**
   melee; ranged **attack intent** (bow single-target, mage AoE radius 1),
   range 4 hexes, distance-only (no LOS), **no friendly fire**.
+- **Entity-targeted single-target ranged attacks** (item 7, playtest batch
+  2): a bow shot names its victim by **entity id** (`IntentRequest.
+  targetEntityId`), not a hex — clicking a hostile in range sends its id.
+  An AoE cast (mage) stays **ground-targeted** (a hex — the blast radius
+  makes that the natural target). Validated at submit (entity exists+alive,
+  hostile, in range) AND re-validated at resolution against the victim's
+  **post-move hex**: hits if still in range from the shooter's own post-move
+  hex, else fizzles — the shot tracks a sidestepping or retreating target
+  instead of trusting a stale hex.
 - **Phased resolution**: all moves resolve simultaneously (seeded-RNG
   tie-break on hex overflow), then all attacks land against **post-move
   positions** — retreating genuinely dodges; mutual kills are possible and

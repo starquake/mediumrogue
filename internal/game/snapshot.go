@@ -67,7 +67,7 @@ type itemInstanceDTO struct {
 
 // entityDTO is the full persisted shape of one entity (player or monster).
 // Fields the design calls out as transient — path, attackTarget,
-// pendingEquip, bubbleID, streams — are deliberately absent: RestoreState
+// attackTargetEntity, pendingEquip, bubbleID, streams — are deliberately absent: RestoreState
 // leaves them at their Go zero value on every restored entity, and a
 // restored PLAYER additionally gets disconnectedAt stamped to load time (see
 // RestoreState) rather than persisting the pre-shutdown value.
@@ -189,8 +189,8 @@ func (w *World) toDTOLocked() snapshotDTO {
 // (disconnectedAt = now, streams = 0), not the pre-shutdown disconnect time:
 // the removal-grace clock restarts at load, so an unclaimed entity sweeps
 // (and archives) after one full grace from restart, not instantly. Path,
-// attackTarget, pendingEquip, and bubbleID are left at their zero value on
-// every entity (players and monsters alike) — bubbles are never persisted
+// attackTarget, attackTargetEntity, pendingEquip, and bubbleID are left at
+// their zero value on every entity (players and monsters alike) — bubbles are never persisted
 // and are recomputed from positions on the first tick.
 func (w *World) RestoreState(data []byte) error {
 	var dto snapshotDTO
@@ -295,7 +295,8 @@ func entityToDTO(e *entity) entityDTO {
 
 // entityFromDTO rebuilds an entity from its DTO. The caller (RestoreState)
 // is responsible for the player-only disconnectedAt/streams reset; every
-// other transient field (path, attackTarget, pendingEquip, bubbleID) is left
+// other transient field (path, attackTarget, attackTargetEntity, pendingEquip,
+// bubbleID) is left
 // at its Go zero value by construction.
 func entityFromDTO(ed entityDTO) *entity {
 	return &entity{

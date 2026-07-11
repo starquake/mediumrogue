@@ -652,13 +652,29 @@ async function start(): Promise<void> {
     });
   };
 
+  // hostileIdAt returns the entity id of a monster standing on hex, or null.
+  // Resolves a single-target ranged click into an entity-targeted attack
+  // intent (item 7, playtest batch 2): the server re-aims at the victim's
+  // post-move hex at resolution time, tracking a sidestep or retreat a
+  // hex-pinned shot never could.
+  const hostileIdAt = (hex: Hex): number | null => {
+    const hit = window.game.positions.find((p) => p.kind === EntityMonster && p.hex.q === hex.q && p.hex.r === hex.r);
+    return hit === undefined ? null : hit.id;
+  };
+
   // attackAt fires a ranged attack intent at target: no destination bookkeeping
   // (the attacker doesn't move onto it) — a one-shot flash on the target hex
   // acknowledges the click; the turn bundle's HP changes speak for the result.
+  // A single-target weapon (myRangedAoeRadius 0, a bow) targets the
+  // hostile's ENTITY id instead of the bare hex (item 7); an AoE weapon
+  // stays ground-targeted — its blast radius makes a hex the natural target,
+  // and it can land on empty ground and still catch nearby hostiles.
   const attackAt = (target: Hex): Promise<void> => {
     feedbackLayer.flashAttack(target);
 
-    return submitIntent(identity, target, IntentAttack).then(() => undefined);
+    const targetEntityId = myRangedAoeRadius === 0 ? (hostileIdAt(target) ?? 0) : 0;
+
+    return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
 
   // lastReach mirrors the tactical overlay's move/bump split for click

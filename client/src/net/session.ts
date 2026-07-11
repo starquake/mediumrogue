@@ -156,14 +156,19 @@ async function postIntent(body: IntentRequest): Promise<boolean> {
  * accepted the intent; false on rejection (not adjacent/not walkable for a
  * move, out of range/no ranged weapon for an attack, stale identity).
  * Movement itself only ever arrives via the turn bundle — the client never
- * moves an entity locally. itemId is unused by move/attack — see submitEquip.
+ * moves an entity locally. itemId is unused by move/attack — see
+ * submitEquip. targetEntityId (item 7, playtest batch 2) names a
+ * single-target ranged attack's victim by entity id instead of relying on
+ * target alone — 0 (the default) means none: a move, or a ground-targeted
+ * (AoE) attack.
  */
 export async function submitIntent(
   identity: Pick<Identity, "entityId" | "token">,
   target: Hex,
   kind: string,
+  targetEntityId = 0,
 ): Promise<boolean> {
-  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0 });
+  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0, targetEntityId });
 }
 
 /**
@@ -183,6 +188,7 @@ export async function submitEquip(
     target: { q: 0, r: 0 },
     kind: IntentEquip,
     itemId,
+    targetEntityId: 0,
   });
 }
 

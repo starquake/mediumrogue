@@ -303,17 +303,34 @@ func (w *World) SetAttackTargetForTest(id int64, target protocol.Hex) {
 }
 
 // HasAttackTargetForTest reports whether an entity currently has a pending
-// ranged-attack target queued, so a test can assert the field's presence or
-// absence without exposing the target hex itself.
+// ranged-attack target queued — ground- OR entity-targeted (item 7) — so a
+// test can assert the field's presence or absence without exposing the
+// target hex or entity id itself.
 func (w *World) HasAttackTargetForTest(id int64) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if e, ok := w.entities[id]; ok {
-		return e.attackTarget != nil
+		return e.attackTarget != nil || e.attackTargetEntity != 0
 	}
 
 	return false
+}
+
+// SetAttackTargetEntityForTest overwrites an entity's pending single-target
+// ranged-attack VICTIM directly (item 7, playtest batch 2), bypassing
+// queueAttackLocked's submit-time validation — so a resolution test can
+// engineer an entity-targeted shot's exact starting state (e.g. a target
+// about to sidestep beyond range) the same way SetAttackTargetForTest does
+// for the ground-targeted hex path.
+func (w *World) SetAttackTargetEntityForTest(id, targetEntityID int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.attackTargetEntity = targetEntityID
+		e.attackTarget = nil
+	}
 }
 
 // SetPathForTest overwrites an entity's queued path directly. A monster's path
