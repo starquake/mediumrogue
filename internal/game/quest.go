@@ -15,8 +15,13 @@ var (
 	ErrQuestNotFound  = errors.New("no such quest")
 	ErrQuestTaken     = errors.New("that quest is already taken")
 	ErrQuestCompleted = errors.New("that quest is already completed")
-	ErrQuestSlotFull  = errors.New("you already have an active quest — /abandon it first")
-	ErrNoActiveQuest  = errors.New("no active quest")
+	// ErrQuestSlotFull now only guards the PARTY quest slot (item 14,
+	// playtest batch 2, amending 8.3's one-slot-per-player/party rule): a
+	// party still holds at most one quest at a time, but a player may hold
+	// multiple PERSONAL quests concurrently — this error can no longer fire
+	// for a personal /quest take.
+	ErrQuestSlotFull = errors.New("your party already has an active quest — /abandon it first")
+	ErrNoActiveQuest = errors.New("no such active quest of yours")
 )
 
 const (
@@ -124,7 +129,10 @@ func (w *World) SetAnnounce(fn func(sender, text string)) {
 }
 
 // QuestTake claims an available quest for the caller — for their party when
-// they are in one, personally otherwise. One active quest per slot.
+// they are in one, personally otherwise. A party still holds at most one
+// quest at a time (ErrQuestSlotFull); a player may hold MULTIPLE personal
+// quests concurrently (item 14, playtest batch 2 — amends 8.3's one-slot
+// rule) — no slot check for a personal take.
 func (w *World) QuestTake(token string, questID int64) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -147,26 +155,29 @@ func (w *World) QuestTake(token string, questID int64) (string, error) {
 		return "", ErrQuestTaken
 	}
 
-	if w.activeQuestLocked(e) != nil {
-		return "", ErrQuestSlotFull
-	}
-
-	q.state = protocol.QuestTaken
-
 	if e.partyID != 0 {
+		if w.partyQuestLocked(e.partyID) != nil {
+			return "", ErrQuestSlotFull
+		}
+
+		q.state = protocol.QuestTaken
 		q.holderParty = e.partyID
 
 		return fmt.Sprintf("%s's party took quest #%d: %s", e.name, q.id, q.name), nil
 	}
 
+	q.state = protocol.QuestTaken
 	q.holderEntity = e.id
 
 	return fmt.Sprintf("%s took quest #%d: %s", e.name, q.id, q.name), nil
 }
 
-// QuestAbandon returns the caller's active quest (personal or their party's)
-// to the board with progress reset.
-func (w *World) QuestAbandon(token string) (string, error) {
+// QuestAbandon returns questID — one of the caller's active quests
+// (personal, or their party's) — to the board with progress reset. Naming
+// the quest explicitly (item 14, playtest batch 2) replaces the old
+// single-implicit-active-quest form, now that a player can hold several
+// personal quests at once and needs to say which one.
+func (w *World) QuestAbandon(token string, questID int64) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -175,8 +186,8 @@ func (w *World) QuestAbandon(token string) (string, error) {
 		return "", ErrPartyNotJoined
 	}
 
-	q := w.activeQuestLocked(e)
-	if q == nil {
+	q := w.questByIDLocked(questID)
+	if q == nil || q.state != protocol.QuestTaken || !w.holdsQuestLocked(e, q) {
 		return "", ErrNoActiveQuest
 	}
 
@@ -185,19 +196,54 @@ func (w *World) QuestAbandon(token string) (string, error) {
 	return fmt.Sprintf("%s abandoned quest #%d: %s", e.name, q.id, q.name), nil
 }
 
-// activeQuestLocked is e's taken quest: personal, or their party's.
-func (w *World) activeQuestLocked(e *entity) *quest {
-	for _, q := range w.quests {
-		if q.state != protocol.QuestTaken {
-			continue
-		}
+// holdsQuestLocked reports whether e currently holds q — personally, or
+// via their party.
+func (w *World) holdsQuestLocked(e *entity, q *quest) bool {
+	return q.holderEntity == e.id || (e.partyID != 0 && q.holderParty == e.partyID)
+}
 
-		if q.holderEntity == e.id || (e.partyID != 0 && q.holderParty == e.partyID) {
+// personalQuestsLocked returns every quest e personally holds (holderEntity
+// == e.id), in board order — item 14, playtest batch 2: now plural, since a
+// player may hold multiple personal quests concurrently. Party quests are
+// looked up separately (partyQuestLocked) — a party still holds at most one.
+func (w *World) personalQuestsLocked(e *entity) []*quest {
+	var out []*quest
+
+	for _, q := range w.quests {
+		if q.state == protocol.QuestTaken && q.holderEntity == e.id {
+			out = append(out, q)
+		}
+	}
+
+	return out
+}
+
+// partyQuestLocked returns partyID's single taken quest, or nil for none or
+// partyID == 0. A party still holds at most one quest at a time — item 14
+// only lifts the PERSONAL slot limit.
+func (w *World) partyQuestLocked(partyID int64) *quest {
+	if partyID == 0 {
+		return nil
+	}
+
+	for _, q := range w.quests {
+		if q.state == protocol.QuestTaken && q.holderParty == partyID {
 			return q
 		}
 	}
 
 	return nil
+}
+
+// activeQuestsLocked returns every quest currently active for e: all of e's
+// personal quests plus their party's quest, if any.
+func (w *World) activeQuestsLocked(e *entity) []*quest {
+	out := w.personalQuestsLocked(e)
+	if pq := w.partyQuestLocked(e.partyID); pq != nil {
+		out = append(out, pq)
+	}
+
+	return out
 }
 
 func (w *World) questByIDLocked(id int64) *quest {
@@ -218,44 +264,33 @@ func (w *World) resetQuestLocked(q *quest) {
 	q.holderParty = 0
 }
 
-// personalQuestLocked returns e's PERSONAL taken quest (holderEntity == e.id),
-// or nil if e holds none. Shared lookup for abandonPersonalQuestLocked and
-// promotePersonalQuestLocked, which differ only in what they do with the
-// match.
-func (w *World) personalQuestLocked(e *entity) *quest {
-	for _, q := range w.quests {
-		if q.state == protocol.QuestTaken && q.holderEntity == e.id {
-			return q
-		}
-	}
-
-	return nil
-}
-
-// abandonPersonalQuestLocked returns e's PERSONAL quest to the board (used
-// when e joins a party — the slot becomes the party's agenda — and by the
-// disconnect sweep). No-op without one. Announces.
+// abandonPersonalQuestLocked returns ALL of e's PERSONAL quests to the board
+// (item 14, playtest batch 2: a player may hold several at once, so a
+// disconnecting player must not leave any of them permanently stuck
+// "taken" by a ghost entity — this is the disconnect sweep's only caller
+// now; joining a party no longer abandons personal quests, see PartyAccept).
+// No-op without any. Announces once per quest.
 func (w *World) abandonPersonalQuestLocked(e *entity) {
-	q := w.personalQuestLocked(e)
-	if q == nil {
-		return
+	for _, q := range w.personalQuestsLocked(e) {
+		w.resetQuestLocked(q)
+		w.announce("system", fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
 	}
-
-	w.resetQuestLocked(q)
-	w.announce("system", fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
 }
 
-// promotePersonalQuestLocked converts e's PERSONAL quest into e's (freshly
-// minted) party's quest, called from PartyAccept's mint-new-party branch: the
-// party forms AROUND whatever quest the inviter had pitched, rather than
-// abandoning it — invariant is that nobody in a party holds a personal
-// quest. Progress carries over unchanged. No-op without one. Announces.
+// promotePersonalQuestLocked converts e's FIRST personal quest (board order)
+// into e's (freshly minted) party's quest, called from PartyAccept's
+// mint-new-party branch: the party forms AROUND whatever quest the inviter
+// had pitched, rather than abandoning it. A party still holds at most one
+// quest (item 14), so only one of e's personal quests — if e holds several —
+// is promoted; any others stay e's own. Progress carries over unchanged.
+// No-op without one. Announces.
 func (w *World) promotePersonalQuestLocked(e *entity) {
-	q := w.personalQuestLocked(e)
-	if q == nil {
+	personal := w.personalQuestsLocked(e)
+	if len(personal) == 0 {
 		return
 	}
 
+	q := personal[0]
 	q.holderEntity = 0
 	q.holderParty = e.partyID
 	w.announce("system", fmt.Sprintf("quest #%d (%s) is now %s's party's quest", q.id, q.name, e.name))
@@ -275,7 +310,9 @@ func (w *World) returnPartyQuestLocked(partyID int64) {
 
 // tickKillQuestsLocked advances every DISTINCT active kill quest held by a
 // surviving player in the bubble — once per quest per turn (a party fight
-// ticks its shared quest once). Completes any that reach their target.
+// ticks its shared quest once; item 14 also means a solo player's several
+// concurrent personal kill quests all tick from the same kill). Completes
+// any that reach their target.
 func (w *World) tickKillQuestsLocked(members []*entity, killed int) {
 	ticked := make(map[int64]bool)
 
@@ -284,23 +321,24 @@ func (w *World) tickKillQuestsLocked(members []*entity, killed int) {
 			continue
 		}
 
-		q := w.activeQuestLocked(e)
-		if q == nil || q.kind != questKindKill || ticked[q.id] {
-			continue
+		for _, q := range w.activeQuestsLocked(e) {
+			if q.kind != questKindKill || ticked[q.id] {
+				continue
+			}
+
+			ticked[q.id] = true
+
+			q.progress = min(q.progress+killed, q.targetN)
+			if q.progress >= q.targetN {
+				w.completeQuestLocked(q)
+
+				continue
+			}
+
+			// Progress feedback where players are actually looking mid-fight: the
+			// chat stream. (Completion has its own announcement.)
+			w.announce("system", fmt.Sprintf("%s: %d down, %d to go", q.name, q.progress, q.targetN-q.progress))
 		}
-
-		ticked[q.id] = true
-
-		q.progress = min(q.progress+killed, q.targetN)
-		if q.progress >= q.targetN {
-			w.completeQuestLocked(q)
-
-			continue
-		}
-
-		// Progress feedback where players are actually looking mid-fight: the
-		// chat stream. (Completion has its own announcement.)
-		w.announce("system", fmt.Sprintf("%s: %d down, %d to go", q.name, q.progress, q.targetN-q.progress))
 	}
 }
 

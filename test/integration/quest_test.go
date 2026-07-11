@@ -149,7 +149,8 @@ func TestQuestTakeAndAbandonOverHTTP(t *testing.T) {
 		t.Errorf("HolderEntityID after take = %d, want %d", got, want)
 	}
 
-	resp = postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: me.Token, Text: "/abandon"})
+	resp = postJSON(t, ts, "/api/chat",
+		protocol.ChatRequest{Token: me.Token, Text: fmt.Sprintf("/abandon %d", q.ID)})
 	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
 		t.Fatalf("/abandon status = %d, want %d", got, want)
 	}
@@ -187,7 +188,8 @@ func TestQuestErrorsOverHTTP(t *testing.T) {
 	}{
 		{"unknown id", "/quest 999"},
 		{"non-numeric id", "/quest abc"},
-		{"abandon with none active", "/abandon"},
+		{"abandon non-numeric id", "/abandon abc"},
+		{"abandon not held", "/abandon 1"},
 	}
 
 	for _, tc := range cases {

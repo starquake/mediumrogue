@@ -142,16 +142,27 @@ export interface GameDebug {
   party: string[];
   /** This client's entity's party id, from the latest bundle. 0 when solo. */
   partyId: number;
-  /** My active quest (taken by me or my party), from the latest bundle. Null when I hold none. */
+  /**
+   * My FIRST active quest (taken by me or my party), from the latest
+   * bundle — null when I hold none. Kept for backward compatibility with
+   * the single-quest model; see myQuests for the full list (item 14,
+   * playtest batch 2: I may hold several personal quests concurrently,
+   * plus my party's, if any).
+   */
   quest: QuestView | null;
+  /** Every quest currently active for me (personal, plural, plus my party's if any), from the latest bundle. */
+  myQuests: QuestView[];
   /** The whole quest board, from the latest bundle. */
   quests: QuestView[];
   /**
-   * My active reach quest's goal hex, or null (no active reach quest — a
-   * kill quest, or none at all). Drives QuestMarkerLayer (item 12); exposed
-   * for e2e since the marker itself is only a canvas draw.
+   * My FIRST active reach quest's goal hex, or null. Kept for backward
+   * compatibility; see questGoalMarkers for every active reach quest's goal
+   * (item 14). Drives QuestMarkerLayer (item 12); exposed for e2e since the
+   * marker itself is only a canvas draw.
    */
   questGoalMarker: Hex | null;
+  /** Every active reach quest's goal hex, keyed by quest id (item 14, playtest batch 2). */
+  questGoalMarkers: { id: number; hex: Hex }[];
   /** This client's entity's owned items (id/defId/equipped), from the latest bundle. Empty until joined. */
   inventory: { id: number; defId: string; equipped: boolean }[];
   /** Every item lying on the ground, from the latest bundle. */
@@ -373,8 +384,10 @@ window.game = {
   party: [],
   partyId: 0,
   quest: null,
+  myQuests: [],
   quests: [],
   questGoalMarker: null,
+  questGoalMarkers: [],
   inventory: [],
   groundItems: [],
   damage: [],
@@ -910,24 +923,28 @@ async function start(): Promise<void> {
       window.game.partyId = myPartyId;
 
       // Quest board: refreshed every turn from the bundle itself (full-snapshot
-      // philosophy — no separate quest-membership stream). My active quest is
-      // whichever "taken" quest is held by me or (if I'm in a party) my party.
+      // philosophy — no separate quest-membership stream). My active quests are
+      // every "taken" quest held by me or (if I'm in a party) my party — item
+      // 14, playtest batch 2: a player may hold SEVERAL personal quests
+      // concurrently now, plus at most one party quest, so this is a list.
       window.game.quests = event.quests;
       setQuests(event.quests, me.entityId, myPartyId);
-      window.game.quest =
-        event.quests.find(
-          (q) =>
-            q.state === "taken" &&
-            (q.holderEntityId === me.entityId || (myPartyId !== 0 && q.holderPartyId === myPartyId)),
-        ) ?? null;
+      window.game.myQuests = event.quests.filter(
+        (q) =>
+          q.state === "taken" &&
+          (q.holderEntityId === me.entityId || (myPartyId !== 0 && q.holderPartyId === myPartyId)),
+      );
+      window.game.quest = window.game.myQuests[0] ?? null; // back-compat: first of myQuests
 
-      // Quest goal marker (item 12): only a "reach" quest has a single hex
-      // to point at — a kill quest gets no marker. Cleared automatically
-      // once the quest above is null (completed/abandoned — it drops out of
-      // the "taken" filter the instant its state changes).
-      window.game.questGoalMarker =
-        window.game.quest !== null && window.game.quest.kind === "reach" ? window.game.quest.goalHex : null;
-      questMarkerLayer.setGoal(window.game.questGoalMarker);
+      // Quest goal markers (item 12, plural since item 14): one gold marker
+      // per active "reach" quest — a kill quest gets no marker. A marker
+      // clears automatically once its quest drops out of myQuests
+      // (completed/abandoned).
+      window.game.questGoalMarkers = window.game.myQuests
+        .filter((q) => q.kind === "reach")
+        .map((q) => ({ id: q.id, hex: q.goalHex }));
+      window.game.questGoalMarker = window.game.questGoalMarkers[0]?.hex ?? null; // back-compat
+      questMarkerLayer.setGoals(window.game.questGoalMarkers);
 
       // Absent from this bundle: either a coalesced/momentary blip (ignore —
       // see MISSING_GRACE_MS) or the disconnect-grace sweep really removed

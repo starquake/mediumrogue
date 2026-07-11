@@ -417,6 +417,19 @@
         padding-bottom: 0.4rem;
         border-bottom: 1px solid var(--dim);
       }
+      /* item 14, playtest batch 2: I may hold several quests at once — each
+         gets its own row, separated by a thin rule (except the last, whose
+         separation is #quest-mine's own border-bottom above). */
+      .quest-mine-row {
+        padding-bottom: 0.25rem;
+        margin-bottom: 0.25rem;
+        border-bottom: 1px solid rgba(90, 122, 92, 0.4);
+      }
+      .quest-mine-row:last-child {
+        padding-bottom: 0;
+        margin-bottom: 0;
+        border-bottom: none;
+      }
       #quest-board-title {
         margin-bottom: 0.25rem;
         color: var(--dim);

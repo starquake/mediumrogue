@@ -68,7 +68,11 @@ func TestQuestBoardIsDeterministicAndWellFormed(t *testing.T) {
 	}
 }
 
-func TestQuestTakeOneSlotAndErrors(t *testing.T) {
+// TestQuestTakeMultiplePersonalQuestsAndErrors: item 14, playtest batch 2 —
+// a player may hold MULTIPLE personal quests concurrently (amending 8.3's
+// one-slot rule), so a second personal take no longer errors. /abandon now
+// names the quest explicitly (ambiguous otherwise, with several active).
+func TestQuestTakeMultiplePersonalQuestsAndErrors(t *testing.T) {
 	t.Parallel()
 
 	w := newPartyWorld(t)
@@ -80,11 +84,11 @@ func TestQuestTakeOneSlotAndErrors(t *testing.T) {
 	}
 
 	if _, err := w.QuestTake(alice.Token, q1); err != nil {
-		t.Fatalf("take: %v", err)
+		t.Fatalf("take q1: %v", err)
 	}
 
-	if _, err := w.QuestTake(alice.Token, q2); !errors.Is(err, game.ErrQuestSlotFull) {
-		t.Errorf("second take: err = %v, want ErrQuestSlotFull", err)
+	if _, err := w.QuestTake(alice.Token, q2); err != nil {
+		t.Fatalf("take q2 (second concurrent personal quest): %v", err)
 	}
 
 	bob := joinNamed(t, w, "bob")
@@ -92,20 +96,123 @@ func TestQuestTakeOneSlotAndErrors(t *testing.T) {
 		t.Errorf("take taken: err = %v, want ErrQuestTaken", err)
 	}
 
-	if _, err := w.QuestAbandon(bob.Token); !errors.Is(err, game.ErrNoActiveQuest) {
-		t.Errorf("abandon none: err = %v, want ErrNoActiveQuest", err)
+	if _, err := w.QuestAbandon(bob.Token, q2); !errors.Is(err, game.ErrNoActiveQuest) {
+		t.Errorf("abandon not-held: err = %v, want ErrNoActiveQuest", err)
 	}
 
-	if _, err := w.QuestAbandon(alice.Token); err != nil {
-		t.Fatalf("abandon: %v", err)
+	if _, err := w.QuestAbandon(alice.Token, q1); err != nil {
+		t.Fatalf("abandon q1: %v", err)
 	}
 
 	if got, want := questByID(t, w, q1).State, protocol.QuestAvailable; got != want {
-		t.Errorf("state after abandon = %q, want %q", got, want)
+		t.Errorf("q1 state after abandon = %q, want %q", got, want)
 	}
 
 	if got, want := questByID(t, w, q1).Progress, 0; got != want {
-		t.Errorf("progress after abandon = %d, want %d (reset)", got, want)
+		t.Errorf("q1 progress after abandon = %d, want %d (reset)", got, want)
+	}
+
+	// q2 is untouched by abandoning q1 — alice still holds it.
+	if got, want := questByID(t, w, q2).State, protocol.QuestTaken; got != want {
+		t.Errorf("q2 state after abandoning q1 = %q, want %q (untouched)", got, want)
+	}
+
+	if got, want := questByID(t, w, q2).HolderEntityID, alice.EntityID; got != want {
+		t.Errorf("q2 holder after abandoning q1 = %d, want alice %d (untouched)", got, want)
+	}
+}
+
+// TestTwoConcurrentPersonalQuestsProgressAndPayIndependently: item 14,
+// playtest batch 2 — alice takes a kill quest AND a reach quest at once.
+// Killing one monster progresses the kill quest without touching the reach
+// quest; reaching the goal completes and pays the reach quest without
+// touching the kill quest's progress; finishing the kill quest FIRST
+// (chosen so the test never needs to return to a monster after alice
+// leaves the bubble — the monster's own hunting AI would otherwise wander
+// it away from its spawn hex, a real race the other ordering hit) pays its
+// own reward, then completing the reach quest afterward pays its own
+// reward too, on top of (not instead of) the kill reward already paid.
+func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+	startHex := alice.Hex
+
+	killID, targetN := killQuest(t, w, 2)
+	reachID, goal := reachQuest(t, w)
+
+	if _, err := w.QuestTake(alice.Token, killID); err != nil {
+		t.Fatalf("take kill quest: %v", err)
+	}
+
+	if _, err := w.QuestTake(alice.Token, reachID); err != nil {
+		t.Fatalf("take reach quest (second concurrent personal quest): %v", err)
+	}
+
+	hexes := walkableNeighborsN(t, w, startHex, targetN)
+	for _, h := range hexes {
+		monsterID := w.PlaceMonsterForTest(h)
+		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
+	}
+
+	step(t, w) // forming turn: the monsters chase into the bubble
+
+	// Progress the kill quest by one kill; the reach quest must be untouched.
+	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	step(t, w)
+
+	if got, want := questByID(t, w, killID).Progress, 1; got != want {
+		t.Fatalf("kill quest progress = %d, want %d", got, want)
+	}
+
+	if got, want := questByID(t, w, reachID).State, protocol.QuestTaken; got != want {
+		t.Fatalf("reach quest state after an unrelated kill = %q, want %q (untouched)", got, want)
+	}
+
+	if got, want := questByID(t, w, reachID).Progress, 0; got != want {
+		t.Fatalf("reach quest progress after an unrelated kill = %d, want %d (untouched)", got, want)
+	}
+
+	// Finish the kill quest with the second monster (still waiting, alice
+	// never left the bubble) — completes and pays it. The reach quest must
+	// still be untouched.
+	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[1]})
+	step(t, w)
+
+	if got, want := questByID(t, w, killID).State, protocol.QuestCompleted; got != want {
+		t.Fatalf("kill quest state after final kill = %q, want %q", got, want)
+	}
+
+	if got, want := questByID(t, w, reachID).State, protocol.QuestTaken; got != want {
+		t.Errorf("reach quest state after kill quest completes = %q, want %q (untouched)", got, want)
+	}
+
+	if got, want := questByID(t, w, reachID).Progress, 0; got != want {
+		t.Errorf("reach quest progress after kill quest completes = %d, want %d (untouched)", got, want)
+	}
+
+	xpAfterKill := w.XPForTest(alice.EntityID)
+
+	// Now complete the reach quest too, by teleporting to its goal — its own
+	// completion pays its own reward, on top of (not instead of) the kill
+	// reward already paid above. Clear the leftover queued path first: a
+	// bump-turned-attack never consumes it (the mover stays put), and
+	// moveAndBumpLocked doesn't re-validate a queued path's adjacency
+	// against SetHexForTest's raw teleport — an unconsumed path would
+	// otherwise silently walk her back toward hexes[1] on the next
+	// resolution instead of landing on goal.
+	w.SetPathForTest(alice.EntityID, nil)
+	w.SetHexForTest(alice.EntityID, goal)
+	step(t, w)
+
+	if got, want := questByID(t, w, reachID).State, protocol.QuestCompleted; got != want {
+		t.Fatalf("reach quest state after reaching goal = %q, want %q", got, want)
+	}
+
+	if got := w.XPForTest(alice.EntityID); got <= xpAfterKill {
+		t.Errorf("XP after finishing the reach quest = %d, want it to have grown past %d "+
+			"(its own reward, paid independently of the kill reward already paid)", got, xpAfterKill)
 	}
 }
 
@@ -137,7 +244,13 @@ func TestQuestTakeCompletedReturnsDistinctError(t *testing.T) {
 	}
 }
 
-func TestPartyTakeAndJoinAbandonsPersonalQuest(t *testing.T) {
+// TestPartyJoinKeepsPersonalQuest: item 14, playtest batch 2 — joining a
+// party no longer abandons the accepter's personal quest (amends 8.3's
+// join-abandons-it rule). Bob keeps progressing q1 on his own, entirely
+// independent of whatever quest the party itself takes; the PARTY's own
+// slot still caps at one, though — a member's take fails once the party
+// already holds a quest, exactly as before.
+func TestPartyJoinKeepsPersonalQuest(t *testing.T) {
 	t.Parallel()
 
 	w := newPartyWorld(t)
@@ -145,18 +258,23 @@ func TestPartyTakeAndJoinAbandonsPersonalQuest(t *testing.T) {
 	bob := joinNamed(t, w, "bob")
 	q1, q2 := firstAvailableQuests(t, w, 2)
 
-	// bob takes a personal quest, then joins alice's party -> auto-abandoned.
+	// bob takes a personal quest, then joins alice's party.
 	if _, err := w.QuestTake(bob.Token, q1); err != nil {
 		t.Fatalf("bob take: %v", err)
 	}
 
 	mustInviteAccept(t, w, alice, bob, "bob")
 
-	if got, want := questByID(t, w, q1).State, protocol.QuestAvailable; got != want {
-		t.Errorf("bob's quest after joining a party = %q, want %q (auto-abandoned)", got, want)
+	if got, want := questByID(t, w, q1).State, protocol.QuestTaken; got != want {
+		t.Errorf("bob's quest after joining a party = %q, want %q (kept, not abandoned)", got, want)
 	}
 
-	// a member takes for the party -> HolderPartyID set.
+	if got, want := questByID(t, w, q1).HolderEntityID, bob.EntityID; got != want {
+		t.Errorf("bob's quest holder after joining a party = %d, want bob %d (still personal)", got, want)
+	}
+
+	// a member takes for the party -> HolderPartyID set, distinct from bob's
+	// still-personal q1.
 	if _, err := w.QuestTake(alice.Token, q2); err != nil {
 		t.Fatalf("party take: %v", err)
 	}
@@ -166,7 +284,8 @@ func TestPartyTakeAndJoinAbandonsPersonalQuest(t *testing.T) {
 		t.Errorf("party quest holder = entity %d party %d, want party-only", qv.HolderEntityID, qv.HolderPartyID)
 	}
 
-	// the OTHER member's slot is full too (shared).
+	// The party's OWN slot is still capped at one — either member's take now
+	// fails, even though bob personally could otherwise hold more.
 	q3 := nthAvailableQuest(t, w, 0)
 	if _, err := w.QuestTake(bob.Token, q3); !errors.Is(err, game.ErrQuestSlotFull) {
 		t.Errorf("member take with party quest: err = %v, want ErrQuestSlotFull", err)
@@ -523,10 +642,14 @@ func TestReachQuestCompletes(t *testing.T) {
 	}
 }
 
-// TestSweepReturnsPersonalQuest: a personal-quest holder swept for disconnect
-// past the grace returns their quest to the board (via
-// abandonPersonalQuestLocked in the sweep's gone-loop).
-func TestSweepReturnsPersonalQuest(t *testing.T) {
+// TestSweepReturnsAllPersonalQuests: a personal-quest holder swept for
+// disconnect past the grace returns ALL of their quests to the board (via
+// abandonPersonalQuestLocked in the sweep's gone-loop) — item 14, playtest
+// batch 2: since a player can hold several concurrently, the old
+// single-quest version of this test would have missed a regression that
+// only returned the first one, permanently stranding the rest as "taken" by
+// a ghost entity.
+func TestSweepReturnsAllPersonalQuests(t *testing.T) {
 	t.Parallel()
 
 	w, clk := newTimedWorld(t)
@@ -535,9 +658,13 @@ func TestSweepReturnsPersonalQuest(t *testing.T) {
 	alice := joinNamed(t, w, "alice")
 	w.StreamOpened(alice.Token)
 
-	q, _ := firstAvailableQuests(t, w, 2)
-	if _, err := w.QuestTake(alice.Token, q); err != nil {
-		t.Fatalf("take: %v", err)
+	q1, q2 := firstAvailableQuests(t, w, 2)
+	if _, err := w.QuestTake(alice.Token, q1); err != nil {
+		t.Fatalf("take q1: %v", err)
+	}
+
+	if _, err := w.QuestTake(alice.Token, q2); err != nil {
+		t.Fatalf("take q2 (second concurrent personal quest): %v", err)
 	}
 
 	w.StreamClosed(alice.Token)
@@ -547,8 +674,12 @@ func TestSweepReturnsPersonalQuest(t *testing.T) {
 		t.Fatalf("SweepForTest removed = %v, want %v", got, want)
 	}
 
-	if got, want := questByID(t, w, q).State, protocol.QuestAvailable; got != want {
-		t.Errorf("quest after sweeping its holder = %q, want %q", got, want)
+	if got, want := questByID(t, w, q1).State, protocol.QuestAvailable; got != want {
+		t.Errorf("q1 after sweeping its holder = %q, want %q", got, want)
+	}
+
+	if got, want := questByID(t, w, q2).State, protocol.QuestAvailable; got != want {
+		t.Errorf("q2 after sweeping its holder = %q, want %q (both must return, not just one)", got, want)
 	}
 }
 
@@ -626,6 +757,8 @@ func questByID(t *testing.T, w *game.World, id int64) protocol.QuestView {
 // killQuest returns the id and targetN of the first "kill" quest whose
 // TargetN equals want, or — if none matches — the first kill quest found at
 // all (so a caller can fall back to spawning exactly its targetN monsters).
+//
+//nolint:unparam // want is always 2 today; kept for the self-documenting call shape.
 func killQuest(t *testing.T, w *game.World, want int) (int64, int) {
 	t.Helper()
 

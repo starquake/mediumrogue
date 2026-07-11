@@ -75,6 +75,25 @@ test("quests: take a reach quest, walk to its goal, and it completes with a visi
   // reach quest's goal hex.
   await expect.poll(() => page.evaluate(() => window.game.questGoalMarker)).toEqual(target.goalHex);
 
+  // 3.6. Item 14, playtest batch 2: taking a SECOND quest no longer errors
+  // (the old one-slot rule is gone) — the panel shows both as distinct
+  // rows, and window.game.myQuests carries both. Abandon it again right
+  // away so the rest of this test's single-quest completion flow below is
+  // unaffected.
+  const second = (await page.evaluate(() => window.game.quests)).find(
+    (q: QuestView) => q.state === "available" && q.id !== target.id,
+  );
+  expect(second, "expected a second available quest distinct from target").toBeDefined();
+
+  await page.evaluate((id) => window.game.sendChat("/quest " + id), second!.id);
+  await expect.poll(() => page.evaluate(() => window.game.myQuests.length)).toBe(2);
+  await expect(page.locator("#quest-mine .quest-mine-row")).toHaveCount(2);
+  await expect(page.locator("#quest-mine")).toContainText(second!.name);
+
+  await page.evaluate((id) => window.game.sendChat("/abandon " + id), second!.id);
+  await expect.poll(() => page.evaluate(() => window.game.myQuests.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.game.quest?.id ?? null)).toBe(target.id);
+
   // 4. Walk to the goal hex — server-authoritative BFS path queue, one hex
   // per turn, same click-to-move path as walk.spec.ts. Generous timeout: the
   // goal can be many turns away even at the fast ms test cadence.

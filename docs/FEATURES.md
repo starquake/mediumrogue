@@ -178,14 +178,22 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   never spawn on/within 6 hexes of each other, with fallbacks for tiny maps.
 
 ### Quests, parties, chat
-- **Seeded 6-quest board** (3 kill, 3 reach), `/quest <id>` / `/abandon`,
-  one slot per player/party; joining a party abandons a personal quest;
-  dissolution returns the quest to the board. Kill quests tick via bubble
-  presence; countdown feedback in panel and chat.
+- **Seeded 6-quest board** (3 kill, 3 reach), `/quest <id>` / `/abandon <id>`.
+  **Multiple personal quests** (item 14, playtest batch 2 — amends 8.3's
+  one-slot rule): a player may hold **several personal quests
+  concurrently**, progressing and paying out independently; **a party still
+  holds at most one quest at a time**. **Joining a party no longer abandons
+  personal quests** (also amends 8.3) — they keep progressing alongside
+  whatever the party itself takes. `/abandon` now names the quest
+  explicitly (`<id>`), since "the" active quest is no longer unambiguous.
+  Dissolution still returns the PARTY's quest to the board. Kill quests tick
+  via bubble presence, once per distinct quest (a solo player's several
+  concurrent kill quests all tick from the same kill); countdown feedback in
+  panel and chat.
 - **Quest goal marker** (item 12, playtest batch 2): a pulsing gold diamond
-  on MY active "reach" quest's goal hex — above the ground-loot layer,
-  below entities. Kill quests get no marker (no single hex to point at);
-  clears when the quest completes or is abandoned.
+  on EACH of my active "reach" quests' goal hexes — above the ground-loot
+  layer, below entities. Kill quests get no marker (no single hex to point
+  at); a marker clears when its quest completes or is abandoned.
 - **Parties** via chat commands (`/invite <name>`, `/accept`, `/leave`):
   ≥2 members, dissolve below that, survive death, swept on disconnect.
   Partymates colored on-map; roster panel.

@@ -72,8 +72,10 @@ func (w *World) PartyAccept(token string) (string, error) {
 		return "", ErrAlreadyInParty
 	}
 
+	// Joining a party no longer abandons the accepter's personal quest(s)
+	// (item 14, playtest batch 2, amending 8.3's join-abandons rule): they
+	// keep progressing independently of the party's own quest, if any.
 	w.leavePartyLocked(accepter)
-	w.abandonPersonalQuestLocked(accepter)
 
 	if inviter.partyID == 0 {
 		w.nextPartyID++
