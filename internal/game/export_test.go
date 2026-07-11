@@ -341,6 +341,19 @@ func (w *World) SweepForTest(now time.Time) bool {
 	return w.sweepDisconnectedLocked(now)
 }
 
+// ArchivedForTest reports whether World.archive currently holds a character
+// record for token, so a test can assert the sweep→archive→restore lifecycle
+// (archived after sweep, consumed after a restoring Join) without re-deriving
+// it indirectly from Join's side effects alone.
+func (w *World) ArchivedForTest(token string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	_, ok := w.archive[token]
+
+	return ok
+}
+
 // StreamsForTest returns the live stream count for the entity with token, or -1
 // if no entity has that token, so a presence test can assert the bookkeeping and
 // distinguish "zero streams" from "swept away".
