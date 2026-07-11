@@ -31,6 +31,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   (server BFS pathfinding, one hex per turn, re-validated each turn) or
   **QWE/ASD** keys for single steps. Up to **5 friendly entities stack** per
   hex (a full party moves as one blob; count badge rendered).
+- **Movement keys are ignored while typing** (item 10, playtest batch 2, bug
+  fix): a focused input/textarea/contenteditable (chat, in particular — w/a/
+  s/d are ordinary letters too) or the start screen being visible suppresses
+  the QWE/ASD handler.
 - **Player name labels** (item 8, playtest batch 2): a small always-on name
   tag above every PLAYER dot (not monsters — they get hover info instead,
   item 13), styled like the count badge and moving with the dot's tween.

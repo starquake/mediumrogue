@@ -112,6 +112,16 @@ test("chat: cross-client delivery, /here, readable command errors, and map click
   // B never sees A's local-only system line (it's client-side, not broadcast).
   expect(await b.evaluate(() => window.game.chat.some((m) => m.sender === "system"))).toBe(false);
 
+  // 4.5. Typing must not move the character (item 10, playtest batch 2 — a
+  // real bug report): w/a/s/d are movement keys AND ordinary letters. Typing
+  // "wasd" into the focused chat input must leave A's hex untouched.
+  const hexBeforeTyping = await a.evaluate(() => window.game.me!.hex);
+  await a.locator("#chat-input").click();
+  await a.locator("#chat-input").pressSequentially("wasd");
+  await expect(a.locator("#chat-input")).toHaveValue("wasd");
+  expect(await a.evaluate(() => window.game.me!.hex)).toEqual(hexBeforeTyping);
+  await a.locator("#chat-input").fill(""); // don't pollute the map-click step below
+
   // 5. Pointer-events guard: with the chat panel mounted, a "map click"
   // (tapHex — the same clickTarget code path a real canvas pointerdown uses,
   // see walk.spec.ts) still moves A. This proves #chat-root's click-through

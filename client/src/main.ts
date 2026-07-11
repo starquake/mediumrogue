@@ -973,6 +973,8 @@ async function start(): Promise<void> {
   });
 
   // Keyboard: a step is a one-hex destination — same code path as a click.
+  // isBlocked additionally guards the start screen (item 10): a not-yet-real
+  // character must never move while its class/species is still being chosen.
   bindMovementKeys({
     onStep: (dir): void => {
       const from = window.game.me?.hex;
@@ -981,6 +983,7 @@ async function start(): Promise<void> {
       }
       walkTo(neighbor(from, dir));
     },
+    isBlocked: (): boolean => !startScreenEl.hidden,
   });
 
   // Click-to-move (or, in combat with a ranged class, click-to-attack): canvas
