@@ -12,7 +12,7 @@ import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
 import { fetchMap } from "./net/map";
-import { join, loadIdentity, submitEquip, submitIntent } from "./net/session";
+import { importIdentityFromFragment, join, loadIdentity, submitEquip, submitIntent } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
 import type { GroundItemView, Hex, ItemView, QuestView, TurnEvent } from "./protocol.gen";
@@ -41,6 +41,11 @@ import { GroundItemLayer } from "./render/items";
 import { MoveRangeLayer } from "./render/range";
 import { buildMapLayer } from "./render/map";
 import { TurnTimer } from "./ui/timer";
+
+// Strip a `#t=<token>` character-link fragment and adopt its identity before
+// anything else in this module runs — see importIdentityFromFragment's doc
+// comment (net/session.ts) for why this must happen this early.
+importIdentityFromFragment();
 
 // window.game is the debug/testing surface: Playwright (and a curious human in
 // devtools) reads live state through it. Testability is a design rule — every
@@ -101,6 +106,17 @@ export interface GameDebug {
   tapHex: (q: number, r: number) => Promise<void>;
   /** This client's chosen display name (chat sender label). "" until joined. */
   name: string;
+  /**
+   * The copyable character link for this client's identity —
+   * `<origin>/#t=<token>` — or "" until joined. Opening this URL on any
+   * browser/device imports the token (net/session.ts's
+   * importIdentityFromFragment) and rejoins the SAME character. Exposed for
+   * e2e (client/e2e/identity.spec.ts): a test reads this directly rather
+   * than driving the copy-to-clipboard button, since clipboard permissions
+   * are extra ceremony a headless browser doesn't need for the round trip
+   * that actually matters — the link string itself, and the join it drives.
+   */
+  identityLink: string;
   /** The global chat log, mirrored live from the chat store's signal. */
   chat: { seq: number; sender: string; text: string }[];
   /** Send a chat line as if typed into the panel (drives e2e). */
@@ -158,6 +174,7 @@ function mustGet(id: string): HTMLElement {
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
 const statsEl = mustGet("stats");
+const copyLinkEl = mustGet("copy-link") as HTMLButtonElement;
 const turnTimerEl = mustGet("turn-timer");
 const combatPanelEl = mustGet("combat-panel");
 const combatWaitingEl = mustGet("combat-waiting");
@@ -301,6 +318,7 @@ window.game = {
   bubble: null,
   tapHex: (): Promise<void> => Promise.resolve(),
   name: "",
+  identityLink: "",
   get chat(): { seq: number; sender: string; text: string }[] {
     return chatMessages();
   },
@@ -508,6 +526,31 @@ async function start(): Promise<void> {
   const identity = { entityId: me.entityId, token: me.token };
   setChatToken(identity.token);
 
+  // Character link: reveal the copy button now that there is an identity to
+  // link (hidden until joined — see index.html), and keep it in sync across
+  // a re-join (attemptRejoin below), which mints a new token.
+  const COPY_LABEL = "copy character link";
+  const COPIED_LABEL = "copied!";
+  let copiedFlashTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const setIdentityLink = (token: string): void => {
+    window.game.identityLink = `${window.location.origin}/#t=${token}`;
+  };
+  setIdentityLink(identity.token);
+  copyLinkEl.hidden = false;
+  copyLinkEl.textContent = COPY_LABEL;
+  copyLinkEl.addEventListener("click", () => {
+    void navigator.clipboard.writeText(window.game.identityLink).then(() => {
+      copyLinkEl.textContent = COPIED_LABEL;
+      copyLinkEl.classList.add("copied");
+      clearTimeout(copiedFlashTimer);
+      copiedFlashTimer = setTimeout(() => {
+        copyLinkEl.textContent = COPY_LABEL;
+        copyLinkEl.classList.remove("copied");
+      }, 1500);
+    });
+  });
+
   // equipItem POSTs an equip intent for an owned item (the panel's own
   // "equip" button). Outside a bubble it applies immediately (still just a
   // 202 ack here — the swap shows up on the next turn bundle); inside one
@@ -551,6 +594,7 @@ async function start(): Promise<void> {
       window.game.destination = null;
       feedbackLayer.setDestination(null);
       setChatToken(identity.token);
+      setIdentityLink(identity.token);
       // The token just changed — the stream must reconnect under the new one
       // (a stream opened under the stale token no longer maps to any entity).
       eventsController.reconnect();

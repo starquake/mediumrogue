@@ -1,33 +1,32 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-11, after milestone 6c (monster kinds & difficulty
-rings) landed on top of the playtest-ready batch (#45) and the FEATURES.md
-reference doc (#46). **6c, this session:** the single anonymous monster is
-now a **registry of 5 kinds** (rat/wolf/ghoul/troll/dragon —
-`internal/game/content.go`'s `monsterDefs`, exactly like items), each with
-its own HP/damage/XP/aggro radius/loot table; **loot authority moved fully
-monster-side** (item `dropWeight` and the global drop table/chance
-retired — every monster kind owns its own weighted table and drop chance);
-**difficulty rings** (`RingCount=3`, banded by hex distance from the
-origin, weighted-by-area spawn distribution) with a monster-free
-**sanctuary** zone (`SanctuaryRadius=5`) and a per-world dragon cap
-(`DragonCount=1`); the **`targetKind`** pipeline condition and its proof,
-the **Wyrmslayer Greatsword** (fighter, ×1.5 vs dragons) — the first
-designer gear card that needed monster kinds to exist; per-kind client
-looks (dot color + glyph) and kind-naming kill announces. wolf carries the
-pre-6c flat numbers forward unchanged, so existing balance holds. See spec:
-`docs/superpowers/specs/2026-07-10-m6c-monster-kinds-rings-design.md`.
-**Landed before that** (PRs #38–#46): combat-feel batch, the first
-designer gear batch (Ancient Dwarven Mattock, Staff of the War Mage),
-four plan-doc decision batches (toolbox progression, gear survives death,
-scaling, recovery layers, skills-as-reward + downed/revive direction), the
-playtest-ready batch (passive regen, monster aggro range, spawn guards +
-random spawns, respawn camera cut), and `docs/FEATURES.md` (the
-what-is-real reference — keep it in sync alongside this file per
-CLAUDE.md's same-PR convention). **Requested next:** a character-creation
-start screen is **done** (landed pre-6c, `#44`); plan §8's **10 polish &
-launch** is next: identity + persistence across restarts are the real
-launch gates (§7 JSON snapshot). Backlog: issue #36, monster-kind passives
+*Last updated: 2026-07-11, after milestone 10a (persistence & identity)
+landed on top of milestone 6c (monster kinds & difficulty rings).
+**10a, this session — the launch gates:** the disconnect sweep now
+**archives** a player's identity/XP/gear (`World.archive`, keyed by token)
+instead of deleting it; `Join` tries live token → **archived token
+restores** (fresh spawn hex, full level-scaled HP, gear/XP intact) → unknown
+token → new character. A versioned JSON **world snapshot**
+(`World.MarshalState`/`RestoreState`, `internal/game/snapshot.go`, disk
+shape fully decoupled from the wire) persists every entity (players AND
+monsters), ground items, the quest board, and the archive, behind
+`SNAPSHOT_PATH` (default `""` = disabled, so every existing test and a
+casual `go run` stay hermetic) with a periodic saver
+(`SNAPSHOT_INTERVAL`, default 60s) and a final write on graceful shutdown —
+all wired in `cmd/rogue/app`. A version/seed/radius mismatch logs and starts
+fresh, never a migration. Identity is now a copyable **character link**
+(`<origin>/#t=<token>`, a HUD "copy character link" button once joined;
+`net/session.ts`'s `importIdentityFromFragment` imports and strips the
+fragment before anything else runs), settling plan §9's identity question.
+See spec: `docs/superpowers/specs/2026-07-11-m10a-persistence-identity-design.md`.
+**Landed before that:** milestone 6c (monster kinds & difficulty rings —
+registry of 5 kinds, per-kind loot/aggro, difficulty rings, the Wyrmslayer
+Greatsword), the combat-feel batch, the first designer gear batch, four
+plan-doc decision batches, the playtest-ready batch, and `docs/FEATURES.md`
+(the what-is-real reference — keep it in sync alongside this file per
+CLAUDE.md's same-PR convention). **Requested next:** deployment itself
+(VPS/Caddy) is ops, not a milestone slice, and remains open; bed/home
+spawns stay future (plan §9). Backlog: issue #36, monster-kind passives
 (the `rules` seam on `monsterDef` ships empty), ring UI indicators.
 Milestone 9 (CRT shader) remains dropped. Update this file at the end of
 every working session (milestone landed, decisions made, next step).*
@@ -421,6 +420,92 @@ the #36 backlog rather than blocking this slice.
   boss mechanics beyond stats, per-kind movement speeds, the sanctuary hub
   itself (only its monster-free zone).
 
+## Milestone 10a — persistence & identity
+
+- **10a — DONE** (this PR): the two launch gates from plan §8's "10. Polish
+  & launch" — characters survive absence, the world survives restarts — plus
+  identity as a copyable link, settling plan §9's identity question.
+  **Character archive** (`internal/game/world.go`): a new
+  `characterRecord{name, class, species, xp, items, closeSlot, rangedSlot}`
+  and `World.archive map[string]characterRecord`. `sweepDisconnectedLocked`
+  captures a swept player's record before deleting the entity, instead of
+  discarding it (the old behavior — see the now-corrected "Disconnect
+  cleanup" bullet below). `Join`'s order is now live token → reclaim
+  (unchanged) → **archived token → restore** (new entity from the record, a
+  fresh guarded spawn hex, `hp = maxHPFor(class, levelFor(xp))`, archive
+  entry consumed) → unknown token → new character (unchanged). Party
+  membership and personal quests are deliberately **not** archived — they
+  dissolve/return to the board on sweep exactly as before (session-scoped
+  social state, not progression).
+  **World snapshot** (`internal/game/snapshot.go`, new): `snapshotVersion`
+  gates the on-disk shape; `World.MarshalState()`/`RestoreState(data)`
+  round-trip the persisted field set — every entity (players AND monsters —
+  a restart must not respawn a healed, repositioned monster population),
+  ground items, the quest board, the archive, and the turn/nextID/
+  nextBubbleID/nextPartyID counters. Every JSON tag lives on a DTO in
+  `snapshot.go`, never on the unexported `entity`/`quest`/`characterRecord`
+  structs — disk and wire stay fully decoupled. A version/worldSeed/
+  worldRadius mismatch returns an error; the caller logs and keeps the fresh
+  world already under construction (no migrations pre-launch). Transient
+  fields (path, attackTarget, pendingEquip, bubbleID, streams) are left at
+  their zero value on every restored entity; a restored player's
+  `disconnectedAt` is stamped to the **load time**, not its pre-shutdown
+  value — pinned by `TestSnapshotRestoredPlayerGraceStartsAtLoad`, the
+  spec's called-out risk (the grace must restart at load, or every restore
+  sweeps instantly).
+  **App wiring** (`cmd/rogue/app`): `Config` gains `SnapshotPath`
+  (`SNAPSHOT_PATH`, default `""` = disabled) and `SnapshotInterval`
+  (`SNAPSHOT_INTERVAL`, default 60s, must be positive). `loadSnapshot` runs
+  before `world.Run` starts the control loop and skips the fresh-world
+  `SpawnMonsters` call when a restore actually happened; `runSnapshotSaver`
+  ticks on the interval; one final `saveSnapshot` runs after the HTTP drain
+  on graceful shutdown. Writes are atomic (temp file + `os.Rename` in the
+  same directory); any save/load failure logs and continues — never crashes
+  the game loop.
+  **Client** (`net/session.ts`, `main.ts`, `index.html`): a "copy character
+  link" HUD button (hidden until joined) writes `<origin>/#t=<token>` to the
+  clipboard with a "copied!" flash (`window.game.identityLink`). On load,
+  `importIdentityFromFragment` — called as the very first statement in
+  `main.ts`, before any other client logic — imports a `#t=<token>`
+  fragment's identity to localStorage and strips it via
+  `history.replaceState`: the token is never sent to the server (a URL hash
+  never rides an HTTP request) and never lands in chat. An imported token is
+  always treated as a returning player, so the start screen never shows for
+  it.
+  Covered by unit tests (`archive_test.go`: sweep→archive→restore round-trip,
+  unknown-token unaffected, party/quest not archived; `snapshot_test.go`:
+  full round-trip, transients zeroed, the load-time-grace risk, turn
+  monotonicity, version/seed/radius/garbage-data mismatch gates;
+  `config_test.go`, `app_test.go`: defaults, overrides, atomic
+  save/load, the periodic saver ticking and stopping), an HTTP integration
+  test (`test/integration/persistence_test.go`:
+  `TestWorldSurvivesRestartCharacterSurvivesSweep` — two independent server
+  instances sharing one snapshot file, a token rejoin over HTTP restoring
+  XP/gear/name/class via the live-reclaim path, monsters/ground items/quest
+  board matching, stable across 20+ repetitions), and
+  `client/e2e/identity.spec.ts` (a second, genuinely blank browser context
+  opening the copied link ends up as the same character, start screen
+  skipped, fragment stripped; the copy button's visibility/label/flash
+  cycle).
+  **Deviations from the plan/design** (noted inline in their commits): (1)
+  `entity.partyID` and a new `World.nextPartyID` counter are persisted
+  (kept, not zeroed) even though the design's top-level field-list prose
+  didn't itemize `nextPartyID` separately from `nextID`/`nextBubbleID` — persisting
+  `partyID` without a collision-safe counter to go with it would have been a
+  worse bug than the omission; (2) the app-level saver/loader tests
+  (`cmd/rogue/app/export_test.go` + `app_test.go`) are new — the plan's
+  "if the package has the pattern" caveat didn't apply (no prior app-level
+  tests existed), so the `internal/game`-style export-wrapper pattern was
+  introduced for this package too, to satisfy the `testpackage` linter while
+  still reaching the unexported `loadSnapshot`/`saveSnapshot`/
+  `runSnapshotSaver`.
+  **Deferred**: bed/home spawns (plan §9 — restored/respawned characters
+  still use the existing guarded random spawn, not a bed), SQLite-for-state
+  (the decided later upgrade), snapshot migrations, multi-world, admin
+  endpoints for state, encrypting the snapshot (the VPS disk is the trust
+  boundary), rate-limiting join. Deployment itself (VPS/Caddy) is ops, not
+  this slice, and remains open.
+
 ## Known placeholders / debt (all deliberate)
 
 - **No gear/inventory yet**: classes (6b.2) use **class-default equipped weapons**
@@ -472,16 +557,20 @@ the #36 backlog rather than blocking this slice.
   combat/flee mechanics (milestone 6).
 - **No same-origin/CSRF guard on POSTs**: acceptable while auth is
   bearer-token-in-body (no ambient credentials). Revisit with real identity.
-- **Disconnect cleanup (issue #21, DONE)**: a player's entity is **removed after
-  its event stream has been gone for `DISCONNECT_GRACE`** (env, default 20s). The
+- **Disconnect cleanup (issue #21, DONE; superseded by milestone 10a's
+  archive)**: a player's entity is **removed from the live world after its
+  event stream has been gone for `DISCONNECT_GRACE`** (env, default 20s). The
   SSE stream is identified by `/api/events?token=<token>`; the world tracks a per-
   player live stream count and sweeps players with no stream past the grace (in
   the `pollTick` control loop). A reconnect (stream reopens with the same token)
   within the grace **keeps** the character; the client also re-joins if its entity
-  was swept during a long absence. This **decides §9's offline-character policy**:
-  offline characters are removed from the live world after a grace (their *data*
-  isn't persisted yet — see the deferred `character-persistence-reconnect` and
-  `bed-home-spawn` notes: a reconnect currently mints a NEW character).
+  was swept during a long absence. **Update (10a): the sweep no longer deletes
+  the character — it archives identity/XP/gear (`World.archive`), and a
+  rejoin with the same token restores it** (fresh spawn hex, full HP,
+  progression intact), settling §9's offline-character policy for real:
+  pop-in/pop-out play is no longer destructive. Party membership and any
+  personal quest still do NOT survive a sweep (session-scoped social state).
+  See the milestone 10a section above.
 - **E2e per-spec servers (now redundant, kept for safety)**: `playwright.config.ts`
   still gives **every spec its own single-consumer server** (a project + webServer
   per spec file, DRY over a `specs` list; `MONSTER_COUNT` only where needed) — the

@@ -1,7 +1,7 @@
 # Medium Rogue — implemented features reference
 
 *Everything that actually exists in the game as of 2026-07-11 (main through
-milestone 6c — monster kinds & difficulty rings).
+milestone 10a — persistence & identity).
 Design rationale lives in `roguelike-mp-plan.md`; current-session state in
 `STATUS.md`; the content-design vocabulary in `rule-based-content-design.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*
@@ -148,15 +148,61 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Character-creation start screen** (new players only): name, class card,
   species card, Enter — keyboard operable. Identity (token) persists in
   localStorage; **returning players skip the screen** and reclaim their
-  character. Disconnected players despawn after a 20 s grace (a reconnect
-  within it keeps the entity); a swept player rejoins as fresh. ⚠️ No
-  server-side persistence yet: a server restart wipes the world (launch gate).
+  character.
+- **Character link** (milestone 10a — settles plan §9's identity question as
+  "name + secret link"): `<origin>/#t=<token>`. A **"copy character link"**
+  button appears in the HUD once joined; clicking it writes the link to the
+  clipboard with a "copied!" flash. Opening the link on any browser/device
+  imports the token (`net/session.ts`'s `importIdentityFromFragment`, called
+  before anything else in the client runs), rejoins the **same character**,
+  and skips the start screen — an imported token is always a "returning
+  player." The fragment is stripped from the address bar via
+  `history.replaceState` immediately: a URL hash is never sent in an HTTP
+  request, so the token never reaches the server via the link itself, and
+  nothing echoes it into chat. **Trust note**: the token is a
+  shoulder-surfable bearer secret, like the stored one already was —
+  acceptable for the 15-friend trust model (the VPS is the trust boundary).
+- **Disconnect archive** (milestone 10a): a player absent past the
+  `DISCONNECT_GRACE` (default 20s) is **archived** — identity, XP, and gear
+  saved — instead of deleted; rejoining with the same token **restores** the
+  character at a fresh guarded spawn hex with full (level-scaled) HP,
+  progression intact. Party membership and any personal quest do **not**
+  survive a sweep — they dissolve / return to the board, exactly as before
+  (session-scoped social state, not progression).
 
 ### World
 - **Procedural generation**: seeded value-noise biomes (elevation+moisture →
   grass/forest/water), rock rim, forced origin clearing, spawns restricted
   to the origin-connected walkable region. Fixed default seed → identical
   world every restart. Camera follows the player.
+
+### World persistence (milestone 10a, default OFF)
+- **Periodic + shutdown JSON snapshot** behind `SNAPSHOT_PATH` (default `""`
+  = disabled — every test and a casual `go run` stay hermetic; a deployment
+  opts in). When enabled: the snapshot loads at startup, before the control
+  loop starts; a background saver writes it every `SNAPSHOT_INTERVAL`
+  (default 60s); a final write happens after the HTTP drain on graceful
+  shutdown (SIGINT/SIGTERM). Writes are atomic (temp file +
+  `os.Rename` in the same directory) — a crash mid-write never leaves a
+  corrupt snapshot on disk.
+- **What persists**: every entity — players **and** monsters (a restart must
+  not respawn a healed, repositioned monster population mid-expedition) —
+  ground items, the quest board, the disconnect archive, and the turn/id
+  counters (so SSE ids and entity/item instance ids stay monotonic and
+  collision-free across a restart). The map itself is **never** persisted —
+  it regenerates deterministically from `WORLD_SEED`/`WORLD_RADIUS`.
+- **What stays transient**: queued move paths, a pending ranged-attack
+  target, a queued equip, and combat-bubble membership (bubbles are never
+  persisted — recomputed from positions on the first tick after load). Every
+  restored player comes back marked disconnected **as of the load time**
+  (not its pre-shutdown value), so the removal-grace clock restarts cleanly
+  at load instead of sweeping every restored player instantly.
+- **Fresh-on-mismatch**: a snapshot whose version, `WORLD_SEED`, or
+  `WORLD_RADIUS` doesn't match the running configuration is rejected —
+  logged, and the server starts fresh. No migrations pre-launch (the wire's
+  no-backward-compatibility rule applies to disk exactly as it does to the
+  protocol); a save or load error always logs and continues, never crashes
+  the game loop.
 
 ---
 
@@ -190,9 +236,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (25 specs). The client exposes **`window.game`**
+  embedded-client binary (27 specs). The client exposes **`window.game`**
   (positions incl. `monsterKind`, hp, inventory, combatMoves, damage events,
-  tapHex, sendChat…) as the always-in-sync test/debug surface.
+  tapHex, sendChat, identityLink…) as the always-in-sync test/debug surface.
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
@@ -212,6 +258,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | `DISCONNECT_GRACE` | `20s` | despawn delay for disconnected players |
 | `WORLD_SEED` | `0xC0FFEE` | procgen seed (decimal or 0x hex) |
 | `WORLD_RADIUS` | `24` | world hex radius (~1,801 tiles) |
+| `SNAPSHOT_PATH` | `""` (disabled) | world-snapshot file path; empty disables persistence entirely |
+| `SNAPSHOT_INTERVAL` | `60s` | periodic snapshot-save cadence while persistence is enabled |
 
 ## 4. Game-rule constants (`internal/protocol`, compiled into both sides)
 
@@ -247,5 +295,8 @@ revive, recovery layers beyond regen (potions, rests, sanctuary trade
 hub — the 6c sanctuary zone is only the monster-free ground, not the hub
 itself), continuous spawning with density-tracks-players, monster-kind
 passives (the `rules` seam on `monsterDef` ships empty), ring UI
-indicators, terrain-blocked LOS, path-preview breadcrumb, character
-persistence + bed spawns, admin console & analytics log, SQLite-for-state.
+indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
+(reconnect/respawn still uses a guarded random spawn, not a bed — milestone
+10a persisted characters and the world, but bed spawns stay future), admin
+console & analytics log, SQLite-for-state (the milestone 10a JSON snapshot
+is the decided interim store).

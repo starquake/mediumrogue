@@ -64,6 +64,34 @@
         color: var(--dim);
         font-size: 0.85rem;
       }
+      /* Character link: a copyable `#t=<token>` URL that re-joins the SAME
+         character on any browser/device (main.ts's setIdentityLink /
+         net/session.ts's importIdentityFromFragment). #hud is click-through
+         (pointer-events: none) so this re-enables it on itself, same
+         discipline as #chat-panel/#roster-panel. Hidden until joined. */
+      #copy-link {
+        display: block;
+        margin-top: 0.4rem;
+        padding: 0.15rem 0.5rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        color: var(--fg);
+        background: #16201a;
+        border: 1px solid var(--dim);
+        cursor: pointer;
+        pointer-events: auto;
+      }
+      #copy-link:hover {
+        background: #2a3d2b;
+        border-color: #7cb342;
+      }
+      #copy-link[hidden] {
+        display: none;
+      }
+      #copy-link.copied {
+        color: #7cb342;
+        border-color: #7cb342;
+      }
       #turn-timer {
         margin-top: 0.4rem;
         width: 8rem;
@@ -475,6 +503,7 @@
       <div id="turn-row">turn <span id="turn">—</span></div>
       <div id="status" data-connected="false">connecting…</div>
       <div id="stats">Lv — · —/— XP</div>
+      <button id="copy-link" type="button" hidden>copy character link</button>
       <div id="turn-timer" data-phase="input"><div id="turn-timer-fill"></div></div>
       <div id="combat-panel" hidden>
         In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left

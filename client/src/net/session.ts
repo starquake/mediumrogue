@@ -13,6 +13,36 @@ export interface Identity {
 }
 
 /**
+ * Imports an identity from a `#t=<token>` character-link fragment (see
+ * main.ts's copy-link HUD button) and strips the fragment via
+ * history.replaceState. MUST be called before anything else runs — in
+ * particular before any loadIdentity() read — so the token: (1) always wins
+ * over whatever identity was already stored (following a link is a
+ * deliberate "become this character" action, even on a browser that already
+ * has one), (2) never survives in the URL bar to be copy-pasted into chat or
+ * shared a second time by accident, and (3) never reaches the server as part
+ * of a request — a URL hash is never sent over HTTP, so this is the only
+ * place the raw token from a link is ever read at all. class/species are
+ * left unset: exactly like any other token-only reclaim, the server ignores
+ * both on a live reclaim or an archived restore (world.go's Join). A no-op
+ * when the URL carries no `#t=` fragment.
+ */
+export function importIdentityFromFragment(): void {
+  const match = /^#t=(.+)$/.exec(window.location.hash);
+  const token = match?.[1];
+  if (token === undefined || token === "") {
+    return;
+  }
+
+  const identity: Identity = { entityId: 0, token, class: "", species: "" };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
+
+  const url = new URL(window.location.href);
+  url.hash = "";
+  window.history.replaceState(null, "", url.toString());
+}
+
+/**
  * Reads the persisted identity, if any. Exported so callers (the class
  * picker) can tell a brand-new player (no identity yet) from a returning one
  * without duplicating the localStorage/JSON-parse dance.
