@@ -16,7 +16,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   and reflexes are irrelevant by design.
 - **Combat time bubbles**: when a player and a hostile come within 6 hexes,
   a local bubble freezes — its turns are **action-gated** (advance when every
-  player in it locks in an intent, or after a 30 s patience timeout). A
+  player in it locks in an intent, or after a 30 s patience timeout — lowered
+  from 60s, item 4, playtest batch 2). A
   bubble-turn also never resolves sooner than `TURN_INTERVAL` after its own
   previous resolution (item 5, playtest batch 2) — a floor against a solo
   player spam-resolving faster than the world's own cadence; a straggler'd
@@ -312,8 +313,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
-- **Combat event log** (`internal/game`, structured `slog`, the milestone-12
-  analytics seed): every resolution path emits `slog.Info("combat", "event",
+- **Combat event log** (item 1, playtest batch 2 — `internal/game`,
+  structured `slog`, the milestone-12 analytics seed): every resolution
+  path emits `slog.Info("combat", "event",
   ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
   `fizzle` (reasons: `out_of_range`, `unequipped`, `bump_target_vacated`),
   `death`, `xp_award`, `pickup` — filterable on the `"combat"` msg key or the
