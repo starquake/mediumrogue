@@ -51,6 +51,10 @@ const (
 	defaultWorldRadius = 24
 )
 
+// defaultSnapshotInterval is how often the periodic saver writes the world
+// snapshot to disk while persistence is enabled (SNAPSHOT_PATH set).
+const defaultSnapshotInterval = 60 * time.Second
+
 // ErrNonPositiveRadius rejects a world radius below 1 — a zero/negative world
 // has no interior to spawn in.
 var ErrNonPositiveRadius = errors.New("WORLD_RADIUS must be positive")
@@ -86,6 +90,16 @@ type Config struct {
 	WorldSeed uint64
 	// WorldRadius is the generated world's hex radius, from WORLD_RADIUS.
 	WorldRadius int
+	// SnapshotPath is the on-disk world-snapshot file path, from
+	// SNAPSHOT_PATH. Empty (the default) disables persistence entirely:
+	// tests and a casual `go run` stay hermetic — nothing is loaded at
+	// startup and no saver goroutine runs. A deployment sets this to opt
+	// into load-at-boot plus periodic and on-shutdown saves (see
+	// cmd/rogue/app).
+	SnapshotPath string
+	// SnapshotInterval is how often the periodic saver writes the snapshot
+	// while persistence is enabled, from SNAPSHOT_INTERVAL.
+	SnapshotInterval time.Duration
 }
 
 // Load reads configuration from the environment.
@@ -99,6 +113,8 @@ func Load() (*Config, error) {
 		DisconnectGrace:   defaultDisconnectGrace,
 		WorldSeed:         defaultWorldSeed,
 		WorldRadius:       defaultWorldRadius,
+		SnapshotPath:      envOr("SNAPSHOT_PATH", ""),
+		SnapshotInterval:  defaultSnapshotInterval,
 	}
 
 	if err := overrideDuration(&cfg.TurnInterval, "TURN_INTERVAL"); err != nil {
@@ -130,6 +146,10 @@ func Load() (*Config, error) {
 	}
 
 	if err := overrideInt(&cfg.WorldRadius, "WORLD_RADIUS"); err != nil {
+		return nil, err
+	}
+
+	if err := overrideDuration(&cfg.SnapshotInterval, "SNAPSHOT_INTERVAL"); err != nil {
 		return nil, err
 	}
 

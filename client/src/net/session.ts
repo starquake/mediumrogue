@@ -13,6 +13,36 @@ export interface Identity {
 }
 
 /**
+ * Imports an identity from a `#t=<token>` character-link fragment (see
+ * main.ts's copy-link HUD button) and strips the fragment via
+ * history.replaceState. MUST be called before anything else runs — in
+ * particular before any loadIdentity() read — so the token: (1) always wins
+ * over whatever identity was already stored (following a link is a
+ * deliberate "become this character" action, even on a browser that already
+ * has one), (2) never survives in the URL bar to be copy-pasted into chat or
+ * shared a second time by accident, and (3) never reaches the server as part
+ * of a request — a URL hash is never sent over HTTP, so this is the only
+ * place the raw token from a link is ever read at all. class/species are
+ * left unset: exactly like any other token-only reclaim, the server ignores
+ * both on a live reclaim or an archived restore (world.go's Join). A no-op
+ * when the URL carries no `#t=` fragment.
+ */
+export function importIdentityFromFragment(): void {
+  const match = /^#t=(.+)$/.exec(window.location.hash);
+  const token = match?.[1];
+  if (token === undefined || token === "") {
+    return;
+  }
+
+  const identity: Identity = { entityId: 0, token, class: "", species: "" };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
+
+  const url = new URL(window.location.href);
+  url.hash = "";
+  window.history.replaceState(null, "", url.toString());
+}
+
+/**
  * Reads the persisted identity, if any. Exported so callers (the class
  * picker) can tell a brand-new player (no identity yet) from a returning one
  * without duplicating the localStorage/JSON-parse dance.
@@ -30,6 +60,30 @@ export function loadIdentity(): Identity | null {
 }
 
 /**
+ * Discards the persisted identity. Used by the join-rejection recovery path
+ * (main.ts): a stored identity the server refuses (e.g. an imported
+ * character link whose token the server no longer knows) must not survive to
+ * re-fail every subsequent page load.
+ */
+export function clearIdentity(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+/**
+ * The server REJECTED the join as invalid (a 4xx) — as opposed to a network
+ * failure or a server-side error, after which the stored identity may still
+ * be perfectly good. Callers use this distinction to decide whether to
+ * discard the stored identity (see main.ts's recovery path): only a
+ * deliberate rejection may clear it; a flaky network never should.
+ */
+export class JoinRejectedError extends Error {
+  constructor(status: number) {
+    super(`POST /api/join rejected: ${status}`);
+    this.name = "JoinRejectedError";
+  }
+}
+
+/**
  * Claims an entity: re-sends the stored token so a page refresh keeps the
  * same character (and the same class/species — the server ignores Class and
  * Species entirely on a token match, so a returning player's stored choices
@@ -38,6 +92,16 @@ export function loadIdentity(): Identity | null {
  * restart just becomes a fresh entity, joined as `chosenClass`/`chosenSpecies`).
  * `chosenName` is likewise only used for a new/orphaned token — the server
  * ignores Name on a reclaim (an existing entity already has its name).
+ *
+ * DELIBERATE: a link-imported identity (class/species stored as "" by
+ * importIdentityFromFragment) sends those empty strings as-is — this is a
+ * reclaim-or-fail contract, not an oversight. The server ignores class and
+ * species entirely for a token it recognizes (live or archived), so a valid
+ * imported link reclaims cleanly; for an UNKNOWN token the empty class is
+ * rejected (422) rather than silently minting a default-class stranger the
+ * player never asked for. The rejection throws JoinRejectedError, and
+ * main.ts's recovery path clears the dead identity and falls back to the
+ * start screen.
  */
 export async function join(
   chosenName: string,
@@ -56,6 +120,9 @@ export async function join(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (resp.status >= 400 && resp.status < 500) {
+    throw new JoinRejectedError(resp.status);
+  }
   if (!resp.ok) {
     throw new Error(`POST /api/join failed: ${resp.status}`);
   }

@@ -42,6 +42,14 @@ func TestLoadDefaults(t *testing.T) {
 	if got, want := cfg.DisconnectGrace, 20*time.Second; got != want {
 		t.Errorf("DisconnectGrace = %s, want 20s", got)
 	}
+
+	if got, want := cfg.SnapshotPath, ""; got != want {
+		t.Errorf("SnapshotPath = %q, want %q (disabled by default)", got, want)
+	}
+
+	if got, want := cfg.SnapshotInterval, 60*time.Second; got != want {
+		t.Errorf("SnapshotInterval = %s, want 60s", got)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -52,6 +60,8 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("COMBAT_PATIENCE", "30s")
 	t.Setenv("BUBBLE_POLL", "50ms")
 	t.Setenv("DISCONNECT_GRACE", "10s")
+	t.Setenv("SNAPSHOT_PATH", "/tmp/rogue-snapshot.json")
+	t.Setenv("SNAPSHOT_INTERVAL", "30s")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -84,6 +94,22 @@ func TestLoadOverrides(t *testing.T) {
 
 	if got, want := cfg.DisconnectGrace, 10*time.Second; got != want {
 		t.Errorf("DisconnectGrace = %s, want 10s", got)
+	}
+
+	if got, want := cfg.SnapshotPath, "/tmp/rogue-snapshot.json"; got != want {
+		t.Errorf("SnapshotPath = %q, want %q", got, want)
+	}
+
+	if got, want := cfg.SnapshotInterval, 30*time.Second; got != want {
+		t.Errorf("SnapshotInterval = %s, want 30s", got)
+	}
+}
+
+func TestLoadRejectsNonPositiveSnapshotInterval(t *testing.T) {
+	t.Setenv("SNAPSHOT_INTERVAL", "0s")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a zero SNAPSHOT_INTERVAL")
 	}
 }
 

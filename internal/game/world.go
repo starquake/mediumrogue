@@ -163,6 +163,13 @@ type World struct {
 	// radius is the world's hex radius (from Config.WorldRadius), the loop
 	// bound for spawnHexLocked's outward spiral.
 	radius int
+	// worldSeed is the procedural-map generation seed (Config.WorldSeed),
+	// kept (in addition to feeding GenerateMap/generateQuests at
+	// construction) so a snapshot restore can gate on it: a snapshot taken
+	// under a different seed or radius describes a different map, and
+	// RestoreState refuses to load it rather than silently mismatching
+	// terrain against persisted positions. See snapshot.go.
+	worldSeed uint64
 	// spawnable is the origin-reachable walkable region (BFS from origin over
 	// walkable tiles, computed once at construction) — spawnHexLocked only
 	// places players on hexes in this set, so a spawn can never land in a
@@ -201,6 +208,38 @@ type World struct {
 	// Instance ids are minted from the same nextID sequence as entities and
 	// owned items — unique across the whole world.
 	groundItems map[protocol.Hex][]itemInstance
+	// archive holds characters removed by the disconnect sweep (or loaded
+	// from a snapshot that was never re-claimed live): identity, XP, and
+	// gear, keyed by token. sweepDisconnectedLocked populates an entry in
+	// place of discarding a player's progress; Join consumes (deletes) the
+	// entry on a rejoin with that token, restoring a fresh entity from it.
+	// Never touched for monsters (no token). Party/quest membership is NOT
+	// archived — that is session-scoped social state, not progression (see
+	// sweepDisconnectedLocked).
+	archive map[string]characterRecord
+}
+
+// characterRecord is what the disconnect sweep archives from a player entity
+// before deleting it: identity, progression, and gear. Everything else about
+// a live entity (hex, hp, path, bubble membership, streams) is transient by
+// design — a restored character is as if freshly joined, but with its
+// progression and gear intact. See World.archive and sweepDisconnectedLocked.
+type characterRecord struct {
+	name, class, species  string
+	xp                    int
+	items                 []itemInstance
+	closeSlot, rangedSlot int64
+}
+
+// archiveLocked captures e's character record for World.archive. Callers
+// hold w.mu.
+func archiveLocked(e *entity) characterRecord {
+	return characterRecord{
+		name: e.name, class: e.class, species: e.species,
+		xp:        e.xp,
+		items:     e.items,
+		closeSlot: e.closeSlot, rangedSlot: e.rangedSlot,
+	}
 }
 
 // NewWorld builds the world from a procedurally generated map (GenerateMap,
@@ -236,6 +275,7 @@ func NewWorld(
 		terrain:         terrain,
 		worldMap:        worldMap,
 		radius:          radius,
+		worldSeed:       worldSeed,
 		spawnable:       reachableWalkable(worldMap),
 		entities:        make(map[int64]*entity),
 		byToken:         make(map[string]*entity),
@@ -245,6 +285,7 @@ func NewWorld(
 		quests:          generateQuests(worldSeed, worldMap),
 		announce:        func(string, string) {},
 		groundItems:     make(map[protocol.Hex][]itemInstance),
+		archive:         make(map[string]characterRecord),
 	}
 }
 
@@ -363,17 +404,20 @@ func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
 	return turns
 }
 
-// Join returns the entity for token, creating a new one (empty or unknown
-// token) at a free spawn hex with the given name, class, and species. For a
-// new entity, name is required — non-empty after trimming and at most
-// protocol.MaxNameLen runes, else Join returns ErrInvalidName; class is
-// required — it must be ClassFighter, ClassRogue, or ClassMage, else Join
+// Join returns the entity for token in three orders of preference: (1) a
+// LIVE token reclaims its existing entity; (2) an ARCHIVED token (swept for
+// disconnection, or loaded from a snapshot and never re-claimed) restores a
+// fresh entity from its characterRecord — new spawn hex via the normal
+// guarded random spawn, full level-scaled HP, but identity/XP/gear exactly as
+// left; (3) an unknown token quietly becomes a NEW player rather than an
+// error — the stored identity of a restarted server (pre-archive/snapshot)
+// is gone, and the client's right move is always "then give me a fresh
+// entity". For a new entity, name is required — non-empty after trimming and
+// at most protocol.MaxNameLen runes, else Join returns ErrInvalidName; class
+// is required — it must be ClassFighter, ClassRogue, or ClassMage, else Join
 // returns ErrInvalidClass, and species must be SpeciesHuman, SpeciesElf, or
-// SpeciesDwarf, else ErrInvalidSpecies. An unknown token quietly becomes a new
-// player rather than an error: the stored identity of a restarted server is
-// gone, and the client's right move is always "then give me a fresh entity".
-// For a reclaim (known token) name, class, and species are ignored — the
-// existing entity already has all three.
+// SpeciesDwarf, else ErrInvalidSpecies. For a reclaim or a restore, name,
+// class, and species are ignored — the identity already exists.
 func (w *World) Join(token, name, class, species string) (protocol.JoinResponse, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -385,6 +429,10 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 		e.disconnectedAt = w.now()
 
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+	}
+
+	if rec, ok := w.archive[token]; ok && token != "" {
+		return w.restoreArchivedLocked(token, rec)
 	}
 
 	name = strings.TrimSpace(name)
@@ -424,6 +472,39 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
 	w.grantDefaultsLocked(e)
+
+	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+}
+
+// restoreArchivedLocked implements Join's archived-token branch: a fresh
+// entity built from rec (identity/XP/gear as archived), spawned at a new
+// guarded random hex with full level-scaled HP, keeping the same token —
+// this IS the character coming back, not a new one. Consumes (deletes) the
+// archive entry, since a character lives in exactly one place at a time.
+// Callers hold w.mu.
+func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protocol.JoinResponse, error) {
+	spawn, err := w.spawnHexLocked()
+	if err != nil {
+		return protocol.JoinResponse{}, err
+	}
+
+	level := levelFor(rec.xp)
+	maxHP := maxHPFor(rec.class, level)
+
+	w.nextID++
+	e := &entity{
+		id: w.nextID, hex: spawn, token: token,
+		kind: protocol.EntityPlayer, name: rec.name, class: rec.class, species: rec.species,
+		xp: rec.xp, hp: maxHP, maxHP: maxHP,
+		items: rec.items, closeSlot: rec.closeSlot, rangedSlot: rec.rangedSlot,
+		// Restored as if freshly joined: the removal-grace clock starts now,
+		// not at the (long-gone) pre-sweep disconnect time — the spec's pinned
+		// risk (see archive_test.go).
+		disconnectedAt: w.now(),
+	}
+	w.entities[e.id] = e
+	w.byToken[e.token] = e
+	delete(w.archive, token)
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
@@ -484,9 +565,14 @@ func (w *World) StreamClosed(token string) {
 // with streams == 0 and now-disconnectedAt > disconnectGrace. Monsters (no
 // token) are never candidates. It collects candidate ids first (sorted) and
 // deletes after, so the entity map is never mutated mid-range and removals are
-// deterministic. If it removed anyone it recomputes bubbles — a swept entity may
-// have been mid-fight — and returns true, so the caller republishes and clients
-// despawn the entity. Callers hold w.mu.
+// deterministic. Before deleting each entity it archives its character
+// (identity, XP, gear — see characterRecord/World.archive) so a later Join
+// with the same token restores it instead of minting a fresh one; party and
+// personal-quest state are NOT archived — they dissolve/return to the board
+// exactly as before (session-scoped social state, not progression). If it
+// removed anyone it recomputes bubbles — a swept entity may have been
+// mid-fight — and returns true, so the caller republishes and clients despawn
+// the entity. Callers hold w.mu.
 func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 	var gone []int64
 
@@ -508,6 +594,8 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 
 	for _, id := range gone {
 		e := w.entities[id]
+
+		w.archive[e.token] = archiveLocked(e)
 
 		w.leavePartyLocked(e)
 		w.abandonPersonalQuestLocked(e)
