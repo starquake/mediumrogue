@@ -583,7 +583,7 @@ func (w *World) SetPendingEquipForTest(id, itemID int64) {
 	defer w.mu.Unlock()
 
 	if e, ok := w.entities[id]; ok {
-		e.pendingEquip = itemID
+		e.pending = pendingItemAction{kind: protocol.IntentEquip, id: itemID}
 	}
 }
 
@@ -593,8 +593,8 @@ func (w *World) PendingEquipForTest(id int64) int64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if e, ok := w.entities[id]; ok {
-		return e.pendingEquip
+	if e, ok := w.entities[id]; ok && e.pending.kind == protocol.IntentEquip {
+		return e.pending.id
 	}
 
 	return 0

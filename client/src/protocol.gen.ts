@@ -147,20 +147,53 @@ export const SpeciesElf = "elf";
 export const SpeciesDwarf = "dwarf";
 /**
  * Intent kinds: the type of an IntentRequest. Kind is required — it must be
- * IntentMove, IntentAttack, or IntentEquip.
+ * one of the constants below. Every inventory action (equip, unequip, drop,
+ * pickup, drink) follows one shared rule: outside a combat bubble it applies
+ * immediately and costs nothing; inside a bubble it is the player's
+ * committed action for that turn.
  */
 export const IntentMove = "move";
 /**
  * Intent kinds: the type of an IntentRequest. Kind is required — it must be
- * IntentMove, IntentAttack, or IntentEquip.
+ * one of the constants below. Every inventory action (equip, unequip, drop,
+ * pickup, drink) follows one shared rule: outside a combat bubble it applies
+ * immediately and costs nothing; inside a bubble it is the player's
+ * committed action for that turn.
  */
 export const IntentAttack = "attack";
 /**
- * IntentEquip equips an owned item (IntentRequest.ItemID). Outside a combat
- * bubble it applies immediately and costs nothing; inside a bubble it is the
- * player's committed action for that turn.
+ * IntentEquip equips an owned item (IntentRequest.ItemID) from the
+ * backpack into its type-derived slot, swapping any displaced occupant
+ * back into the vacated backpack entry. Naming an already-equipped item
+ * toggles it OFF (equivalent to IntentUnequip — playtest batch 2's
+ * toggle behavior, kept).
  */
 export const IntentEquip = "equip";
+/**
+ * IntentUnequip moves an equipped item (IntentRequest.ItemID) back into a
+ * free backpack entry; rejected if the backpack is full.
+ */
+export const IntentUnequip = "unequip";
+/**
+ * IntentDrop drops an owned item (IntentRequest.ItemID) — equipped or in
+ * the backpack; a consumable stack drops whole — onto the player's own
+ * hex as ground item(s).
+ */
+export const IntentDrop = "drop";
+/**
+ * IntentPickup picks up one ground item (IntentRequest.GroundItemID) from
+ * the player's own hex: merged into a matching consumable stack first,
+ * else into a free backpack entry; rejected with a clear error if
+ * neither exists. Items never auto-equip on pickup. Replaces walk-over
+ * auto-pickup (the inventory-slots milestone).
+ */
+export const IntentPickup = "pickup";
+/**
+ * IntentDrink drinks one unit of an owned consumable stack
+ * (IntentRequest.ItemID): applies the def's heal (clamped to max HP) and
+ * decrements the stack; an emptied stack frees its backpack entry.
+ */
+export const IntentDrink = "drink";
 /**
  * Item slots: every item definition fills exactly one. Deprecated by the
  * inventory-slots milestone's itemType taxonomy below — kept only until the
@@ -566,13 +599,12 @@ export interface ItemView {
   defId: string;
   name: string;
   /**
-   * Slot carries the item's itemType string (task 1 of the inventory-slots
-   * milestone repurposed this field in place rather than adding a new one;
-   * see the ItemType* consts above) — no longer one of ItemSlotClose/
-   * ItemSlotRanged. Wire-compatible (still a string) but the two old
-   * constants are stale for any item this server now emits.
+   * Type is the item's itemType (the ItemType* consts above); the equip
+   * slot is derived from it (the slot key equals the type for gear;
+   * consumables have no slot). Replaces the pre-inventory two-value Slot
+   * field.
    */
-  slot: string;
+  type: string;
   damage: number /* int */;
   rangeHex: number /* int */;
   aoeRadius: number /* int */;
@@ -582,16 +614,24 @@ export interface ItemView {
    */
   desc: string;
   equipped: boolean;
+  /**
+   * Count is the stack size for a consumable backpack stack (1..ItemStackCap);
+   * always 1 for gear.
+   */
+  count: number /* int */;
 }
 /**
- * GroundItemView is one dropped item lying on the map, waiting to be walked
- * over. ID is the item instance id (stable client key).
+ * GroundItemView is one dropped item lying on the map, waiting to be picked
+ * up (IntentPickup). ID is the item instance id (stable client key, and the
+ * id a pickup intent names). Type feeds the client's pickup prompt
+ * (name + type).
  */
 export interface GroundItemView {
   id: number /* int64 */;
   hex: Hex;
   defId: string;
   name: string;
+  type: string;
 }
 /**
  * Entity is one thing standing on the map: a player or a monster.
@@ -684,15 +724,21 @@ export interface IntentRequest {
   entityId: number /* int64 */;
   token: string;
   /**
-   * Kind is the intent type. Required: must be IntentMove ("move"),
-   * IntentAttack ("attack"), or IntentEquip ("equip").
+   * Kind is the intent type. Required: one of the Intent* constants (move,
+   * attack, equip, unequip, drop, pickup, drink).
    */
   kind: string;
   target: Hex;
   /**
-   * ItemID names the item to equip. Equip intents only.
+   * ItemID names the OWNED item an inventory action targets. Equip,
+   * unequip, drop, and drink intents only.
    */
   itemId: number /* int64 */;
+  /**
+   * GroundItemID names the GROUND item a pickup targets (GroundItemView.ID;
+   * it must lie on the player's own hex). Pickup intents only.
+   */
+  groundItemId: number /* int64 */;
   /**
    * TargetEntityID names a single-target ranged attack's victim by entity
    * id instead of a hex (item 7, playtest batch 2): 0 = none (ground-

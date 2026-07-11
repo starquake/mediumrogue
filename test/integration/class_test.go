@@ -36,7 +36,7 @@ func equippedRangedStats(bundle protocol.TurnEvent, id int64) (int, int, bool) {
 			continue
 		}
 
-		switch it.Slot {
+		switch it.Type {
 		case protocol.ItemTypeThrownWeapon, protocol.ItemTypeRangedWeapon, protocol.ItemTypeWand:
 			return it.RangeHex, it.AoERadius, true
 		}

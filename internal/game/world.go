@@ -33,6 +33,8 @@ const (
 	combatEventFizzle = "fizzle"
 	combatEventDeath  = "death"
 	combatEventPickup = "pickup"
+	combatEventDrop   = "drop"
+	combatEventDrink  = "drink"
 	combatEventXP     = "xp_award"
 )
 
@@ -110,9 +112,22 @@ var (
 	ErrInvalidSpecies = errors.New("invalid species")
 	// ErrInvalidName rejects an empty or over-long display name at join.
 	ErrInvalidName = errors.New("invalid name")
-	// ErrInvalidIntentKind rejects a SubmitIntent whose Kind is not
-	// IntentMove or IntentAttack.
+	// ErrInvalidIntentKind rejects a SubmitIntent whose Kind is not one of
+	// the protocol.Intent* constants.
 	ErrInvalidIntentKind = errors.New("invalid intent kind")
+	// ErrBackpackFull rejects an inventory action that needs a free backpack
+	// entry (pickup with no mergeable stack, unequip, equip-toggle-off) when
+	// none exists. The exact wording is the client-facing feedback the spec
+	// pins ("backpack full — drop something first").
+	ErrBackpackFull = errors.New("backpack full — drop something first")
+	// ErrItemNotEquipped rejects an unequip intent naming an owned item that
+	// is not currently equipped.
+	ErrItemNotEquipped = errors.New("item is not equipped")
+	// ErrNotDrinkable rejects a drink intent naming a non-consumable item.
+	ErrNotDrinkable = errors.New("item is not drinkable")
+	// ErrNoSuchGroundItem rejects a pickup intent naming a ground item that
+	// is not lying on the player's own hex (stale id, or an item elsewhere).
+	ErrNoSuchGroundItem = errors.New("no such item here")
 )
 
 // tokenBytes sizes the bearer token: 16 random bytes = 128 bits.
@@ -212,14 +227,15 @@ type entity struct {
 	// instance or one consumable stack per entry (backpackEntry, items.go).
 	// Every owned item lives in exactly one of equipped or backpack.
 	backpack [protocol.BackpackSize]backpackEntry
-	// pendingEquip is the item instance id queued by an equip intent submitted
-	// inside a combat bubble — the swap becomes this turn's action (see
-	// queueEquipLocked) instead of applying immediately. 0 means no equip is
-	// queued. Applied and cleared by resolveCombatLocked's pending-equip pass;
-	// also cleared on death (resolveDeathsLocked) as a safety net for
+	// pending is the inventory action (equip/unequip/drop/pickup/drink)
+	// queued by an intent submitted inside a combat bubble — the action
+	// becomes this turn's committed action (see commitItemActionLocked,
+	// inventory.go) instead of applying immediately. The zero value means no
+	// action is queued. Applied and cleared by resolveCombatLocked's pending
+	// pass; also cleared on death (resolveDeathsLocked) as a safety net for
 	// resolution paths that skip that pass (e.g. the ResolveCombatOnlyForTest
 	// test bridge).
-	pendingEquip int64
+	pending pendingItemAction
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -798,21 +814,8 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 		return ErrUnauthorized
 	}
 
-	switch req.Kind {
-	case protocol.IntentMove:
-		if err := w.queueMoveLocked(e, req.Target); err != nil {
-			return err
-		}
-	case protocol.IntentAttack:
-		if err := w.queueAttackLocked(e, req.Target, req.TargetEntityID); err != nil {
-			return err
-		}
-	case protocol.IntentEquip:
-		if err := w.queueEquipLocked(e, req.ItemID); err != nil {
-			return err
-		}
-	default:
-		return ErrInvalidIntentKind
+	if err := w.dispatchIntentLocked(e, req); err != nil {
+		return err
 	}
 
 	// Lock-in: inside a combat bubble, submitting an intent commits this player
@@ -842,6 +845,30 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	return nil
 }
 
+// dispatchIntentLocked routes one validated intent to its queue function by
+// kind (split out of SubmitIntent to keep its cognitive complexity in
+// check). Callers hold w.mu.
+func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) error {
+	switch req.Kind {
+	case protocol.IntentMove:
+		return w.queueMoveLocked(e, req.Target)
+	case protocol.IntentAttack:
+		return w.queueAttackLocked(e, req.Target, req.TargetEntityID)
+	case protocol.IntentEquip:
+		return w.queueEquipLocked(e, req.ItemID)
+	case protocol.IntentUnequip:
+		return w.queueUnequipLocked(e, req.ItemID)
+	case protocol.IntentDrop:
+		return w.queueDropLocked(e, req.ItemID)
+	case protocol.IntentPickup:
+		return w.queuePickupLocked(e, req.GroundItemID)
+	case protocol.IntentDrink:
+		return w.queueDrinkLocked(e, req.ItemID)
+	default:
+		return ErrInvalidIntentKind
+	}
+}
+
 // queueMoveLocked validates a move intent and sets the entity's route to a
 // walkable, reachable target, clearing any pending ranged attack or queued
 // equip (the latest intent in the window wins — the swap is a whole turn's
@@ -860,7 +887,7 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 	e.path = path
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
-	e.pendingEquip = 0
+	e.pending = pendingItemAction{}
 
 	return nil
 }
@@ -910,7 +937,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 		e.attackTargetEntity = targetEntityID
 		e.attackTarget = nil
 		e.path = nil
-		e.pendingEquip = 0
+		e.pending = pendingItemAction{}
 
 		return nil
 	}
@@ -923,65 +950,113 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 	e.attackTargetEntity = 0
 	e.attackTarget = &t
 	e.path = nil
-	e.pendingEquip = 0
+	e.pending = pendingItemAction{}
 
 	return nil
 }
 
-// queueEquipLocked validates and applies/queues an equip OR unequip. An equip
-// intent naming an item instance ALREADY in its slot toggles it OFF instead
-// of re-equipping it (the slot falls back to 0 — fists for the close slot,
-// no ranged weapon at all for the ranged slot); any other owned, class-
-// matching item toggles ON, swapping into its slot. Outside a bubble the
-// toggle is immediate and free — it also clears any stale pendingEquip left
-// over from a bubble that dissolved before its queued swap resolved, so that
-// swap can never resurrect and silently override this free toggle on the
-// entity's next combat resolution. Inside a bubble, the toggle becomes the
-// player's action this turn (clearing move/attack — you swap, you don't
-// also act). Callers hold w.mu.
+// queueEquipLocked validates and applies/queues an equip OR unequip toggle.
+// An equip intent naming an item instance ALREADY in its slot toggles it OFF
+// (back into a free backpack entry — playtest batch 2's toggle, now subject
+// to the backpack having room); any other owned, wearable item toggles ON,
+// swapping into its type-derived slot through the backpack
+// (items.go's toggleEquip). Follows the shared free-outside/turn-inside rule
+// (commitItemActionLocked). Callers hold w.mu.
 func (w *World) queueEquipLocked(e *entity, itemID int64) error {
+	// Validate at queue time so the intent's HTTP response reports a bad
+	// equip immediately; the apply (immediate or at resolution) re-validates.
 	inst, ok := e.itemByID(itemID)
 	if !ok {
 		return ErrItemNotOwned
 	}
 
-	def := itemDefByID[inst.defID]
-	if !canEquip(e.class, def) {
+	if !canEquip(e.class, itemDefByID[inst.defID]) {
 		return ErrWrongClass
 	}
 
-	if e.bubbleID == 0 {
-		e.toggleEquip(inst, slotForType(def.itemType))
-		e.pendingEquip = 0
-
-		return nil
-	}
-
-	e.pendingEquip = itemID
-	e.path = nil
-	e.attackTarget = nil
-	e.attackTargetEntity = 0
-
-	return nil
+	return w.commitItemActionLocked(e, protocol.IntentEquip, itemID, func() error {
+		return w.equipItemLocked(e, itemID)
+	})
 }
 
-// applyPendingEquip applies and clears e's queued equip/unequip toggle, if
-// any. Shared by the resolution pass in resolveCombatLocked (the swap is the
-// bubble-turn's action) and by the bubble-dissolve branch of
-// recomputeBubblesLocked (the bubble vanished before its turn resolved — the
-// player is back in world time, where toggles are free and immediate, so
-// the queued swap applies now instead of leaking into a later world turn as
-// a silent late swap).
-func applyPendingEquip(e *entity) {
-	if e.pendingEquip == 0 {
-		return
+// queueUnequipLocked validates and applies/queues an unequip: the named item
+// must be owned, currently equipped, and the backpack must have a free
+// entry. Callers hold w.mu.
+func (w *World) queueUnequipLocked(e *entity, itemID int64) error {
+	inst, def, err := w.ownedDefLocked(e, itemID)
+	if err != nil {
+		return err
 	}
 
-	if inst, ok := e.itemByID(e.pendingEquip); ok {
-		e.toggleEquip(inst, slotForType(itemDefByID[inst.defID].itemType))
+	if cur, ok := e.equipped[slotForType(def.itemType)]; !ok || cur.id != inst.id {
+		return ErrItemNotEquipped
 	}
 
-	e.pendingEquip = 0
+	if e.freeBackpackIndex() < 0 {
+		return ErrBackpackFull
+	}
+
+	return w.commitItemActionLocked(e, protocol.IntentUnequip, itemID, func() error {
+		return w.unequipItemLocked(e, itemID)
+	})
+}
+
+// queueDropLocked validates and applies/queues a drop of an owned item (or
+// whole consumable stack) onto the player's own hex. Callers hold w.mu.
+func (w *World) queueDropLocked(e *entity, itemID int64) error {
+	if _, ok := e.itemByID(itemID); !ok {
+		return ErrItemNotOwned
+	}
+
+	return w.commitItemActionLocked(e, protocol.IntentDrop, itemID, func() error {
+		return w.dropItemLocked(e, itemID)
+	})
+}
+
+// queuePickupLocked validates and applies/queues a pickup of one ground item
+// from the player's own hex: the item must lie there, and a home must exist
+// in the spec's priority order (mergeable stack > free entry >
+// ErrBackpackFull — validated here too, so a doomed pickup 422s immediately
+// instead of silently fizzling a whole bubble turn). Callers hold w.mu.
+func (w *World) queuePickupLocked(e *entity, groundItemID int64) error {
+	var found *itemInstance
+
+	for _, it := range w.groundItems[e.hex] {
+		if it.id == groundItemID {
+			found = &it
+
+			break
+		}
+	}
+
+	if found == nil {
+		return ErrNoSuchGroundItem
+	}
+
+	if e.stackIndexFor(found.defID) < 0 && e.freeBackpackIndex() < 0 {
+		return ErrBackpackFull
+	}
+
+	return w.commitItemActionLocked(e, protocol.IntentPickup, groundItemID, func() error {
+		return w.pickupGroundLocked(e, groundItemID)
+	})
+}
+
+// queueDrinkLocked validates and applies/queues drinking one unit of an
+// owned consumable stack. Callers hold w.mu.
+func (w *World) queueDrinkLocked(e *entity, itemID int64) error {
+	_, def, err := w.ownedDefLocked(e, itemID)
+	if err != nil {
+		return err
+	}
+
+	if def.itemType != protocol.ItemTypeConsumable {
+		return ErrNotDrinkable
+	}
+
+	return w.commitItemActionLocked(e, protocol.IntentDrink, itemID, func() error {
+		return w.drinkItemLocked(e, itemID)
+	})
 }
 
 // entityNameLocked is the wire Name for e: a player's chosen display name,
@@ -1043,7 +1118,9 @@ func (w *World) Snapshot() protocol.TurnEvent {
 	for hex, items := range w.groundItems {
 		for _, it := range items {
 			def := itemDefByID[it.defID]
-			groundItems = append(groundItems, protocol.GroundItemView{ID: it.id, Hex: hex, DefID: it.defID, Name: def.name})
+			groundItems = append(groundItems, protocol.GroundItemView{
+				ID: it.id, Hex: hex, DefID: it.defID, Name: def.name, Type: def.itemType,
+			})
 		}
 	}
 
@@ -1072,7 +1149,7 @@ func itemViewsLocked(e *entity) []protocol.ItemView {
 			continue
 		}
 
-		views = append(views, itemViewOf(inst, true))
+		views = append(views, itemViewOf(inst, true, 1))
 	}
 
 	for _, be := range e.backpack {
@@ -1080,20 +1157,21 @@ func itemViewsLocked(e *entity) []protocol.ItemView {
 			continue
 		}
 
-		views = append(views, itemViewOf(be.inst, false))
+		views = append(views, itemViewOf(be.inst, false, be.count))
 	}
 
 	return views
 }
 
-// itemViewOf renders one owned item instance for the wire.
-func itemViewOf(inst itemInstance, equipped bool) protocol.ItemView {
+// itemViewOf renders one owned item instance for the wire. count is the
+// stack size (1 for gear and equipped items).
+func itemViewOf(inst itemInstance, equipped bool, count int) protocol.ItemView {
 	def := itemDefByID[inst.defID]
 
 	return protocol.ItemView{
-		ID: inst.id, DefID: inst.defID, Name: def.name, Slot: def.itemType,
+		ID: inst.id, DefID: inst.defID, Name: def.name, Type: def.itemType,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
-		Equipped: equipped,
+		Equipped: equipped, Count: count,
 	}
 }
 
@@ -1266,12 +1344,16 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDoma
 
 	w.thinkMonstersLocked(rng, members, monsterTargets, worldDomain)
 
-	// Pending equips are this turn's action for any member that queued one
-	// (queueEquipLocked, inside a bubble): apply the swap before any damage
-	// resolves — members arrive id-sorted, so this is deterministic like the
-	// rest of the phased resolution.
+	// Pending inventory actions are this turn's action for any member that
+	// queued one (commitItemActionLocked, inside a bubble): apply them before
+	// movement and damage resolve — members arrive id-sorted, so this is
+	// deterministic like the rest of the phased resolution (two players'
+	// pending pickups of the same ground item resolve lowest-id-first; the
+	// loser fizzles).
 	for _, e := range members {
-		applyPendingEquip(e)
+		if e.hp > 0 {
+			w.applyPendingItemLocked(e)
+		}
 	}
 
 	// Evolving board: who is on each hex as moves resolve.
@@ -1282,14 +1364,10 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDoma
 
 	attacks := w.moveAndBumpLocked(rng, byHex, members)
 
-	// Walk-on pickup happens after movement lands and before damage: a player
-	// who just stepped onto a ground-item hex collects it this same turn, but
-	// an item dropped THIS turn (resolveDeathsLocked, below) is not visible
-	// to pick up until the earliest a player can walk onto that hex — next
-	// turn. members is id-sorted (every caller sorts before calling
-	// resolveCombatLocked), so two players landing on the same hex resolve
-	// lowest-id-first, mirroring every other simultaneous tie-break here.
-	w.pickupLocked(members)
+	// NOTE: walk-over auto-pickup used to run here (between movement and the
+	// attack phase). The inventory-slots milestone removed it — picking up is
+	// now an explicit pickup INTENT (inventory.go), free outside a bubble and
+	// a whole turn inside one, applied by the pending pass above.
 
 	w.attackLocked(rng, byHex, attacks)
 
@@ -1907,7 +1985,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) []*monst
 		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
 		e.hp = e.maxHP
 		e.path = nil
-		e.pendingEquip = 0
+		e.pending = pendingItemAction{}
 	}
 
 	return slain
@@ -1939,55 +2017,6 @@ func (w *World) dropLootLocked(rng *mrand.Rand, k *monsterDef, at protocol.Hex) 
 
 	inst := itemInstance{id: w.nextID, defID: defID}
 	w.groundItems[at] = append(w.groundItems[at], inst)
-}
-
-// pickupLocked resolves the walk-on pickup phase: every living player in
-// members (id-sorted, per resolveCombatLocked's callers) that stands on a
-// hex holding ground items takes as many as its backpack has homes for —
-// per item, a mergeable consumable stack first (stackIndexFor), then a free
-// backpack entry (freeBackpackIndex); an item with neither home stays on
-// the ground (the pre-inventory model had no cap and always took all).
-// Two players landing on the same hex the same turn resolve
-// lowest-id-first, since members arrives id-sorted. Runs after
-// moveAndBumpLocked (post-move positions) and before attackLocked (a
-// walk-on pickup is not an action, so it never displaces the turn's
-// attack). Monsters never pick up (they own no items). Each pickup
-// announces via the chat hook. Callers hold w.mu.
-//
-// NOTE (task 1 of the inventory-slots milestone): walk-on auto-pickup is
-// slated for REMOVAL in task 2, replaced by an explicit pickup intent —
-// this backpack-aware rewrite exists so the storage model lands green
-// before the flow change.
-func (w *World) pickupLocked(members []*entity) {
-	for _, e := range members {
-		if e.kind != protocol.EntityPlayer || e.hp <= 0 {
-			continue
-		}
-
-		items := w.groundItems[e.hex]
-		if len(items) == 0 {
-			continue
-		}
-
-		var left []itemInstance
-
-		for _, it := range items {
-			if !w.takeItemLocked(e, it) {
-				left = append(left, it)
-
-				continue
-			}
-
-			w.announce("system", e.name+" picked up "+itemDefByID[it.defID].name)
-			w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", it.defID)
-		}
-
-		if len(left) == 0 {
-			delete(w.groundItems, e.hex)
-		} else {
-			w.groundItems[e.hex] = left
-		}
-	}
 }
 
 // takeItemLocked gives ground item it a home on player e in the spec's

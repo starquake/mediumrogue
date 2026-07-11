@@ -987,7 +987,7 @@ async function start(): Promise<void> {
         // rework): ItemView.slot now carries the itemType — the ranged-ish
         // weapon types are thrown-weapon/ranged-weapon/wand.
         const rangedTypes: string[] = [ItemTypeThrownWeapon, ItemTypeRangedWeapon, ItemTypeWand];
-        const rangedItem = mine.items.find((it: ItemView) => rangedTypes.includes(it.slot) && it.equipped);
+        const rangedItem = mine.items.find((it: ItemView) => rangedTypes.includes(it.type) && it.equipped);
         myRangedRangeHex = rangedItem?.rangeHex ?? null;
         myRangedAoeRadius = rangedItem?.aoeRadius ?? 0;
       }

@@ -146,6 +146,16 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: 150}},
 		},
 	},
+
+	// Healing Potion (inventory-slots task 2): the first consumable — heal is
+	// a def field consumed by the drink ACTION (inventory.go), not a combat
+	// pipeline event. Registered with the action machinery (its stack/drink
+	// tests need a real consumable); it enters the rat/wolf drop tables in
+	// task 3 alongside the armor cards (recovery layer 2 begins).
+	{
+		id: idHealingPotion, name: "Healing Potion", itemType: protocol.ItemTypeConsumable,
+		heal: 5, desc: "drink: +5 HP; stacks to 5",
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:

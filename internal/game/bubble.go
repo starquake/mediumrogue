@@ -46,11 +46,12 @@ func (w *World) recomputeBubblesLocked(now time.Time) {
 		}
 
 		for _, e := range comp {
-			// Leaving combat time with a swap still queued: the bubble-turn it
-			// was the action for will never resolve, and out here equips are
-			// free and immediate — apply it now rather than letting it fire
-			// silently on a later world turn (or eat the player's intent).
-			applyPendingEquip(e)
+			// Leaving combat time with an inventory action still queued: the
+			// bubble-turn it was the action for will never resolve, and out
+			// here inventory actions are free and immediate — apply it now
+			// rather than letting it fire silently on a later world turn (or
+			// eat the player's intent).
+			w.applyPendingItemLocked(e)
 			e.bubbleID = 0
 		}
 	}

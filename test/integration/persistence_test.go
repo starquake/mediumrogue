@@ -363,7 +363,15 @@ func farmKillAndPickup(
 			}
 		}
 
-		postIntent(t, ts, me, dropped.Hex)
+		// Walk to the drop, then claim it with an explicit pickup intent
+		// (walk-over auto-pickup is gone — the inventory-slots milestone);
+		// resubmitting every bundle keeps feeding bubble lock-ins, mirroring
+		// TestDropPickupLoop (gear_test.go).
+		if ent.Hex == dropped.Hex {
+			postPickupIntent(t, ts, me, dropped.ID)
+		} else {
+			postIntent(t, ts, me, dropped.Hex)
+		}
 	}
 }
 

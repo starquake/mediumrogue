@@ -49,7 +49,9 @@ func handleIntent(deps Deps) http.Handler {
 		case errors.Is(err, game.ErrNotWalkable), errors.Is(err, game.ErrNoPath),
 			errors.Is(err, game.ErrNoRangedWeapon), errors.Is(err, game.ErrOutOfRange),
 			errors.Is(err, game.ErrInvalidIntentKind), errors.Is(err, game.ErrItemNotOwned),
-			errors.Is(err, game.ErrWrongClass):
+			errors.Is(err, game.ErrWrongClass), errors.Is(err, game.ErrBackpackFull),
+			errors.Is(err, game.ErrItemNotEquipped), errors.Is(err, game.ErrNotDrinkable),
+			errors.Is(err, game.ErrNoSuchGroundItem):
 			respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
 		case err != nil:
 			deps.Logger.Error("submit intent", "err", err)

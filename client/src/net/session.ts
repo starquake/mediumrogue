@@ -226,7 +226,7 @@ export async function submitIntent(
   kind: string,
   targetEntityId = 0,
 ): Promise<boolean> {
-  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0, targetEntityId });
+  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0, groundItemId: 0, targetEntityId });
 }
 
 /**
@@ -246,6 +246,7 @@ export async function submitEquip(
     target: { q: 0, r: 0 },
     kind: IntentEquip,
     itemId,
+    groundItemId: 0,
     targetEntityId: 0,
   });
 }

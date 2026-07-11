@@ -430,6 +430,16 @@ const (
 	idWyrmslayerGreatsword = "wyrmslayer-greatsword"
 )
 
+// Inventory-slots starter-content ids (armor/consumable vocabulary): the
+// potion lands with task 2 (the drink/stack machinery needs a real
+// registered consumable); the armor/headband cards and the rat/wolf drop
+// table entries land with task 3.
+const (
+	idLeatherArmor       = "leather-armor"
+	idHeadbandOfLearning = "headband-of-learning"
+	idHealingPotion      = "healing-potion"
+)
+
 // classDefaultIDs returns the item def ids a class starts with at Join: one
 // close-ish weapon, plus a ranged-ish weapon for Rogue and Mage (Fighter has
 // none — its thrown-weapon slot ships empty). An empty or unknown class

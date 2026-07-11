@@ -328,11 +328,12 @@ func TestDropPickupLoop(t *testing.T) {
 
 	t.Logf("drop landed: item %d (%s) at %v", dropped.ID, dropped.DefID, dropped.Hex)
 
-	// Walk onto the drop's hex; pickupLocked (world.go) hands the player
-	// everything standing there the instant a resolution runs while they're
-	// on it — see the postIntent-every-turn comment below for why that
-	// resolution needs a fresh lock-in even after arriving. Generous deadline
-	// as a safety margin against a CPU-starved runner (#22).
+	// Walk onto the drop's hex, then claim it with an explicit PICKUP intent
+	// (the inventory-slots milestone removed walk-over auto-pickup): outside a
+	// bubble the pickup applies immediately; inside one it is the player's
+	// action for that turn — either way the very submission doubles as the
+	// bubble lock-in, so this loop never stalls an action-gated bubble.
+	// Generous deadline as a safety margin against a CPU-starved runner (#22).
 	pickupDeadline := time.Now().Add(30 * time.Second)
 
 	for time.Now().Before(pickupDeadline) {
@@ -349,16 +350,35 @@ func TestDropPickupLoop(t *testing.T) {
 			}
 		}
 
-		// Submit every turn, even once already standing on the drop's hex
-		// (Pathfind(from, from) is a valid zero-length path, not an error —
-		// queueMoveLocked accepts it): the player may still be inside an
-		// action-gated combat bubble (other ring monsters still alive), which
-		// only advances on a player lock-in. Stopping here the instant the
-		// hex matches would starve that bubble of lock-ins and stall on its
-		// (long) AFK patience timeout instead of resolving the pickup on the
-		// very next turn.
-		postIntent(t, ts, me, dropped.Hex)
+		// Submit every turn: a move toward the drop until this bundle shows
+		// the player standing on its hex, then pickup intents (repeated —
+		// the first may resolve on a later bubble turn, and a stale ground
+		// id after someone took it would 422, which pickupOrMoveIntent
+		// treats as fatal so a real bug still fails fast). Submitting every
+		// bundle also keeps feeding lock-ins to any bubble the player is in
+		// (other ring monsters still alive) so it never stalls on the AFK
+		// patience timeout.
+		if ent.Hex == dropped.Hex {
+			postPickupIntent(t, ts, me, dropped.ID)
+		} else {
+			postIntent(t, ts, me, dropped.Hex)
+		}
 	}
 
 	t.Fatalf("player never picked up item %d (dropped at %v) before the pickup deadline", dropped.ID, dropped.Hex)
+}
+
+// postPickupIntent submits an explicit pickup intent for a ground item id
+// (the inventory-slots milestone's replacement for walk-over auto-pickup).
+func postPickupIntent(t *testing.T, ts *httptest.Server, me protocol.JoinResponse, groundItemID int64) {
+	t.Helper()
+
+	intent := protocol.IntentRequest{
+		Kind: protocol.IntentPickup, EntityID: me.EntityID, Token: me.Token, GroundItemID: groundItemID,
+	}
+
+	resp := postJSON(t, ts, "/api/intent", intent)
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("pickup intent status = %d, want 202", got)
+	}
 }
