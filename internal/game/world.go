@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	mrand "math/rand/v2"
 	"slices"
 	"strings"
@@ -16,6 +17,22 @@ import (
 
 	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
+)
+
+// combatLogKey is the slog attribute key every combat-resolution log line
+// carries (slog.Info("combat", "event", ...)) — the seed of the milestone-12
+// analytics log (docs/roguelike-mp-plan.md §12). Filter on this key (msg ==
+// "combat") to isolate the sim's structured event stream from ordinary
+// server logs. combatEvent* names the "event" attribute's fixed vocabulary.
+const combatLogMsg = "combat"
+
+const (
+	combatEventMove   = "move"
+	combatEventAttack = "attack"
+	combatEventFizzle = "fizzle"
+	combatEventDeath  = "death"
+	combatEventPickup = "pickup"
+	combatEventXP     = "xp_award"
 )
 
 // Intent validation errors, mapped to HTTP statuses by the API layer.
@@ -152,6 +169,11 @@ type World struct {
 	// now is the clock, injectable in tests so the two-clock gating can be driven
 	// deterministically without real time. Defaults to time.Now.
 	now func() time.Time
+	// logger receives the structured "combat" event stream (moves, bumps,
+	// ranged hits/fizzles, deaths, kill-XP awards, pickups) — the seed of the
+	// milestone-12 analytics log. Defaults to slog.Default() in NewWorld;
+	// override via SetLogger (mirrors SetAnnounce).
+	logger *slog.Logger
 
 	mu   sync.Mutex
 	turn int64
@@ -272,6 +294,7 @@ func NewWorld(
 		bubblePoll:      bubblePoll,
 		disconnectGrace: disconnectGrace,
 		now:             time.Now,
+		logger:          slog.Default(),
 		terrain:         terrain,
 		worldMap:        worldMap,
 		radius:          radius,
@@ -292,6 +315,18 @@ func NewWorld(
 // Map returns the immutable world map.
 func (w *World) Map() protocol.MapResponse {
 	return w.worldMap
+}
+
+// SetLogger installs the structured "combat" event sink (mirrors
+// SetAnnounce). A nil logger is ignored — callers that don't want the
+// stream keep NewWorld's slog.Default() rather than crashing on a nil
+// dereference the next time combat resolves.
+func (w *World) SetLogger(logger *slog.Logger) {
+	if logger == nil {
+		return
+	}
+
+	w.logger = logger
 }
 
 // Run advances the world until ctx is canceled, on a single control loop that
@@ -1002,6 +1037,8 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 				award := applyRules(evEarnXP, totalXP, speciesCards(e.species), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
+
+				w.logger.Info(combatLogMsg, "event", combatEventXP, "id", e.id, "base", totalXP, "awarded", award)
 			}
 		}
 
@@ -1216,10 +1253,12 @@ func (w *World) moveAndBumpLocked(
 		case hasOpposing(occs, m):
 			bumps = append(bumps, pendingBump{m, next}) // stay; resolve after move phase
 		case len(occs) < protocol.StackCap:
+			from := m.hex
 			byHex[m.hex] = removeEntity(byHex[m.hex], m)
 			byHex[next] = append(byHex[next], m)
 			m.hex = next
 			m.path = m.path[1:]
+			w.logger.Info(combatLogMsg, "event", combatEventMove, "id", m.id, "kind", m.kind, "from", from, "to", next)
 		}
 		// else: same-faction hex full → wait (path retained).
 	}
@@ -1235,10 +1274,15 @@ func (w *World) moveAndBumpLocked(
 		case hasOpposing(occs, b.m):
 			attacks = append(attacks, pendingAttack{b.m, b.target})
 		case len(occs) < protocol.StackCap:
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "bump_target_vacated",
+				"attacker", b.m.id, "target_hex", b.target)
+
+			from := b.m.hex
 			byHex[b.m.hex] = removeEntity(byHex[b.m.hex], b.m)
 			byHex[b.target] = append(byHex[b.target], b.m)
 			b.m.hex = b.target
 			b.m.path = b.m.path[1:]
+			w.logger.Info(combatLogMsg, "event", combatEventMove, "id", b.m.id, "kind", b.m.kind, "from", from, "to", b.target)
 		}
 	}
 
@@ -1277,7 +1321,12 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		// (mirroring resolveRangedLocked's def := rangedDefFor(e) below) so
 		// the def is looked up exactly once per hit.
 		weapon := closeDefFor(a.attacker)
-		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, weapon, itemDamage(weapon, levelFor(a.attacker.xp)))
+		base := itemDamage(weapon, levelFor(a.attacker.xp))
+		dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
+		damage[victim.id] += dealt
+
+		w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", a.attacker.id, "victim", victim.id,
+			"weapon", weapon.id, "base", base, "dealt", dealt)
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
@@ -1317,11 +1366,19 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 
 		def := rangedDefFor(e)
 		if def == nil {
-			continue // unequipped mid-turn (equip intent, Task 4) → fizzle
+			// unequipped mid-turn (equip intent, Task 4) → fizzle
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped",
+				"attacker", e.id, "target_hex", target)
+
+			continue
 		}
 
 		if HexDistance(e.hex, target) > def.rangeHex {
-			continue // moved out of range this turn → fizzle
+			// moved out of range this turn → fizzle
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range", "attacker", e.id,
+				"weapon", def.id, "target_hex", target)
+
+			continue
 		}
 
 		dmg := itemDamage(def, levelFor(e.xp))
@@ -1351,7 +1408,11 @@ func (w *World) resolveBowLocked(
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 	victim := victims[rng.IntN(len(victims))]
-	damage[victim.id] += w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+	damage[victim.id] += dealt
+
+	w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
+		"weapon", weapon.id, "base", dmg, "dealt", dealt)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
@@ -1380,7 +1441,11 @@ func (w *World) resolveAoELocked(
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 	for _, o := range victims {
-		damage[o.id] += w.rollDamageLocked(rng, attacker, o, weapon, dmg)
+		dealt := w.rollDamageLocked(rng, attacker, o, weapon, dmg)
+		damage[o.id] += dealt
+
+		w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", o.id,
+			"weapon", weapon.id, "base", dmg, "dealt", dealt)
 	}
 }
 
@@ -1516,11 +1581,16 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) []*monst
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
+			w.logger.Info(combatLogMsg, "event", combatEventDeath, "id", e.id, "kind", e.kind,
+				"monster_kind", e.monsterKind, "at", e.hex)
+
 			w.dropLootLocked(rng, kindOf(e), e.hex)
 			delete(w.entities, e.id)
 
 			continue
 		}
+
+		w.logger.Info(combatLogMsg, "event", combatEventDeath, "id", e.id, "kind", e.kind, "at", e.hex)
 
 		// Player: fall back to the start of the XP level you were in — keep the
 		// level, lose the within-level progress — then respawn in place of a
@@ -1599,6 +1669,7 @@ func (w *World) pickupLocked(members []*entity) {
 		for _, it := range items {
 			e.items = append(e.items, it)
 			w.announce("system", e.name+" picked up "+itemDefByID[it.defID].name)
+			w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", it.defID)
 		}
 
 		delete(w.groundItems, e.hex)

@@ -255,6 +255,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
+- **Combat event log** (`internal/game`, structured `slog`, the milestone-12
+  analytics seed): every resolution path emits `slog.Info("combat", "event",
+  ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
+  `fizzle` (reasons: `out_of_range`, `unequipped`, `bump_target_vacated`),
+  `death`, `xp_award`, `pickup` — filterable on the `"combat"` msg key or the
+  `event` attribute. `World.SetLogger` installs the sink (defaults to
+  `slog.Default()`, mirrors `SetAnnounce`); `cmd/rogue/app` wires the
+  process logger in.
 
 ---
 

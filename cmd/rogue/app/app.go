@@ -65,6 +65,7 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 		cfg.TurnInterval, cfg.CombatPatience, cfg.BubblePoll, cfg.DisconnectGrace,
 		cfg.WorldSeed, cfg.WorldRadius, ticks,
 	)
+	world.SetLogger(logger)
 
 	// A snapshot restore already brings back the persisted monster
 	// population (a restart must not respawn a healed, repositioned
