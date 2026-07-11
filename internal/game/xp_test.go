@@ -33,10 +33,11 @@ func TestFreshPlayerHasZeroXPLevelOne(t *testing.T) {
 	}
 }
 
-// TestKillGrantsXP: a player who bumps a one-hit monster to death is awarded the
-// full MonsterXP; the derived Level reflects the new total. Joins as a Dwarf so
-// the base award is asserted without the Human XP bonus (the bonus has its own
-// test); Dwarf adds no crit RNG and no XP modifier.
+// TestKillGrantsXP: a player who bumps a one-hit monster to death is awarded
+// the slain kind's full XP (wolf's here — the default spawn kind); the
+// derived Level reflects the new total. Joins as a Dwarf so the base award
+// is asserted without the Human XP bonus (the bonus has its own test);
+// Dwarf adds no crit RNG and no XP modifier.
 func TestKillGrantsXP(t *testing.T) {
 	t.Parallel()
 
@@ -73,7 +74,7 @@ func TestKillGrantsXP(t *testing.T) {
 	}
 
 	if got, want := player.XP, game.MonsterXPForTest("wolf"); got != want {
-		t.Errorf("killer XP = %d, want %d (full MonsterXP)", got, want)
+		t.Errorf("killer XP = %d, want %d (wolf's full kill XP)", got, want)
 	}
 
 	// 20 XP is still level 1 (XPPerLevel=100); the level-up crossing is exercised
@@ -84,8 +85,8 @@ func TestKillGrantsXP(t *testing.T) {
 }
 
 // TestSharedXPIsFullNotSplit: two players in one fight both kill a single
-// monster; each is awarded the FULL MonsterXP, not a divided share — helping
-// always pays, with no last-hit competition.
+// monster; each is awarded the kind's FULL kill XP, not a divided share —
+// helping always pays, with no last-hit competition.
 func TestSharedXPIsFullNotSplit(t *testing.T) {
 	t.Parallel()
 
@@ -131,12 +132,12 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	}
 }
 
-// TestTwoKillsInOneFightGrantTwoMonsterXP: a lone player who fells two monsters
-// in the same bubble is paid MonsterXP per kill — 2*MonsterXP cumulative, not a
-// single flat award. One player lands one attack per turn, so the two kills fall
-// on consecutive bubble-turns; the assertion is the cumulative total. A
-// regression to one fixed award, to no bubble award at all, or to a world-domain
-// award would all miss it.
+// TestTwoKillsInOneFightGrantTwoMonsterXP: a lone player who fells two
+// monsters in the same bubble is paid the kind's XP per kill — 2× wolf's
+// kill XP cumulative, not a single flat award. One player lands one attack
+// per turn, so the two kills fall on consecutive bubble-turns; the
+// assertion is the cumulative total. A regression to one fixed award, to no
+// bubble award at all, or to a world-domain award would all miss it.
 func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 	t.Parallel()
 
@@ -179,13 +180,13 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 	}
 
 	if got, want := w.XPForTest(pid), 2*game.MonsterXPForTest("wolf"); got != want {
-		t.Errorf("player XP after two kills = %d, want %d (MonsterXP per kill)", got, want)
+		t.Errorf("player XP after two kills = %d, want %d (wolf's kill XP per kill)", got, want)
 	}
 }
 
 // TestKillCrossingLevelBoundaryLevelsUp: a player one kill short of the next
 // level crosses XPPerLevel on the kill and their derived Level increments. Joins
-// as a Dwarf so the boundary math uses the base MonsterXP award (no Human bonus).
+// as a Dwarf so the boundary math uses wolf's base kill XP (no Human bonus).
 func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	t.Parallel()
 
@@ -197,7 +198,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
-	// One MonsterXP below the level-2 boundary: still level 1 before the kill.
+	// One wolf kill's XP below the level-2 boundary: still level 1 before the kill.
 	w.SetXPForTest(me.EntityID, protocol.XPPerLevel-game.MonsterXPForTest("wolf"))
 
 	before, ok := entityOfSnap(w.Snapshot(), me.EntityID)

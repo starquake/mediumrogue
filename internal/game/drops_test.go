@@ -9,16 +9,19 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// Pinned seeds for the one-hit-kill drop roll (rng.IntN(100) <
-// DropChancePercent, drawn from the same PCG stream as the rest of a
-// bubble-turn resolution — move-shuffle first, then the bump's damage roll,
-// then the drop roll in resolveDeathsLocked). Found by probing killSeedDrops'
-// exact scenario: seed 0 misses (no ground item), seed 4 hits. WHICH def the
-// hit yields depends on the whole dropTable (the weighted pick walks it), so
-// these two constants are re-derived whenever the table grows — the tests
+// Pinned seeds for the one-hit-kill drop roll (rng.IntN(100) < the slain
+// KIND's own dropChance — wolf's 30%, the default spawn kind, since loot
+// moved monster-side in 6c — drawn from the same PCG stream as the rest of
+// a bubble-turn resolution: move-shuffle first, then the bump's damage
+// roll, then the drop roll in resolveDeathsLocked). Found by probing
+// killSeedDrops' exact scenario: seed 0 misses (no ground item), seed 4
+// hits. WHICH def the hit yields depends on the whole of wolf's own drop
+// table (the weighted pick walks it — content.go's monsterDefs), so these
+// two constants are re-derived whenever that table changes — the tests
 // prove the drop→pickup cycle, not any particular item. Current values:
 // re-derived after the first designer batch (mattock + war-mage staff)
-// widened the table.
+// widened the table; 6c kept wolf's table byte-identical to that pre-6c
+// global dropTable precisely so these seeds survive.
 const (
 	killMissSeed        = 0
 	killDropSeed        = 4

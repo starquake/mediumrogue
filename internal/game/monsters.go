@@ -44,12 +44,15 @@ type drop struct {
 // monsterDef is one entry in the monster-kind content registry: a kind's
 // fixed stats, its own weighted loot table, which difficulty rings it
 // spawns in, and the (empty at launch) rule-card seam for future passives
-// (armored, regenerating). Pure data, mirroring itemDef's shape.
+// (armored, regenerating). Pure data, mirroring itemDef's shape. A kind's
+// LOOKS (dot color + glyph letter) live client-side in entities.ts's
+// KIND_STYLE, keyed by this id — presentation is client-owned by
+// convention, same as CLASS_GLYPH for player classes.
 type monsterDef struct {
-	id, name, glyph string
-	maxHP           int
-	damage          int // the claws profile: closeDefFor's monster branch
-	xp              int // per-kill award, folded through the shared earn-XP event
+	id, name string
+	maxHP    int
+	damage   int // the claws profile: closeDefFor's monster branch
+	xp       int // per-kill award, folded through the shared earn-XP event
 	// aggroRadius overrides protocol.MonsterAggroRadius for a WORLD-domain
 	// monster of this kind; 0 means "use the default". Non-zero values must
 	// be strictly greater than protocol.CombatRadius (validateMonsterDefs) —

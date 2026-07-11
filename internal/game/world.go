@@ -114,8 +114,9 @@ type entity struct {
 	// Only consulted while streams == 0. Players only.
 	disconnectedAt time.Time
 	// items is every item instance this entity owns (players only; monsters own
-	// none — they fight with the flat monsterClawsDef profile). Granted at Join
-	// by grantDefaultsLocked; gear survives death (never cleared by respawn).
+	// none — they fight with their kind's own claws profile, monsterDef.claws).
+	// Granted at Join by grantDefaultsLocked; gear survives death (never
+	// cleared by respawn).
 	items []itemInstance
 	// closeSlot and rangedSlot are the instance ids currently equipped in each
 	// slot, or 0 for empty. 0 is never a valid instance id (nextID starts
@@ -1182,10 +1183,11 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 
 		// Melee/bump damage: the attacker's equipped close-slot item (or the
 		// fists/claws fallback — closeDefFor), level-scaled via itemDamage. A
-		// monster's closeDefFor is always monsterClawsDef, reproducing the old
-		// flat MonsterAttackDamage (levelFor(0) == 1, so the level-scaling term
-		// is 0). Resolved once here (mirroring resolveRangedLocked's def :=
-		// rangedDefFor(e) below) so the def is looked up exactly once per hit.
+		// monster's closeDefFor is its KIND's own claws profile (6c —
+		// monsterDef.claws, e.g. a rat's 1 vs a dragon's 9); levelFor(0) == 1
+		// keeps the level-scaling term 0 for monsters. Resolved once here
+		// (mirroring resolveRangedLocked's def := rangedDefFor(e) below) so
+		// the def is looked up exactly once per hit.
 		weapon := closeDefFor(a.attacker)
 		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, weapon, itemDamage(weapon, levelFor(a.attacker.xp)))
 	}
@@ -1302,6 +1304,13 @@ func (w *World) resolveAoELocked(
 // two wolves dying non-consecutively (a wolf, then a troll, then a second
 // wolf) still read as "2 wolves and a troll", not three separate clauses.
 func killSummary(slain []*monsterDef) string {
+	// Unreachable from resolveBubbleTurnLocked (its len(slain) > 0 gate),
+	// but the exported-for-test wrapper (KillSummaryForTest) can reach it —
+	// return an empty line instead of letting killPhrase's join panic.
+	if len(slain) == 0 {
+		return ""
+	}
+
 	total := 0
 	for _, k := range slain {
 		total += k.xp
@@ -1598,7 +1607,11 @@ func (w *World) SpawnMonsters(n int) {
 	byRing, ringWeights := w.spawnCandidatesByRingLocked(rng)
 	kindsByRing := kindsPerRing()
 
-	dragonsPlaced := 0
+	// The dragon cap is per WORLD, not per call: start from the dragons
+	// already alive (a previous SpawnMonsters call, or a SpawnMonsterKindAt-
+	// seeded one), so the future continuous/density spawner calling this
+	// again mid-run can never stack a second dragon past DragonCount.
+	dragonsPlaced := w.livingDragonsLocked()
 	placed := 0
 
 	for placed < n {
@@ -1629,6 +1642,23 @@ func (w *World) SpawnMonsters(n int) {
 		}
 		placed++
 	}
+}
+
+// livingDragonsLocked counts the living dragon-kind monsters currently in
+// the world — SpawnMonsters' starting point for the per-WORLD dragon cap
+// (protocol.DragonCount), so repeated spawn calls (or a test/future-spawner
+// mix of SpawnMonsterKindAt and SpawnMonsters) never accumulate dragons
+// past the cap. Callers hold w.mu.
+func (w *World) livingDragonsLocked() int {
+	n := 0
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster && e.hp > 0 && e.monsterKind == idKindDragon {
+			n++
+		}
+	}
+
+	return n
 }
 
 // spawnCandidatesByRingLocked gathers every walkable candidate hex (the

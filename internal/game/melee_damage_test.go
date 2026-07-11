@@ -102,9 +102,10 @@ func TestBumpDamageScalesWithLevel(t *testing.T) {
 	}
 }
 
-// TestMonsterBumpDamageUnchanged: a monster's melee is still the flat
-// MonsterAttackDamage — classes changed only the player side of the bump. A
-// monster bumping a Fighter drops the Fighter by exactly MonsterAttackDamage.
+// TestMonsterBumpDamageUnchanged: a monster's melee is its kind's own claws
+// damage (wolf here — the default spawn kind, carrying the old flat number
+// forward unchanged) — classes changed only the player side of the bump. A
+// wolf bumping a Fighter drops the Fighter by exactly wolf's claws damage.
 func TestMonsterBumpDamageUnchanged(t *testing.T) {
 	t.Parallel()
 

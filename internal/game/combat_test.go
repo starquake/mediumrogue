@@ -368,7 +368,8 @@ func TestBumpRandomVictimOnStackedHexIsReproducible(t *testing.T) {
 // already adjacent to the sole player now bumps into it (milestone 6.3 Task
 // 3) instead of holding position (6.2's behaviour) — thinkMonstersLocked
 // steps onto the player's hex, and the move phase converts that into an
-// attack. The player takes MonsterAttackDamage and the monster stays put.
+// attack. The player takes the monster's claws damage (wolf's, here) and
+// the monster stays put.
 func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 	t.Parallel()
 

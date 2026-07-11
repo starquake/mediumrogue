@@ -21,9 +21,10 @@ const (
 )
 
 // TestHumanKillXPBonus: on the same shared kill, a Human is paid
-// MonsterXP * (100+HumanXPBonusPercent)/100 (i.e. 1.5x at +50%) while a
-// non-Human (Dwarf here) earns the flat MonsterXP. Both survive the fight, so
-// both are credited — isolating the species multiplier as the only difference.
+// killXP * (100+HumanXPBonusPercent)/100 (i.e. 1.5x at +50%, over the slain
+// kind's own XP — wolf's here) while a non-Human (Dwarf here) earns the
+// unmodified kill XP. Both survive the fight, so both are credited —
+// isolating the species multiplier as the only difference.
 func TestHumanKillXPBonus(t *testing.T) {
 	t.Parallel()
 
@@ -61,7 +62,7 @@ func TestHumanKillXPBonus(t *testing.T) {
 
 	wantHuman := game.MonsterXPForTest("wolf") * (100 + protocol.HumanXPBonusPercent) / 100
 	if got, want := w.XPForTest(human), wantHuman; got != want {
-		t.Errorf("Human XP = %d, want %d (MonsterXP +%d%%)", got, want, protocol.HumanXPBonusPercent)
+		t.Errorf("Human XP = %d, want %d (wolf's kill XP +%d%%)", got, want, protocol.HumanXPBonusPercent)
 	}
 
 	if got, want := w.XPForTest(dwarf), game.MonsterXPForTest("wolf"); got != want {
@@ -184,9 +185,10 @@ func TestElfCritBow(t *testing.T) {
 	})
 }
 
-// TestDwarfDamageReductionBump: a Dwarf player struck by a monster's melee takes
-// MonsterAttackDamage - DwarfDamageReduction. DR is a victim-side passive, so it
-// applies to a dwarf being hit (the attacker here is a species-less monster).
+// TestDwarfDamageReductionBump: a Dwarf player struck by a monster's melee
+// takes the monster's claws damage (wolf's, here) - DwarfDamageReduction. DR
+// is a victim-side passive, so it applies to a dwarf being hit (the attacker
+// here is a species-less monster).
 func TestDwarfDamageReductionBump(t *testing.T) {
 	t.Parallel()
 

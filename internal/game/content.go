@@ -154,7 +154,7 @@ var itemDefByID map[string]*itemDef
 //nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init (mustValidateContent).
 var monsterDefs = []*monsterDef{
 	{
-		id: idKindRat, name: "Rat", glyph: "r",
+		id: idKindRat, name: "Rat",
 		// aggroRadius is CombatRadius+1, not the spec table's flat 6 — 6 fails
 		// the validation invariant this file shares with protocol.MonsterAggroRadius
 		// (a monster must notice a player before it can close into a combat
@@ -164,7 +164,7 @@ var monsterDefs = []*monsterDef{
 		rings: []int{0, 1},
 	},
 	{
-		id: idKindWolf, name: "Wolf", glyph: "w",
+		id: idKindWolf, name: "Wolf",
 		maxHP: 10, damage: 3, xp: 20, aggroRadius: protocol.MonsterAggroRadius, dropChance: 30,
 		// The current starter drop set, same order/weights as the pre-6c
 		// global dropTable — pins killDropSeed/killMissSeed (drops_test.go).
@@ -180,7 +180,7 @@ var monsterDefs = []*monsterDef{
 		rings: []int{1},
 	},
 	{
-		id: idKindGhoul, name: "Ghoul", glyph: "g",
+		id: idKindGhoul, name: "Ghoul",
 		maxHP: 16, damage: 4, xp: 35, aggroRadius: 8, dropChance: 35,
 		// The starter set with venom-fang weighted up (a ghoul's signature drop).
 		drops: []drop{
@@ -195,7 +195,7 @@ var monsterDefs = []*monsterDef{
 		rings: []int{1, 2},
 	},
 	{
-		id: idKindTroll, name: "Troll", glyph: "T",
+		id: idKindTroll, name: "Troll",
 		maxHP: 30, damage: 6, xp: 60, aggroRadius: 8, dropChance: 50,
 		// The starter set with the warhammer/pack-bow/war-mage-staff weighted
 		// up — a troll's frontier-tier signature drops.
@@ -211,7 +211,7 @@ var monsterDefs = []*monsterDef{
 		rings: []int{2},
 	},
 	{
-		id: idKindDragon, name: "Dragon", glyph: "D",
+		id: idKindDragon, name: "Dragon",
 		maxHP: 60, damage: 9, xp: 150, aggroRadius: 12, dropChance: 100,
 		// The Wyrmslayer Greatsword (weight 2 — the headline drop, roughly as
 		// likely as the whole rest of the rare pool combined) plus a small

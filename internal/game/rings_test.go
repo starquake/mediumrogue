@@ -200,6 +200,50 @@ func TestSpawnMonstersDragonCapped(t *testing.T) {
 	}
 }
 
+// TestDragonCapIsPerWorldNotPerCall: the DragonCount cap counts dragons
+// already alive in the world — one pre-seeded via SpawnMonsterKindAt plus a
+// large SpawnMonsters call (and a second SpawnMonsters call on top) must
+// never exceed the cap, since the future continuous/density spawner will
+// call SpawnMonsters repeatedly mid-run.
+func TestDragonCapIsPerWorldNotPerCall(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(123) // the seed TestSpawnMonstersDragonCapped proves places a dragon at n=200
+
+	// Pre-seed one dragon directly, as a test or a future spawner might.
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	placed := false
+
+	for _, h := range hexesWithinDistance(origin, 3) {
+		if isWalkable(w, h) && w.SpawnMonsterKindAt(h, "dragon") {
+			placed = true
+
+			break
+		}
+	}
+
+	if !placed {
+		t.Fatal("could not pre-seed a dragon near the origin")
+	}
+
+	w.SpawnMonsters(200)
+	w.SpawnMonsters(200) // a second call must also see the cap already met
+
+	dragons := 0
+
+	for _, e := range w.Snapshot().Entities {
+		if e.Kind == protocol.EntityMonster && w.MonsterKindForTest(e.ID) == "dragon" {
+			dragons++
+		}
+	}
+
+	if got, want := dragons, protocol.DragonCount; got > want {
+		t.Errorf("dragons in the world = %d, want <= %d (per-WORLD cap, across calls)", got, want)
+	}
+}
+
 // TestSpawnMonstersRingPlacementReproducibleForSameSeed mirrors
 // TestSpawnMonstersIsReproducibleForSameSeed (monster_test.go) at the
 // per-kind level: the same seed reproduces the exact same (hex, kind) pairs.

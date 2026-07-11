@@ -242,6 +242,12 @@ func TestKillSummaryNamesKinds(t *testing.T) {
 		})
 	}
 
+	// Zero kills: unreachable from the bubble path (it gates on len(slain) >
+	// 0), but the exported-for-test helper must not panic — empty line back.
+	if got, want := game.KillSummaryForTest(), ""; got != want {
+		t.Errorf("killSummary(nothing slain) = %q, want %q", got, want)
+	}
+
 	// Sanity-check the XP arithmetic quoted above against the live registry,
 	// so this test fails loudly (not silently) if the launch numbers change.
 	if got, want := wolfXP+trollXP+dragonXP, 230; got != want {
