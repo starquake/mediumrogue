@@ -116,9 +116,7 @@ func serve(
 
 	go world.Run(ctx)
 
-	if cfg.SnapshotPath != "" {
-		go runSnapshotSaver(ctx, logger, cfg.SnapshotPath, cfg.SnapshotInterval, world)
-	}
+	saverDone := startSnapshotSaver(ctx, logger, cfg, world)
 
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
@@ -162,12 +160,39 @@ func serve(
 	}
 
 	// One final write after the drain, so shutdown persists whatever state
-	// in-flight requests left behind — not just the last periodic tick.
-	if cfg.SnapshotPath != "" {
+	// in-flight requests left behind — not just the last periodic tick. Wait
+	// for the periodic saver to exit first (ctx is already canceled, so it
+	// returns promptly): a periodic save mid-flight at this instant would
+	// otherwise rename its slightly-staler snapshot OVER this final one.
+	if saverDone != nil {
+		<-saverDone
 		saveSnapshot(logger, cfg.SnapshotPath, world)
 	}
 
 	return nil
+}
+
+// startSnapshotSaver launches the periodic snapshot saver goroutine and
+// returns a channel that closes when it exits, or nil when persistence is
+// disabled. serve joins this channel before its final shutdown save, so an
+// in-flight periodic marshal+rename can never land AFTER (and clobber) the
+// shutdown snapshot with slightly staler state.
+func startSnapshotSaver(
+	ctx context.Context, logger *slog.Logger, cfg *config.Config, world *game.World,
+) chan struct{} {
+	if cfg.SnapshotPath == "" {
+		return nil
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		runSnapshotSaver(ctx, logger, cfg.SnapshotPath, cfg.SnapshotInterval, world)
+	}()
+
+	return done
 }
 
 // loadSnapshot loads world's state from path if persistence is enabled
@@ -199,7 +224,19 @@ func loadSnapshot(logger *slog.Logger, path string, world *game.World) bool {
 	}
 
 	if err := world.RestoreState(data); err != nil {
-		logger.Error("snapshot: restore (starting fresh)", "path", path, "err", err)
+		// NEVER destroy a rejected snapshot: left at the live path, the fresh
+		// world's periodic saver would overwrite the only copy of everyone's
+		// characters within one SNAPSHOT_INTERVAL — so a mere WORLD_SEED typo
+		// in the deployment env would permanently erase the world. Move it
+		// aside; recovering it is a manual `mv` back (plus fixing the config).
+		rejected := fmt.Sprintf("%s.rejected-%d", path, time.Now().Unix())
+		if mvErr := os.Rename(path, rejected); mvErr != nil {
+			logger.Error("snapshot: REJECTED and could not be moved aside — the periodic saver may overwrite it",
+				"path", path, "err", err, "renameErr", mvErr)
+		} else {
+			logger.Error("snapshot: REJECTED — starting fresh; original preserved",
+				"path", path, "preserved", rejected, "err", err)
+		}
 
 		return false
 	}
@@ -255,6 +292,19 @@ func saveSnapshot(logger *slog.Logger, path string, world *game.World) {
 
 	if _, err := tmp.Write(data); err != nil {
 		logger.Error("snapshot: write", "path", tmpPath, "err", err)
+
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+
+		return
+	}
+
+	// fsync before the rename: os.Rename is atomic against a process crash,
+	// not against power loss — without the flush, the rename can land while
+	// the data hasn't, leaving a garbage file at the live path and costing
+	// the whole world.
+	if err := tmp.Sync(); err != nil {
+		logger.Error("snapshot: sync temp file", "path", tmpPath, "err", err)
 
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
