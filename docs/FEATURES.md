@@ -1,6 +1,7 @@
 # Medium Rogue — implemented features reference
 
-*Everything that actually exists in the game as of 2026-07-11 (main through PR #45).
+*Everything that actually exists in the game as of 2026-07-11 (main through
+milestone 6c — monster kinds & difficulty rings).
 Design rationale lives in `roguelike-mp-plan.md`; current-session state in
 `STATUS.md`; the content-design vocabulary in `rule-based-content-design.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*
@@ -49,8 +50,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   attack clicks, pending "…" on equip buttons, Diablo-style **floating damage
   numbers** (white over hostiles, red over players; killing blows shown as
   remaining HP — derived client-side by diffing bundles), kill summaries and
-  player deaths announced in chat ("a monster was slain (+20 XP to everyone
-  in the fight)", "NAME died").
+  player deaths announced in chat, naming the slain **kind(s)** ("a wolf was
+  slain (+20 XP to everyone in the fight)", "a wolf and a troll were slain
+  (+80 XP …)", "2 ghouls were slain (+70 XP …)", "NAME died").
 
 ### Classes & species (chosen on the start screen)
 | | Weapons (defaults) | HP | Role |
@@ -78,27 +80,55 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
 
-### Gear (milestone 6b.4)
+### Gear (milestone 6b.4, loot model updated 6c)
 - **Items are content data** (registry in `internal/game/content.go`): 5
-  class defaults + 7 drop items, including two designer-authored cards
+  class defaults + 8 drop items, including three designer-authored cards
   (Ancient Dwarven Mattock: +3 damage in a dwarf's hands; Staff of the War
   Mage: ×2 damage vs targets below 6 HP — a deliberate flat-threshold
-  execute).
-- **Drops**: 30% chance per monster kill, weighted table; items land on the
-  death hex, render as map markers, and are **picked up by walking over
-  them** (announced in chat). Inventory is unbounded; own many, equip one
-  per slot (close / ranged).
+  execute; Wyrmslayer Greatsword: ×1.5 damage vs dragons specifically —
+  the first `targetKind`-conditioned card).
+- **Drops are monster-side** (milestone 6c): each monster **kind** owns its
+  own chance-to-drop and its own weighted item table (`monsterDef.drops`) —
+  items no longer carry a drop weight at all. A slain monster rolls ITS
+  kind's chance (10–100%, see the Monsters table below); a hit picks from
+  ITS kind's table. Items land on the death hex, render as map markers, and
+  are **picked up by walking over them** (announced in chat). Inventory is
+  unbounded; own many, equip one per slot (close / ranged).
 - **Equip**: free & instant out of combat; **your whole turn inside a
   bubble** (a later move/attack replaces a queued swap; bubble dissolve
   applies it). Gear panel lists items with stats, rule text, equipped state.
 
-### Monsters
-- Spawned at startup (`MONSTER_COUNT`, default 0), seeded placement. One
-  kind today (10 HP, 3 damage, 20 XP) — the kinds/rings slice is specced.
-  AI: hunt the nearest player one step per turn; bubble monsters chase their
-  bubble's players; world monsters keep hunting even while every player is
-  bubbled (walk-in reinforcement pressure). **Aggro range 10**: world
-  monsters idle until a player is within 10 hexes (pipeline-hooked per
+### Monsters (kinds & difficulty rings — milestone 6c)
+- **Five kinds**, content data in `internal/game/content.go` (`monsterDefs`),
+  each with its own stats, aggro radius, XP award, and loot table:
+
+  | Kind | Ring(s) | HP | Dmg | XP | Aggro | Drop chance |
+  |---|---|---|---|---|---|---|
+  | Rat | 0–1 | 4 | 1 | 8 | 7 | 10% |
+  | Wolf | 1 | 10 | 3 | 20 | 10 | 30% |
+  | Ghoul | 1–2 | 16 | 4 | 35 | 8 | 35% |
+  | Troll | 2 | 30 | 6 | 60 | 8 | 50% |
+  | Dragon | 2 (capped at 1 per world) | 60 | 9 | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
+
+  Wolf carries forward the pre-6c flat numbers exactly. Each kind renders
+  with a distinct on-map dot color and one-letter glyph (`entities.ts`'s
+  `KIND_STYLE`); an unrecognized kind falls back to the old flat monster
+  red with no glyph. A kill announces the kind by name (see Combat above).
+- **Difficulty rings**: the map bands into 3 concentric rings by hex
+  distance from the origin (`RingCount`) — at the default `WORLD_RADIUS=24`
+  that's ring 0 = 0–7 (home), ring 1 = 8–15, ring 2 = 16–24 (frontier).
+  `SpawnMonsters` distributes placements across rings weighted by each
+  ring's walkable area and picks a kind uniformly among the kinds
+  registered for the chosen ring. **Sanctuary**: no hostile spawns within
+  `SanctuaryRadius=5` of the origin (the seed of a future trade hub) —
+  falls back (like every other spawn guard here) if a tiny map has no hex
+  outside it.
+- Spawned at startup (`MONSTER_COUNT`, default 0), seeded ring/kind
+  placement. AI: hunt the nearest aggroed player one step per turn; bubble
+  monsters chase their bubble's players unconditionally; world monsters
+  keep hunting even while every player is bubbled (walk-in reinforcement
+  pressure). **Aggro range is per-kind** (table above), overriding the
+  shared default (`MonsterAggroRadius=10`, itself pipeline-hooked per
   player for future sneaky/loud gear). Spawn guards: players and monsters
   never spawn on/within 6 hexes of each other, with fallbacks for tiny maps.
 
@@ -145,21 +175,24 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   `client/src/protocol.gen.ts` (never hand-edited; `make protocol`).
 - **Modifier pipeline** (`internal/game/rules.go`): combat values fold
   through **rule cards** (pure serializable data — no closures; the SQLite
-  prerequisite). Events live: `deal-damage`, `take-damage`, `earn-xp`
-  (`aggro-range`). Conditions: `chance`, `targetHPBelowPct`,
-  `targetHPBelowFlat`, `targetHPFull`, `allyInBubble`, `targetAdjacent`,
-  `attackerSpecies`. Effects: `add`, `mulPct`. Fold order: all adds → all
-  multipliers → event clamp (damage ≥1, XP ≥0). Sources: species cards +
-  acting/equipped item cards. Content validated at process start
-  (fail-loud). Every damage and XP number in the game flows through it.
+  prerequisite). Events live: `deal-damage`, `take-damage`, `earn-xp`,
+  `aggro-range` (per-kind aggro radius folds through it since 6c).
+  Conditions: `chance`, `targetHPBelowPct`, `targetHPBelowFlat`,
+  `targetHPFull`, `allyInBubble`, `targetAdjacent`, `attackerSpecies`,
+  `targetKind` (victim is a monster of a specific registered kind — 6c,
+  validated against the monster registry). Effects: `add`, `mulPct`. Fold
+  order: all adds → all multipliers → event clamp (damage ≥1, XP ≥0).
+  Sources: species cards + acting/equipped item cards. Content validated at
+  process start (fail-loud). Every damage and XP number in the game flows
+  through it.
 - **Determinism**: per-resolution PCG rng seeded (worldSeed, turn); map
   iteration sorted before any rng draw; spawn randomness on separate
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (24 specs). The client exposes **`window.game`**
-  (positions, hp, inventory, combatMoves, damage events, tapHex, sendChat…)
-  as the always-in-sync test/debug surface.
+  embedded-client binary (25 specs). The client exposes **`window.game`**
+  (positions incl. `monsterKind`, hp, inventory, combatMoves, damage events,
+  tapHex, sendChat…) as the always-in-sync test/debug surface.
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
@@ -190,21 +223,29 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | `MaxNameLen` / `MaxChatLen` | 24 / 500 | input caps (runes) |
 | `FighterMaxHP` / `RogueMaxHP` / `MageMaxHP` | 30 / 16 / 14 | level-1 HP |
 | `HPPerLevel` / `DamagePerLevel` | 4 / 1 | per-level growth (**flat-curve retune pending**) |
-| `XPPerLevel` / `MonsterXP` | 100 / 20 | leveling & kill award |
-| `MonsterMaxHP` / `MonsterAttackDamage` / `FistsDamage` | 10 / 3 / 1 | monster & unarmed profiles |
+| `XPPerLevel` / `QuestKillRewardPerTarget` | 100 / 20 | leveling & flat per-target kill-quest reward |
+| `MonsterMaxHP` / `FistsDamage` | 10 / 1 | pre-6c monster baseline (wolf's HP) & unarmed profile |
 | `HumanXPBonusPercent` / `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 50 / 20 / 2 / 1 | species knobs |
-| `DropChancePercent` | 30 | loot roll per monster kill |
 | `RegenPerTurn` | 1 | out-of-combat HP per world turn |
-| `MonsterAggroRadius` | 10 | world-monster notice distance (> CombatRadius, compile-guarded) |
+| `MonsterAggroRadius` | 10 | default world-monster notice distance (> CombatRadius, compile-guarded); per-kind `aggroRadius` overrides it |
+| `RingCount` | 3 | difficulty rings worldgen bands the map into |
+| `SanctuaryRadius` | 5 | no hostile spawn within this many hexes of the origin |
+| `DragonCount` | 1 | max dragons `SpawnMonsters` places per world |
 
-*Item stats (damage/range/AoE and rule cards) are content data in
-`internal/game/content.go`, not constants — the wire carries display stats.*
+*Monster stats (HP/damage/XP/aggro/loot) and item stats (damage/range/AoE
+and rule cards) are content data in `internal/game/content.go`, not
+constants — the wire carries display stats. `MonsterXP`,
+`MonsterAttackDamage`, and `DropChancePercent` were retired in 6c: those
+numbers are now per-kind (`monsterDef.xp`/`damage`/`dropChance`); wolf's
+values are unchanged (20 / 3 / 30%).*
 
 ## 5. Decided but not yet built
 
-Recorded in `roguelike-mp-plan.md` §0/§8/§9 and issue #36: monster kinds +
-difficulty rings + per-kind loot (spec ready), flat-curve retune, skills as
-level-up perks (First Aid, Make Camp), downed state & revive, recovery
-layers beyond regen (potions, rests, sanctuary trade hub), continuous
-spawning with density-tracks-players, path-preview breadcrumb, character
+Recorded in `roguelike-mp-plan.md` §0/§8/§9 and issue #36: flat-curve
+retune, skills as level-up perks (First Aid, Make Camp), downed state &
+revive, recovery layers beyond regen (potions, rests, sanctuary trade
+hub — the 6c sanctuary zone is only the monster-free ground, not the hub
+itself), continuous spawning with density-tracks-players, monster-kind
+passives (the `rules` seam on `monsterDef` ships empty), ring UI
+indicators, terrain-blocked LOS, path-preview breadcrumb, character
 persistence + bed spawns, admin console & analytics log, SQLite-for-state.

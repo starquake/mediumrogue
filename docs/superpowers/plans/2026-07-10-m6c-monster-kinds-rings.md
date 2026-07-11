@@ -26,9 +26,9 @@
 
 **Interfaces (produces):** `type monsterDef struct{ id, name, glyph string; maxHP, damage, xp, aggroRadius, dropChance int; drops []drop; rings []int; rules []ruleCard }`; `type drop struct{ defID string; weight int }`; `monsterDefs []*monsterDef`, `monsterDefByID map[string]*monsterDef`; entity field `monsterKind string` (set at spawn; empty for players); `func kindOf(e *entity) *monsterDef` (nil for players).
 
-- [ ] Failing tests: registry pins (5 kinds, wolf = 10/3/20/30% + the exact current starter-drop table), validation panics (dup id, drop referencing unknown item, ring with no kind, aggroRadius between 1 and CombatRadius-1, kind rules with unknown event), `kindOf` player→nil.
-- [ ] Implement; wire `SpawnMonsters`/`SpawnMonsterAt`/`PlaceMonsterForTest` to take/default a kind (`wolf`) and set `monsterKind` + `maxHP` from the def. Nothing else reads the registry yet — behavior identical, all existing tests must pass unchanged.
-- [ ] `make check`; commit `feat(game): monster-kind registry; wolf carries the current numbers`.
+- [x] Failing tests: registry pins (5 kinds, wolf = 10/3/20/30% + the exact current starter-drop table), validation panics (dup id, drop referencing unknown item, ring with no kind, aggroRadius between 1 and CombatRadius-1, kind rules with unknown event), `kindOf` player→nil.
+- [x] Implement; wire `SpawnMonsters`/`SpawnMonsterAt`/`PlaceMonsterForTest` to take/default a kind (`wolf`) and set `monsterKind` + `maxHP` from the def. Nothing else reads the registry yet — behavior identical, all existing tests must pass unchanged.
+- [x] `make check`; commit `feat(game): monster-kind registry; wolf carries the current numbers`.
 
 ### Task 2: Combat reads the kind — damage, XP, loot, announces, targetKind
 
@@ -36,9 +36,9 @@
 
 **Interfaces:** `monsterClawsDef` becomes per-kind (`closeDefFor` monster branch returns a claws profile built from `kindOf(e).damage`); `resolveDeathsLocked` returns `[]*monsterDef` (slain kinds, id-sorted) instead of `int`; kill award = sum of slain kinds' `xp` through the unchanged earn-XP fold; `dropLootLocked(rng, kind, at)` rolls `kind.dropChance` then weighted-picks from `kind.drops`; `killSummary([]*monsterDef)` names kinds ("a wolf was slain…", "a wolf and a troll were slain (+80 XP…)"); new condition `condTargetKind` (holds when victim's `monsterKind == c.s`), validated against `monsterDefByID`.
 
-- [ ] TDD per behavior; the Wyrmslayer pin test mirrors `TestFirstGearCardsPinned` (dmg 4, ×1.5 via `condTargetKind:"dragon"`, present only in dragon's table).
-- [ ] Re-derive seeded drop/XP expectations (wolf's numbers match, so hunt only genuinely shifted ones; document re-derivations in test comments as before).
-- [ ] `make check`; commit `feat(game): per-kind combat — damage, XP, monster-side loot, kind announces, targetKind`.
+- [x] TDD per behavior; the Wyrmslayer pin test mirrors `TestFirstGearCardsPinned` (dmg 4, ×1.5 via `condTargetKind:"dragon"`, present only in dragon's table).
+- [x] Re-derive seeded drop/XP expectations (wolf's numbers match, so hunt only genuinely shifted ones; document re-derivations in test comments as before).
+- [x] `make check`; commit `feat(game): per-kind combat — damage, XP, monster-side loot, kind announces, targetKind`.
 
 ### Task 3: Rings — worldgen bands, spawn distribution, sanctuary zone
 
@@ -46,21 +46,21 @@
 
 **Interfaces:** `func ringOf(h protocol.Hex, worldRadius int) int` (bands at radius fractions; tiny radii collapse to ring 0); `SpawnMonsters(n)` distributes across rings weighted by ring tile-area, uniform kind pick among the ring's kinds (seeded), dragon capped at `DragonCount`; no hostile spawn within `SanctuaryRadius` of origin; all placement behind the playtest-batch guards.
 
-- [ ] Failing tests: ring math at radius 24 and radius 4; sanctuary zone empty; kind-per-ring placement over a seeded spawn (fixed-seed expectations, worldgen_test.go style); dragon cap.
-- [ ] Implement; `make check`; commit `feat(game): difficulty rings — banded spawn placement, sanctuary zone, dragon cap`.
+- [x] Failing tests: ring math at radius 24 and radius 4; sanctuary zone empty; kind-per-ring placement over a seeded spawn (fixed-seed expectations, worldgen_test.go style); dragon cap.
+- [x] Implement; `make check`; commit `feat(game): difficulty rings — banded spawn placement, sanctuary zone, dragon cap`.
 
 ### Task 4: Wire + client — MonsterKind, per-kind looks, window.game
 
 **Files:** `internal/protocol/protocol.go` (`Entity.MonsterKind`, monsters send `Name` = kind display name) + regen; `internal/game/world.go` Snapshot; client `render/entities.ts` (color map keyed by kind + glyph letter from a small `KIND_STYLE` table with a fallback to today's red), `main.ts` (`window.game.positions` entries gain `monsterKind`), e2e spec asserting two kinds render distinct (`monsters.spec.ts` or new `kinds.spec.ts` — the monsters e2e server config may need a second kind seeded; check `playwright.config.ts` env plumbing).
 
-- [ ] Wire + snapshot + contract-test extension; client rendering; `window.game` sync; e2e.
-- [ ] `make check` + `make e2e`; commit `feat(client): monster kinds on the wire and on the map`.
+- [x] Wire + snapshot + contract-test extension; client rendering; `window.game` sync; e2e.
+- [x] `make check` + `make e2e`; commit `feat(client): monster kinds on the wire and on the map`.
 
 ### Task 5: Integration tests, docs, gate
 
 **Files:** `test/integration/kinds_test.go` (kill a seeded specific kind over HTTP → its XP lands, its announce text observed — mirror `gear_test.go`'s harness); docs: STATUS.md session note, plan §8 (add the 6c line as landed), `docs/rule-based-content-design.md` (§4 "Drops from:" note → point at monster-side tables as now real; add `targetKind` to the live-conditions list), and **`docs/FEATURES.md`** (monster-kinds section, rings, per-kind constants table, Wyrmslayer in the content list — per the CLAUDE.md same-PR convention).
 
-- [ ] Integration test green under repetition (no flake); docs updated; full `make check` + `make e2e`; commit `test(integration)+docs: monster kinds end to end; 6c recorded`.
+- [x] Integration test green under repetition (no flake); docs updated; full `make check` + `make e2e`; commit `test(integration)+docs: monster kinds end to end; 6c recorded`.
 
 ---
 
