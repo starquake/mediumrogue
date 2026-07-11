@@ -133,14 +133,17 @@ func startServerWithGrace(
 // that no longer depends on how far crypto/rand scattered the monster, and so
 // resolves in a handful of turns even when the tick loop is CPU-starved (the #22
 // chase-timing flake). Uses the same long patience / fast poll as
-// startServerWithMonsters. The heartbeat is pinned far out (time.Hour): these
-// timing-sensitive tests assert on turn bundles, never on heartbeat comments.
-func startServerWithMonstersAt(
-	t *testing.T, turnInterval time.Duration, hexes ...protocol.Hex,
-) *httptest.Server {
+// startServerWithMonsters, and the standard 15ms turn interval every caller
+// wants — a test that needs a different interval or wants monsters placed
+// relative to a player's actual (random since #36) spawn hex builds its own
+// world/server directly, as TestMageAoEDamagesMonsters and
+// TestMonsterHuntsPlayer do. The heartbeat is pinned far out (time.Hour):
+// these timing-sensitive tests assert on turn bundles, never on heartbeat
+// comments.
+func startServerWithMonstersAt(t *testing.T, hexes ...protocol.Hex) *httptest.Server {
 	t.Helper()
 
-	return startServerWithBubbleTuningAt(t, turnInterval, time.Minute, 5*time.Millisecond, hexes...)
+	return startServerWithBubbleTuningAt(t, 15*time.Millisecond, time.Minute, 5*time.Millisecond, hexes...)
 }
 
 // startServerWithBubbleTuningAt is startServerWithBubbleTuning but places

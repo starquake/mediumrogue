@@ -311,3 +311,56 @@ func TestMonsterAIStepsTowardNearerOfTwoPlayers(t *testing.T) {
 		t.Fatalf("distance to farther player = %d, want %d", got, want)
 	}
 }
+
+// TestMonsterBeyondAggroRangeStandsStill (#36): a WORLD-domain monster more
+// than MonsterAggroRadius from the only player never notices it — it stands
+// still (no wander this slice) instead of hunting from arbitrarily far away.
+func TestMonsterBeyondAggroRangeStandsStill(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// Comfortably beyond MonsterAggroRadius; the upper bound is generous
+	// (map bounds, not a tight aggro-adjacent distance) since this test only
+	// needs SOME hex outside range, not a specific one.
+	farHex := walkableHexAtDistance(t, w, me.Hex, protocol.MonsterAggroRadius+1, protocol.MonsterAggroRadius*3)
+	monsterID := w.PlaceMonsterForTest(farHex)
+
+	snap := step(t, w)
+
+	if got, want := hexOfSnap(snap, monsterID), farHex; got != want {
+		t.Errorf("monster hex = %v, want unchanged %v (beyond MonsterAggroRadius, should stand still)", got, want)
+	}
+}
+
+// TestMonsterWithinAggroRangeHunts (#36): a WORLD-domain monster at exactly
+// MonsterAggroRadius (the inclusive boundary) still notices and approaches
+// the player — only STRICTLY beyond the radius stands still.
+func TestMonsterWithinAggroRangeHunts(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	atRadius := walkableHexAtDistance(t, w, me.Hex, protocol.MonsterAggroRadius, protocol.MonsterAggroRadius)
+	monsterID := w.PlaceMonsterForTest(atRadius)
+
+	snap := step(t, w)
+
+	beforeDist := game.HexDistance(atRadius, me.Hex)
+	afterDist := game.HexDistance(hexOfSnap(snap, monsterID), me.Hex)
+
+	if afterDist >= beforeDist {
+		t.Errorf("monster distance to player went %d -> %d, want it to close in (within aggro range, at the boundary)",
+			beforeDist, afterDist)
+	}
+}

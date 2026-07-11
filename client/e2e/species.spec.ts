@@ -34,25 +34,18 @@ test("a fresh join exposes window.game.species as a valid, deterministic default
   expect(species).toBe(SpeciesHuman);
 });
 
-test("clicking a species-picker button before join changes window.game.species", async ({ page }) => {
-  // Same delay trick as class.spec.ts: src/main.ts shows the picker as soon as
-  // the page decides this is a new player, then hides it again and fires
-  // join() right after `await fetchMap()` resolves — in practice that round
-  // trip is fast enough (a local dev/CI server) that a real click can miss the
-  // window entirely. Delay the map response deliberately so the picker is
-  // reliably still visible when Playwright's click lands, without touching
-  // src/main.ts itself — this is testing the picker-to-join wiring, not how
-  // fast the network happens to be.
-  await page.route("**/api/map", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await route.continue();
+test("a stored species choice (from a prior start-screen join) rides a fresh join", async ({ page }) => {
+  // Seed a "returning player" identity (no token) requesting Dwarf — same
+  // technique as ranged.spec.ts/gear.spec.ts, deterministic without touching
+  // the start screen itself (whose own species-selection UX is exercised in
+  // class.spec.ts). An empty stored token still reaches the server as a
+  // brand-new join (Join() only reclaims an existing entity for a token it
+  // recognizes), but with the requested species.
+  await page.addInitScript(() => {
+    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", species: "dwarf" }));
   });
 
   await page.goto("/");
-
-  const dwarfButton = page.locator('#species-picker button[data-species="dwarf"]');
-  await expect(dwarfButton).toBeVisible();
-  await dwarfButton.click();
 
   await expect
     .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))

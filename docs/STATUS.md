@@ -1,21 +1,28 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-10, after milestone 6b.4 (gear & the modifier
-pipeline) landed as a post-milestone-8 follow-up — see the dedicated section
-below for the full writeup. In short: combat damage/take-damage/XP now flow
-through a data-driven rule pipeline instead of hardcoded species branches,
-species passives were migrated onto it unchanged, and items are real data —
-monsters drop them, players walk over drops to pick them up, own several,
-and equip one per slot via a new `<GearPanel>`. **Milestone 9 (CRT shader
-filter) was built and then dropped unmerged** (PR #32 closed — the user
-disliked the look; a different post-processing pass may return later; see
-the `visual-features-need-preview` memory for the lesson and the
-strict-driver `highp` shader pitfall). Next: the 6b.4 out-of-scope backlog
-(tracked on issue #36 — buffs/status effects, `attack-roll`/`on-kill`/
-`aggro-range` pipeline events, armor/trinket slots, inventory cap, item
-despawn, drop-on-death, per-monster loot tables) plus plan §8's **10 polish &
-launch**. Update this file at the end of
-every working session (milestone landed, decisions made, next step).*
+*Last updated: 2026-07-10 (evening), after a full design-and-build day on
+top of the morning's 6b.4 merge. **Landed since 6b.4** (PRs #38–#42):
+combat-feel batch (instant click feedback, Diablo-style floating damage
+numbers, tactical move-range overlay with ranged-reach marking and
+restricted in-bubble clicks, deaths/kills in the chat log); the **first
+designer gear batch** (Ancient Dwarven Mattock, Staff of the War Mage —
+each adding a pipeline condition: `attackerSpecies`, `targetHPBelowFlat`);
+and four decision batches in the plan doc: **toolbox progression** (flat
+level curve — retune `HPPerLevel`/`DamagePerLevel` pending; power = the
+gear/skill toolbox), **gear always survives death**, **scaling** (density
+tracks online count + spatial difficulty rings; bubble scaling in reserve),
+**recovery layers** (passive regen → potions → rests → sanctuary hub with
+trade), and **skills as the level-up reward** (First Aid, Make Camp;
+bounded tiers, never use-leveled) with the **downed/revive** direction.
+**In flight:** the playtest-ready batch (passive regen, monster aggro
+range, spawn guards + random spawns, respawn camera cut — PR pending) and
+the monster-kinds + difficulty-rings slice (spec/plan awaiting review).
+**Requested next:** a character-creation start screen (species/class —
+mockup first per the `visual-features-need-preview` rule). Then plan §8's
+**10 polish & launch**: identity + persistence across restarts are the real
+launch gates (§7 JSON snapshot). Backlog: issue #36. Milestone 9 (CRT
+shader) remains dropped. Update this file at the end of every working
+session (milestone landed, decisions made, next step).*
 
 ## What this project is
 

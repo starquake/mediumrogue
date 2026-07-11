@@ -3,13 +3,17 @@ package integration_test
 import (
 	"bufio"
 	"encoding/json"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/server"
 )
 
 // equippedRangedStats returns the range/AoE radius of entity id's equipped
@@ -191,7 +195,7 @@ func fireBowOrChase(
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestRogueBowKillsAtRange(t *testing.T) {
-	ts := startServerWithMonstersAt(t, 15*time.Millisecond, protocol.Hex{Q: 0, R: -2})
+	ts := startServerWithMonstersAt(t, protocol.Hex{Q: 0, R: -2})
 
 	me := joinClass(t, ts, "", protocol.ClassRogue)
 
@@ -346,6 +350,41 @@ func fireAoEOrChase(
 	}
 }
 
+// rotateHex60CW rotates h 60° clockwise around the origin (Red Blob Games'
+// cube-coordinate rotation formula: (x,y,z) -> (-z,-x,-y), with y implicit
+// as -x-z on the q/r axial pair) — used by placeMonsterClusterNear to try a
+// fixed two-hex cluster shape in all six directions around a spawn hex,
+// since any one direction might land on water/rock.
+func rotateHex60CW(h protocol.Hex) protocol.Hex {
+	x, z := h.Q, h.R
+	y := -x - z
+
+	return protocol.Hex{Q: -z, R: -y}
+}
+
+// placeMonsterClusterNear seeds two monsters on adjacent hexes two steps out
+// from center — the fixed shape TestMageAoEDamagesMonsters needs — trying
+// all six rotations around center until one lands both monsters on walkable,
+// unfull hexes (SpawnMonsterAt refuses water/rock/StackCap). Reports whether
+// any rotation succeeded.
+func placeMonsterClusterNear(world *game.World, center protocol.Hex) bool {
+	offset1 := protocol.Hex{Q: 0, R: -2}
+	offset2 := protocol.Hex{Q: 1, R: -2}
+
+	for range 6 {
+		h1 := protocol.Hex{Q: center.Q + offset1.Q, R: center.R + offset1.R}
+		h2 := protocol.Hex{Q: center.Q + offset2.Q, R: center.R + offset2.R}
+
+		if world.SpawnMonsterAt(h1) && world.SpawnMonsterAt(h2) {
+			return true
+		}
+
+		offset1, offset2 = rotateHex60CW(offset1), rotateHex60CW(offset2)
+	}
+
+	return false
+}
+
 // TestMageAoEDamagesMonsters exercises the mage's ranged AoE attack over real
 // HTTP/SSE: a joined mage fires at whichever hex currently covers the most
 // hostiles within AoE radius (bestAoETarget, recomputed every bundle),
@@ -357,24 +396,41 @@ func fireAoEOrChase(
 // unit-level "2 monsters in radius, both take damage, no friendly fire" case
 // pinned deterministically in internal/game's ranged_test.go.
 //
-// Two monsters are seeded on adjacent hexes two steps from the origin (where
-// the mage spawns). They beeline for the mage as one cluster (bubble.go: every
-// monster within CombatRadius joins one bubble), so on an early bubble-turn
-// they sit within a single AoE-radius footprint the mage can reach — the
-// mage fires at the hex covering the most hostiles (bestAoETarget, recomputed
-// every bundle) and drops both at once. Seeding a known cluster next to the
-// spawn makes the same-turn multi-hit deterministic and robust even under a
-// CPU-starved runner (#22), rather than depending on where crypto/rand
-// scattered 16 monsters. The test is not parallel so its tick loop is not
-// starved by sibling servers.
+// Two monsters are seeded on adjacent hexes two steps from the mage's spawn
+// hex. The spawn hex is random since #36 (no longer always the origin), so
+// this test joins FIRST over HTTP to learn where it actually landed, then
+// seeds the cluster relative to THAT hex via a direct world reference. They
+// beeline for the mage as one cluster (bubble.go: every monster within
+// CombatRadius joins one bubble), so on an early bubble-turn they sit within
+// a single AoE-radius footprint the mage can reach — the mage fires at the
+// hex covering the most hostiles (bestAoETarget, recomputed every bundle) and
+// drops both at once. Seeding a known cluster next to the spawn makes the
+// same-turn multi-hit deterministic and robust even under a CPU-starved
+// runner (#22), rather than depending on where crypto/rand scattered 16
+// monsters. The test is not parallel so its tick loop is not starved by
+// sibling servers.
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestMageAoEDamagesMonsters(t *testing.T) {
-	ts := startServerWithMonstersAt(
-		t, 10*time.Millisecond, protocol.Hex{Q: 0, R: -2}, protocol.Hex{Q: 1, R: -2},
-	)
+	ticks := hub.New()
+	world := game.NewWorld(10*time.Millisecond, time.Minute, 5*time.Millisecond, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+
+	chatBroker := newAnnouncingChatBroker(world)
+	go world.Run(t.Context())
+
+	handler := server.New(server.Deps{
+		Logger: slog.New(slog.DiscardHandler), World: world, Ticks: ticks, Chat: chatBroker,
+		HeartbeatInterval: time.Hour,
+	})
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
 
 	me := joinClass(t, ts, "", protocol.ClassMage)
+
+	if !placeMonsterClusterNear(world, me.Hex) {
+		t.Fatalf("SpawnMonsterAt refused every rotation of the cluster near the mage's spawn %v", me.Hex)
+	}
 
 	events := get(t, ts, "/api/events")
 	reader := bufio.NewReader(events.Body)

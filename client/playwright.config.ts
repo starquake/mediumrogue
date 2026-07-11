@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+import identityStorageStateTemplate from "./e2e/identity-storage-state.json" with { type: "json" };
+
 // E2E drives the real production artifact: the Go binary with the client bundle
 // embedded (built by `make e2e`). A fast TURN_INTERVAL lets a browser test
 // observe several world turns in under a second.
@@ -49,13 +51,32 @@ const serverEnv = (port: number, monsters?: number): Record<string, string> => (
   ...(monsters ? { MONSTER_COUNT: String(monsters) } : {}),
 });
 
+// Every project gets its browser context pre-seeded (via storageState) with a
+// "remembered" identity — fighter/human/traveler, no token — so the new
+// character-creation start screen (src/main.ts's isNewPlayer) never appears
+// and every existing spec keeps auto-joining exactly as it did before that
+// screen existed. identity-storage-state.json is the committed template;
+// each project's origin must match its own baseURL (a distinct port per spec
+// — see BASE_PORT/portFor above), so the origin is substituted per project
+// rather than shared verbatim. class.spec.ts (rewritten as the start-screen
+// spec) overrides this per-test with an explicitly cleared storageState;
+// ranged/gear/species/quests seed their own identity via addInitScript,
+// which runs after context creation and simply overwrites this default.
+const storageStateFor = (port: number) => ({
+  cookies: identityStorageStateTemplate.cookies,
+  origins: identityStorageStateTemplate.origins.map((o) => ({
+    ...o,
+    origin: `http://127.0.0.1:${port}`,
+  })),
+});
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
   projects: specs.map((s, i) => ({
     name: s.name,
     testMatch: new RegExp(`${s.name}\\.spec\\.ts$`),
-    use: { baseURL: `http://127.0.0.1:${portFor(i)}` },
+    use: { baseURL: `http://127.0.0.1:${portFor(i)}`, storageState: storageStateFor(portFor(i)) },
   })),
   webServer: specs.map((s, i) => ({
     command: "../build/bin/rogue",

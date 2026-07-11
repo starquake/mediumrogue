@@ -157,14 +157,11 @@ const turnTimerEl = mustGet("turn-timer");
 const combatPanelEl = mustGet("combat-panel");
 const combatWaitingEl = mustGet("combat-waiting");
 const combatPatienceEl = mustGet("combat-patience");
-const classPickerEl = mustGet("class-picker");
-const classButtons = Array.from(classPickerEl.querySelectorAll<HTMLButtonElement>("button[data-class]"));
-const speciesPickerEl = mustGet("species-picker");
-const speciesButtons = Array.from(
-  speciesPickerEl.querySelectorAll<HTMLButtonElement>("button[data-species]"),
-);
-const namePickerEl = mustGet("name-picker");
-const nameInputEl = mustGet("name-input") as HTMLInputElement;
+const startScreenEl = mustGet("start-screen");
+const startNameEl = mustGet("start-name") as HTMLInputElement;
+const startEnterEl = mustGet("start-enter") as HTMLButtonElement;
+const classCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-class]"));
+const speciesCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-species]"));
 
 // How long this client's entity must be absent from turn bundles before it
 // re-joins (see attemptRejoin below) — well above a single coalesced/missed
@@ -172,56 +169,85 @@ const nameInputEl = mustGet("name-input") as HTMLInputElement;
 // disconnect-grace sweep really removed the entity) does.
 const MISSING_GRACE_MS = 2_000;
 
-// Class picker: a brand-new player (no stored identity) sees this while the
-// map/engine load, giving a real window to click before the join call fires
-// — a returning player's token already fixes their class server-side (the
-// server ignores Class on a token match), so the picker never shows for
-// them. Nothing needs to be clicked: the join always fires once assets are
-// ready, using whichever class is currently selected (Fighter by default) —
-// this keeps a fresh page load joining promptly even if no one ever clicks.
+// Start screen: a brand-new player (no stored identity) sees this while the
+// map/engine load, giving a real window to pick a class/species/name before
+// the join call fires — a returning player's token already fixes their class
+// and species server-side (the server ignores Class/Species on a token
+// match), so the screen never shows for them; see isNewPlayer in start().
 let selectedClass: string = ClassFighter;
 
 function selectClass(cls: string): void {
   selectedClass = cls;
-  for (const btn of classButtons) {
-    btn.classList.toggle("selected", btn.dataset["class"] === cls);
+  for (const card of classCards) {
+    card.classList.toggle("selected", card.dataset["class"] === cls);
   }
 }
 
-for (const btn of classButtons) {
-  btn.addEventListener("click", () => selectClass(btn.dataset["class"] ?? ClassFighter));
+for (const card of classCards) {
+  card.addEventListener("click", () => selectClass(card.dataset["class"] ?? ClassFighter));
 }
 selectClass(ClassFighter);
 
-// Species picker: mirrors the class picker exactly — same visibility rule
+// Species cards mirror the class cards exactly — same visibility rule
 // (brand-new player only; a returning player's token already fixes their
-// species server-side), same "nothing needs to be clicked" default (Human).
+// species server-side), same Human default.
 let selectedSpecies: string = SpeciesHuman;
 
 function selectSpecies(species: string): void {
   selectedSpecies = species;
-  for (const btn of speciesButtons) {
-    btn.classList.toggle("selected", btn.dataset["species"] === species);
+  for (const card of speciesCards) {
+    card.classList.toggle("selected", card.dataset["species"] === species);
   }
 }
 
-for (const btn of speciesButtons) {
-  btn.addEventListener("click", () => selectSpecies(btn.dataset["species"] ?? SpeciesHuman));
+for (const card of speciesCards) {
+  card.addEventListener("click", () => selectSpecies(card.dataset["species"] ?? SpeciesHuman));
 }
 selectSpecies(SpeciesHuman);
 
-// Name field: mirrors the pickers (brand-new player only), but free text
-// rather than buttons. Defaults to "traveler" so a fresh page load can still
-// join promptly (e2e, or a player who never touches the field) — the input's
-// own placeholder communicates the default rather than pre-filling the value,
-// so a deliberately-typed name never has to first clear placeholder text.
+// Name field: free text rather than cards. Defaults to "traveler" so a fresh
+// page load can still join with a sensible name (e.g. a test that never
+// touches the field) — the input's own placeholder communicates the default
+// rather than pre-filling the value, so a deliberately-typed name never has
+// to first clear placeholder text.
 const DEFAULT_NAME = "traveler";
 let selectedName: string = DEFAULT_NAME;
 
-nameInputEl.addEventListener("input", () => {
-  const trimmed = nameInputEl.value.trim();
-  selectedName = trimmed === "" ? DEFAULT_NAME : trimmed;
+function readStartName(): string {
+  const trimmed = startNameEl.value.trim();
+
+  return trimmed === "" ? DEFAULT_NAME : trimmed;
+}
+
+startNameEl.addEventListener("input", () => {
+  selectedName = readStartName();
 });
+
+/**
+ * Resolves once a brand-new player commits to their choices — clicking
+ * "Enter the world", or pressing Enter in the name field. Re-reads (and
+ * trims/defaults) the name field one more time at that instant, so a value
+ * typed without triggering the `input` listener (unlikely, but cheap
+ * insurance) is still captured. Never shown for a returning player — see
+ * isNewPlayer in start(), which skips awaiting this entirely.
+ */
+function waitForEnter(): Promise<void> {
+  return new Promise((resolve) => {
+    const onEnter = (): void => {
+      selectedName = readStartName();
+      startEnterEl.removeEventListener("click", onEnter);
+      startNameEl.removeEventListener("keydown", onKeydown);
+      resolve();
+    };
+    const onKeydown = (ev: KeyboardEvent): void => {
+      if (ev.key === "Enter") {
+        onEnter();
+      }
+    };
+    startEnterEl.addEventListener("click", onEnter);
+    startNameEl.addEventListener("keydown", onKeydown);
+  });
+}
 
 // Turn-phase timing, tracked from wall-clock (performance.now) and reset on
 // each turn bundle. window.game.phase is computed on read from these, so it
@@ -333,12 +359,18 @@ function isRangedAttackClick(target: Hex): boolean {
 }
 
 async function start(): Promise<void> {
-  // A brand-new player (no stored identity yet) gets the picker while the
-  // map/engine load below — a real window to choose before join() fires.
-  const isNewPlayer = loadIdentity() === null;
-  classPickerEl.hidden = !isNewPlayer;
-  speciesPickerEl.hidden = !isNewPlayer;
-  namePickerEl.hidden = !isNewPlayer;
+  // A brand-new player — no stored identity at all, or one with no token and
+  // no class/species choice yet (the shape a cleared-then-partially-seeded
+  // e2e storage state can produce) — gets the start screen while the map/
+  // engine load below, and join() waits for it (see waitForEnter below). A
+  // returning player's stored identity always carries a token and/or a
+  // class/species choice, so this never shows for them: join() fires exactly
+  // as before, immediately once assets are ready.
+  const storedIdentity = loadIdentity();
+  const isNewPlayer =
+    storedIdentity === null ||
+    (storedIdentity.token === "" && storedIdentity.class === "" && storedIdentity.species === "");
+  startScreenEl.hidden = !isNewPlayer;
 
   mountChat(mustGet("chat-root"));
   mountRoster(mustGet("roster-root"));
@@ -455,14 +487,16 @@ async function start(): Promise<void> {
 
   const timer = new TurnTimer(app.ticker);
 
-  // The join always fires now, click or not — whichever name/class/species
-  // are currently selected ("traveler"/Fighter/Human by default) is what's
-  // sent; a returning player's stored choices override class/species
-  // regardless (join() itself resends their token, and the server ignores
-  // Name/Class/Species on a token match).
-  classPickerEl.hidden = true;
-  speciesPickerEl.hidden = true;
-  namePickerEl.hidden = true;
+  // A brand-new player's join waits here for the start screen's Enter — the
+  // map/engine above are already loaded, so the world is ready the instant
+  // they commit. A returning player skips straight through: join() fires
+  // immediately with whichever name/class/species happen to be selected
+  // (irrelevant for them — join() resends their token, and the server
+  // ignores Name/Class/Species entirely on a token match).
+  if (isNewPlayer) {
+    await waitForEnter();
+  }
+  startScreenEl.hidden = true;
   const me = await join(selectedName, selectedClass, selectedSpecies);
   window.game.me = { id: me.entityId, hex: me.hex };
   window.game.name = selectedName;

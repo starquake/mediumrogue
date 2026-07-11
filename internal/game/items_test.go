@@ -337,6 +337,21 @@ func TestValidateItemDefsPanicsOnUnknownRuleKinds(t *testing.T) {
 	}
 }
 
+// TestValidateItemDefsAcceptsAggroRangeEvent (#36): validateRuleCards must
+// accept evAggroRange as a known event — a future sneaky/loud item's rule
+// card should validate cleanly at load, not panic on an "unknown event" it
+// actually knows about.
+func TestValidateItemDefsAcceptsAggroRangeEvent(t *testing.T) {
+	t.Parallel()
+
+	validateItemDefs([]*itemDef{{
+		id: "cloak-of-shadows", slot: protocol.ItemSlotClose,
+		rules: []ruleCard{
+			{event: evAggroRange, then: effect{kind: effAdd, n: -3}},
+		},
+	}})
+}
+
 // TestValidateItemDefsPanicsOnEarnXPWithChanceCondition: earn-XP folds run
 // with a nil rng (ruleCtx{} — see resolveBubbleTurnLocked's kill-XP award),
 // so a chance condition on an earn-XP card would nil-deref conditionHolds'

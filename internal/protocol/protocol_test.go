@@ -128,6 +128,19 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 	}
 }
 
+// TestMonsterAggroRadiusExceedsCombatRadius pins the invariant documented on
+// MonsterAggroRadius: a monster must notice a player before it can be close
+// enough to bubble with them, or it would sit frozen just outside aggro
+// range forever. protocol.go also carries a compile-time array-length guard
+// for the same invariant; this test gives it a readable failure message.
+func TestMonsterAggroRadiusExceedsCombatRadius(t *testing.T) {
+	t.Parallel()
+
+	if got, want := protocol.MonsterAggroRadius, protocol.CombatRadius; got <= want {
+		t.Errorf("MonsterAggroRadius = %d, want > CombatRadius (%d)", got, want)
+	}
+}
+
 // TestIntentRequestItemIDRoundTrip proves IntentEquip and IntentRequest's new
 // ItemID field survive a JSON round trip — an equip intent names the item to
 // equip, not a target hex.

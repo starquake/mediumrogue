@@ -466,8 +466,12 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 		t.Fatalf("progress before bob joins = %d, want %d", got, want)
 	}
 
-	// bob joins the party — same spawn hex, never having fought.
+	// bob joins the party — pinned onto alice's hex (spawnHexLocked is
+	// randomized among the origin clearing since #36, so a fresh join is no
+	// longer guaranteed to land where alice did) so he lands in the existing
+	// bubble on the settle turn below, never having fought.
 	bob := joinNamed(t, w, "bob")
+	w.SetHexForTest(bob.EntityID, alice.Hex)
 	mustInviteAccept(t, w, alice, bob, "bob")
 
 	monster1 := w.PlaceMonsterForTest(hexes[1])
