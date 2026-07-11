@@ -209,6 +209,15 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   expect(await page.evaluate(() => window.game.me?.hex ?? null)).toEqual(hexAtFreeze);
   expect(await page.evaluate(() => window.game.inCombat)).toBe(true);
 
+  // SPACE = wait (item 11): the same own-hex move a click already
+  // waits/cancels with. Pressing it must not move this entity, and — item
+  // 6 — window.game.committedAction reports the wait glyph's shape
+  // immediately (set synchronously inside walkTo, before the intent POST's
+  // async round trip even starts).
+  await page.keyboard.press("Space");
+  expect(await page.evaluate(() => window.game.committedAction)).toEqual({ kind: "wait", target: hexAtFreeze });
+  expect(await page.evaluate(() => window.game.me?.hex ?? null)).toEqual(hexAtFreeze);
+
   // Stop this entity's walk immediately: the chase loop above left a queued
   // path aimed at the monster. moveAndBumpLocked unconditionally consumes a
   // non-empty e.path when the bubble resolves — lock-in gating only controls
@@ -218,24 +227,8 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   // and could bump-attack it, draining the shared combat server's fixed
   // (non-respawning) monster pool that monsters.spec.ts also depends on —
   // the same failure class fixed in 84f1471. Retarget to our own current
-  // hex: Pathfind(from == to) sets an empty path — the same click own-hex
-  // wait/cancel item 11 binds to SPACE. window.game.committedAction is set
-  // SYNCHRONOUSLY inside walkTo, before tapHex's intent POST even starts
-  // (its returned promise is deliberately not awaited on this first line),
-  // so it's readable immediately — item 6's indicator survives until the
-  // next turn bundle clears it.
-  const committed = await page.evaluate(() => {
-    const me = window.game.me;
-    if (me === null) {
-      return null;
-    }
-
-    void window.game.tapHex(me.hex.q, me.hex.r);
-
-    return window.game.committedAction;
-  });
-  expect(committed).toEqual({ kind: "wait", target: hexAtFreeze });
-
+  // hex: Pathfind(from == to) sets an empty path. Awaited: tapHex resolves
+  // only once its intent POST has landed server-side.
   await page.evaluate(async () => {
     const me = window.game.me;
     if (me !== null) {

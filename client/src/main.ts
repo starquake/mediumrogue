@@ -983,6 +983,18 @@ async function start(): Promise<void> {
       }
       walkTo(neighbor(from, dir));
     },
+    // SPACE = wait (item 11): the same own-hex move a click on my own hex
+    // already sends — clickTarget's "self" branch, reached here via
+    // clickTarget itself so the two code paths stay identical (clears
+    // equip-pending too, and shows the item-6 wait glyph via walkTo's own
+    // committedAction logic).
+    onWait: (): void => {
+      const me = window.game.me;
+      if (me === null) {
+        return;
+      }
+      void clickTarget(me.hex);
+    },
     isBlocked: (): boolean => !startScreenEl.hidden,
   });
 
