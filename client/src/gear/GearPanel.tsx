@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -28,25 +28,32 @@ function GearPanel(props: { equip: (itemId: number) => void }): JSXElement {
     <div id="gear-panel">
       <Show when={inventory().length > 0}>
         <div id="gear-title">Gear</div>
-        <For each={inventory()}>
+        {/* Index, not For: main.ts rebuilds a fresh ItemView[] every turn
+            bundle (new object references even when nothing changed) — For
+            keys by reference and would remount every row's DOM every ~5s
+            (250ms in e2e), losing in-flight hover/click state (a click can
+            miss with "element was detached from the DOM"). Index keys by
+            array position instead, which is stable here: a player's own
+            item order never reshuffles, only fields like `equipped` flip. */}
+        <Index each={inventory()}>
           {(it) => (
-            <div class="gear-row" classList={{ "gear-equipped": it.equipped }}>
+            <div class="gear-row" classList={{ "gear-equipped": it().equipped }}>
               <button
                 type="button"
-                classList={{ "gear-equip-toggle": it.equipped }}
-                disabled={pendingEquip() === Number(it.id)}
-                onClick={() => equipClick(Number(it.id), it.equipped)}
+                classList={{ "gear-equip-toggle": it().equipped }}
+                disabled={pendingEquip() === Number(it().id)}
+                onClick={() => equipClick(Number(it().id), it().equipped)}
               >
-                {pendingEquip() === Number(it.id) ? "…" : it.equipped ? "equipped" : "equip"}
+                {pendingEquip() === Number(it().id) ? "…" : it().equipped ? "equipped" : "equip"}
               </button>
-              <span class="gear-name">{it.name}</span>
-              <span class="gear-stats">{stats(it)}</span>
-              <Show when={it.desc !== ""}>
-                <span class="gear-desc">{it.desc}</span>
+              <span class="gear-name">{it().name}</span>
+              <span class="gear-stats">{stats(it())}</span>
+              <Show when={it().desc !== ""}>
+                <span class="gear-desc">{it().desc}</span>
               </Show>
             </div>
           )}
-        </For>
+        </Index>
       </Show>
     </div>
   );

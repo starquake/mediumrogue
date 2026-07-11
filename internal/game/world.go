@@ -693,13 +693,20 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	// Lock-in: inside a combat bubble, submitting an intent commits this player
 	// for the bubble's action-gated turn. Once every player member has locked
 	// in, the bubble resolves immediately (rather than waiting for the poll or
-	// the patience timeout) and the tick hub is notified.
+	// the patience timeout) and the tick hub is notified — UNLESS the turn
+	// floor (bubbleFloorElapsedLocked, playtest item 5) has not yet elapsed
+	// since the bubble's previous resolution: a solo player spamming intents
+	// then stays ready-but-unresolved, and the poll loop's own
+	// bubbleReadyOrExpiredLocked check (same floor) picks the turn up the
+	// moment the floor allows it, rather than resolving faster than the
+	// world's own turn cadence.
 	if e.bubbleID != 0 {
 		if b, ok := w.bubbles[e.bubbleID]; ok {
 			b.ready[e.id] = struct{}{}
 
-			if w.allPlayersReadyLocked(b) {
-				now := w.now()
+			now := w.now()
+
+			if w.allPlayersReadyLocked(b) && w.bubbleFloorElapsedLocked(b, now) {
 				w.resolveBubbleTurnLocked(b, w.bubbleMembersLocked(b), now)
 				w.recomputeBubblesLocked(now)
 				w.ticks.Publish()
@@ -1085,6 +1092,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 
 	clear(b.ready)
 	b.deadline = now.Add(w.combatPatience)
+	b.lastResolvedAt = now
 
 	w.turn++
 }
@@ -1241,13 +1249,33 @@ func (w *World) allPlayersReadyLocked(b *bubble) bool {
 }
 
 // bubbleReadyOrExpiredLocked reports whether b should resolve now: every player
-// has locked in, or its patience deadline has passed. Callers hold w.mu.
+// has locked in, or its patience deadline has passed — AND, either way, the
+// turn floor (bubbleFloorElapsedLocked, playtest item 5) has elapsed since
+// its previous resolution. Callers hold w.mu.
 func (w *World) bubbleReadyOrExpiredLocked(b *bubble, now time.Time) bool {
+	if !w.bubbleFloorElapsedLocked(b, now) {
+		return false
+	}
+
 	if !b.deadline.IsZero() && now.After(b.deadline) {
 		return true
 	}
 
 	return w.allPlayersReadyLocked(b)
+}
+
+// bubbleFloorElapsedLocked reports whether at least one world turn interval
+// has passed since b's previous resolution — the turn floor a bubble-turn
+// may never resolve faster than (playtest item 5: no solo action-spam), even
+// when every player is locked in. True for a bubble that has never resolved
+// (lastResolvedAt zero — its first turn is ungated by this floor). The floor
+// scales with w.interval, the world's configured turn interval (equal to
+// protocol.TurnSeconds in production, shrunk by tests/e2e the same way
+// TURN_INTERVAL is), never a hardcoded constant — see docs on
+// combatPatience for why the interval is already threaded through
+// NewWorld/config the same way. Callers hold w.mu.
+func (w *World) bubbleFloorElapsedLocked(b *bubble, now time.Time) bool {
+	return b.lastResolvedAt.IsZero() || now.Sub(b.lastResolvedAt) >= w.interval
 }
 
 // moveAndBumpLocked resolves the move phase: movers advance one hex from

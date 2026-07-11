@@ -16,11 +16,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   and reflexes are irrelevant by design.
 - **Combat time bubbles**: when a player and a hostile come within 6 hexes,
   a local bubble freezes — its turns are **action-gated** (advance when every
-  player in it locks in an intent, or after a 30 s patience timeout). The
-  rest of the world keeps ticking. Bubbles form/merge/dissolve as connected
-  components; **only players extend a bubble's reach**. Walking into a
-  bubble's radius joins the fight — reinforcement is a core mechanic; fleeing
-  beyond the radius escapes it.
+  player in it locks in an intent, or after a 30 s patience timeout). A
+  bubble-turn also never resolves sooner than `TURN_INTERVAL` after its own
+  previous resolution (item 5, playtest batch 2) — a floor against a solo
+  player spam-resolving faster than the world's own cadence; a straggler'd
+  multi-player bubble is unaffected by it in practice (real lock-ins rarely
+  land inside one interval). The rest of the world keeps ticking. Bubbles
+  form/merge/dissolve as connected components; **only players extend a
+  bubble's reach**. Walking into a bubble's radius joins the fight —
+  reinforcement is a core mechanic; fleeing beyond the radius escapes it.
 
 ### Movement
 - Flat-top hex grid, axial coordinates, grid-locked. **Click-to-move**

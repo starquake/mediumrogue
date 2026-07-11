@@ -12,10 +12,19 @@ import (
 // id is carried across recomputes by membership overlap so gating state
 // (ready/deadline) stays stable while members join, leave, or bubbles merge.
 type bubble struct {
-	id       int64
-	members  map[int64]struct{} // entity ids
-	ready    map[int64]struct{} // player ids locked in this bubble-turn (Task 3)
-	deadline time.Time          // patience timeout for the current bubble-turn (Task 3)
+	id      int64
+	members map[int64]struct{} // entity ids
+	ready   map[int64]struct{} // player ids locked in this bubble-turn (Task 3)
+	// deadline is the patience timeout for the current bubble-turn (Task 3).
+	deadline time.Time
+	// lastResolvedAt is when this bubble last resolved a turn — zero until its
+	// first one. Backs the turn floor (playtest item 5): a bubble-turn may not
+	// resolve sooner than the world's turn interval after this, even with
+	// every player locked in, so a solo player cannot spam-resolve faster
+	// than the world's own cadence. Set by resolveBubbleTurnLocked; survives
+	// recomputeBubblesLocked the same way deadline does (carried by id, not
+	// reset on a mere member join/leave/merge).
+	lastResolvedAt time.Time
 }
 
 // recomputeBubblesLocked rebuilds w.bubbles as a pure function of entity
