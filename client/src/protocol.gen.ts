@@ -29,6 +29,17 @@ export const PlaybackSeconds = 2;
  */
 export const CombatRadius = 6;
 /**
+ * MonsterAggroRadius is the hex distance at which a WORLD-domain monster
+ * notices a player and starts hunting it; beyond it, a monster stands
+ * still (#36 — no wander this slice). It MUST stay strictly greater than
+ * CombatRadius: a monster has to notice a player before it can close the
+ * distance into a combat bubble, or it would sit frozen just outside
+ * aggro range forever. A monster already inside a combat bubble ignores
+ * this and keeps chasing its bubble's players unconditionally — a fight
+ * is a fight.
+ */
+export const MonsterAggroRadius = 10;
+/**
  * StackCap is the maximum number of friendly entities on one hex — sized
  * so a full party fits.
  */
@@ -153,6 +164,15 @@ export const MonsterMaxHP = 10;
  * is per-class weapon damage since 6b.2 — see the class weapon constants below.)
  */
 export const MonsterAttackDamage = 3;
+/**
+ * RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
+ * resolution while out of combat (bubbleID == 0) and below max HP — the
+ * passive recovery layer (plan §9). It kills the inverted incentive where
+ * dying (a full-HP respawn) was the only way to heal: standing around out of
+ * a fight now tops you up too, slowly. Monsters never regen; a bubbled player
+ * (mid-fight) does not either — being in a fight means no regen.
+ */
+export const RegenPerTurn = 1;
 /**
  * XPPerLevel is the XP needed to advance one level.
  */

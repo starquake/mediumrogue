@@ -1,7 +1,14 @@
 import { Container, Graphics, Text, type Ticker } from "pixi.js";
 
-import { ClassFighter, ClassMage, ClassRogue, EntityPlayer, type Entity } from "../protocol.gen";
-import { hexToPixel, HEX_SIZE, type Point } from "./hex";
+import { ClassFighter, ClassMage, ClassRogue, EntityPlayer, type Entity, type Hex } from "../protocol.gen";
+import { hexDistance, hexToPixel, HEX_SIZE, type Point } from "./hex";
+
+// A new hex farther than this from a dot's previous one is a respawn (or any
+// other server-side teleport), never a walk — one world/bubble turn only
+// ever advances an entity a single step. Skipping the tween for a jump this
+// big keeps the camera (which follows the dot) from panning across the whole
+// map; it cuts straight to the new spot instead, matching a respawn's feel.
+const TELEPORT_HEX_DISTANCE = 8;
 
 const OTHER_COLOR = 0xc8b458;
 const ME_COLOR = 0x8fd0ff;
@@ -30,6 +37,7 @@ const CLASS_LABEL_STYLE = {
 interface Dot {
   gfx: Graphics;
   label: Text;
+  hex: Hex;
   from: Point;
   to: Point;
   current: Point;
@@ -85,6 +93,7 @@ export class EntityLayer {
         dot = {
           gfx,
           label,
+          hex: e.hex,
           from: to,
           to,
           current: to,
@@ -99,9 +108,17 @@ export class EntityLayer {
         };
         this.dots.set(e.id, dot);
       } else {
-        // Retarget from wherever the dot is right now → the new hex.
-        dot.from = dot.current;
+        // A jump farther than one step is a respawn (or other server-side
+        // teleport), never a walk — skip the tween and appear in place, so
+        // the camera cuts to the new spot instead of panning there.
+        const teleported = hexDistance(dot.hex, e.hex) > TELEPORT_HEX_DISTANCE;
+
+        // Retarget from wherever the dot is right now → the new hex (or, for
+        // a teleport, straight to it — from/current jump too, not just to).
+        dot.from = teleported ? to : dot.current;
         dot.to = to;
+        dot.current = teleported ? to : dot.current;
+        dot.hex = e.hex;
         dot.elapsed = 0;
         dot.duration = playbackMs;
         dot.mine = mine;

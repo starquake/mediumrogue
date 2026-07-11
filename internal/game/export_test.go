@@ -169,6 +169,33 @@ func (w *World) SetHPForTest(id int64, hp int) {
 	}
 }
 
+// SetBubbleIDForTest overwrites an entity's bubbleID directly, so a regen test
+// can pin an entity into (or out of) the world domain without needing a live
+// opposing-pair bubble (and the combat that would come with one) to form
+// naturally. Note: any subsequent recomputeBubblesLocked (e.g. the one at the
+// end of ResolveTurnForTest) recalculates bubbleID from real positions, so this
+// override only holds for the resolution pass it's set before.
+func (w *World) SetBubbleIDForTest(id int64, bubbleID int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.bubbleID = bubbleID
+	}
+}
+
+// RegenTickForTest runs one passive-regen pass (regenPlayersLocked) over
+// every current world-domain entity (bubbleID == 0), without resolving combat,
+// deaths/respawns, or advancing the turn — so a regen test can isolate the
+// passive-heal rule (plan §9) from the death-respawn and combat side effects a
+// full ResolveTurnForTest step would also trigger.
+func (w *World) RegenTickForTest() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.regenPlayersLocked(w.domainMembersLocked())
+}
+
 // XPForTest returns an entity's current cumulative XP, so tests can assert kill
 // awards and death floors without going through Snapshot.
 func (w *World) XPForTest(id int64) int {

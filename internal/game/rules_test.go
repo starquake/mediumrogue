@@ -149,6 +149,41 @@ func TestApplyRulesTargetHPBelowFlat(t *testing.T) {
 	}
 }
 
+// TestApplyRulesAggroRange (#36): proves the evAggroRange event works through
+// the generic pipeline exactly like any other event — a rule card gated on
+// the evaluated player's own species (ctx.attacker, per aggroRadiusForLocked's
+// convention in world.go) shrinks or grows how far away a monster notices
+// them. No content defines such a card yet (this is the whitebox
+// pipeline-level proof the hook works, ahead of any gear using it).
+func TestApplyRulesAggroRange(t *testing.T) {
+	t.Parallel()
+
+	// A hypothetical "sneaky" card: elves are 3 hexes less noticeable.
+	sneaky := []ruleCard{{
+		event: evAggroRange,
+		when:  []condition{{kind: condAttackerSpecies, s: protocol.SpeciesElf}},
+		then:  effect{kind: effAdd, n: -3},
+	}}
+
+	elf := &entity{species: protocol.SpeciesElf}
+	if got, want := applyRules(evAggroRange, protocol.MonsterAggroRadius, sneaky, ruleCtx{attacker: elf}),
+		protocol.MonsterAggroRadius-3; got != want {
+		t.Errorf("aggro radius for elf with sneaky card = %d, want %d", got, want)
+	}
+
+	dwarf := &entity{species: protocol.SpeciesDwarf}
+	if got, want := applyRules(evAggroRange, protocol.MonsterAggroRadius, sneaky, ruleCtx{attacker: dwarf}),
+		protocol.MonsterAggroRadius; got != want {
+		t.Errorf("aggro radius for dwarf (card does not apply) = %d, want unchanged %d", got, want)
+	}
+
+	// No cards at all: the default radius passes through unchanged.
+	if got, want := applyRules(evAggroRange, protocol.MonsterAggroRadius, nil, ruleCtx{attacker: elf}),
+		protocol.MonsterAggroRadius; got != want {
+		t.Errorf("aggro radius with no cards = %d, want unchanged default %d", got, want)
+	}
+}
+
 // TestApplyRulesAttackerSpecies: the species-gated condition (the Ancient
 // Dwarven Mattock's rule) reads the ATTACKER's species — gear that is
 // usable by a whole class but sings in one species' hands.

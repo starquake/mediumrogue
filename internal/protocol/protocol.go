@@ -21,6 +21,15 @@ const (
 	// CombatRadius is the mutual-line-of-sight distance (in hexes) at which a
 	// combat time bubble forms around a player and a hostile.
 	CombatRadius = 6
+	// MonsterAggroRadius is the hex distance at which a WORLD-domain monster
+	// notices a player and starts hunting it; beyond it, a monster stands
+	// still (#36 — no wander this slice). It MUST stay strictly greater than
+	// CombatRadius: a monster has to notice a player before it can close the
+	// distance into a combat bubble, or it would sit frozen just outside
+	// aggro range forever. A monster already inside a combat bubble ignores
+	// this and keeps chasing its bubble's players unconditionally — a fight
+	// is a fight.
+	MonsterAggroRadius = 10
 	// StackCap is the maximum number of friendly entities on one hex — sized
 	// so a full party fits.
 	StackCap = 5
@@ -29,6 +38,15 @@ const (
 	MaxChatLen = 500
 	MaxNameLen = 24
 )
+
+// _ [MonsterAggroRadius - CombatRadius - 1]struct{} is a compile-time guard
+// on the invariant documented on MonsterAggroRadius above: a negative array
+// length is a compile error, so the package fails to BUILD (not just fail a
+// test) the moment either constant changes to violate
+// MonsterAggroRadius > CombatRadius. TestMonsterAggroRadiusExceedsCombatRadius
+// (protocol_test.go) asserts the same thing at the test level for a clearer
+// failure message.
+var _ [MonsterAggroRadius - CombatRadius - 1]struct{}
 
 // Hex is an axial coordinate on the flat-top hex grid. See Red Blob Games'
 // hex guide for the coordinate math conventions.
@@ -102,6 +120,14 @@ const (
 // MonsterAttackDamage is a monster's flat melee damage per attack. (Player melee
 // is per-class weapon damage since 6b.2 — see the class weapon constants below.)
 const MonsterAttackDamage = 3
+
+// RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
+// resolution while out of combat (bubbleID == 0) and below max HP — the
+// passive recovery layer (plan §9). It kills the inverted incentive where
+// dying (a full-HP respawn) was the only way to heal: standing around out of
+// a fight now tops you up too, slowly. Monsters never regen; a bubbled player
+// (mid-fight) does not either — being in a fight means no regen.
+const RegenPerTurn = 1
 
 // XP & leveling (milestone 6b.1). Flat curve for now; per-class/species tuning
 // is 6b.2/6b.3.

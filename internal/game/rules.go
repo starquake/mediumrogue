@@ -12,7 +12,14 @@ const percentBase = 100
 
 // Events: the moments a card can hook. deal-damage runs attacker-side per
 // (attacker, victim) pair; take-damage runs victim-side on the result;
-// earn-XP runs on each player's kill award.
+// earn-XP runs on each player's kill award; aggro-range runs PLAYER-side (see
+// aggroRadiusForLocked, world.go): it folds a player's own noticeability cards
+// over protocol.MonsterAggroRadius, so a future sneaky/loud item can shrink or
+// grow the distance at which a WORLD-domain monster picks that player up.
+// ctx.attacker is the player being evaluated (mirroring rollDamageLocked's
+// convention that ctx.attacker is whichever entity's own cards are running),
+// so e.g. condAttackerSpecies gates on the player's species. No content uses
+// this event yet.
 //
 // Adding a new event/condition/effect kind here also means adding it to
 // items.go's validateRuleCards switches (event/condition/effect) and, for a
@@ -26,6 +33,7 @@ const (
 	evDealDamage = "deal-damage"
 	evTakeDamage = "take-damage"
 	evEarnXP     = "earn-xp"
+	evAggroRange = "aggro-range"
 )
 
 // Condition kinds. chance consumes the turn rng (deterministic: cards are

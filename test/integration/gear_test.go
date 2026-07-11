@@ -268,14 +268,20 @@ func spawnRingCandidates(origin protocol.Hex, maxRing int) []protocol.Hex {
 // like TestCombatOverHTTP) until one of them drops — DropChancePercent's 30%
 // across that many independent tries makes a miss a sub-0.02% event, not a
 // coin flip against the deadline (see dropFarmMonsterCount's doc comment). A
-// player that dies mid-farm just respawns at full HP back at spawn
-// (resolveDeathsLocked, spawnHexLocked's spiral-from-origin always prefers
-// the origin first) and the loop keeps going; nothing here depends on the
-// player surviving any one fight.
+// player that dies mid-farm just respawns at full HP (resolveDeathsLocked)
+// and the loop keeps going; nothing here depends on the player surviving any
+// one fight. Since #36, spawnHexLocked picks randomly among the origin
+// clearing rather than always the origin itself (and never lands on top of a
+// living monster when avoidable, though a heavily monster-saturated clearing
+// like this ring can still force that as a last resort) — occasionally
+// co-locating the player with the very monster that goes on to drop the
+// loot, so the player can already be standing on the drop's hex the instant
+// it lands. See the pickup loop's postIntent-every-turn comment below for why
+// that matters.
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestDropPickupLoop(t *testing.T) {
-	origin := protocol.Hex{Q: 0, R: 0} // spawnHexLocked's spiral always tries this first
+	origin := protocol.Hex{Q: 0, R: 0} // the ring is seeded around the origin clearing
 
 	ts := startGearServerWithMonsterRing(t, 15*time.Millisecond, dropFarmMonsterCount, spawnRingCandidates(origin, 4))
 
@@ -318,18 +324,14 @@ func TestDropPickupLoop(t *testing.T) {
 	t.Logf("drop landed: item %d (%s) at %v", dropped.ID, dropped.DefID, dropped.Hex)
 
 	// Walk onto the drop's hex; pickupLocked (world.go) hands the player
-	// everything standing there the instant it arrives.
-	pickupDeadline := time.Now().Add(15 * time.Second)
+	// everything standing there the instant a resolution runs while they're
+	// on it — see the postIntent-every-turn comment below for why that
+	// resolution needs a fresh lock-in even after arriving. Generous deadline
+	// as a safety margin against a CPU-starved runner (#22).
+	pickupDeadline := time.Now().Add(30 * time.Second)
 
 	for time.Now().Before(pickupDeadline) {
 		bundle := decodeTurnFrame(t, reader)
-
-		myHex := hexOf(bundle, me.EntityID)
-		if myHex != dropped.Hex {
-			postIntent(t, ts, me, dropped.Hex)
-
-			continue
-		}
 
 		ent, ok := entityOf(bundle, me.EntityID)
 		if !ok {
@@ -341,7 +343,17 @@ func TestDropPickupLoop(t *testing.T) {
 				return // picked up — the full drop/pickup loop proven end to end
 			}
 		}
+
+		// Submit every turn, even once already standing on the drop's hex
+		// (Pathfind(from, from) is a valid zero-length path, not an error —
+		// queueMoveLocked accepts it): the player may still be inside an
+		// action-gated combat bubble (other ring monsters still alive), which
+		// only advances on a player lock-in. Stopping here the instant the
+		// hex matches would starve that bubble of lock-ins and stall on its
+		// (long) AFK patience timeout instead of resolving the pickup on the
+		// very next turn.
+		postIntent(t, ts, me, dropped.Hex)
 	}
 
-	t.Fatalf("player reached drop hex %v but item %d never landed in its Items", dropped.Hex, dropped.ID)
+	t.Fatalf("player never picked up item %d (dropped at %v) before the pickup deadline", dropped.ID, dropped.Hex)
 }

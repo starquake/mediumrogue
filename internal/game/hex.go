@@ -35,3 +35,15 @@ func abs(n int) int {
 
 	return n
 }
+
+// compareHexQR orders hexes by (Q, R): a deterministic tie-break for picking
+// among a set built by ranging a map (iteration order is unspecified) before
+// a seeded rng draw or shuffle, so the result depends only on the seed, never
+// on incidental map iteration order.
+func compareHexQR(a, b protocol.Hex) int {
+	if a.Q != b.Q {
+		return a.Q - b.Q
+	}
+
+	return a.R - b.R
+}
