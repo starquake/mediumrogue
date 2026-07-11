@@ -1,7 +1,7 @@
 # mediumrogue
 
 A multiplayer roguelike for a ~15-friend group: shared hex world, simultaneous
-5-second turns (WeGo), local combat time bubbles, browser client. The full
+4-second turns (WeGo), local combat time bubbles, browser client. The full
 design — every decided rule and open question — lives in
 **`docs/roguelike-mp-plan.md`**; read it before making design-level choices.
 

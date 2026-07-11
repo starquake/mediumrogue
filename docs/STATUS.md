@@ -1,6 +1,40 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-11, after "playtest feedback batch 2" — 13
+*Last updated: 2026-07-11 (later session), after "playtest feedback batch
+3" — 6 items on branch `feat/playtest-batch-3` (PR open, not yet merged),
+on top of batch 2. **Item 1** turn cadence lowered 5/3/2 → **4/2/2**
+(`TurnSeconds`/`InputWindowSeconds`; playback unchanged) — the plan §9
+"feel-test the cadence" decision landing (3 s input felt slow in play).
+**Item 2 (BUG, root-caused)**: the live "players swapped identities" report
+was a **client-side cross-tab race** — `net/session.ts`'s join() re-read
+the token to reclaim from localStorage (shared by every tab on one origin)
+instead of the caller's own known token, so one tab's periodic rejoin could
+silently adopt another tab's freshly-written token and start controlling
+that character. Fixed by splitting `join()` (new character, token always
+empty) from `reclaim(identity)` (never re-reads storage; reclaim-or-fail —
+an unknown token 422s and reloads to the start screen instead of minting a
+stranger), plus a `storage`-event listener that reloads any tab whose
+stored identity another tab overwrites. Server-side Join was verified
+correct and its identity invariants pinned (2 unit tests, 1 HTTP
+integration test, 1 new Playwright multi-tab spec,
+`identity-multitab.spec.ts`). **Item 3** the combat panel's "waiting for"
+now shows display names (was entity ids). **Item 4** world-reset signal:
+`TurnEvent.WorldID`, minted at world creation, persisted in the snapshot
+(version 1→2; a restored world keeps its id) — the client reloads when a
+bundle's worldId differs from its session's first. **Item 5 (visual,
+screenshot-verified)**: the HUD/quest-panel overlap was two independent
+`position:fixed` boxes with a hardcoded `top:8rem` guess — now one shared
+`#left-column` flex column (panels start where the HUD actually ends),
+capped above the chat panel's zone with internal scroll; quest/gear panels
+widened 20→23rem. **Item 6** the monster hover tooltip's HP line is now
+gated by `CombatRadius` (name-only beyond it). **Environment note:**
+running `make check` with the default shared Go/golangci caches while
+OTHER worktree agents run concurrently produced bogus stale-path lint
+errors — isolate `GOCACHE`/`GOLANGCI_LINT_CACHE` to a private dir per
+worktree when that happens. **Next**: merge the batch-2 and batch-3 PRs,
+then resume plan §8's post-launch tooling or deployment.*
+
+*Previously (2026-07-11), after "playtest feedback batch 2" — 13
 user-requested items on branch `feat/playtest-batch-2` (PR open, not yet
 merged), landed on top of milestone 10a. Server: **item 1** structured
 `slog` combat event log (`event=move/attack/fizzle/death/xp_award/pickup`,
@@ -61,7 +95,7 @@ every working session (milestone landed, decisions made, next step).*
 ## What this project is
 
 A multiplayer roguelike for a ~15-friend group. Shared hex world on
-simultaneous 5-second turns (WeGo); near hostiles the clock stops *locally*
+simultaneous 4-second turns (WeGo); near hostiles the clock stops *locally*
 (combat time bubbles) so fights are deliberate and friends can walk in to
 help. Browser client, distribution is a URL.
 
@@ -87,7 +121,7 @@ Read in this order:
 
 What works right now (all covered by tests):
 
-- `make server` → world ticks every `TURN_INTERVAL` (default 5 s); SSE stream
+- `make server` → world ticks every `TURN_INTERVAL` (default 4 s); SSE stream
   `/api/events` broadcasts full entity snapshots with turn-number ids and an
   `intervalMs` field so the client can derive phase timing without a
   separate `windowEndsAt` field.
