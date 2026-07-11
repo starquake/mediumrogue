@@ -155,6 +155,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   with a distinct on-map dot color and one-letter glyph (`entities.ts`'s
   `KIND_STYLE`); an unrecognized kind falls back to the old flat monster
   red with no glyph. A kill announces the kind by name (see Combat above).
+- **Enemy hover tooltip** (item 13, playtest batch 2): hovering a monster's
+  hex shows a small DOM tooltip near the cursor — kind display name + "HP
+  cur/max". Client-side only (positions/hp/maxHp already ride every turn
+  bundle); `pointer-events: none` throughout, so it never blocks a click.
 - **Difficulty rings**: the map bands into 3 concentric rings by hex
   distance from the origin (`RingCount`) — at the default `WORLD_RADIUS=24`
   that's ring 0 = 0–7 (home), ring 1 = 8–15, ring 2 = 16–24 (frontier).

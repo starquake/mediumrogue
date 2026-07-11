@@ -73,11 +73,18 @@ export interface GameDebug {
    * Every entity in the latest bundle, for cross-client observation in
    * tests. monsterKind is the monster-kind registry id ("wolf", "dragon",
    * ...), empty for a player — lets an e2e spec assert distinct kinds
-   * actually rendered (milestone 6c).
+   * actually rendered (milestone 6c). name is the display name (a player's
+   * chosen name, or a monster kind's display name — "Wolf", "Dragon" — used
+   * by the enemy hover tooltip, item 13).
    */
-  positions: { id: number; hex: Hex; kind: string; monsterKind: string }[];
+  positions: { id: number; hex: Hex; kind: string; monsterKind: string; name: string }[];
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;
+  /**
+   * Max HP by entity id, from the latest bundle — drives the enemy hover
+   * tooltip's "HP cur/max" (item 13, playtest batch 2).
+   */
+  maxHp: Record<number, number>;
   /** This client's entity's XP, from the latest bundle. 0 until joined. */
   xp: number;
   /** This client's entity's level, from the latest bundle. 1 until joined. */
@@ -210,6 +217,20 @@ const startEnterEl = mustGet("start-enter") as HTMLButtonElement;
 const classCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-class]"));
 const speciesCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-species]"));
 
+// Enemy hover tooltip (item 13, playtest batch 2).
+const hoverTooltipEl = mustGet("hover-tooltip");
+const hoverTooltipKindEl = mustQuery(hoverTooltipEl, ".tooltip-kind");
+const hoverTooltipHPEl = mustQuery(hoverTooltipEl, ".tooltip-hp");
+
+function mustQuery(root: HTMLElement, selector: string): HTMLElement {
+  const el = root.querySelector<HTMLElement>(selector);
+  if (el === null) {
+    throw new Error(`required element ${selector} missing under #${root.id}`);
+  }
+
+  return el;
+}
+
 // How long this client's entity must be absent from turn bundles before it
 // re-joins (see attemptRejoin below) — well above a single coalesced/missed
 // bundle, so a normal blip never trips it; only a sustained absence (the
@@ -314,6 +335,7 @@ window.game = {
   monsters: 0,
   positions: [],
   hp: {},
+  maxHp: {},
   xp: 0,
   level: 1,
   class: "",
@@ -820,8 +842,10 @@ async function start(): Promise<void> {
         hex: e.hex,
         kind: e.kind,
         monsterKind: e.monsterKind,
+        name: e.name,
       }));
       window.game.hp = Object.fromEntries(event.entities.map((e) => [e.id, e.hp]));
+      window.game.maxHp = Object.fromEntries(event.entities.map((e) => [e.id, e.maxHp]));
       window.game.intervalMs = event.intervalMs;
       turnEl.textContent = String(event.turn);
 
@@ -1045,6 +1069,28 @@ async function start(): Promise<void> {
     const wouldShoot =
       isRangedAttackClick(hover) && !(myRangedAoeRadius === 0 && inList(lastReach.bumps, hover));
     app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
+
+    // Enemy hover tooltip (item 13): kind display name + "HP cur/max", near
+    // the cursor. pointer-events: none on the tooltip itself (index.html)
+    // means it can never intercept the click it's floating over.
+    const monster = window.game.positions.find(
+      (p) => p.kind === EntityMonster && p.hex.q === hover.q && p.hex.r === hover.r,
+    );
+    if (monster === undefined) {
+      hoverTooltipEl.hidden = true;
+    } else {
+      const hp = window.game.hp[monster.id] ?? 0;
+      const maxHp = window.game.maxHp[monster.id] ?? 0;
+      hoverTooltipKindEl.textContent = monster.name;
+      hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}`;
+      hoverTooltipEl.style.left = `${ev.clientX + 14}px`;
+      hoverTooltipEl.style.top = `${ev.clientY + 14}px`;
+      hoverTooltipEl.hidden = false;
+    }
+  });
+
+  app.canvas.addEventListener("pointerleave", () => {
+    hoverTooltipEl.hidden = true;
   });
 }
 

@@ -507,6 +507,30 @@
            of squeezing into whatever tail space the first line leaves. */
         flex-basis: 100%;
       }
+      /* Enemy hover tooltip (item 13, playtest batch 2): a small DOM tooltip
+         near the cursor on a monster hex — pointer-events: none throughout
+         so it can never itself block the click it's floating over. */
+      #hover-tooltip {
+        position: fixed;
+        z-index: 20;
+        pointer-events: none;
+        background: rgba(11, 15, 11, 0.9);
+        border: 1px solid var(--dim);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+        text-shadow: 0 1px 2px #000;
+        white-space: nowrap;
+      }
+      #hover-tooltip[hidden] {
+        display: none;
+      }
+      #hover-tooltip .tooltip-kind {
+        color: var(--fg);
+      }
+      #hover-tooltip .tooltip-hp {
+        color: #d6544f;
+        margin-left: 0.4em;
+      }
     </style>
   </head>
   <body>
@@ -576,6 +600,9 @@
     <div id="left-panels">
       <div id="quest-root"></div>
       <div id="gear-root"></div>
+    </div>
+    <div id="hover-tooltip" hidden>
+      <span class="tooltip-kind"></span><span class="tooltip-hp"></span>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
