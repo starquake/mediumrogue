@@ -164,6 +164,13 @@ func TestAggroRadiusPerKindOverrideHunts(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
+	// Pinned so the player's random (#36) spawn hex is reproducible: an
+	// unseeded spawn occasionally lands somewhere the shortest path's FIRST
+	// step doesn't reduce raw hex-distance (a lake forcing a detour), which
+	// would make "it closed in by at least one hex on turn one" flaky
+	// rather than false — same latent risk walkableHexAtDistance's other
+	// callers carry; pinning here keeps this specific assertion reliable.
+	w.SetSeedForTest(4)
 
 	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {

@@ -1541,20 +1541,83 @@ func (w *World) tooCloseToPlayerLocked(h protocol.Hex) bool {
 	return false
 }
 
-// SpawnMonsters adds n monster entities at random walkable hexes, chosen with
-// the world seed so a given seed is reproducible. Skips hexes already at
+// tooCloseToSanctuaryLocked reports whether h is within protocol.SanctuaryRadius
+// of the origin — the permanent monster-free zone (milestone 6c, the seed of
+// a future trade hub), distinct from tooCloseToPlayerLocked's spawn-moment
+// player-proximity guard. Reads no entity state; named -Locked and given a
+// receiver for symmetry with the other spawn guards it's always applied
+// alongside. Callers hold w.mu.
+func (*World) tooCloseToSanctuaryLocked(h protocol.Hex) bool {
+	return HexDistance(protocol.Hex{Q: 0, R: 0}, h) <= protocol.SanctuaryRadius
+}
+
+// SpawnMonsters adds n monster entities at random walkable hexes, chosen
+// with the world seed so a given seed is reproducible: placement is
+// distributed across the map's difficulty rings (ringOf, worldgen.go)
+// weighted by each ring's candidate-hex count (a proxy for its area that is
+// naturally terrain-aware — water/rock reduce a ring's usable area too),
+// and each placement picks a kind uniformly among the kinds registered for
+// that ring (content.go's monsterDefs' own rings field), capping dragon at
+// protocol.DragonCount for the whole call. Skips hexes already at
 // StackCap and, when at least one candidate allows it, hexes on/within
-// CombatRadius of a living player (tooCloseToPlayerLocked — #36); if EVERY
-// walkable hex is too close to a player, the guard is dropped entirely for
-// this call rather than placing nothing (the pre-#36 behavior, so a tiny or
-// crowded map never silently spawns fewer monsters than requested for lack of
-// a "safe" hex). Intended for **startup, before any player joins** (server
-// startup via MONSTER_COUNT, or tests), where the guard is inert today — it
-// exists for a future continuous/respawn spawner called mid-run.
+// CombatRadius of a living player (tooCloseToPlayerLocked — #36) or within
+// protocol.SanctuaryRadius of the origin (tooCloseToSanctuaryLocked — 6c);
+// if EVERY walkable hex fails one of those guards, both are dropped
+// entirely for this call rather than placing nothing (the pre-#36
+// behavior, so a tiny or crowded map never silently spawns fewer monsters
+// than requested for lack of a "safe" hex). Intended for **startup, before
+// any player joins** (server startup via MONSTER_COUNT, or tests), where
+// the player guard is inert today — it exists for a future
+// continuous/respawn spawner called mid-run.
 func (w *World) SpawnMonsters(n int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
+
+	byRing, ringWeights := w.spawnCandidatesByRingLocked(rng)
+	kindsByRing := kindsPerRing()
+
+	dragonsPlaced := 0
+	placed := 0
+
+	for placed < n {
+		h, r, ok := nextSpawnHexLocked(rng, byRing, ringWeights)
+		if !ok {
+			break // every ring is out of both weight and candidates
+		}
+
+		if w.occupancyLocked(h) >= protocol.StackCap {
+			continue
+		}
+
+		kindID, ok := pickSpawnKind(rng, kindsByRing[r], dragonsPlaced)
+		if !ok {
+			continue // ring exhausted of spawnable kinds (dragon-only ring, cap reached)
+		}
+
+		if kindID == idKindDragon {
+			dragonsPlaced++
+		}
+
+		k := monsterDefByID[kindID]
+
+		w.nextID++
+		w.entities[w.nextID] = &entity{
+			id: w.nextID, hex: h,
+			kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
+		}
+		placed++
+	}
+}
+
+// spawnCandidatesByRingLocked gathers every walkable candidate hex (the
+// safe/unguarded-fallback tiers SpawnMonsters' doc comment describes),
+// shuffles each ring's bucket with rng, and returns the per-ring hex
+// buckets alongside their initial weights (candidate count — the area
+// proxy). Callers hold w.mu.
+func (w *World) spawnCandidatesByRingLocked(rng *mrand.Rand) ([][]protocol.Hex, []int) {
 	var safe, unguarded []protocol.Hex
 
 	for _, t := range w.worldMap.Tiles {
@@ -1564,7 +1627,7 @@ func (w *World) SpawnMonsters(n int) {
 
 		unguarded = append(unguarded, t.Hex)
 
-		if !w.tooCloseToPlayerLocked(t.Hex) {
+		if !w.tooCloseToPlayerLocked(t.Hex) && !w.tooCloseToSanctuaryLocked(t.Hex) {
 			safe = append(safe, t.Hex)
 		}
 	}
@@ -1576,34 +1639,64 @@ func (w *World) SpawnMonsters(n int) {
 
 	slices.SortFunc(walkable, compareHexQR)
 
-	//nolint:gosec // deterministic seeded placement, not security-sensitive.
-	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
-	rng.Shuffle(len(walkable), func(i, j int) { walkable[i], walkable[j] = walkable[j], walkable[i] })
-
-	// nothing reads the registry yet beyond the default kind (6c Task 1): every
-	// spawn is defaultMonsterKindID, matching pre-6c behavior exactly (wolf
-	// carries the flat numbers forward). Ring-weighted kind selection is 6c
-	// Task 3.
-	k := monsterDefByID[defaultMonsterKindID]
-
-	placed := 0
+	byRing := make([][]protocol.Hex, protocol.RingCount)
 
 	for _, h := range walkable {
-		if placed >= n {
-			break
+		r := ringOf(h, w.radius)
+		byRing[r] = append(byRing[r], h)
+	}
+
+	ringWeights := make([]int, protocol.RingCount)
+
+	for r, hexes := range byRing {
+		rng.Shuffle(len(hexes), func(i, j int) { hexes[i], hexes[j] = hexes[j], hexes[i] })
+		ringWeights[r] = len(hexes)
+	}
+
+	return byRing, ringWeights
+}
+
+// nextSpawnHexLocked draws one ring-weighted hex from byRing, popping it
+// off that ring's bucket and zeroing the ring's weight once its bucket
+// empties (so it's never picked again). ok is false once every ring is out
+// of both weight and candidates. Callers hold w.mu (byRing/ringWeights are
+// SpawnMonsters-local, but ringOf/occupancy-adjacent state justifies the
+// same locking discipline as its caller).
+func nextSpawnHexLocked(rng *mrand.Rand, byRing [][]protocol.Hex, ringWeights []int) (protocol.Hex, int, bool) {
+	for {
+		r, ok := weightedRingPick(rng, ringWeights)
+		if !ok {
+			return protocol.Hex{}, 0, false
 		}
 
-		if w.occupancyLocked(h) >= protocol.StackCap {
+		if len(byRing[r]) == 0 {
+			ringWeights[r] = 0 // exhausted candidates; never pick this ring again
+
 			continue
 		}
 
-		w.nextID++
-		w.entities[w.nextID] = &entity{
-			id: w.nextID, hex: h,
-			kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
-		}
-		placed++
+		h := byRing[r][len(byRing[r])-1]
+		byRing[r] = byRing[r][:len(byRing[r])-1]
+
+		return h, r, true
 	}
+}
+
+// pickSpawnKind draws one kind uniformly from ringKinds, excluding dragon
+// once dragonsPlaced has reached protocol.DragonCount. ok is false if that
+// exclusion leaves nothing to pick (a dragon-only ring whose cap is
+// already reached).
+func pickSpawnKind(rng *mrand.Rand, ringKinds []string, dragonsPlaced int) (string, bool) {
+	kinds := ringKinds
+	if dragonsPlaced >= protocol.DragonCount {
+		kinds = excludeKind(kinds, idKindDragon)
+	}
+
+	if len(kinds) == 0 {
+		return "", false
+	}
+
+	return kinds[rng.IntN(len(kinds))], true
 }
 
 // SpawnMonsterAt spawns a single monster at h, returning whether it spawned. It

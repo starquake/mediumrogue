@@ -523,6 +523,35 @@ func (w *World) GroundItemForTest(hex protocol.Hex, defID string) int64 {
 	return inst.id
 }
 
+// RingOfForTest exposes ringOf (worldgen.go), so a black-box test can pin
+// the ring-band math at various world radii without depending on any World.
+func RingOfForTest(h protocol.Hex, worldRadius int) int {
+	return ringOf(h, worldRadius)
+}
+
+// MonsterKindForTest returns the monster-kind registry id of the entity
+// with id (empty for a player, or an unknown id), so a ring/spawn test can
+// assert on WHICH kind landed where without waiting for Entity.MonsterKind
+// to ride the wire (6c Task 4).
+func (w *World) MonsterKindForTest(id int64) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.monsterKind
+	}
+
+	return ""
+}
+
+// MonsterRingsForTest returns the rings a registered monster kind spawns
+// in, so a ring/spawn test can check "this kind is valid for the ring its
+// hex fell into" without duplicating the registry inline. Panics if kind
+// is not registered.
+func MonsterRingsForTest(kind string) []int {
+	return monsterDefByID[kind].rings
+}
+
 // KillSummaryForTest exposes killSummary over a list of monster-kind ids
 // (resolved through monsterDefByID, in the given order — killSummary's
 // grouping is order-sensitive, see its doc comment), so a black-box test

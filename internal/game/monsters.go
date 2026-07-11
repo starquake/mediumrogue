@@ -2,6 +2,7 @@ package game
 
 import (
 	mrand "math/rand/v2"
+	"slices"
 	"strconv"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -126,6 +127,71 @@ func pickDropFrom(rng *mrand.Rand, table []drop) string {
 	// Unreachable: see the pre-6c pickDrop's identical comment — roll is
 	// drawn from [0,total) and the loop consumes exactly total weight.
 	panic("game: pickDropFrom weight accounting bug")
+}
+
+// kindsPerRing returns, for each ring 0..protocol.RingCount-1, the
+// id-sorted (for determinism) list of monster-kind ids registered for it
+// (monsterDefs' own rings field) — SpawnMonsters' uniform-among-the-ring's-
+// kinds pick draws from this. Built fresh per call since SpawnMonsters is
+// not hot-path (a handful of calls at server startup, or in tests).
+func kindsPerRing() [][]string {
+	out := make([][]string, protocol.RingCount)
+
+	for _, def := range monsterDefs {
+		for _, r := range def.rings {
+			out[r] = append(out[r], def.id)
+		}
+	}
+
+	for r := range out {
+		slices.Sort(out[r])
+	}
+
+	return out
+}
+
+// excludeKind returns kinds with every occurrence of id removed (order
+// preserved) — SpawnMonsters' dragon-cap check: once protocol.DragonCount
+// dragons are placed, dragon drops out of ring 2's candidate kind list for
+// the rest of that call.
+func excludeKind(kinds []string, id string) []string {
+	out := make([]string, 0, len(kinds))
+
+	for _, k := range kinds {
+		if k != id {
+			out = append(out, k)
+		}
+	}
+
+	return out
+}
+
+// weightedRingPick draws a ring index weighted by weights, mirroring
+// pickDropFrom's algorithm. ok is false iff every weight is zero (every
+// ring is out of placement weight — SpawnMonsters stops placing).
+func weightedRingPick(rng *mrand.Rand, weights []int) (int, bool) {
+	total := 0
+	for _, w := range weights {
+		total += w
+	}
+
+	if total == 0 {
+		return 0, false
+	}
+
+	roll := rng.IntN(total)
+
+	for i, w := range weights {
+		if roll < w {
+			return i, true
+		}
+
+		roll -= w
+	}
+
+	// Unreachable: see pickDropFrom's identical comment — roll is drawn
+	// from [0,total) and the loop consumes exactly total weight.
+	panic("game: weightedRingPick weight accounting bug")
 }
 
 // validateMonsterDefs panics on a content bug in defs: a duplicate id, a

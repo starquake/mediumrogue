@@ -52,6 +52,20 @@ export const StackCap = 5;
  */
 export const RingCount = 3;
 /**
+ * SanctuaryRadius is the hex distance from the origin within which no
+ * hostile monster spawns (milestone 6c) — the seed of a future trade
+ * hub (plan §9 recovery entry). Deliberately smaller than CombatRadius:
+ * the player-proximity spawn guard (#36) already keeps a fresh spawn
+ * clear of an instant fight, so the sanctuary's job is the PERMANENT
+ * safe zone, not spawn-moment safety.
+ */
+export const SanctuaryRadius = 5;
+/**
+ * DragonCount is the maximum number of dragons SpawnMonsters places in
+ * one world — the rare, ring-2 boss kind.
+ */
+export const DragonCount = 1;
+/**
  * MaxChatLen caps a chat message length in runes (defence-in-depth; the
  * client also caps input). MaxNameLen caps a player's display name.
  */
