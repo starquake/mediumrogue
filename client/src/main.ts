@@ -49,6 +49,7 @@ import { DIRECTIONS, hexDistance, hexToPixel, neighbor, pixelToHex } from "./ren
 import { GroundItemLayer } from "./render/items";
 import { MoveRangeLayer } from "./render/range";
 import { buildMapLayer } from "./render/map";
+import { QuestMarkerLayer } from "./render/questmarker";
 import { TurnTimer } from "./ui/timer";
 
 // Strip a `#t=<token>` character-link fragment and adopt its identity before
@@ -138,6 +139,12 @@ export interface GameDebug {
   quest: QuestView | null;
   /** The whole quest board, from the latest bundle. */
   quests: QuestView[];
+  /**
+   * My active reach quest's goal hex, or null (no active reach quest — a
+   * kill quest, or none at all). Drives QuestMarkerLayer (item 12); exposed
+   * for e2e since the marker itself is only a canvas draw.
+   */
+  questGoalMarker: Hex | null;
   /** This client's entity's owned items (id/defId/equipped), from the latest bundle. Empty until joined. */
   inventory: { id: number; defId: string; equipped: boolean }[];
   /** Every item lying on the ground, from the latest bundle. */
@@ -345,6 +352,7 @@ window.game = {
   partyId: 0,
   quest: null,
   quests: [],
+  questGoalMarker: null,
   inventory: [],
   groundItems: [],
   damage: [],
@@ -500,6 +508,12 @@ async function start(): Promise<void> {
   // item never occludes a player/monster dot standing over it.
   const groundItemLayer = new GroundItemLayer();
   world.addChild(groundItemLayer.container);
+
+  // Quest goal marker (item 12) sits above ground loot, below entities —
+  // same reasoning as the ground layer: a player standing on the goal hex
+  // still reads as a player, with the marker as backdrop.
+  const questMarkerLayer = new QuestMarkerLayer(app.ticker);
+  world.addChild(questMarkerLayer.container);
 
   // Click feedback (destination ring, attack flash) sits under the entities:
   // acknowledgement, not occlusion.
@@ -882,6 +896,14 @@ async function start(): Promise<void> {
             q.state === "taken" &&
             (q.holderEntityId === me.entityId || (myPartyId !== 0 && q.holderPartyId === myPartyId)),
         ) ?? null;
+
+      // Quest goal marker (item 12): only a "reach" quest has a single hex
+      // to point at — a kill quest gets no marker. Cleared automatically
+      // once the quest above is null (completed/abandoned — it drops out of
+      // the "taken" filter the instant its state changes).
+      window.game.questGoalMarker =
+        window.game.quest !== null && window.game.quest.kind === "reach" ? window.game.quest.goalHex : null;
+      questMarkerLayer.setGoal(window.game.questGoalMarker);
 
       // Absent from this bundle: either a coalesced/momentary blip (ignore —
       // see MISSING_GRACE_MS) or the disconnect-grace sweep really removed

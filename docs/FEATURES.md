@@ -178,6 +178,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   one slot per player/party; joining a party abandons a personal quest;
   dissolution returns the quest to the board. Kill quests tick via bubble
   presence; countdown feedback in panel and chat.
+- **Quest goal marker** (item 12, playtest batch 2): a pulsing gold diamond
+  on MY active "reach" quest's goal hex — above the ground-loot layer,
+  below entities. Kill quests get no marker (no single hex to point at);
+  clears when the quest completes or is abandoned.
 - **Parties** via chat commands (`/invite <name>`, `/accept`, `/leave`):
   ≥2 members, dissolve below that, survive death, swept on disconnect.
   Partymates colored on-map; roster panel.

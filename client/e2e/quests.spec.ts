@@ -71,6 +71,10 @@ test("quests: take a reach quest, walk to its goal, and it completes with a visi
   await expect(page.locator("#quest-mine")).toContainText(target.name);
   await expect(page.locator("#quest-mine")).toContainText("XP");
 
+  // 3.5. The quest goal marker (item 12, playtest batch 2) tracks my active
+  // reach quest's goal hex.
+  await expect.poll(() => page.evaluate(() => window.game.questGoalMarker)).toEqual(target.goalHex);
+
   // 4. Walk to the goal hex — server-authoritative BFS path queue, one hex
   // per turn, same click-to-move path as walk.spec.ts. Generous timeout: the
   // goal can be many turns away even at the fast ms test cadence.
@@ -102,4 +106,7 @@ test("quests: take a reach quest, walk to its goal, and it completes with a visi
   await expect
     .poll(() => page.evaluate(() => window.game.chat.some((m) => m.sender === "system" && m.text.includes("Quest complete"))))
     .toBe(true);
+
+  // 7. The goal marker clears once the quest completes (item 12).
+  await expect.poll(() => page.evaluate(() => window.game.questGoalMarker)).toBeNull();
 });
