@@ -137,6 +137,14 @@ export interface GameDebug {
    * that actually matters — the link string itself, and the join it drives.
    */
   identityLink: string;
+  /**
+   * Force one attemptRejoin pass NOW (drives e2e — the real trigger, my
+   * entity being absent from bundles for MISSING_GRACE_MS after a
+   * disconnect-grace sweep, is impractical to arrange in a browser test).
+   * Same code path as the organic trigger: reclaim() with this tab's own
+   * in-memory identity. Null until joined.
+   */
+  forceRejoin: (() => Promise<void>) | null;
   /** The global chat log, mirrored live from the chat store's signal. */
   chat: { seq: number; sender: string; text: string }[];
   /** Send a chat line as if typed into the panel (drives e2e). */
@@ -380,6 +388,7 @@ window.game = {
   tapHex: (): Promise<void> => Promise.resolve(),
   name: "",
   identityLink: "",
+  forceRejoin: null,
   get chat(): { seq: number; sender: string; text: string }[] {
     return chatMessages();
   },
@@ -654,7 +663,9 @@ async function start(): Promise<void> {
 
   // Character link: reveal the copy button now that there is an identity to
   // link (hidden until joined — see index.html), and keep it in sync across
-  // a re-join (attemptRejoin below), which mints a new token.
+  // a re-join (attemptRejoin below — a reclaim keeps the same token since
+  // item 2's fix, but the link is re-derived alongside the rest of the
+  // adopted identity regardless).
   const COPY_LABEL = "copy character link";
   const COPIED_LABEL = "copied!";
   let copiedFlashTimer: ReturnType<typeof setTimeout> | undefined;
@@ -745,6 +756,7 @@ async function start(): Promise<void> {
       rejoining = false;
     }
   };
+  window.game.forceRejoin = attemptRejoin;
 
   // walkTo submits a move destination and records it for the HUD/tests. The
   // world's answer (movement) only ever arrives via turn bundles. A rejected

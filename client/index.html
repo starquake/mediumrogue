@@ -593,7 +593,9 @@
     <div id="start-screen" hidden>
       <div id="start-panel">
         <h1>Medium Rogue</h1>
-        <div class="tagline">a shared world · one turn every five seconds · bring friends</div>
+        <!-- Derive-free wording (PR #50 review): no literal cadence number
+             here to go stale when TurnSeconds is retuned again. -->
+        <div class="tagline">a shared world · everyone moves on the same beat · bring friends</div>
 
         <label class="label" for="start-name">Your name</label>
         <input id="start-name" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />

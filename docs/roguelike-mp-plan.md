@@ -1,7 +1,7 @@
 # Multiplayer Roguelike — Project Plan
 
 **Genre target:** Shared-world roguelike with **simultaneous turns** (WeGo) — procgen, tile-based; death stings (XP setback) but is not permanent
-**Simulation model:** One world turn every **5 seconds** (3 s input → instant resolution → ~2 s playback); near hostiles the clock **stops locally** and turns become action-gated (combat time bubbles)
+**Simulation model:** One world turn every **4 seconds** (2 s input → instant resolution → ~2 s playback); near hostiles the clock **stops locally** and turns become action-gated (combat time bubbles)
 **Visual style:** Hex-tile-based, Caves of Qud–inspired mood, with a post-processing filter
 **Stack:** Go server (single binary) + TypeScript/PixiJS browser client
 **Transport:** HTTP POST (intents up) + SSE (turn bundles & chat down)
@@ -75,7 +75,7 @@ The real goal: a fun game for our own group of **~15 people** — a kind of **mi
 
 The stack decision evolved (Rust/Bevy → Go/Ebitengine → this) as the design got clearer. The reasons that settled it:
 
-- **The turn model removed every performance argument.** The server resolves ~15 players' intents once per 5 seconds — any language handles that. The original "no GC pauses, real-time entity ticking" rationale for Rust no longer applies.
+- **The turn model removed every performance argument.** The server resolves ~15 players' intents once per 4 seconds — any language handles that. The original "no GC pauses, real-time entity ticking" rationale for Rust no longer applies.
 - **Distribution is the real constraint** for a casual 15-friend group across Windows/macOS/Linux. A browser client turns distribution into *a URL*: no installers, no code-signing, no "which download do I click," and every update reaches everyone instantly.
 - **AI-verifiability drove the client choice.** A TypeScript/PixiJS client can be driven end-to-end with Playwright: click hexes, press keys, then *query live game state directly* and read console errors — far stronger verification than screenshot-squinting at an opaque canvas (the Ebitengine/WASM weakness). Since AI does the heavy lifting here, a testable client is a faster, safer project.
 - **HTML/CSS for the social surface.** Chat, quest log, party UI, and the turn timer — the parts this game actually lives on — are ordinary DOM elements floating over the canvas, not widgets hand-drawn in a game engine.
@@ -86,7 +86,7 @@ The stack decision evolved (Rust/Bevy → Go/Ebitengine → this) as the design 
 ```
 +----------------------+        HTTP POST /intent        +----------------------+
 |  Browser client      |  ---------------------------->  |  Go server           |
-|  - PixiJS hex render |                                 |  - Turn loop (5 s)   |
+|  - PixiJS hex render |                                 |  - Turn loop (4 s)   |
 |  - HTML UI (chat,    |  <----------------------------  |  - Authoritative     |
 |    quest log, timer) |     SSE stream: turn bundles,   |    resolution        |
 |  - Playback anim     |     chat, world events          |  - RNG / procgen     |
@@ -142,7 +142,7 @@ mediumrogue/
 
 ## 4. Transport: SSE + POST (decided)
 
-The wire carries one small intent up per ≤5 s and one turn bundle down per 5 s — not a realtime workload. That makes **Server-Sent Events + plain HTTP POST** the best fit:
+The wire carries one small intent up per ≤4 s and one turn bundle down per 4 s — not a realtime workload. That makes **Server-Sent Events + plain HTTP POST** the best fit:
 
 | | Why it wins here |
 |---|---|
@@ -174,7 +174,7 @@ The core of the design. Every 4 seconds, one world turn:
 **Clock policy — DECIDED: local combat time bubbles.**
 - Out of danger, world turns auto-advance on the 4 s cadence above.
 - When a player and a hostile gain **mutual line of sight within `COMBAT_RADIUS` hexes** (**6** for now, config constant), a **local time bubble** forms around them: entities in the bubble stop auto-advancing, and their turns become **action-gated** — the bubble's turn resolves when every player in it has committed an intent, with a fallback timeout (**30 s, decided post-playtest — item 4, playtest feedback batch 2; was ~60 s**) that auto-waits AFK players. NPCs commit instantly. **Turn floor (item 5, same batch):** a bubble-turn never resolves sooner than `TURN_INTERVAL` after its own previous resolution, even with every player locked in — closes a solo-player action-spam exploit (resolving faster than the world's own cadence) without slowing a genuine multi-player fight, where lock-ins rarely land inside one interval anyway.
-- **The rest of the world keeps its 5 s heartbeat — deliberately, so friends can keep moving and walk into the fight to help.** Crossing into a bubble's radius (or entering its LOS) pulls you into its time domain: walking in *is* joining the fight, no enrollment mechanic needed.
+- **The rest of the world keeps its 4 s heartbeat — deliberately, so friends can keep moving and walk into the fight to help.** Crossing into a bubble's radius (or entering its LOS) pulls you into its time domain: walking in *is* joining the fight, no enrollment mechanic needed.
 - **Cross-domain interactions: interaction absorbs.** Any attempt to interact with a bubble from outside — attacking into it, targeting an entity inside, healing a combatant — first pulls the actor into the bubble's time domain; the intent then resolves as a normal bubble turn. Nobody acts on a frozen fight from world-clock speed.
 - **Same turn everywhere.** Intents, resolution, conflict rules, and playback are identical inside and outside bubbles; only the metronome differs. There is no combat screen and no separate ruleset — the server just runs one turn loop per time domain.
 - **Bubble lifecycle:** form on trigger; **merge** when two bubbles come within trigger range or share an entity; **dissolve** when no player↔hostile pair remains in mutual LOS within the radius. Fleeing beyond the radius or breaking LOS is therefore a real, legible escape mechanic.
@@ -239,7 +239,7 @@ The core of the design. Every 4 seconds, one world turn:
 
 1. **Skeleton:** Go server serving an embedded Vite-built page, bootstrapped from the topbanana chassis (Makefile, golangci, app bootstrap, server layer, SSE hub, CI); client opens an SSE stream and receives heartbeat events; `make dev` loop works; tygo generation + contract test wired into CI.
 2. **Static hex world render:** client renders a hardcoded hex map from a server-sent bundle. No movement yet.
-3. **The turn loop:** server runs the 5 s cadence (input window → resolve → broadcast); one client POSTs a move intent and sees its entity step on the next turn. **This is the heart of the game — everything after builds on it.**
+3. **The turn loop:** server runs the world-turn cadence (input window → resolve → broadcast; 4 s since playtest batch 3, was 5 s when this milestone was built); one client POSTs a move intent and sees its entity step on the next turn. **This is the heart of the game — everything after builds on it.**
 4. **Playback & feel:** turn results animate over the ~2 s playback window; visible turn timer; click-to-move with queued paths; QWE/ASD keys. First Playwright e2e: click a hex, assert the entity arrives.
 5. **Multiplayer:** two+ clients connected, intents resolving simultaneously, both watching the same playback; reconnect/resync via `Last-Event-ID` proven with a pulled-plug test. First test of conflict-resolution rules.
 6. **Combat, time bubbles & death:** bump-to-attack, deterministic resolution order. Local clock-stop bubbles: form on mutual LOS, action-gated turns with timeout, join-by-walking-in, merge, dissolve on flee. Death → respawn with fall-back-to-level-start XP penalty.

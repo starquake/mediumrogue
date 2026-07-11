@@ -140,8 +140,9 @@ export async function join(
  * archived restore), so this always succeeds for a real returning player.
  * For a token the server no longer knows at all (item 4: the world reset
  * out from under this client, e.g. a restart with no matching snapshot/
- * archive entry), the empty class is invalid for a NEW entity, so the
- * server REJECTS with 422 (JoinRejectedError) instead of silently minting a
+ * archive entry), the empty name — checked first by the server, before the
+ * equally-empty class/species — is invalid for a NEW entity, so the server
+ * REJECTS with 422 (JoinRejectedError) instead of silently minting a
  * brand-new, level-1 stranger in the old character's place — callers must
  * treat that rejection as "this identity is truly gone" (main.ts clears it
  * and falls back to the start screen), never retry-and-mint.
