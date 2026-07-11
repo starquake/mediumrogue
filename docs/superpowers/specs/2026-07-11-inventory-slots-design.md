@@ -23,9 +23,12 @@ head, body, hands, ring, amulet, feet`
   content exists yet — the fighter's thrown slot ships empty. Staff can
   melee-bonk; wand never melees (combat weapon resolution reads the class
   shape).
-- Class legality stays per-item and becomes **multi-class** (`classes`
-  set, or "any") — Leather Armor is fighter+rogue per its card. Armor and
-  jewelry default to "any" unless the card says otherwise.
+- **Characters remain strictly single-class** (no multi-classing —
+  ever). What changes is the ITEM side: an item's wearability restriction
+  may now list SEVERAL classes (`wearableBy` set, or "any") — e.g.
+  Leather Armor is wearable by fighter OR rogue, per its card; a dagger
+  stays rogue-only. Armor and jewelry default to "any" unless the card
+  says otherwise.
 
 ## Entity model
 

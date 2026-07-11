@@ -18,7 +18,7 @@
 ---
 
 ### Task 1: Taxonomy + entity storage model
-**Files:** `internal/game/items.go` (itemType consts, type→slot, classes set), `content.go` (re-type every existing def), `world.go` (entity: `equipped map[string]int64`, `backpack [4]backpackEntry`; Join grants defaults into the class-shaped weapon slots), validation (type/slot/classes coherence; consumable heal>0), tests.
+**Files:** `internal/game/items.go` (itemType consts, type→slot, wearableBy set — ITEM wearability, characters stay single-class), `content.go` (re-type every existing def), `world.go` (entity: `equipped map[string]int64`, `backpack [4]backpackEntry`; Join grants defaults into the class-shaped weapon slots), validation (type/slot/classes coherence; consumable heal>0), tests.
 **Produces:** `itemType` consts; `slotForType(t) string`; `weaponSlotsFor(class) [2]itemType`; `backpackEntry{inst itemInstance; count int}` (count≥1; >1 only for consumables); entity helpers `equippedDefIn(slot)`, `freeBackpackIndex()`, `stackIndexFor(defID)`.
 - [ ] TDD; combat resolution reads the new storage (closeDefFor → the class's melee-ish slot: melee for fighter/rogue, staff for mage; rangedDefFor → thrown/ranged/wand by class). ALL existing game tests green. Commit.
 
