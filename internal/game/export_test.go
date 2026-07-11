@@ -133,17 +133,41 @@ func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 // its id, so AI tests can build exact monster/player geometries without
 // depending on SpawnMonsters' random placement.
 func (w *World) PlaceMonsterForTest(hex protocol.Hex) int64 {
+	return w.PlaceMonsterKindForTest(hex, defaultMonsterKindID)
+}
+
+// PlaceMonsterKindForTest is PlaceMonsterForTest for a caller-chosen monster
+// kind (content.go's monsterDefs id), so a test can build an exact board
+// state with a non-default kind (e.g. a dragon, for the Wyrmslayer pin).
+// Panics if kind is not registered.
+func (w *World) PlaceMonsterKindForTest(hex protocol.Hex, kind string) int64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	k, ok := monsterDefByID[kind]
+	if !ok {
+		panic("game: PlaceMonsterKindForTest unknown monster kind " + kind)
+	}
 
 	w.nextID++
 	w.entities[w.nextID] = &entity{
 		id: w.nextID, hex: hex,
-		kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
 	}
 
 	return w.nextID
 }
+
+// MonsterMaxHPForTest, MonsterDamageForTest, MonsterXPForTest,
+// MonsterDropChanceForTest, and MonsterAggroRadiusForTest expose a
+// registered monster kind's stats by id, so black-box tests can assert
+// combat numbers without duplicating the registry (content.go) inline —
+// mirrors ItemDamageForTest et al. Panics if kind is not registered.
+func MonsterMaxHPForTest(kind string) int       { return monsterDefByID[kind].maxHP }
+func MonsterDamageForTest(kind string) int      { return monsterDefByID[kind].damage }
+func MonsterXPForTest(kind string) int          { return monsterDefByID[kind].xp }
+func MonsterDropChanceForTest(kind string) int  { return monsterDefByID[kind].dropChance }
+func MonsterAggroRadiusForTest(kind string) int { return monsterDefByID[kind].aggroRadius }
 
 // SetHexForTest overwrites an entity's position directly, so a quest test can
 // place an already-joined party member onto a reach quest's goal without

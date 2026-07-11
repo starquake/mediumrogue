@@ -165,6 +165,20 @@ const (
 	idEmberFocus = "ember-focus"
 )
 
+// Starter-drop-set item ids: named the same way as the class-default ids
+// above, and for the same reason — referenced from both the item registry
+// (content.go) and, since 6c, per-kind monster loot tables (also
+// content.go) and their pinning tests, so a typo is a compile error.
+const (
+	idButchersCleaver       = "butchers-cleaver"
+	idIronWarhammer         = "iron-warhammer"
+	idVenomFang             = "venom-fang"
+	idPackBow               = "pack-bow"
+	idEmberStaff            = "ember-staff"
+	idAncientDwarvenMattock = "ancient-dwarven-mattock"
+	idWarMageStaff          = "war-mage-staff"
+)
+
 // classDefaultIDs returns the item def ids a class starts with at Join: one
 // close weapon, plus a ranged weapon for Rogue and Mage (Fighter has none).
 // An empty or unknown class returns nil — Join's validClass check means this
@@ -316,6 +330,7 @@ func validateMaxReach(defs []*itemDef) {
 func mustValidateContent() {
 	validateItemDefs(itemDefs)
 	validateMaxReach(itemDefs)
+	validateMonsterDefs(monsterDefs)
 
 	for _, class := range []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage} {
 		for _, id := range classDefaultIDs(class) {

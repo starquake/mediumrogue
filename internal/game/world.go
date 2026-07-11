@@ -66,6 +66,11 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
+	// monsterKind is the monster-kind registry id (content.go's monsterDefs,
+	// e.g. "wolf"); empty for players. Set at spawn (SpawnMonsters,
+	// SpawnMonsterAt, PlaceMonsterForTest); kindOf resolves it back to the
+	// def that carries this entity's stats, loot table, and aggro radius.
+	monsterKind string
 	// name is the player's display name (chat sender label), validated and set
 	// at Join; empty for monsters.
 	name string
@@ -1498,6 +1503,12 @@ func (w *World) SpawnMonsters(n int) {
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
 	rng.Shuffle(len(walkable), func(i, j int) { walkable[i], walkable[j] = walkable[j], walkable[i] })
 
+	// nothing reads the registry yet beyond the default kind (6c Task 1): every
+	// spawn is defaultMonsterKindID, matching pre-6c behavior exactly (wolf
+	// carries the flat numbers forward). Ring-weighted kind selection is 6c
+	// Task 3.
+	k := monsterDefByID[defaultMonsterKindID]
+
 	placed := 0
 
 	for _, h := range walkable {
@@ -1512,7 +1523,7 @@ func (w *World) SpawnMonsters(n int) {
 		w.nextID++
 		w.entities[w.nextID] = &entity{
 			id: w.nextID, hex: h,
-			kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+			kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
 		}
 		placed++
 	}
@@ -1537,8 +1548,21 @@ func (w *World) SpawnMonsters(n int) {
 // (tooCloseToPlayerLocked is unexported, but SpawnMonsters' random search
 // already does this). Holds w.mu.
 func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
+	return w.SpawnMonsterKindAt(h, defaultMonsterKindID)
+}
+
+// SpawnMonsterKindAt is SpawnMonsterAt for a caller-chosen monster kind
+// (content.go's monsterDefs id) — lets a test or a future ring-aware spawner
+// seed a specific kind at a specific hex. Panics if kind is not registered
+// (a content bug, not a runtime condition a caller should need to handle).
+func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	k, ok := monsterDefByID[kind]
+	if !ok {
+		panic("game: SpawnMonsterKindAt unknown monster kind " + kind)
+	}
 
 	if !w.walkableLocked(h) || w.occupancyLocked(h) >= protocol.StackCap {
 		return false
@@ -1547,7 +1571,7 @@ func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
 	w.nextID++
 	w.entities[w.nextID] = &entity{
 		id: w.nextID, hex: h,
-		kind: protocol.EntityMonster, hp: protocol.MonsterMaxHP, maxHP: protocol.MonsterMaxHP,
+		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
 	}
 
 	return true

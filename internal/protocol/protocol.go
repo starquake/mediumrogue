@@ -33,6 +33,11 @@ const (
 	// StackCap is the maximum number of friendly entities on one hex — sized
 	// so a full party fits.
 	StackCap = 5
+	// RingCount is the number of distance-based difficulty rings worldgen
+	// bands the map into (milestone 6c): ring 0 (home) through RingCount-1
+	// (frontier). Monster-kind registry validation requires every ring to
+	// have at least one kind that spawns in it.
+	RingCount = 3
 	// MaxChatLen caps a chat message length in runes (defence-in-depth; the
 	// client also caps input). MaxNameLen caps a player's display name.
 	MaxChatLen = 500
