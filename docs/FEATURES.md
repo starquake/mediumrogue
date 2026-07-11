@@ -16,7 +16,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   and reflexes are irrelevant by design.
 - **Combat time bubbles**: when a player and a hostile come within 6 hexes,
   a local bubble freezes — its turns are **action-gated** (advance when every
-  player in it locks in an intent, or after a 60 s patience timeout). The
+  player in it locks in an intent, or after a 30 s patience timeout). The
   rest of the world keeps ticking. Bubbles form/merge/dissolve as connected
   components; **only players extend a bubble's reach**. Walking into a
   bubble's radius joins the fight — reinforcement is a core mechanic; fleeing
@@ -283,7 +283,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | `TURN_INTERVAL` | `5s` | world-turn period (tests shrink it) |
 | `HEARTBEAT_INTERVAL` | `15s` | SSE keep-alive cadence |
 | `MONSTER_COUNT` | `0` | monsters spawned at startup |
-| `COMBAT_PATIENCE` | `60s` | bubble AFK fallback before auto-resolve |
+| `COMBAT_PATIENCE` | `30s` | bubble AFK fallback before auto-resolve |
 | `BUBBLE_POLL` | `100ms` | control-loop poll (must be < TURN_INTERVAL) |
 | `DISCONNECT_GRACE` | `20s` | despawn delay for disconnected players |
 | `WORLD_SEED` | `0xC0FFEE` | procgen seed (decimal or 0x hex) |

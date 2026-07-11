@@ -29,11 +29,13 @@ var errPollNotBelowInterval = errors.New("BUBBLE_POLL must be shorter than TURN_
 // under common proxy idle timeouts (60s) with margin.
 const defaultHeartbeatInterval = 15 * time.Second
 
-// Bubble-clock defaults. Patience matches the plan's ~60s AFK fallback (§5);
-// the poll cadence is fine-grained enough that lock-in feels instant yet coarse
-// enough not to spin.
+// Bubble-clock defaults. Patience was tuned down from the plan's original
+// ~60s AFK fallback to 30s (§5) after playtest feedback batch 2 (item 4) —
+// 60s of waiting on a straggler read as dead air; the poll cadence is
+// fine-grained enough that lock-in feels instant yet coarse enough not to
+// spin.
 const (
-	defaultCombatPatience = 60 * time.Second
+	defaultCombatPatience = 30 * time.Second
 	defaultBubblePoll     = 100 * time.Millisecond
 )
 
