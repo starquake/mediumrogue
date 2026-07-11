@@ -56,15 +56,19 @@ established equip rule extends to everything)
 ## Pickup flow (replaces auto-pickup)
 
 Walking onto a hex with ground items no longer auto-grants. The client
-prompts per item — **name + type**, yes/no (`GroundItemView` gains
-`type`); multiple items queue one prompt at a time. "Yes" sends the pickup
-intent; the server re-validates a free home in priority order: matching
-empty gear slot? → equip-less pickup into backpack first (items never
-auto-equip), so really: consumable stack merge → free backpack entry →
-otherwise **reject with a clear error** the client surfaces as feedback
-("backpack full — drop something first"). "No" dismisses that item until
-the player leaves and re-enters the hex. Monster loot and player drops
-behave identically.
+opens a **modal listing every item on that hex** — one row per item,
+**name + type** (`GroundItemView` gains `type`) — and the player picks the
+ones they want **one by one**: each click sends that item's pickup intent;
+the row leaves the list on success. The server validates each intent's
+free home in priority order: matching empty gear slot? → equip-less pickup
+into backpack first (items never auto-equip), so really: consumable stack
+merge → free backpack entry → otherwise **reject with a clear error**,
+which the modal surfaces as inline feedback on that row ("backpack full —
+drop something first") while the remaining rows stay pickable. Closing the
+modal leaves the remaining items on the ground; it reopens when the player
+leaves and re-enters the hex. Monster loot and player drops behave
+identically. In a combat bubble the modal never blocks the turn clock
+(patience keeps running).
 
 ## Starter content (making the systems real)
 
@@ -88,11 +92,12 @@ combat-value fold).
   user's Vitruvian layout (Head top; Hands left; Ring right; Amulet
   center-upper; Body center; Feet bottom; the two weapon slots flanking
   left/right of Body), 4 backpack cells beneath, per-item drop
-  affordance, stack counts on consumables. Pickup prompt = a small DOM
-  dialog. **Mockup-first**: HTML mockup approved by the user before the
-  client task builds.
-- `window.game`: equipped map, backpack, pendingPickupPrompt — kept in
-  sync per the testability rule.
+  affordance, stack counts on consumables. Pickup modal = a small DOM
+  dialog listing the hex's items (see the pickup flow above).
+  **Mockup-first**: HTML mockup approved by the user before the client
+  task builds.
+- `window.game`: equipped map, backpack, pickupModal (the open modal's
+  rows, or null) — kept in sync per the testability rule.
 
 ## Persistence
 
@@ -116,9 +121,10 @@ swap-through-backpack; stack merge/decrement/free; pickup gating (merge >
 free entry > reject) with exact error; drop→ground→re-pickup identity;
 drink heal clamp + turn rules in bubble. Integration: the full
 drop/walk/prompt/accept/reject/full loop over HTTP; potion drink.
-e2e: paper-doll renders equipped state; pickup prompt appears on
-walk-over, yes grants / no dismisses; backpack-full feedback visible;
-stack count renders. Snapshot round-trip with the new shapes.
+e2e: paper-doll renders equipped state; the pickup modal opens on
+walk-over listing the hex's items, a row click grants and removes the
+row, close leaves the rest on the ground; per-row backpack-full feedback
+visible; stack count renders. Snapshot round-trip with the new shapes.
 
 ## Risks
 
@@ -126,7 +132,7 @@ stack count renders. Snapshot round-trip with the new shapes.
   (closeDefFor/rangedDefFor by class shape) must keep every existing
   combat test's semantics — melee/ranged behavior is unchanged, only the
   storage model moves.
-- The prompt is new UX in bubbles: it must never block the turn clock
+- The modal is new UX in bubbles: it must never block the turn clock
   (patience keeps running) and must survive bundle refreshes.
 - 4 backpack entries is tight by design (drop decisions are gameplay) —
   expect tuning feedback; the size is a constant, trivially changed.
