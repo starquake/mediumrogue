@@ -9,6 +9,13 @@ design — every decided rule and open question — lives in
 next step, known placeholders, and environment gotchas. Keep it updated at
 the end of every session.
 
+**`docs/FEATURES.md` is the implemented-features reference** (mechanics,
+systems, env vars, protocol constants — doubles as the player manual).
+Any PR that changes a mechanic, config var, constant, pipeline vocabulary,
+or content updates the relevant FEATURES.md section **in the same PR**.
+Values in its tables come from `internal/protocol`/`internal/config`,
+never from memory.
+
 ## Architecture
 
 - **Go server** (module root, standard go.dev server layout): authoritative
