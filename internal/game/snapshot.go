@@ -236,6 +236,20 @@ func (w *World) RestoreState(data []byte) error {
 	w.bubbles = make(map[int64]*bubble)
 	w.pendingInvites = make(map[int64]int64)
 
+	players := 0
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer {
+			players++
+		}
+	}
+
+	// Identity audit trail (item 7, playtest feedback batch 3): what a
+	// restart actually restored, correlatable with the join-* events that
+	// follow — see identityLogMsg (world.go).
+	w.logger.Info(identityLogMsg, "event", identityEventSnapshotRestore,
+		"players", players, "archived", len(w.archive), "world_id", w.worldID)
+
 	return nil
 }
 

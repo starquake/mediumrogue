@@ -349,6 +349,18 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   `event` attribute. `World.SetLogger` installs the sink (defaults to
   `slog.Default()`, mirrors `SetAnnounce`); `cmd/rogue/app` wires the
   process logger in.
+- **Identity audit log** (item 7, playtest batch 3 — same filterable
+  convention, msg key `"identity"`): every identity lifecycle decision
+  emits `slog.Info("identity", "event", ...)` — `join-new` (id, name,
+  class), `join-reclaim` (live token), `join-restore` (archived token),
+  `join-rejected` (reason: `invalid_name`/`invalid_class`/
+  `invalid_species`/`no_spawn_hex`), `sweep-archive` (id, name), and
+  `snapshot-restore` (player count, archive count, worldId). Token-bearing
+  events carry a `token_prefix` of the first **8 chars only** — never the
+  full bearer secret (a full token in a log file would be a
+  character-theft vector). Purpose: a future cross-machine "players
+  swapped" report gets diagnosed from the server log's join/sweep/restore
+  sequence instead of hypothesized.
 
 ---
 

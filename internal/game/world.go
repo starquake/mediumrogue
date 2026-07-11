@@ -35,6 +35,40 @@ const (
 	combatEventXP     = "xp_award"
 )
 
+// identityLogMsg is the slog message every identity-lifecycle log line
+// carries (slog.Info("identity", "event", ...)) — the same filterable
+// convention as combatLogMsg, added for item 7 of playtest feedback batch 3
+// so the next cross-machine "players swapped" report gets diagnosed from
+// server logs instead of hypothesized. identityEvent* names the "event"
+// attribute's fixed vocabulary; the sixth event, "snapshot-restore", is
+// emitted from RestoreState (snapshot.go).
+const identityLogMsg = "identity"
+
+const (
+	identityEventJoinNew         = "join-new"
+	identityEventJoinReclaim     = "join-reclaim"
+	identityEventJoinRestore     = "join-restore"
+	identityEventJoinRejected    = "join-rejected"
+	identityEventSweepArchive    = "sweep-archive"
+	identityEventSnapshotRestore = "snapshot-restore"
+)
+
+// tokenPrefixLen is how many leading characters of a bearer token identity
+// log lines carry — enough to correlate a client across joins/sweeps in the
+// logs, never the full secret (a full token in a log file would be a
+// character-theft vector; the log is not the trust boundary the VPS disk
+// is).
+const tokenPrefixLen = 8
+
+// tokenPrefix truncates token for audit logging — see tokenPrefixLen.
+func tokenPrefix(token string) string {
+	if len(token) <= tokenPrefixLen {
+		return token
+	}
+
+	return token[:tokenPrefixLen]
+}
+
 // Intent validation errors, mapped to HTTP statuses by the API layer.
 var (
 	// ErrUnauthorized covers unknown entities and bad tokens alike, so a
@@ -508,6 +542,9 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 		// StreamOpened.
 		e.disconnectedAt = w.now()
 
+		w.logger.Info(identityLogMsg, "event", identityEventJoinReclaim,
+			"id", e.id, "name", e.name, "token_prefix", tokenPrefix(token))
+
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 	}
 
@@ -516,20 +553,15 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	}
 
 	name = strings.TrimSpace(name)
-	if !validName(name) {
-		return protocol.JoinResponse{}, ErrInvalidName
-	}
-
-	if !validClass(class) {
-		return protocol.JoinResponse{}, ErrInvalidClass
-	}
-
-	if !validSpecies(species) {
-		return protocol.JoinResponse{}, ErrInvalidSpecies
+	if err := w.validateNewJoinLocked(token, name, class, species); err != nil {
+		return protocol.JoinResponse{}, err
 	}
 
 	spawn, err := w.spawnHexLocked()
 	if err != nil {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "no_spawn_hex", "name", name, "token_prefix", tokenPrefix(token))
+
 		return protocol.JoinResponse{}, err
 	}
 
@@ -553,7 +585,39 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	w.byToken[e.token] = e
 	w.grantDefaultsLocked(e)
 
+	w.logger.Info(identityLogMsg, "event", identityEventJoinNew,
+		"id", e.id, "name", e.name, "class", e.class, "token_prefix", tokenPrefix(e.token))
+
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+}
+
+// validateNewJoinLocked checks a NEW player's name/class/species (name
+// already trimmed by the caller), logging a "join-rejected" identity audit
+// event with the failing reason before returning the matching sentinel.
+// Callers hold w.mu.
+func (w *World) validateNewJoinLocked(token, name, class, species string) error {
+	if !validName(name) {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "invalid_name", "token_prefix", tokenPrefix(token))
+
+		return ErrInvalidName
+	}
+
+	if !validClass(class) {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "invalid_class", "name", name, "token_prefix", tokenPrefix(token))
+
+		return ErrInvalidClass
+	}
+
+	if !validSpecies(species) {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "invalid_species", "name", name, "token_prefix", tokenPrefix(token))
+
+		return ErrInvalidSpecies
+	}
+
+	return nil
 }
 
 // restoreArchivedLocked implements Join's archived-token branch: a fresh
@@ -585,6 +649,9 @@ func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protoc
 	w.entities[e.id] = e
 	w.byToken[e.token] = e
 	delete(w.archive, token)
+
+	w.logger.Info(identityLogMsg, "event", identityEventJoinRestore,
+		"id", e.id, "name", e.name, "token_prefix", tokenPrefix(token))
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
@@ -676,6 +743,9 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 		e := w.entities[id]
 
 		w.archive[e.token] = archiveLocked(e)
+
+		w.logger.Info(identityLogMsg, "event", identityEventSweepArchive,
+			"id", e.id, "name", e.name, "token_prefix", tokenPrefix(e.token))
 
 		w.leavePartyLocked(e)
 		w.abandonPersonalQuestLocked(e)
