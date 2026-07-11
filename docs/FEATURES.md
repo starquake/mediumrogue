@@ -62,7 +62,12 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Feedback**: instant destination ring on walk clicks, one-shot flash on
   attack clicks, pending "…" on equip buttons, Diablo-style **floating damage
   numbers** (white over hostiles, red over players; killing blows shown as
-  remaining HP — derived client-side by diffing bundles), kill summaries and
+  remaining HP — derived client-side by diffing bundles), **committed-action
+  indicator** (item 6, playtest batch 2 — a solid step marker for a queued
+  move, a persistent crosshair for a queued attack, a small hourglass on my
+  own hex for a wait; shown while I've locked in this bubble-turn and it's
+  still waiting on the rest of the bubble, cleared on the next turn bundle;
+  `window.game.committedAction`), kill summaries and
   player deaths announced in chat, naming the slain **kind(s)**. Two or more
   players in the bubble at award time: nameless ("a wolf was slain (+20 XP to
   everyone in the fight)", "a wolf and a troll were slain (+80 XP …)", "2

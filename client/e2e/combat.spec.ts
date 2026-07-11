@@ -218,8 +218,24 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   // and could bump-attack it, draining the shared combat server's fixed
   // (non-respawning) monster pool that monsters.spec.ts also depends on —
   // the same failure class fixed in 84f1471. Retarget to our own current
-  // hex: Pathfind(from == to) sets an empty path. Awaited: tapHex resolves
-  // only once its intent POST has landed server-side.
+  // hex: Pathfind(from == to) sets an empty path — the same click own-hex
+  // wait/cancel item 11 binds to SPACE. window.game.committedAction is set
+  // SYNCHRONOUSLY inside walkTo, before tapHex's intent POST even starts
+  // (its returned promise is deliberately not awaited on this first line),
+  // so it's readable immediately — item 6's indicator survives until the
+  // next turn bundle clears it.
+  const committed = await page.evaluate(() => {
+    const me = window.game.me;
+    if (me === null) {
+      return null;
+    }
+
+    void window.game.tapHex(me.hex.q, me.hex.r);
+
+    return window.game.committedAction;
+  });
+  expect(committed).toEqual({ kind: "wait", target: hexAtFreeze });
+
   await page.evaluate(async () => {
     const me = window.game.me;
     if (me !== null) {

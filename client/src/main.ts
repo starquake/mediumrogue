@@ -43,6 +43,7 @@ import {
 } from "./protocol.gen";
 import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
+import type { CommittedAction } from "./render/feedback";
 import { FeedbackLayer } from "./render/feedback";
 import { DIRECTIONS, hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { GroundItemLayer } from "./render/items";
@@ -162,6 +163,15 @@ export interface GameDebug {
    * outside a bubble or with no ranged weapon. Drives the red range wash.
    */
   combatRanged: Hex[];
+  /**
+   * What I committed to THIS bubble-turn — move/attack/wait plus its target
+   * hex — or null when I haven't acted yet (or it already resolved). Set the
+   * moment an intent is submitted while inCombat (item 6); cleared on the
+   * next turn bundle, or by a later intent that replaces it (an equip
+   * supersedes a queued move/attack server-side the same way). Drives the
+   * committed-action indicator (FeedbackLayer.setCommitted); exposed for e2e.
+   */
+  committedAction: CommittedAction | null;
 }
 
 declare global {
@@ -340,6 +350,7 @@ window.game = {
   damage: [],
   combatMoves: [],
   combatRanged: [],
+  committedAction: null,
 };
 
 // How many hexes an entity can cover in one action-gated combat turn. 1 is
@@ -584,8 +595,13 @@ async function start(): Promise<void> {
   // equipItem POSTs an equip intent for an owned item (the panel's own
   // "equip" button). Outside a bubble it applies immediately (still just a
   // 202 ack here — the swap shows up on the next turn bundle); inside one
-  // it becomes this turn's action, same as any other intent.
+  // it becomes this turn's action, same as any other intent. An equip
+  // supersedes any queued move/attack server-side — clear the
+  // committed-action indicator to match (item 6: "equip -> nothing new",
+  // the button already shows its own pending "…").
   const equipItem = (itemId: number): void => {
+    window.game.committedAction = null;
+    feedbackLayer.setCommitted(null);
     void submitEquip(identity, itemId);
   };
   mountGear(mustGet("gear-root"), equipItem);
@@ -643,6 +659,17 @@ async function start(): Promise<void> {
     // turn bundle. Cleared alongside window.game.destination everywhere.
     feedbackLayer.setDestination(target);
 
+    // Committed-action indicator (item 6): inside a bubble, a move intent is
+    // this turn's action — my own hex is a "wait" (own-hex move already
+    // waits/cancels), anything else a "move". Outside a bubble there is
+    // nothing to commit to (no action gating), so leave it null.
+    if (window.game.inCombat) {
+      const self = window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
+      const committed: CommittedAction = { kind: self ? "wait" : "move", target };
+      window.game.committedAction = committed;
+      feedbackLayer.setCommitted(committed);
+    }
+
     return submitIntent(identity, target, IntentMove).then((accepted) => {
       const pending = window.game.destination;
       if (!accepted && pending !== null && pending.q === target.q && pending.r === target.r) {
@@ -673,6 +700,12 @@ async function start(): Promise<void> {
     feedbackLayer.flashAttack(target);
 
     const targetEntityId = myRangedAoeRadius === 0 ? (hostileIdAt(target) ?? 0) : 0;
+
+    // Committed-action indicator (item 6): a persistent crosshair on the
+    // target, alongside the flashAttack one-shot ring above.
+    const committed: CommittedAction = { kind: "attack", target };
+    window.game.committedAction = committed;
+    feedbackLayer.setCommitted(committed);
 
     return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
@@ -732,6 +765,15 @@ async function start(): Promise<void> {
 
   eventsController = connectEvents(() => identity.token, {
     onTurn: (event: TurnEvent): void => {
+      // Committed-action indicator (item 6): clear on the next turn bundle,
+      // whether it resolved my action or not — a fresh bundle always means
+      // "no longer showing what I chose last time," the simplest rule that
+      // still reads as "shown until it resolves" in the common case (a solo
+      // or last-to-lock-in bubble resolves the instant this client submits,
+      // so its very next bundle IS that resolution).
+      window.game.committedAction = null;
+      feedbackLayer.setCommitted(null);
+
       // Derive floating damage numbers by diffing this bundle's HP against the
       // previous one (still in window.game from the last onTurn): an entity
       // with less HP took a hit; a monster missing entirely died, its killing
