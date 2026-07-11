@@ -35,7 +35,9 @@ import {
   EntityPlayer,
   IntentAttack,
   IntentMove,
-  ItemSlotRanged,
+  ItemTypeRangedWeapon,
+  ItemTypeThrownWeapon,
+  ItemTypeWand,
   PlaybackSeconds,
   SpeciesHuman,
   StackCap,
@@ -981,7 +983,11 @@ async function start(): Promise<void> {
           defId: it.defId,
           equipped: it.equipped,
         }));
-        const rangedItem = mine.items.find((it: ItemView) => it.slot === ItemSlotRanged && it.equipped);
+        // TEMP SHIM (inventory-slots task 1; replaced by the task-5 paper-doll
+        // rework): ItemView.slot now carries the itemType — the ranged-ish
+        // weapon types are thrown-weapon/ranged-weapon/wand.
+        const rangedTypes: string[] = [ItemTypeThrownWeapon, ItemTypeRangedWeapon, ItemTypeWand];
+        const rangedItem = mine.items.find((it: ItemView) => rangedTypes.includes(it.slot) && it.equipped);
         myRangedRangeHex = rangedItem?.rangeHex ?? null;
         myRangedAoeRadius = rangedItem?.aoeRadius ?? 0;
       }

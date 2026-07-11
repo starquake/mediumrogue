@@ -119,11 +119,51 @@ const (
 	IntentEquip = "equip"
 )
 
-// Item slots: every item definition fills exactly one.
+// Item slots: every item definition fills exactly one. Deprecated by the
+// inventory-slots milestone's itemType taxonomy below — kept only until the
+// client (task 5) stops reading ItemView.Slot as one of these two coarse
+// values; internal/game no longer produces them (see ItemView.Slot's new
+// doc comment).
 const (
 	ItemSlotClose  = "close"
 	ItemSlotRanged = "ranged"
 )
+
+// Item types (the inventory-slots milestone's taxonomy): every item
+// definition's itemType determines exactly which equip slot it fits
+// (internal/game's slotForType — the slot key equals the type string itself
+// for every type except consumable, which has no slot and lives only in the
+// backpack as a stack). The five weapon types are the class-shaped weapon
+// slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+// melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+// weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+// feet) are universal gear slots, not class-shaped.
+const (
+	ItemTypeMeleeWeapon  = "melee-weapon"
+	ItemTypeThrownWeapon = "thrown-weapon"
+	ItemTypeRangedWeapon = "ranged-weapon"
+	ItemTypeStaff        = "staff"
+	ItemTypeWand         = "wand"
+	ItemTypeConsumable   = "consumable"
+	ItemTypeHead         = "head"
+	ItemTypeBody         = "body"
+	ItemTypeHands        = "hands"
+	ItemTypeRing         = "ring"
+	ItemTypeAmulet       = "amulet"
+	ItemTypeFeet         = "feet"
+)
+
+// BackpackSize is the fixed number of backpack entries every entity has (the
+// inventory-slots milestone). An entry holds one gear instance, or one
+// consumable stack (identical defs merge up to ItemStackCap; stacks never
+// split).
+const BackpackSize = 4
+
+// ItemStackCap is the maximum count of identical consumables in one backpack
+// stack. Distinct from StackCap (max FRIENDLY ENTITIES on one hex) — same
+// launch value, unrelated invariant, kept as separate named constants so a
+// future tuning change to one never accidentally reads as the other.
+const ItemStackCap = 5
 
 // Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
 // the client can show health bars once combat (6.3) starts changing it.
@@ -304,9 +344,14 @@ type QuestView struct {
 // whether it currently sits in its slot. The numbers ride the wire so the
 // client never compiles against item content.
 type ItemView struct {
-	ID        int64  `json:"id"`
-	DefID     string `json:"defId"`
-	Name      string `json:"name"`
+	ID    int64  `json:"id"`
+	DefID string `json:"defId"`
+	Name  string `json:"name"`
+	// Slot carries the item's itemType string (task 1 of the inventory-slots
+	// milestone repurposed this field in place rather than adding a new one;
+	// see the ItemType* consts above) — no longer one of ItemSlotClose/
+	// ItemSlotRanged. Wire-compatible (still a string) but the two old
+	// constants are stale for any item this server now emits.
 	Slot      string `json:"slot"`
 	Damage    int    `json:"damage"`
 	RangeHex  int    `json:"rangeHex"`

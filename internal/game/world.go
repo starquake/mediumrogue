@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	mrand "math/rand/v2"
 	"slices"
 	"strings"
@@ -198,15 +199,19 @@ type entity struct {
 	// time, before its first stream opens): the start of its removal-grace clock.
 	// Only consulted while streams == 0. Players only.
 	disconnectedAt time.Time
-	// items is every item instance this entity owns (players only; monsters own
-	// none — they fight with their kind's own claws profile, monsterDef.claws).
-	// Granted at Join by grantDefaultsLocked; gear survives death (never
-	// cleared by respawn).
-	items []itemInstance
-	// closeSlot and rangedSlot are the instance ids currently equipped in each
-	// slot, or 0 for empty. 0 is never a valid instance id (nextID starts
-	// counting from 1). See equippedDef/closeDefFor/rangedDefFor (items.go).
-	closeSlot, rangedSlot int64
+	// equipped is the entity's worn/wielded gear, keyed by slot (the 8 typed
+	// slots of the inventory-slots milestone: the six universal body slots
+	// plus the class's two class-shaped weapon slots — slot keys are itemType
+	// strings, see slotForType/weaponSlotsFor in items.go). Players only;
+	// monsters own no items and fight with their kind's own claws profile
+	// (monsterDef.claws). Granted at Join by grantDefaultsLocked; gear
+	// survives death (never cleared by respawn). May be nil on a
+	// monster/zero-value fixture — equippedDefIn treats nil as all-empty.
+	equipped map[string]itemInstance
+	// backpack is the entity's protocol.BackpackSize carry entries: one gear
+	// instance or one consumable stack per entry (backpackEntry, items.go).
+	// Every owned item lives in exactly one of equipped or backpack.
+	backpack [protocol.BackpackSize]backpackEntry
 	// pendingEquip is the item instance id queued by an equip intent submitted
 	// inside a combat bubble — the swap becomes this turn's action (see
 	// queueEquipLocked) instead of applying immediately. 0 means no equip is
@@ -323,20 +328,25 @@ type World struct {
 // design — a restored character is as if freshly joined, but with its
 // progression and gear intact. See World.archive and sweepDisconnectedLocked.
 type characterRecord struct {
-	name, class, species  string
-	xp                    int
-	items                 []itemInstance
-	closeSlot, rangedSlot int64
+	name, class, species string
+	xp                   int
+	equipped             map[string]itemInstance
+	backpack             [protocol.BackpackSize]backpackEntry
 }
 
-// archiveLocked captures e's character record for World.archive. Callers
+// archiveLocked captures e's character record for World.archive. The
+// equipped map is cloned — the record must stay a stable snapshot even
+// though the source entity is deleted right after (and a restored entity
+// gets its own map, never one shared with a lingering record). Callers
 // hold w.mu.
 func archiveLocked(e *entity) characterRecord {
+	equipped := make(map[string]itemInstance, len(e.equipped))
+	maps.Copy(equipped, e.equipped)
+
 	return characterRecord{
 		name: e.name, class: e.class, species: e.species,
-		xp:        e.xp,
-		items:     e.items,
-		closeSlot: e.closeSlot, rangedSlot: e.rangedSlot,
+		xp:       e.xp,
+		equipped: equipped, backpack: e.backpack,
 	}
 }
 
@@ -640,7 +650,7 @@ func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protoc
 		id: w.nextID, hex: spawn, token: token,
 		kind: protocol.EntityPlayer, name: rec.name, class: rec.class, species: rec.species,
 		xp: rec.xp, hp: maxHP, maxHP: maxHP,
-		items: rec.items, closeSlot: rec.closeSlot, rangedSlot: rec.rangedSlot,
+		equipped: rec.equipped, backpack: rec.backpack,
 		// Restored as if freshly joined: the removal-grace clock starts now,
 		// not at the (long-gone) pre-sweep disconnect time — the spec's pinned
 		// risk (see archive_test.go).
@@ -936,12 +946,12 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	}
 
 	def := itemDefByID[inst.defID]
-	if def.class != e.class {
+	if !canEquip(e.class, def) {
 		return ErrWrongClass
 	}
 
 	if e.bubbleID == 0 {
-		e.toggleEquip(inst.id, def.slot)
+		e.toggleEquip(inst, slotForType(def.itemType))
 		e.pendingEquip = 0
 
 		return nil
@@ -968,39 +978,10 @@ func applyPendingEquip(e *entity) {
 	}
 
 	if inst, ok := e.itemByID(e.pendingEquip); ok {
-		e.toggleEquip(inst.id, itemDefByID[inst.defID].slot)
+		e.toggleEquip(inst, slotForType(itemDefByID[inst.defID].itemType))
 	}
 
 	e.pendingEquip = 0
-}
-
-// toggleEquip swaps instID into slot (protocol.ItemSlotClose or
-// ItemSlotRanged), replacing whatever instance was equipped there — unless
-// instID is ALREADY equipped in that slot, in which case it clears the slot
-// (0 = unequipped: fists fallback for close, no ranged weapon at all for
-// ranged — see closeDefFor/rangedDefFor). Re-derives the toggle direction
-// from the entity's CURRENT slot state at call time rather than a decision
-// cached at queue time: nothing else can change e's own slots between a
-// queued equip intent and its resolution (only this same pending action
-// touches them), so the two are equivalent, and this way queueEquipLocked's
-// free path and applyPendingEquip's queued path share one rule instead of
-// two. Callers must have already validated ownership and class
-// (queueEquipLocked, or the pending-equip pass in resolveCombatLocked).
-func (e *entity) toggleEquip(instID int64, slot string) {
-	switch slot {
-	case protocol.ItemSlotClose:
-		if e.closeSlot == instID {
-			e.closeSlot = 0
-		} else {
-			e.closeSlot = instID
-		}
-	case protocol.ItemSlotRanged:
-		if e.rangedSlot == instID {
-			e.rangedSlot = 0
-		} else {
-			e.rangedSlot = instID
-		}
-	}
 }
 
 // entityNameLocked is the wire Name for e: a player's chosen display name,
@@ -1075,24 +1056,45 @@ func (w *World) Snapshot() protocol.TurnEvent {
 }
 
 // itemViewsLocked builds the wire item list for one entity: an ItemView per
-// owned item instance (Equipped true iff it currently fills the close or
-// ranged slot). Always a non-nil slice — empty (not null) for a monster
-// (which owns no items — see entity.items) or a player who owns none, so the
-// wire shape matches the generated TS type's non-optional ItemView[]. Callers
-// hold w.mu.
+// owned item instance — equipped gear first, in canonicalSlotOrder (so the
+// list order is deterministic despite e.equipped being a map), then backpack
+// entries in index order. Slot carries the def's itemType (the taxonomy
+// string; see protocol.ItemView.Slot's doc comment). Always a non-nil
+// slice — empty (not null) for a monster (which owns nothing) or a player
+// who owns nothing, so the wire shape matches the generated TS type's
+// non-optional ItemView[]. Callers hold w.mu.
 func itemViewsLocked(e *entity) []protocol.ItemView {
-	views := make([]protocol.ItemView, 0, len(e.items))
+	views := make([]protocol.ItemView, 0, len(e.equipped)+len(e.backpack))
 
-	for _, it := range e.items {
-		def := itemDefByID[it.defID]
-		views = append(views, protocol.ItemView{
-			ID: it.id, DefID: it.defID, Name: def.name, Slot: def.slot,
-			Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
-			Equipped: it.id == e.closeSlot || it.id == e.rangedSlot,
-		})
+	for _, slot := range canonicalSlotOrder {
+		inst, ok := e.equipped[slot]
+		if !ok || inst.id == 0 {
+			continue
+		}
+
+		views = append(views, itemViewOf(inst, true))
+	}
+
+	for _, be := range e.backpack {
+		if be.empty() {
+			continue
+		}
+
+		views = append(views, itemViewOf(be.inst, false))
 	}
 
 	return views
+}
+
+// itemViewOf renders one owned item instance for the wire.
+func itemViewOf(inst itemInstance, equipped bool) protocol.ItemView {
+	def := itemDefByID[inst.defID]
+
+	return protocol.ItemView{
+		ID: inst.id, DefID: inst.defID, Name: def.name, Slot: def.itemType,
+		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
+		Equipped: equipped,
+	}
 }
 
 // opposing reports whether a and b are of different factions (player vs
@@ -1317,9 +1319,11 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 
 // rollDamageLocked runs one hit through the pipeline: the attacker's
 // deal-damage cards (species + the acting weapon's rules) then the victim's
-// take-damage cards (species + the rules of BOTH the victim's equipped defs,
-// close then ranged — a hit lands on the whole entity, not just the slot that
-// happens to be attacking). weapon is the attacker's acting weapon def
+// take-damage cards (species + the rules of EVERYTHING the victim has
+// equipped, folded in canonicalSlotOrder — a hit lands on the whole entity,
+// not just the slot that happens to be attacking; this is how armor's
+// take-damage cards apply). A monster victim folds its kind's claws rules
+// instead (it never equips). weapon is the attacker's acting weapon def
 // (closeDefFor for a bump, rangedDefFor for a shot); it is never nil — every
 // combat site resolves a def (fists/claws fallback for close, a real
 // equipped item for ranged, since a nil ranged def never reaches here — see
@@ -1331,12 +1335,22 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
 	dealt := applyRules(evDealDamage, base, attackerCards, ctx)
 
-	victimCards := slices.Concat(speciesCards(victim.species), closeDefFor(victim).rules)
-	if ranged := rangedDefFor(victim); ranged != nil {
-		victimCards = slices.Concat(victimCards, ranged.rules)
-	}
+	victimCards := slices.Concat(speciesCards(victim.species), victimGearCards(victim))
 
 	return applyRules(evTakeDamage, dealt, victimCards, ctx)
+}
+
+// victimGearCards returns the rule cards an entity contributes to
+// pipeline folds over its whole person (take-damage, aggro-range): a
+// monster's kind claws rules (monsterDef's rules seam — a monster never
+// equips), or every equipped item's rules for a player (equippedRuleCards,
+// canonicalSlotOrder — deterministic).
+func victimGearCards(e *entity) []ruleCard {
+	if e.kind == protocol.EntityMonster {
+		return closeDefFor(e).rules
+	}
+
+	return equippedRuleCards(e)
 }
 
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
@@ -1929,13 +1943,21 @@ func (w *World) dropLootLocked(rng *mrand.Rand, k *monsterDef, at protocol.Hex) 
 
 // pickupLocked resolves the walk-on pickup phase: every living player in
 // members (id-sorted, per resolveCombatLocked's callers) that stands on a
-// hex holding ground items takes ALL of them and the hex clears. Two players
-// landing on the same hex the same turn resolve lowest-id-first, since
-// members arrives id-sorted. Runs after moveAndBumpLocked (post-move
-// positions) and before attackLocked (a walk-on pickup is not an action, so
-// it never displaces the turn's attack). Monsters never pick up (they own no
-// items — see entity.items). Each pickup announces via the chat hook.
-// Callers hold w.mu.
+// hex holding ground items takes as many as its backpack has homes for —
+// per item, a mergeable consumable stack first (stackIndexFor), then a free
+// backpack entry (freeBackpackIndex); an item with neither home stays on
+// the ground (the pre-inventory model had no cap and always took all).
+// Two players landing on the same hex the same turn resolve
+// lowest-id-first, since members arrives id-sorted. Runs after
+// moveAndBumpLocked (post-move positions) and before attackLocked (a
+// walk-on pickup is not an action, so it never displaces the turn's
+// attack). Monsters never pick up (they own no items). Each pickup
+// announces via the chat hook. Callers hold w.mu.
+//
+// NOTE (task 1 of the inventory-slots milestone): walk-on auto-pickup is
+// slated for REMOVAL in task 2, replaced by an explicit pickup intent —
+// this backpack-aware rewrite exists so the storage model lands green
+// before the flow change.
 func (w *World) pickupLocked(members []*entity) {
 	for _, e := range members {
 		if e.kind != protocol.EntityPlayer || e.hp <= 0 {
@@ -1947,14 +1969,48 @@ func (w *World) pickupLocked(members []*entity) {
 			continue
 		}
 
+		var left []itemInstance
+
 		for _, it := range items {
-			e.items = append(e.items, it)
+			if !w.takeItemLocked(e, it) {
+				left = append(left, it)
+
+				continue
+			}
+
 			w.announce("system", e.name+" picked up "+itemDefByID[it.defID].name)
 			w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", it.defID)
 		}
 
-		delete(w.groundItems, e.hex)
+		if len(left) == 0 {
+			delete(w.groundItems, e.hex)
+		} else {
+			w.groundItems[e.hex] = left
+		}
 	}
+}
+
+// takeItemLocked gives ground item it a home on player e in the spec's
+// priority order: merge into an existing consumable stack (the merged
+// instance's own id disappears — the stack keeps its representative
+// instance and just counts up), else a free backpack entry, else fails
+// (false; the caller leaves the item where it was). Items never auto-equip
+// on pickup, even into an empty matching slot — equipping is always an
+// explicit action. Callers hold w.mu.
+func (w *World) takeItemLocked(e *entity, it itemInstance) bool {
+	if idx := e.stackIndexFor(it.defID); idx >= 0 {
+		e.backpack[idx].count++
+
+		return true
+	}
+
+	if idx := e.freeBackpackIndex(); idx >= 0 {
+		e.backpack[idx] = backpackEntry{inst: it, count: 1}
+
+		return true
+	}
+
+	return false
 }
 
 // spawnStream is a fixed PCG stream for monster placement, distinct from the
@@ -2333,17 +2389,14 @@ func baseAggroRadiusFor(m *entity) int {
 // aggroRadiusForLocked returns the hex radius at which a WORLD-domain
 // monster with base aggro radius `base` (baseAggroRadiusFor — per-kind since
 // 6c) notices player p: base folded through p's own noticeability rule
-// cards (species + both equipped items' rules — mirroring
-// rollDamageLocked's victimCards fold: any gear on the entity can
+// cards (species + every equipped item's rules, in canonicalSlotOrder —
+// mirroring rollDamageLocked's victimCards fold: any gear on the entity can
 // contribute, not just the "acting" slot) via the evAggroRange event. No
 // content defines an evAggroRange card yet, so this is a no-op fold today —
 // the hook exists so a future sneaky/loud item can shrink or grow it
 // without touching this call site. Callers hold w.mu.
 func aggroRadiusForLocked(rng *mrand.Rand, base int, p *entity) int {
-	cards := slices.Concat(speciesCards(p.species), closeDefFor(p).rules)
-	if ranged := rangedDefFor(p); ranged != nil {
-		cards = slices.Concat(cards, ranged.rules)
-	}
+	cards := slices.Concat(speciesCards(p.species), equippedRuleCards(p))
 
 	return applyRules(evAggroRange, base, cards, ruleCtx{attacker: p, rng: rng})
 }

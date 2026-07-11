@@ -28,8 +28,16 @@ func equippedRangedStats(bundle protocol.TurnEvent, id int64) (int, int, bool) {
 		return 0, 0, false
 	}
 
+	// ItemView.Slot carries the itemType since the inventory-slots milestone:
+	// the ranged-ish weapon types are thrown-weapon/ranged-weapon/wand (one
+	// per class shape).
 	for _, it := range e.Items {
-		if it.Slot == protocol.ItemSlotRanged && it.Equipped {
+		if !it.Equipped {
+			continue
+		}
+
+		switch it.Slot {
+		case protocol.ItemTypeThrownWeapon, protocol.ItemTypeRangedWeapon, protocol.ItemTypeWand:
 			return it.RangeHex, it.AoERadius, true
 		}
 	}

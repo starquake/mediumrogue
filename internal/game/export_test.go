@@ -265,8 +265,8 @@ func (w *World) SetClassForTest(id int64, class string) {
 
 	if e, ok := w.entities[id]; ok {
 		e.class = class
-		e.items = nil
-		e.closeSlot, e.rangedSlot = 0, 0
+		e.equipped = nil
+		e.backpack = [protocol.BackpackSize]backpackEntry{}
 		w.grantDefaultsLocked(e)
 		syncMaxHPLocked(e)
 	}
@@ -470,8 +470,10 @@ func ItemAoERadiusForTest(id string) int { return itemDefByID[id].aoeRadius }
 // class has a ranged default at all (false for Fighter and any classless
 // entity).
 func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
+	rangedSlot := weaponSlotsFor(class)[1]
+
 	for _, id := range classDefaultIDs(class) {
-		if def := itemDefByID[id]; def.slot == protocol.ItemSlotRanged {
+		if def := itemDefByID[id]; def.itemType == rangedSlot {
 			return itemDamage(def, level), def.rangeHex, def.aoeRadius, true
 		}
 	}
@@ -480,11 +482,12 @@ func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
 }
 
 // GrantItemForTest mints and grants (but does not equip) an item instance of
-// defID to the entity, returning the new instance id, so an equip test can
-// engineer an owned item beyond a class's Join defaults (e.g. an
-// owned-but-wrong-class item, or a second close-slot item to swap into) without
-// going through Join/SetClassForTest, which grants exactly one class's default
-// set.
+// defID to the entity — into its first free backpack entry (or merged into a
+// mergeable consumable stack) — returning the new instance id (for a stack
+// merge, the stack's existing representative id), so an equip test can
+// engineer an owned item beyond a class's Join defaults without going
+// through Join/SetClassForTest. Returns 0 for an unknown entity or a full
+// backpack (a test-fixture bug, surfaced as an id no assert can match).
 func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -494,26 +497,80 @@ func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
 		return 0
 	}
 
+	if idx := e.stackIndexFor(defID); idx >= 0 {
+		e.backpack[idx].count++
+
+		return e.backpack[idx].inst.id
+	}
+
+	idx := e.freeBackpackIndex()
+	if idx < 0 {
+		return 0
+	}
+
 	w.nextID++
 	inst := itemInstance{id: w.nextID, defID: defID}
-	e.items = append(e.items, inst)
+	e.backpack[idx] = backpackEntry{inst: inst, count: 1}
 
 	return inst.id
 }
 
-// EquippedSlotsForTest returns an entity's equipped close- and ranged-slot
-// item instance ids (0 = empty), so an equip test can assert a swap took (or
-// did not yet take) effect without waiting on the wire snapshot's item view
-// (not wired until a later task).
+// EquippedSlotsForTest returns an entity's equipped close-ish and ranged-ish
+// weapon-slot item instance ids (0 = empty), re-derived through the
+// class-shaped weapon slots (weaponSlotsFor), so pre-inventory equip tests
+// keep their close/ranged assertions across the storage change.
 func (w *World) EquippedSlotsForTest(id int64) (int64, int64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if e, ok := w.entities[id]; ok {
-		return e.closeSlot, e.rangedSlot
+		slots := weaponSlotsFor(e.class)
+
+		return e.equipped[slots[0]].id, e.equipped[slots[1]].id
 	}
 
 	return 0, 0
+}
+
+// EquippedInSlotForTest returns the instance id equipped in a named typed
+// slot (slot keys are itemType strings; 0 = empty), so an inventory-slots
+// test can assert armor/jewelry equips beyond the two weapon slots.
+func (w *World) EquippedInSlotForTest(id int64, slot string) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.equipped[slot].id
+	}
+
+	return 0
+}
+
+// BackpackForTest returns an entity's backpack as (defID, count) pairs by
+// entry index ("" / 0 = free entry), so a test can assert exact backpack
+// layout — stacks, swap-through-backpack placement, free entries.
+func (w *World) BackpackForTest(id int64) [protocol.BackpackSize]struct {
+	DefID string
+	Count int
+} {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	var out [protocol.BackpackSize]struct {
+		DefID string
+		Count int
+	}
+
+	if e, ok := w.entities[id]; ok {
+		for i, be := range e.backpack {
+			if !be.empty() {
+				out[i].DefID = be.inst.defID
+				out[i].Count = be.count
+			}
+		}
+	}
+
+	return out
 }
 
 // SetPendingEquipForTest overwrites an entity's queued equip directly, so a

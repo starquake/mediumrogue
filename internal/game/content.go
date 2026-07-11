@@ -49,47 +49,61 @@ func speciesCards(species string) []ruleCard {
 //nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init (mustValidateContent).
 var itemDefs = []*itemDef{
 	// Class defaults.
-	{id: idIronSword, name: "Iron Sword", slot: protocol.ItemSlotClose, class: protocol.ClassFighter, damage: 4},
-	{id: idDagger, name: "Dagger", slot: protocol.ItemSlotClose, class: protocol.ClassRogue, damage: 7},
 	{
-		id: idShortbow, name: "Shortbow", slot: protocol.ItemSlotRanged, class: protocol.ClassRogue,
-		damage: 6, rangeHex: 4,
+		id: idIronSword, name: "Iron Sword", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter}, damage: 4,
 	},
-	{id: idOakStaff, name: "Oak Staff", slot: protocol.ItemSlotClose, class: protocol.ClassMage, damage: 2},
 	{
-		id: idEmberFocus, name: "Ember Focus", slot: protocol.ItemSlotRanged, class: protocol.ClassMage,
-		damage: 4, rangeHex: 4, aoeRadius: 1,
+		id: idDagger, name: "Dagger", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassRogue}, damage: 7,
+	},
+	{
+		id: idShortbow, name: "Shortbow", itemType: protocol.ItemTypeRangedWeapon,
+		wearableBy: []string{protocol.ClassRogue}, damage: 6, rangeHex: 4,
+	},
+	{
+		id: idOakStaff, name: "Oak Staff", itemType: protocol.ItemTypeStaff,
+		wearableBy: []string{protocol.ClassMage}, damage: 2,
+	},
+	{
+		id: idEmberFocus, name: "Ember Focus", itemType: protocol.ItemTypeWand,
+		wearableBy: []string{protocol.ClassMage}, damage: 4, rangeHex: 4, aoeRadius: 1,
 	},
 
 	// Starter drop set.
 	{
-		id: idButchersCleaver, name: "Butcher's Cleaver", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
-		damage: 3, desc: "+3 damage vs targets below half HP",
+		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     3, desc: "+3 damage vs targets below half HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowPct, n: 50}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idIronWarhammer, name: "Iron Warhammer", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
-		damage: 6, desc: "a flat upgrade over the iron sword — rare",
+		id: idIronWarhammer, name: "Iron Warhammer", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     6, desc: "a flat upgrade over the iron sword — rare",
 	},
 	{
-		id: idVenomFang, name: "Venom Fang", slot: protocol.ItemSlotClose, class: protocol.ClassRogue,
-		damage: 5, desc: "+4 damage vs targets at full HP",
+		id: idVenomFang, name: "Venom Fang", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassRogue},
+		damage:     5, desc: "+4 damage vs targets at full HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}}, then: effect{kind: effAdd, n: 4}},
 		},
 	},
 	{
-		id: idPackBow, name: "Pack Bow", slot: protocol.ItemSlotRanged, class: protocol.ClassRogue,
-		damage: 5, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
+		id: idPackBow, name: "Pack Bow", itemType: protocol.ItemTypeRangedWeapon,
+		wearableBy: []string{protocol.ClassRogue},
+		damage:     5, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAllyInBubble}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idEmberStaff, name: "Ember Staff", slot: protocol.ItemSlotRanged, class: protocol.ClassMage,
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
+		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWand,
+		wearableBy: []string{protocol.ClassMage},
+		damage:     3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
@@ -99,18 +113,18 @@ var itemDefs = []*itemDef{
 	// review in the first-gear correspondence). Authored by the group's
 	// content designer — ids/names/numbers are his cards, transcribed.
 	{
-		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", slot: protocol.ItemSlotClose,
-		class:  protocol.ClassFighter,
-		damage: 4, desc: "+3 damage in a dwarf's hands",
+		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     4, desc: "+3 damage in a dwarf's hands",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
 				then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idWarMageStaff, name: "Staff of the War Mage", slot: protocol.ItemSlotRanged,
-		class:  protocol.ClassMage,
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWand,
+		wearableBy: []string{protocol.ClassMage},
+		damage:     3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
 			// boring tail of a fight, and never scales into a boss-killer.
@@ -124,9 +138,9 @@ var itemDefs = []*itemDef{
 	// per-species-style condition against. Dragon-only drop (dragon's own
 	// table, below).
 	{
-		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", slot: protocol.ItemSlotClose,
-		class:  protocol.ClassFighter,
-		damage: 4, desc: "×1.5 damage vs dragons",
+		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     4, desc: "×1.5 damage vs dragons",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
 				then: effect{kind: effMulPct, n: 150}},
