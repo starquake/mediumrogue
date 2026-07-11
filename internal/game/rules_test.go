@@ -54,10 +54,13 @@ func TestSpeciesCardsMatchOldPassives(t *testing.T) {
 		t.Errorf("dwarf take-damage(1) = %d, want %d", got, want)
 	}
 
-	// Human: the old award*(100+bonus)/100.
+	// Human: the old award*(100+bonus)/100. wolf.xp (20) stands in for an
+	// arbitrary representative kill-XP base — any base proves the fold.
 	human := speciesCards(protocol.SpeciesHuman)
-	if got, want := applyRules(evEarnXP, protocol.MonsterXP, human, ruleCtx{}),
-		protocol.MonsterXP*(percentBase+protocol.HumanXPBonusPercent)/percentBase; got != want {
+	wolfXP := monsterDefByID[idKindWolf].xp
+
+	if got, want := applyRules(evEarnXP, wolfXP, human, ruleCtx{}),
+		wolfXP*(percentBase+protocol.HumanXPBonusPercent)/percentBase; got != want {
 		t.Errorf("human earn-xp = %d, want %d", got, want)
 	}
 
@@ -209,5 +212,37 @@ func TestApplyRulesAttackerSpecies(t *testing.T) {
 	// nil attacker (defensive): fails closed.
 	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{}), 4; got != want {
 		t.Errorf("applyRules nil attacker = %d, want %d", got, want)
+	}
+}
+
+// TestApplyRulesTargetKind: the Wyrmslayer Greatsword's condition (milestone
+// 6c) — gates on the VICTIM being a monster of a specific registered kind.
+func TestApplyRulesTargetKind(t *testing.T) {
+	t.Parallel()
+
+	card := []ruleCard{{
+		event: evDealDamage,
+		when:  []condition{{kind: condTargetKind, s: idKindDragon}},
+		then:  effect{kind: effMulPct, n: 150},
+	}}
+
+	dragon := &entity{kind: protocol.EntityMonster, monsterKind: idKindDragon}
+	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{victim: dragon}), 6; got != want {
+		t.Errorf("applyRules vs dragon = %d, want %d", got, want)
+	}
+
+	wolf := &entity{kind: protocol.EntityMonster, monsterKind: idKindWolf}
+	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{victim: wolf}), 4; got != want {
+		t.Errorf("applyRules vs wolf (wrong kind) = %d, want %d", got, want)
+	}
+
+	player := &entity{kind: protocol.EntityPlayer}
+	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{victim: player}), 4; got != want {
+		t.Errorf("applyRules vs a player victim = %d, want %d", got, want)
+	}
+
+	// nil victim (defensive): fails closed.
+	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{}), 4; got != want {
+		t.Errorf("applyRules nil victim = %d, want %d", got, want)
 	}
 }

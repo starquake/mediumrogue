@@ -12,14 +12,14 @@ import (
 // behavior over real HTTP/SSE: a joined player drives the nearest monster
 // (re-targeted every bundle, since monsters hunt back and can shift the board)
 // until it lands a killing blow. It asserts the player's own XP, as carried on
-// the wire, rises by at least protocol.MonsterXP, and that Level tracks the
+// the wire, rises by at least wolfKillXP, and that Level tracks the
 // server's flat curve (1 + xp/XPPerLevel) at every observation — not just the
 // final one.
 //
-// A player starts at XP 0 / Level 1 and one kill awards the full
-// protocol.MonsterXP, so "xp reaches >= MonsterXP" is a clean, one-directional
-// signal: it cannot happen without at least one kill, and it is robust to
-// exactly which monster dies or how many turns the fight takes.
+// A player starts at XP 0 / Level 1 and one kill of the seeded (default
+// wolf) monster awards the full wolfKillXP, so "xp reaches >= wolfKillXP" is
+// a clean, one-directional signal: it cannot happen without at least one
+// kill, and it is robust to how many turns the fight takes.
 //
 // The monster is seeded one hex from the origin (where the player spawns), so
 // the fight is a 1–3 turn bubble brawl resolved on the player's own lock-ins
@@ -73,7 +73,7 @@ func TestXPRisesOnMonsterKillOverHTTP(t *testing.T) {
 				got, want, myEntity.XP, protocol.XPPerLevel)
 		}
 
-		if myEntity.XP >= protocol.MonsterXP {
+		if myEntity.XP >= wolfKillXP {
 			return // a kill landed and the reward reached the player over the wire
 		}
 
@@ -82,6 +82,6 @@ func TestXPRisesOnMonsterKillOverHTTP(t *testing.T) {
 		}
 	}
 
-	t.Fatalf("player XP never reached MonsterXP (%d) before deadline: last xp=%d level=%d",
-		protocol.MonsterXP, lastXP, lastLevel)
+	t.Fatalf("player XP never reached wolfKillXP (%d) before deadline: last xp=%d level=%d",
+		wolfKillXP, lastXP, lastLevel)
 }

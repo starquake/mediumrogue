@@ -1,6 +1,7 @@
 package game
 
 import (
+	mrand "math/rand/v2"
 	"strconv"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -96,6 +97,35 @@ func kindOf(e *entity) *monsterDef {
 	}
 
 	return monsterDefByID[e.monsterKind]
+}
+
+// pickDropFrom draws one defID from table, weighted by weight — mirrors the
+// pre-6c pickDrop's algorithm but reads a monsterDef's own table instead of
+// the (retired) global dropTable. Returns "" if table is empty or every
+// weight is zero. Consumes exactly one rng draw.
+func pickDropFrom(rng *mrand.Rand, table []drop) string {
+	total := 0
+	for _, d := range table {
+		total += d.weight
+	}
+
+	if total == 0 {
+		return ""
+	}
+
+	roll := rng.IntN(total)
+
+	for _, d := range table {
+		if roll < d.weight {
+			return d.defID
+		}
+
+		roll -= d.weight
+	}
+
+	// Unreachable: see the pre-6c pickDrop's identical comment — roll is
+	// drawn from [0,total) and the loop consumes exactly total weight.
+	panic("game: pickDropFrom weight accounting bug")
 }
 
 // validateMonsterDefs panics on a content bug in defs: a duplicate id, a

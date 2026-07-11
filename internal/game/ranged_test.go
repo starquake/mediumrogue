@@ -226,7 +226,7 @@ func TestRangedIntentIsLockIn(t *testing.T) {
 		t.Errorf("monster HP = %d, want %d (attack lock-in runs the bubble turn)", got, wantMonsterHP)
 	}
 
-	if got, want := entityHP(t, snap, me.EntityID), rogueHPBefore-protocol.MonsterAttackDamage; got != want {
+	if got, want := entityHP(t, snap, me.EntityID), rogueHPBefore-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("rogue HP = %d, want %d (monster bumps back on the resolved turn)", got, want)
 	}
 }
@@ -264,7 +264,7 @@ func TestRangedAndBumpAccumulateSimultaneously(t *testing.T) {
 		t.Errorf("monster still alive, want removed (bow was lethal)")
 	}
 
-	if got, want := entityHP(t, snap, rogueID), rogueHPBefore-protocol.MonsterAttackDamage; got != want {
+	if got, want := entityHP(t, snap, rogueID), rogueHPBefore-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("rogue HP = %d, want %d (monster's bump lands vs pre-attack HP)", got, want)
 	}
 }

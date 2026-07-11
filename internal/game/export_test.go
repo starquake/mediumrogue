@@ -475,29 +475,34 @@ func TileCountForTest(radius int) int {
 	return tileCount(radius)
 }
 
-// PickDropForTest exposes pickDrop, seeded from a single uint64 (stream 0),
-// so a content test can enumerate the weighted-drop distribution over a
-// fixed seed range without depending on any World. Returns "" only if
-// dropTable is empty (pickDrop's defensive nil case).
-func PickDropForTest(seed uint64) string {
-	//nolint:gosec // deterministic test-only seed, not security-sensitive; reproducibility is required.
-	rng := mrand.New(mrand.NewPCG(seed, 0))
-
-	def := pickDrop(rng)
-	if def == nil {
+// PickDropForTest exposes pickDropFrom over a named monster kind's own drop
+// table, seeded from a single uint64 (stream 0), so a content test can
+// enumerate the weighted-drop distribution over a fixed seed range without
+// depending on any World. Returns "" if kind is unregistered, its table is
+// empty, or every weight is zero (pickDropFrom's defensive case).
+func PickDropForTest(kind string, seed uint64) string {
+	k, ok := monsterDefByID[kind]
+	if !ok {
 		return ""
 	}
 
-	return def.id
+	//nolint:gosec // deterministic test-only seed, not security-sensitive; reproducibility is required.
+	rng := mrand.New(mrand.NewPCG(seed, 0))
+
+	return pickDropFrom(rng, k.drops)
 }
 
-// DropTableIDsForTest returns every def id in dropTable (registry order), so
-// a content test can assert pickDrop's output set against the live registry
+// DropTableIDsForTest returns every def id in a named monster kind's own
+// drops table (registry order, duplicates included when a kind lists the
+// same item at more than one weight bucket — none do today), so a content
+// test can assert pickDropFrom's output set against the live registry
 // instead of a hand-duplicated literal list.
-func DropTableIDsForTest() []string {
+func DropTableIDsForTest(kind string) []string {
+	dropTable := monsterDefByID[kind].drops
+
 	ids := make([]string, len(dropTable))
-	for i, def := range dropTable {
-		ids[i] = def.id
+	for i, d := range dropTable {
+		ids[i] = d.defID
 	}
 
 	return ids
@@ -516,4 +521,24 @@ func (w *World) GroundItemForTest(hex protocol.Hex, defID string) int64 {
 	w.groundItems[hex] = append(w.groundItems[hex], inst)
 
 	return inst.id
+}
+
+// KillSummaryForTest exposes killSummary over a list of monster-kind ids
+// (resolved through monsterDefByID, in the given order — killSummary's
+// grouping is order-sensitive, see its doc comment), so a black-box test
+// can assert the exact chat/combat-log announce text without duplicating
+// the pipeline inline. Panics if any id is unregistered.
+func KillSummaryForTest(kindIDs ...string) string {
+	slain := make([]*monsterDef, len(kindIDs))
+
+	for i, id := range kindIDs {
+		k, ok := monsterDefByID[id]
+		if !ok {
+			panic("game: KillSummaryForTest unknown monster kind " + id)
+		}
+
+		slain[i] = k
+	}
+
+	return killSummary(slain)
 }

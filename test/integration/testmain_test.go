@@ -22,6 +22,13 @@ import (
 // Task 5 adds sweep tests that thread a short grace explicitly.
 const testDisconnectGrace = time.Hour
 
+// wolfKillXP is wolf's kill XP (internal/game/content.go's monsterDefs) —
+// the default spawn kind (SpawnMonsters/SpawnMonsterAt), and the exact old
+// flat protocol.MonsterXP value (deleted in 6c — monster kind numbers are
+// now game-package content data, not importable here) it carries forward
+// unchanged.
+const wolfKillXP = 20
+
 // newAnnouncingChatBroker builds a chat broker and wires it as world's
 // announce hook for in-resolution quest/party events, mirroring app.go's
 // production wiring (chat.NewBroker + World.SetAnnounce). Callers must call

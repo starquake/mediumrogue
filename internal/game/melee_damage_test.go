@@ -130,7 +130,7 @@ func TestMonsterBumpDamageUnchanged(t *testing.T) {
 		t.Fatalf("player %d missing after a monster bump", pid)
 	}
 
-	if got, want := player.HP, protocol.FighterMaxHP-protocol.MonsterAttackDamage; got != want {
+	if got, want := player.HP, protocol.FighterMaxHP-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("player HP after monster bump = %d, want %d (monster melee flat, unchanged)", got, want)
 	}
 }

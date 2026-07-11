@@ -64,23 +64,17 @@ func oneHitKillBubble(t *testing.T, w *game.World, seed int64) (int64, protocol.
 	return playerID, snap
 }
 
-// TestPickDropCoversWholeTableAndExcludesZeroWeight: pickDrop, run over a
-// fixed seed range, returns every dropTable def at least once, and never
-// returns a class-default id (dropWeight 0 — iron-sword, dagger, shortbow,
-// oak-staff, ember-focus are never in dropTable, so pickDrop can never
-// return them; asserting against the live dropTable id set, not a
-// hand-duplicated literal list, keeps this test honest if the registry
-// grows).
-func TestPickDropCoversWholeTableAndExcludesZeroWeight(t *testing.T) {
+// TestPickDropCoversWolfsWholeTable: pickDropFrom, run over wolf's own drop
+// table (content.go's monsterDefs) over a fixed seed range, returns every
+// entry in it at least once — loot authority is monster-side since 6c
+// (items no longer carry any drop weight of their own), so this asserts
+// against the live per-kind table, not a hand-duplicated literal list.
+func TestPickDropCoversWolfsWholeTable(t *testing.T) {
 	t.Parallel()
 
-	want := game.DropTableIDsForTest()
+	want := game.DropTableIDsForTest("wolf")
 	if len(want) == 0 {
-		t.Fatalf("dropTable is empty — nothing to distribute")
-	}
-
-	zeroWeight := map[string]bool{
-		"iron-sword": true, "dagger": true, "shortbow": true, "oak-staff": true, "ember-focus": true,
+		t.Fatalf("wolf's drop table is empty — nothing to distribute")
 	}
 
 	seen := make(map[string]bool, len(want))
@@ -88,13 +82,9 @@ func TestPickDropCoversWholeTableAndExcludesZeroWeight(t *testing.T) {
 	const seedRange = 200
 
 	for seed := range uint64(seedRange) {
-		id := game.PickDropForTest(seed)
+		id := game.PickDropForTest("wolf", seed)
 		if id == "" {
-			t.Fatalf("PickDropForTest(%d) = \"\" (empty dropTable draw)", seed)
-		}
-
-		if zeroWeight[id] {
-			t.Fatalf("PickDropForTest(%d) = %q, want never a zero-weight class default", seed, id)
+			t.Fatalf("PickDropForTest(wolf, %d) = \"\" (empty draw)", seed)
 		}
 
 		seen[id] = true
@@ -102,7 +92,7 @@ func TestPickDropCoversWholeTableAndExcludesZeroWeight(t *testing.T) {
 
 	for _, id := range want {
 		if !seen[id] {
-			t.Errorf("dropTable id %q never drawn over %d seeds", id, seedRange)
+			t.Errorf("wolf drop table id %q never drawn over %d seeds", id, seedRange)
 		}
 	}
 }
@@ -210,7 +200,7 @@ func TestKillDropPickedUpNextTurn(t *testing.T) {
 	// Two lines in order: the kill summary from the turn the monster died,
 	// then the pickup announce from the walk-on a turn later.
 	wantMsg := []string{
-		fmt.Sprintf("a monster was slain (+%d XP to everyone in the fight)", protocol.MonsterXP),
+		fmt.Sprintf("a wolf was slain (+%d XP to everyone in the fight)", game.MonsterXPForTest("wolf")),
 		"hero picked up " + killDropSeedDefName,
 	}
 	if !slices.Equal(announced, wantMsg) {

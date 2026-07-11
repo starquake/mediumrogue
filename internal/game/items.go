@@ -1,10 +1,6 @@
 package game
 
-import (
-	mrand "math/rand/v2"
-
-	"github.com/starquake/mediumrogue/internal/protocol"
-)
+import "github.com/starquake/mediumrogue/internal/protocol"
 
 // items.go: the gear system's types, per-entity helpers, and content
 // validation (spec: docs/superpowers/specs/2026-07-10-m6b.4-gear-pipeline-design.md).
@@ -26,7 +22,6 @@ type itemDef struct {
 	rangeHex       int // 0 = melee/adjacent (close-slot items only)
 	aoeRadius      int // 0 = single target
 	rules          []ruleCard
-	dropWeight     int // 0 = never drops (class defaults); >0 = weight in dropTable
 }
 
 // itemInstance is one entity-owned copy of a def: a stable id (minted from
@@ -38,18 +33,14 @@ type itemInstance struct {
 	defID string
 }
 
-// fistsDef and monsterClawsDef are built-in close-slot fallbacks: not in the
-// registry (no instance ids, never owned, equipped, or dropped), just the
-// profile closeDefFor returns when there is nothing better — an empty close
-// slot for a player, or a monster (which owns no items at all).
+// fistsDef is the built-in close-slot fallback for an empty-handed player:
+// not in the registry (no instance id, never owned, equipped, or dropped),
+// just the profile closeDefFor returns when a player's close slot is empty.
+// A monster's equivalent is per-kind (monsterDef.claws, monsters.go) —
+// built from that kind's own damage/rules, not a single shared fallback.
 //
-//nolint:gochecknoglobals // built-in fallback defs, effectively const (never mutated).
-var (
-	fistsDef        = &itemDef{id: "fists", name: "Fists", slot: protocol.ItemSlotClose, damage: protocol.FistsDamage}
-	monsterClawsDef = &itemDef{
-		id: "claws", name: "Claws", slot: protocol.ItemSlotClose, damage: protocol.MonsterAttackDamage,
-	}
-)
+//nolint:gochecknoglobals // built-in fallback def, effectively const (never mutated).
+var fistsDef = &itemDef{id: "fists", name: "Fists", slot: protocol.ItemSlotClose, damage: protocol.FistsDamage}
 
 // itemByID looks up an entity's owned item instance by id, so an equip
 // intent (Task 4) can resolve its target without scanning items twice.
@@ -93,12 +84,19 @@ func (e *entity) equippedDef(slot string) *itemDef {
 }
 
 // closeDefFor is the def an entity bumps with: its equipped close-slot item,
-// or fists for an empty slot (a bare/unarmed player), or claws for a monster
-// (which owns no items and never equips — checked first, so a monster never
-// falls through to the fists case).
+// or fists for an empty slot (a bare/unarmed player), or its kind's claws
+// profile for a monster (which owns no items and never equips — checked
+// first, so a monster never falls through to the fists case). Panics if a
+// monster entity's monsterKind names no registered kind — every production
+// spawn path sets a real one; this only guards a malformed fixture.
 func closeDefFor(e *entity) *itemDef {
 	if e.kind == protocol.EntityMonster {
-		return monsterClawsDef
+		k := kindOf(e)
+		if k == nil {
+			panic("game: closeDefFor monster entity has no registered kind")
+		}
+
+		return k.claws
 	}
 
 	if def := e.equippedDef(protocol.ItemSlotClose); def != nil {
@@ -120,37 +118,6 @@ func rangedDefFor(e *entity) *itemDef {
 // both the melee and ranged combat paths.
 func itemDamage(def *itemDef, level int) int {
 	return def.damage + protocol.DamagePerLevel*(level-1)
-}
-
-// pickDrop draws one def from dropTable, weighted by dropWeight — a
-// class-default (dropWeight 0) is never in dropTable, so it can never be
-// returned. Returns nil only if dropTable is empty (no content registers any
-// drops at all); the live registry always has entries, so dropLootLocked's
-// nil check is a defensive no-op today. Consumes exactly one rng draw.
-func pickDrop(rng *mrand.Rand) *itemDef {
-	total := 0
-	for _, def := range dropTable {
-		total += def.dropWeight
-	}
-
-	if total == 0 {
-		return nil
-	}
-
-	roll := rng.IntN(total)
-
-	for _, def := range dropTable {
-		if roll < def.dropWeight {
-			return def
-		}
-
-		roll -= def.dropWeight
-	}
-
-	// Unreachable: roll is drawn from [0,total) and the loop above consumes
-	// exactly total weight across dropTable's defs, so it always returns
-	// before falling through.
-	panic("game: pickDrop weight accounting bug")
 }
 
 // Class-default item ids: shared between the registry (content.go), the
@@ -177,6 +144,10 @@ const (
 	idEmberStaff            = "ember-staff"
 	idAncientDwarvenMattock = "ancient-dwarven-mattock"
 	idWarMageStaff          = "war-mage-staff"
+	// idWyrmslayerGreatsword is the dragon-only drop (6c) — named here so
+	// content.go's item literal and monsterDefs' dragon drop table (both
+	// content.go) and the pinning test can't drift on a typo.
+	idWyrmslayerGreatsword = "wyrmslayer-greatsword"
 )
 
 // classDefaultIDs returns the item def ids a class starts with at Join: one
@@ -283,22 +254,7 @@ func validateRuleCards(owner string, cards []ruleCard) {
 		}
 
 		for _, cond := range c.when {
-			switch cond.kind {
-			case condChance, condTargetHPBelowPct, condTargetHPBelowFlat,
-				condTargetHPFull, condAllyInBubble, condTargetAdjacent:
-			case condAttackerSpecies:
-				// A species gate on a species that can't exist would silently
-				// never hold — a content typo, caught at load.
-				if !validSpecies(cond.s) {
-					panic("game: " + owner + " attackerSpecies rule card names unknown species " + cond.s)
-				}
-			default:
-				panic("game: " + owner + " rule card has unknown condition " + cond.kind)
-			}
-
-			if c.event == evEarnXP && cond.kind == condChance {
-				panic("game: " + owner + " earn-xp rule card has a chance condition (earn-xp folds run without rng)")
-			}
+			validateRuleCondition(owner, c.event, cond)
 		}
 
 		switch c.then.kind {
@@ -306,6 +262,37 @@ func validateRuleCards(owner string, cards []ruleCard) {
 		default:
 			panic("game: " + owner + " rule card has unknown effect " + c.then.kind)
 		}
+	}
+}
+
+// validateRuleCondition validates one condition of one card (event is the
+// owning card's event, for the earn-xp/chance cross-check) — split out of
+// validateRuleCards to keep its cognitive complexity under the linter's
+// threshold.
+func validateRuleCondition(owner, event string, cond condition) {
+	switch cond.kind {
+	case condChance, condTargetHPBelowPct, condTargetHPBelowFlat,
+		condTargetHPFull, condAllyInBubble, condTargetAdjacent:
+	case condAttackerSpecies:
+		// A species gate on a species that can't exist would silently
+		// never hold — a content typo, caught at load.
+		if !validSpecies(cond.s) {
+			panic("game: " + owner + " attackerSpecies rule card names unknown species " + cond.s)
+		}
+	case condTargetKind:
+		// A kind gate on an unregistered monster id would silently never
+		// hold — a content typo, caught at load. monsterDefByID is already
+		// built (buildMonsterIndex runs before mustValidateContent —
+		// content.go's init) by the time any item's rule cards validate.
+		if _, ok := monsterDefByID[cond.s]; !ok {
+			panic("game: " + owner + " targetKind rule card names unknown monster kind " + cond.s)
+		}
+	default:
+		panic("game: " + owner + " rule card has unknown condition " + cond.kind)
+	}
+
+	if event == evEarnXP && cond.kind == condChance {
+		panic("game: " + owner + " earn-xp rule card has a chance condition (earn-xp folds run without rng)")
 	}
 }
 

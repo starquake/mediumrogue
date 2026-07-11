@@ -210,7 +210,7 @@ func TestBumpMutualKill(t *testing.T) {
 
 	// One hit each is lethal in both directions.
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
-	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage)
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
 
 	if !submitOK(w, me, monsterHex) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")
@@ -261,7 +261,7 @@ func TestBumpPlayerDeathRespawns(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage) // exactly lethal
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf")) // exactly lethal
 	w.SetPathForTest(monsterID, []protocol.Hex{me.Hex})
 	w.ResolveCombatOnlyForTest()
 
@@ -390,7 +390,7 @@ func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 		t.Fatalf("player %d missing from snapshot after a single monster attack", me.EntityID)
 	}
 
-	if got, want := player.HP, protocol.FighterMaxHP-protocol.MonsterAttackDamage; got != want {
+	if got, want := player.HP, protocol.FighterMaxHP-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("player HP = %d, want %d", got, want)
 	}
 

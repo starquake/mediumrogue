@@ -158,7 +158,7 @@ func TestBubbleAdvancesOnLockIn(t *testing.T) {
 		t.Errorf("monster HP = %d, want %d (lock-in must run the combat turn)", got, want)
 	}
 
-	if got, want := entityHP(t, snap, me.EntityID), meHP-protocol.MonsterAttackDamage; got != want {
+	if got, want := entityHP(t, snap, me.EntityID), meHP-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("player HP = %d, want %d (monster bumps back on the resolved turn)", got, want)
 	}
 
@@ -200,7 +200,7 @@ func TestBubbleTimesOutWithUnreadyPlayer(t *testing.T) {
 
 	snap := w.Snapshot()
 
-	if got, want := entityHP(t, snap, me.EntityID), meHP-protocol.MonsterAttackDamage; got != want {
+	if got, want := entityHP(t, snap, me.EntityID), meHP-game.MonsterDamageForTest("wolf"); got != want {
 		t.Errorf("player HP after timeout = %d, want %d (monster still attacks)", got, want)
 	}
 

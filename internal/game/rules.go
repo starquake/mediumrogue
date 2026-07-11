@@ -57,6 +57,11 @@ const (
 	// gear a whole class can use but that sings in one species' hands
 	// (Ancient Dwarven Mattock).
 	condAttackerSpecies = "attackerSpecies"
+	// condTargetKind (s = a monster-kind registry id, content.go's
+	// monsterDefs) gates on the VICTIM being a monster of that specific
+	// kind — a boss-specific spike (the Wyrmslayer Greatsword vs dragons).
+	// Never holds for a player victim (kindOf returns nil).
+	condTargetKind = "targetKind"
 )
 
 // Effect kinds. All adds apply before all multipliers (fold phases), so card
@@ -113,21 +118,53 @@ func conditionHolds(c condition, ctx ruleCtx) bool {
 	switch c.kind {
 	case condChance:
 		return ctx.rng.IntN(percentBase) < c.n
-	case condTargetHPBelowPct:
-		return ctx.victim != nil && ctx.victim.hp*percentBase < ctx.victim.maxHP*c.n
-	case condTargetHPBelowFlat:
-		return ctx.victim != nil && ctx.victim.hp < c.n
+	case condTargetHPBelowPct, condTargetHPBelowFlat, condTargetHPFull:
+		return targetHPConditionHolds(c, ctx)
 	case condAttackerSpecies:
 		return ctx.attacker != nil && ctx.attacker.species == c.s
-	case condTargetHPFull:
-		return ctx.victim != nil && ctx.victim.hp >= ctx.victim.maxHP
 	case condAllyInBubble:
 		return ctx.allyInBubble
 	case condTargetAdjacent:
 		return ctx.attacker != nil && ctx.victim != nil && HexDistance(ctx.attacker.hex, ctx.victim.hex) == 1
+	case condTargetKind:
+		return targetKindHolds(ctx, c.s)
 	default:
 		return false // unknown condition never holds — content bugs fail closed
 	}
+}
+
+// targetHPConditionHolds groups the three victim-HP conditions
+// (condTargetHPBelowPct, condTargetHPBelowFlat, condTargetHPFull) — split
+// out of conditionHolds' switch to keep its cyclomatic complexity under the
+// linter's threshold.
+func targetHPConditionHolds(c condition, ctx ruleCtx) bool {
+	if ctx.victim == nil {
+		return false
+	}
+
+	switch c.kind {
+	case condTargetHPBelowPct:
+		return ctx.victim.hp*percentBase < ctx.victim.maxHP*c.n
+	case condTargetHPBelowFlat:
+		return ctx.victim.hp < c.n
+	case condTargetHPFull:
+		return ctx.victim.hp >= ctx.victim.maxHP
+	default:
+		return false
+	}
+}
+
+// targetKindHolds is condTargetKind's condition body, split out of
+// conditionHolds' switch to keep its cyclomatic complexity under the
+// linter's threshold. Holds iff ctx.victim is a monster whose kind id is s.
+func targetKindHolds(ctx ruleCtx, s string) bool {
+	if ctx.victim == nil {
+		return false
+	}
+
+	k := kindOf(ctx.victim)
+
+	return k != nil && k.id == s
 }
 
 // applyRules folds base through every card matching event whose conditions

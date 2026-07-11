@@ -152,25 +152,21 @@ export const ItemSlotClose = "close";
  */
 export const ItemSlotRanged = "ranged";
 /**
- * DropChancePercent is the chance (out of 100) that a slain monster drops an
- * item onto its death hex. Tuning knob.
- */
-export const DropChancePercent = 30;
-/**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
+ * MonsterMaxHP is superseded by per-kind maxHP (internal/game's monsterDef
+ * registry, milestone 6c) — wolf's entry carries this exact value forward —
+ * but stays here as the historical baseline several tests still pin against.
  */
 export const PlayerMaxHP = 20;
 /**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
+ * MonsterMaxHP is superseded by per-kind maxHP (internal/game's monsterDef
+ * registry, milestone 6c) — wolf's entry carries this exact value forward —
+ * but stays here as the historical baseline several tests still pin against.
  */
 export const MonsterMaxHP = 10;
-/**
- * MonsterAttackDamage is a monster's flat melee damage per attack. (Player melee
- * is per-class weapon damage since 6b.2 — see the class weapon constants below.)
- */
-export const MonsterAttackDamage = 3;
 /**
  * RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
  * resolution while out of combat (bubbleID == 0) and below max HP — the
@@ -185,10 +181,13 @@ export const RegenPerTurn = 1;
  */
 export const XPPerLevel = 100;
 /**
- * MonsterXP is awarded to every player in the fight when a monster dies —
- * the full amount each, not divided.
+ * QuestKillRewardPerTarget is the flat per-target XP a kill quest's
+ * reward is built from (targetN * QuestKillRewardPerTarget), independent
+ * of which monster kind actually gets killed toward it — deliberately
+ * decoupled from monsterDef.xp (a kind's own combat kill award) since
+ * 6c introduced per-kind XP.
  */
-export const MonsterXP = 20;
+export const QuestKillRewardPerTarget = 20;
 /**
  * FighterMaxHP is the level-1 max HP for Fighter class (tanky melee).
  */

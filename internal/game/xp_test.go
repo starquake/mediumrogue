@@ -72,7 +72,7 @@ func TestKillGrantsXP(t *testing.T) {
 		t.Fatalf("killer %d missing from snapshot", me.EntityID)
 	}
 
-	if got, want := player.XP, protocol.MonsterXP; got != want {
+	if got, want := player.XP, game.MonsterXPForTest("wolf"); got != want {
 		t.Errorf("killer XP = %d, want %d (full MonsterXP)", got, want)
 	}
 
@@ -122,11 +122,11 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 		t.Fatalf("monster %d should have died to the shared bumps", monsterID)
 	}
 
-	if got, want := w.XPForTest(idA), protocol.MonsterXP; got != want {
+	if got, want := w.XPForTest(idA), game.MonsterXPForTest("wolf"); got != want {
 		t.Errorf("player A XP = %d, want the full %d (not split)", got, want)
 	}
 
-	if got, want := w.XPForTest(idB), protocol.MonsterXP; got != want {
+	if got, want := w.XPForTest(idB), game.MonsterXPForTest("wolf"); got != want {
 		t.Errorf("player B XP = %d, want the full %d (not split)", got, want)
 	}
 }
@@ -178,7 +178,7 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 		t.Fatalf("monster B %d should have died to the second bump", monsterB)
 	}
 
-	if got, want := w.XPForTest(pid), 2*protocol.MonsterXP; got != want {
+	if got, want := w.XPForTest(pid), 2*game.MonsterXPForTest("wolf"); got != want {
 		t.Errorf("player XP after two kills = %d, want %d (MonsterXP per kill)", got, want)
 	}
 }
@@ -198,7 +198,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	}
 
 	// One MonsterXP below the level-2 boundary: still level 1 before the kill.
-	w.SetXPForTest(me.EntityID, protocol.XPPerLevel-protocol.MonsterXP)
+	w.SetXPForTest(me.EntityID, protocol.XPPerLevel-game.MonsterXPForTest("wolf"))
 
 	before, ok := entityOfSnap(w.Snapshot(), me.EntityID)
 	if !ok {
@@ -258,7 +258,7 @@ func TestDeathFloorsXPKeepsLevel(t *testing.T) {
 
 	// The monster strikes the player dead; the player has no intent, so no
 	// monster dies this turn (pure death-floor, no kill award).
-	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage) // exactly lethal
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf")) // exactly lethal
 	w.SetPathForTest(monsterID, []protocol.Hex{me.Hex})
 	w.ResolveCombatOnlyForTest()
 
@@ -302,7 +302,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 
 	// One hit each is lethal in both directions: a mutual kill.
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
-	w.SetHPForTest(me.EntityID, protocol.MonsterAttackDamage)
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
 
 	if !submitOK(w, me, monsterHex) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")

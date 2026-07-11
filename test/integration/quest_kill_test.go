@@ -87,7 +87,12 @@ func TestKillQuestTicksOverHTTP(t *testing.T) {
 			return // the kill quest ticked over the wire — works
 		}
 
-		if myEntity.XP >= protocol.MonsterXP && lastProgress == 0 {
+		// wolfKillXP (20) is wolf's kill XP (internal/game/content.go's
+		// monsterDefs) — the default spawn kind, and the old flat
+		// protocol.MonsterXP value it carries forward unchanged. Not
+		// importable here: monster-kind numbers are game-package content
+		// data since 6c, not a protocol constant.
+		if myEntity.XP >= wolfKillXP && lastProgress == 0 {
 			// The kill LANDED (XP arrived) but the quest never ticked: give it a
 			// few more bundles to arrive, then fail loudly.
 			for range 5 {

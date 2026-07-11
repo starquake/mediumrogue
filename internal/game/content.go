@@ -36,14 +36,15 @@ func speciesCards(species string) []ruleCard {
 }
 
 // itemDefs is the item content registry (milestone 6b.4): class defaults
-// first (dropWeight 0 — the "live balance" numbers carried forward from the
-// old protocol weapon constants), then the starter drop set (dropWeight > 0,
-// each a situational spike over its class's default, balanced per the design
-// doc's table). Order is registry order — dropTable below preserves it. Every
-// number here is authored content data (the design doc's table), not a
-// tunable knob, hence the blanket mnd suppression — unlike speciesCards
-// above, which reads protocol constants because those percentages ARE tuning
-// knobs shared with other content.
+// first (the "live balance" numbers carried forward from the old protocol
+// weapon constants), then the starter drop set (each a situational spike
+// over its class's default, balanced per the design doc's table). Loot
+// authority moved monster-side in 6c — an item no longer carries its own
+// drop weight; monsterDefs' own tables (below) name these ids and weights
+// instead. Every number here is authored content data (the design doc's
+// table), not a tunable knob, hence the blanket mnd suppression — unlike
+// speciesCards above, which reads protocol constants because those
+// percentages ARE tuning knobs shared with other content.
 //
 //nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init (mustValidateContent).
 var itemDefs = []*itemDef{
@@ -63,32 +64,32 @@ var itemDefs = []*itemDef{
 	// Starter drop set.
 	{
 		id: idButchersCleaver, name: "Butcher's Cleaver", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
-		damage: 3, desc: "+3 damage vs targets below half HP", dropWeight: 4,
+		damage: 3, desc: "+3 damage vs targets below half HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowPct, n: 50}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
 		id: idIronWarhammer, name: "Iron Warhammer", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
-		damage: 6, desc: "a flat upgrade over the iron sword — rare", dropWeight: 1,
+		damage: 6, desc: "a flat upgrade over the iron sword — rare",
 	},
 	{
 		id: idVenomFang, name: "Venom Fang", slot: protocol.ItemSlotClose, class: protocol.ClassRogue,
-		damage: 5, desc: "+4 damage vs targets at full HP", dropWeight: 4,
+		damage: 5, desc: "+4 damage vs targets at full HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}}, then: effect{kind: effAdd, n: 4}},
 		},
 	},
 	{
 		id: idPackBow, name: "Pack Bow", slot: protocol.ItemSlotRanged, class: protocol.ClassRogue,
-		damage: 5, rangeHex: 4, desc: "+3 damage while an ally shares the bubble", dropWeight: 4,
+		damage: 5, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAllyInBubble}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
 		id: idEmberStaff, name: "Ember Staff", slot: protocol.ItemSlotRanged, class: protocol.ClassMage,
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets", dropWeight: 4,
+		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
@@ -100,7 +101,7 @@ var itemDefs = []*itemDef{
 	{
 		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", slot: protocol.ItemSlotClose,
 		class:  protocol.ClassFighter,
-		damage: 4, desc: "+3 damage in a dwarf's hands", dropWeight: 4,
+		damage: 4, desc: "+3 damage in a dwarf's hands",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
 				then: effect{kind: effAdd, n: 3}},
@@ -109,7 +110,7 @@ var itemDefs = []*itemDef{
 	{
 		id: idWarMageStaff, name: "Staff of the War Mage", slot: protocol.ItemSlotRanged,
 		class:  protocol.ClassMage,
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP", dropWeight: 4,
+		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
 			// boring tail of a fight, and never scales into a boss-killer.
@@ -117,18 +118,29 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: 200}},
 		},
 	},
+
+	// Wyrmslayer Greatsword (milestone 6c): the first designer card's full
+	// intent, previously blocked on monster kinds existing to gate a
+	// per-species-style condition against. Dragon-only drop (dragon's own
+	// table, below).
+	{
+		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", slot: protocol.ItemSlotClose,
+		class:  protocol.ClassFighter,
+		damage: 4, desc: "×1.5 damage vs dragons",
+		rules: []ruleCard{
+			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
+				then: effect{kind: effMulPct, n: 150}},
+		},
+	},
 }
 
-// itemDefByID and dropTable are lookup tables derived from itemDefs at
-// package init: itemDefByID for O(1) resolution by id (equip, gear-panel
-// wire lookups), dropTable for the weighted ground-drop roll (every def with
-// dropWeight > 0, in registry order — determinism for the seeded pick).
+// itemDefByID is the lookup table derived from itemDefs at package init:
+// O(1) resolution by id (equip, gear-panel wire lookups, monster loot-table
+// validation). The weighted ground-drop roll is monster-side since 6c
+// (monsterDef.drops, monsters.go) — items no longer carry their own weight.
 //
-//nolint:gochecknoglobals // derived lookup tables, built once at init from itemDefs (see the func init below).
-var (
-	itemDefByID map[string]*itemDef
-	dropTable   []*itemDef
-)
+//nolint:gochecknoglobals // derived lookup table, built once at init from itemDefs (see the func init below).
+var itemDefByID map[string]*itemDef
 
 // monsterDefs is the monster-kind content registry (milestone 6c): the
 // spec's launch table (docs/superpowers/specs/2026-07-10-m6c-monster-kinds-rings-design.md).
@@ -201,10 +213,11 @@ var monsterDefs = []*monsterDef{
 	{
 		id: idKindDragon, name: "Dragon", glyph: "D",
 		maxHP: 60, damage: 9, xp: 150, aggroRadius: 12, dropChance: 100,
-		// The rare pool; Task 2 (this package's rules.go/content.go change)
-		// adds the Wyrmslayer Greatsword once condTargetKind exists to gate
-		// its rule card.
+		// The Wyrmslayer Greatsword (weight 2 — the headline drop, roughly as
+		// likely as the whole rest of the rare pool combined) plus a small
+		// rare pool.
 		drops: []drop{
+			{defID: idWyrmslayerGreatsword, weight: 2},
 			{defID: idIronWarhammer, weight: 1},
 			{defID: idWarMageStaff, weight: 1},
 		},
@@ -221,12 +234,6 @@ func init() {
 	itemDefByID = make(map[string]*itemDef, len(itemDefs))
 	for _, def := range itemDefs {
 		itemDefByID[def.id] = def
-	}
-
-	for _, def := range itemDefs {
-		if def.dropWeight > 0 {
-			dropTable = append(dropTable, def)
-		}
 	}
 
 	buildMonsterIndex()
