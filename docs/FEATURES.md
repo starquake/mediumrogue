@@ -1,7 +1,6 @@
 # Medium Rogue — implemented features reference
 
-*Everything that actually exists in the game as of 2026-07-11 (main through
-PR #44; items from PR #45, reviewed and pending merge, are marked ⏳).
+*Everything that actually exists in the game as of 2026-07-11 (main through PR #45).
 Design rationale lives in `roguelike-mp-plan.md`; current-session state in
 `STATUS.md`; the content-design vocabulary in `rule-based-content-design.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*
@@ -74,9 +73,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   toolbox-progression decision says these go much flatter).
 - **Death**: XP falls to the start of the current level (levels never lost),
   respawn at full HP with the **same identity and all gear** (gear always
-  survives death — decided). ⏳ Respawn location randomized with guards; the
+  survives death — decided). Respawn location randomized with guards; the
   camera **cuts** to the respawn instead of panning.
-- ⏳ **Passive regen**: +1 HP per world turn while out of combat (never in a
+- **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
 
 ### Gear (milestone 6b.4)
@@ -98,9 +97,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   kind today (10 HP, 3 damage, 20 XP) — the kinds/rings slice is specced.
   AI: hunt the nearest player one step per turn; bubble monsters chase their
   bubble's players; world monsters keep hunting even while every player is
-  bubbled (walk-in reinforcement pressure). ⏳ **Aggro range 10**: world
+  bubbled (walk-in reinforcement pressure). **Aggro range 10**: world
   monsters idle until a player is within 10 hexes (pipeline-hooked per
-  player for future sneaky/loud gear). ⏳ Spawn guards: players and monsters
+  player for future sneaky/loud gear). Spawn guards: players and monsters
   never spawn on/within 6 hexes of each other, with fallbacks for tiny maps.
 
 ### Quests, parties, chat
@@ -147,14 +146,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Modifier pipeline** (`internal/game/rules.go`): combat values fold
   through **rule cards** (pure serializable data — no closures; the SQLite
   prerequisite). Events live: `deal-damage`, `take-damage`, `earn-xp`
-  (⏳ `aggro-range`). Conditions: `chance`, `targetHPBelowPct`,
+  (`aggro-range`). Conditions: `chance`, `targetHPBelowPct`,
   `targetHPBelowFlat`, `targetHPFull`, `allyInBubble`, `targetAdjacent`,
   `attackerSpecies`. Effects: `add`, `mulPct`. Fold order: all adds → all
   multipliers → event clamp (damage ≥1, XP ≥0). Sources: species cards +
   acting/equipped item cards. Content validated at process start
   (fail-loud). Every damage and XP number in the game flows through it.
 - **Determinism**: per-resolution PCG rng seeded (worldSeed, turn); map
-  iteration sorted before any rng draw; ⏳ spawn randomness on separate
+  iteration sorted before any rng draw; spawn randomness on separate
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
@@ -195,8 +194,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | `MonsterMaxHP` / `MonsterAttackDamage` / `FistsDamage` | 10 / 3 / 1 | monster & unarmed profiles |
 | `HumanXPBonusPercent` / `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 50 / 20 / 2 / 1 | species knobs |
 | `DropChancePercent` | 30 | loot roll per monster kill |
-| ⏳ `RegenPerTurn` | 1 | out-of-combat HP per world turn |
-| ⏳ `MonsterAggroRadius` | 10 | world-monster notice distance (> CombatRadius, compile-guarded) |
+| `RegenPerTurn` | 1 | out-of-combat HP per world turn |
+| `MonsterAggroRadius` | 10 | world-monster notice distance (> CombatRadius, compile-guarded) |
 
 *Item stats (damage/range/AoE and rule cards) are content data in
 `internal/game/content.go`, not constants — the wire carries display stats.*
