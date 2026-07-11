@@ -1,6 +1,33 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-11, after milestone 10a (persistence & identity)
+*Last updated: 2026-07-11, after "playtest feedback batch 2" — 13
+user-requested items on branch `feat/playtest-batch-2` (PR open, not yet
+merged), landed on top of milestone 10a. Server: **item 1** structured
+`slog` combat event log (`event=move/attack/fizzle/death/xp_award/pickup`,
+`World.SetLogger`) — the milestone-12 analytics seed; **item 2** equip
+intent is now an unequip TOGGLE (naming an already-equipped item clears the
+slot instead of no-op-swapping); **item 3** a bubble kill announce names a
+SOLO killer ("NAME slew a wolf (+20 XP)"), nameless wording unchanged for
+2+ players; **item 4** `COMBAT_PATIENCE` default lowered 60s→30s; **item 5**
+a bubble-turn floor (`bubble.lastResolvedAt` + `TURN_INTERVAL`) blocks
+solo-player turn-spam; **item 7** single-target ranged attacks are now
+ENTITY-targeted (`IntentRequest.TargetEntityID`), re-aiming at the victim's
+post-move hex at resolution (mage AoE stays hex-targeted); **item 14**
+(DECISION CHANGE, amends 8.3) a player may hold **multiple personal quests
+concurrently**; joining a party no longer abandons them; a party still
+holds at most one quest; `/abandon` now takes `<id>`. Client: **item 6**
+committed-action indicator (move/attack/wait glyphs, `window.game.
+committedAction`) while waiting on a bubble turn; **item 8** always-on
+player name labels; **item 9** HUD `(q, r)` position readout; **item 10**
+fix — typing in chat no longer moves the character; **item 11** SPACE =
+wait; **item 12** pulsing gold quest-goal marker(s) for reach quests
+(plural since item 14); **item 13** enemy hover tooltip (kind + HP). See
+`docs/FEATURES.md` (kept in sync same-PR) for the full current picture and
+plan §5/§9 for the amended decisions. **Next**: merge the PR, then resume
+plan §8's post-launch tooling (11 = admin/difficulty console, 12 = the
+analytics log this batch's item 1 seeds) or deployment.
+
+*Previously (2026-07-11), milestone 10a (persistence & identity)
 landed on top of milestone 6c (monster kinds & difficulty rings).
 **10a, this session — the launch gates:** the disconnect sweep now
 **archives** a player's identity/XP/gear (`World.archive`, keyed by token)

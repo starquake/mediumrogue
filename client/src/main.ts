@@ -43,11 +43,13 @@ import {
 } from "./protocol.gen";
 import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
+import type { CommittedAction } from "./render/feedback";
 import { FeedbackLayer } from "./render/feedback";
 import { DIRECTIONS, hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { GroundItemLayer } from "./render/items";
 import { MoveRangeLayer } from "./render/range";
 import { buildMapLayer } from "./render/map";
+import { QuestMarkerLayer } from "./render/questmarker";
 import { TurnTimer } from "./ui/timer";
 
 // Strip a `#t=<token>` character-link fragment and adopt its identity before
@@ -71,11 +73,18 @@ export interface GameDebug {
    * Every entity in the latest bundle, for cross-client observation in
    * tests. monsterKind is the monster-kind registry id ("wolf", "dragon",
    * ...), empty for a player — lets an e2e spec assert distinct kinds
-   * actually rendered (milestone 6c).
+   * actually rendered (milestone 6c). name is the display name (a player's
+   * chosen name, or a monster kind's display name — "Wolf", "Dragon" — used
+   * by the enemy hover tooltip, item 13).
    */
-  positions: { id: number; hex: Hex; kind: string; monsterKind: string }[];
+  positions: { id: number; hex: Hex; kind: string; monsterKind: string; name: string }[];
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;
+  /**
+   * Max HP by entity id, from the latest bundle — drives the enemy hover
+   * tooltip's "HP cur/max" (item 13, playtest batch 2).
+   */
+  maxHp: Record<number, number>;
   /** This client's entity's XP, from the latest bundle. 0 until joined. */
   xp: number;
   /** This client's entity's level, from the latest bundle. 1 until joined. */
@@ -133,10 +142,27 @@ export interface GameDebug {
   party: string[];
   /** This client's entity's party id, from the latest bundle. 0 when solo. */
   partyId: number;
-  /** My active quest (taken by me or my party), from the latest bundle. Null when I hold none. */
+  /**
+   * My FIRST active quest (taken by me or my party), from the latest
+   * bundle — null when I hold none. Kept for backward compatibility with
+   * the single-quest model; see myQuests for the full list (item 14,
+   * playtest batch 2: I may hold several personal quests concurrently,
+   * plus my party's, if any).
+   */
   quest: QuestView | null;
+  /** Every quest currently active for me (personal, plural, plus my party's if any), from the latest bundle. */
+  myQuests: QuestView[];
   /** The whole quest board, from the latest bundle. */
   quests: QuestView[];
+  /**
+   * My FIRST active reach quest's goal hex, or null. Kept for backward
+   * compatibility; see questGoalMarkers for every active reach quest's goal
+   * (item 14). Drives QuestMarkerLayer (item 12); exposed for e2e since the
+   * marker itself is only a canvas draw.
+   */
+  questGoalMarker: Hex | null;
+  /** Every active reach quest's goal hex, keyed by quest id (item 14, playtest batch 2). */
+  questGoalMarkers: { id: number; hex: Hex }[];
   /** This client's entity's owned items (id/defId/equipped), from the latest bundle. Empty until joined. */
   inventory: { id: number; defId: string; equipped: boolean }[];
   /** Every item lying on the ground, from the latest bundle. */
@@ -162,6 +188,15 @@ export interface GameDebug {
    * outside a bubble or with no ranged weapon. Drives the red range wash.
    */
   combatRanged: Hex[];
+  /**
+   * What I committed to THIS bubble-turn — move/attack/wait plus its target
+   * hex — or null when I haven't acted yet (or it already resolved). Set the
+   * moment an intent is submitted while inCombat (item 6); cleared on the
+   * next turn bundle, or by a later intent that replaces it (an equip
+   * supersedes a queued move/attack server-side the same way). Drives the
+   * committed-action indicator (FeedbackLayer.setCommitted); exposed for e2e.
+   */
+  committedAction: CommittedAction | null;
 }
 
 declare global {
@@ -192,6 +227,20 @@ const startNameEl = mustGet("start-name") as HTMLInputElement;
 const startEnterEl = mustGet("start-enter") as HTMLButtonElement;
 const classCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-class]"));
 const speciesCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-species]"));
+
+// Enemy hover tooltip (item 13, playtest batch 2).
+const hoverTooltipEl = mustGet("hover-tooltip");
+const hoverTooltipKindEl = mustQuery(hoverTooltipEl, ".tooltip-kind");
+const hoverTooltipHPEl = mustQuery(hoverTooltipEl, ".tooltip-hp");
+
+function mustQuery(root: HTMLElement, selector: string): HTMLElement {
+  const el = root.querySelector<HTMLElement>(selector);
+  if (el === null) {
+    throw new Error(`required element ${selector} missing under #${root.id}`);
+  }
+
+  return el;
+}
 
 // How long this client's entity must be absent from turn bundles before it
 // re-joins (see attemptRejoin below) — well above a single coalesced/missed
@@ -297,6 +346,7 @@ window.game = {
   monsters: 0,
   positions: [],
   hp: {},
+  maxHp: {},
   xp: 0,
   level: 1,
   class: "",
@@ -334,12 +384,16 @@ window.game = {
   party: [],
   partyId: 0,
   quest: null,
+  myQuests: [],
   quests: [],
+  questGoalMarker: null,
+  questGoalMarkers: [],
   inventory: [],
   groundItems: [],
   damage: [],
   combatMoves: [],
   combatRanged: [],
+  committedAction: null,
 };
 
 // How many hexes an entity can cover in one action-gated combat turn. 1 is
@@ -490,6 +544,12 @@ async function start(): Promise<void> {
   const groundItemLayer = new GroundItemLayer();
   world.addChild(groundItemLayer.container);
 
+  // Quest goal marker (item 12) sits above ground loot, below entities —
+  // same reasoning as the ground layer: a player standing on the goal hex
+  // still reads as a player, with the marker as backdrop.
+  const questMarkerLayer = new QuestMarkerLayer(app.ticker);
+  world.addChild(questMarkerLayer.container);
+
   // Click feedback (destination ring, attack flash) sits under the entities:
   // acknowledgement, not occlusion.
   const feedbackLayer = new FeedbackLayer(app.ticker);
@@ -584,8 +644,13 @@ async function start(): Promise<void> {
   // equipItem POSTs an equip intent for an owned item (the panel's own
   // "equip" button). Outside a bubble it applies immediately (still just a
   // 202 ack here — the swap shows up on the next turn bundle); inside one
-  // it becomes this turn's action, same as any other intent.
+  // it becomes this turn's action, same as any other intent. An equip
+  // supersedes any queued move/attack server-side — clear the
+  // committed-action indicator to match (item 6: "equip -> nothing new",
+  // the button already shows its own pending "…").
   const equipItem = (itemId: number): void => {
+    window.game.committedAction = null;
+    feedbackLayer.setCommitted(null);
     void submitEquip(identity, itemId);
   };
   mountGear(mustGet("gear-root"), equipItem);
@@ -643,6 +708,17 @@ async function start(): Promise<void> {
     // turn bundle. Cleared alongside window.game.destination everywhere.
     feedbackLayer.setDestination(target);
 
+    // Committed-action indicator (item 6): inside a bubble, a move intent is
+    // this turn's action — my own hex is a "wait" (own-hex move already
+    // waits/cancels), anything else a "move". Outside a bubble there is
+    // nothing to commit to (no action gating), so leave it null.
+    if (window.game.inCombat) {
+      const self = window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
+      const committed: CommittedAction = { kind: self ? "wait" : "move", target };
+      window.game.committedAction = committed;
+      feedbackLayer.setCommitted(committed);
+    }
+
     return submitIntent(identity, target, IntentMove).then((accepted) => {
       const pending = window.game.destination;
       if (!accepted && pending !== null && pending.q === target.q && pending.r === target.r) {
@@ -652,13 +728,35 @@ async function start(): Promise<void> {
     });
   };
 
+  // hostileIdAt returns the entity id of a monster standing on hex, or null.
+  // Resolves a single-target ranged click into an entity-targeted attack
+  // intent (item 7, playtest batch 2): the server re-aims at the victim's
+  // post-move hex at resolution time, tracking a sidestep or retreat a
+  // hex-pinned shot never could.
+  const hostileIdAt = (hex: Hex): number | null => {
+    const hit = window.game.positions.find((p) => p.kind === EntityMonster && p.hex.q === hex.q && p.hex.r === hex.r);
+    return hit === undefined ? null : hit.id;
+  };
+
   // attackAt fires a ranged attack intent at target: no destination bookkeeping
   // (the attacker doesn't move onto it) — a one-shot flash on the target hex
   // acknowledges the click; the turn bundle's HP changes speak for the result.
+  // A single-target weapon (myRangedAoeRadius 0, a bow) targets the
+  // hostile's ENTITY id instead of the bare hex (item 7); an AoE weapon
+  // stays ground-targeted — its blast radius makes a hex the natural target,
+  // and it can land on empty ground and still catch nearby hostiles.
   const attackAt = (target: Hex): Promise<void> => {
     feedbackLayer.flashAttack(target);
 
-    return submitIntent(identity, target, IntentAttack).then(() => undefined);
+    const targetEntityId = myRangedAoeRadius === 0 ? (hostileIdAt(target) ?? 0) : 0;
+
+    // Committed-action indicator (item 6): a persistent crosshair on the
+    // target, alongside the flashAttack one-shot ring above.
+    const committed: CommittedAction = { kind: "attack", target };
+    window.game.committedAction = committed;
+    feedbackLayer.setCommitted(committed);
+
+    return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
 
   // lastReach mirrors the tactical overlay's move/bump split for click
@@ -716,6 +814,15 @@ async function start(): Promise<void> {
 
   eventsController = connectEvents(() => identity.token, {
     onTurn: (event: TurnEvent): void => {
+      // Committed-action indicator (item 6): clear on the next turn bundle,
+      // whether it resolved my action or not — a fresh bundle always means
+      // "no longer showing what I chose last time," the simplest rule that
+      // still reads as "shown until it resolves" in the common case (a solo
+      // or last-to-lock-in bubble resolves the instant this client submits,
+      // so its very next bundle IS that resolution).
+      window.game.committedAction = null;
+      feedbackLayer.setCommitted(null);
+
       // Derive floating damage numbers by diffing this bundle's HP against the
       // previous one (still in window.game from the last onTurn): an entity
       // with less HP took a hit; a monster missing entirely died, its killing
@@ -748,8 +855,10 @@ async function start(): Promise<void> {
         hex: e.hex,
         kind: e.kind,
         monsterKind: e.monsterKind,
+        name: e.name,
       }));
       window.game.hp = Object.fromEntries(event.entities.map((e) => [e.id, e.hp]));
+      window.game.maxHp = Object.fromEntries(event.entities.map((e) => [e.id, e.maxHp]));
       window.game.intervalMs = event.intervalMs;
       turnEl.textContent = String(event.turn);
 
@@ -777,7 +886,9 @@ async function start(): Promise<void> {
         window.game.species = mine.species;
         window.game.name = mine.name;
         const xpIntoLevel = mine.xp % XPPerLevel;
-        statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP`;
+        // Position readout (item 9, playtest batch 2): live per bundle, so
+        // it never drifts from the server-authoritative hex even mid-tween.
+        statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP · (${mine.hex.q}, ${mine.hex.r})`;
 
         // Gear: my owned items ride Entity.Items every bundle (full-snapshot
         // philosophy, same as everything else here). The equipped ranged
@@ -812,16 +923,28 @@ async function start(): Promise<void> {
       window.game.partyId = myPartyId;
 
       // Quest board: refreshed every turn from the bundle itself (full-snapshot
-      // philosophy — no separate quest-membership stream). My active quest is
-      // whichever "taken" quest is held by me or (if I'm in a party) my party.
+      // philosophy — no separate quest-membership stream). My active quests are
+      // every "taken" quest held by me or (if I'm in a party) my party — item
+      // 14, playtest batch 2: a player may hold SEVERAL personal quests
+      // concurrently now, plus at most one party quest, so this is a list.
       window.game.quests = event.quests;
       setQuests(event.quests, me.entityId, myPartyId);
-      window.game.quest =
-        event.quests.find(
-          (q) =>
-            q.state === "taken" &&
-            (q.holderEntityId === me.entityId || (myPartyId !== 0 && q.holderPartyId === myPartyId)),
-        ) ?? null;
+      window.game.myQuests = event.quests.filter(
+        (q) =>
+          q.state === "taken" &&
+          (q.holderEntityId === me.entityId || (myPartyId !== 0 && q.holderPartyId === myPartyId)),
+      );
+      window.game.quest = window.game.myQuests[0] ?? null; // back-compat: first of myQuests
+
+      // Quest goal markers (item 12, plural since item 14): one gold marker
+      // per active "reach" quest — a kill quest gets no marker. A marker
+      // clears automatically once its quest drops out of myQuests
+      // (completed/abandoned).
+      window.game.questGoalMarkers = window.game.myQuests
+        .filter((q) => q.kind === "reach")
+        .map((q) => ({ id: q.id, hex: q.goalHex }));
+      window.game.questGoalMarker = window.game.questGoalMarkers[0]?.hex ?? null; // back-compat
+      questMarkerLayer.setGoals(window.game.questGoalMarkers);
 
       // Absent from this bundle: either a coalesced/momentary blip (ignore —
       // see MISSING_GRACE_MS) or the disconnect-grace sweep really removed
@@ -913,6 +1036,8 @@ async function start(): Promise<void> {
   });
 
   // Keyboard: a step is a one-hex destination — same code path as a click.
+  // isBlocked additionally guards the start screen (item 10): a not-yet-real
+  // character must never move while its class/species is still being chosen.
   bindMovementKeys({
     onStep: (dir): void => {
       const from = window.game.me?.hex;
@@ -921,6 +1046,19 @@ async function start(): Promise<void> {
       }
       walkTo(neighbor(from, dir));
     },
+    // SPACE = wait (item 11): the same own-hex move a click on my own hex
+    // already sends — clickTarget's "self" branch, reached here via
+    // clickTarget itself so the two code paths stay identical (clears
+    // equip-pending too, and shows the item-6 wait glyph via walkTo's own
+    // committedAction logic).
+    onWait: (): void => {
+      const me = window.game.me;
+      if (me === null) {
+        return;
+      }
+      void clickTarget(me.hex);
+    },
+    isBlocked: (): boolean => !startScreenEl.hidden,
   });
 
   // Click-to-move (or, in combat with a ranged class, click-to-attack): canvas
@@ -948,6 +1086,28 @@ async function start(): Promise<void> {
     const wouldShoot =
       isRangedAttackClick(hover) && !(myRangedAoeRadius === 0 && inList(lastReach.bumps, hover));
     app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
+
+    // Enemy hover tooltip (item 13): kind display name + "HP cur/max", near
+    // the cursor. pointer-events: none on the tooltip itself (index.html)
+    // means it can never intercept the click it's floating over.
+    const monster = window.game.positions.find(
+      (p) => p.kind === EntityMonster && p.hex.q === hover.q && p.hex.r === hover.r,
+    );
+    if (monster === undefined) {
+      hoverTooltipEl.hidden = true;
+    } else {
+      const hp = window.game.hp[monster.id] ?? 0;
+      const maxHp = window.game.maxHp[monster.id] ?? 0;
+      hoverTooltipKindEl.textContent = monster.name;
+      hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}`;
+      hoverTooltipEl.style.left = `${ev.clientX + 14}px`;
+      hoverTooltipEl.style.top = `${ev.clientY + 14}px`;
+      hoverTooltipEl.hidden = false;
+    }
+  });
+
+  app.canvas.addEventListener("pointerleave", () => {
+    hoverTooltipEl.hidden = true;
   });
 }
 

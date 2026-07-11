@@ -3,7 +3,7 @@ import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
 import type { QuestView } from "../protocol.gen";
-import { board, myQuest } from "./store";
+import { board, myQuests } from "./store";
 
 // objective renders a quest's goal: "slay 3" or "reach (9, -4)" — the static
 // description used on untaken board rows (no progress: an untaken quest never
@@ -35,17 +35,24 @@ function QuestPanel(): JSXElement {
 
   return (
     <div id="quest-panel">
-      <Show when={myQuest()}>
-        {(q) => (
-          <div id="quest-mine">
-            <div class="quest-title">
-              #{q().id} {q().name}
-            </div>
-            <div class="quest-objective">
-              {myObjective(q())} · {q().rewardXp} XP
-            </div>
-          </div>
-        )}
+      {/* item 14, playtest batch 2: I may hold several quests at once (all my
+          personal quests, plus my party's, if any) — one row each, instead
+          of a single implicit "my quest". */}
+      <Show when={myQuests().length > 0}>
+        <div id="quest-mine">
+          <For each={myQuests()}>
+            {(q) => (
+              <div class="quest-mine-row">
+                <div class="quest-title">
+                  #{q.id} {q.name}
+                </div>
+                <div class="quest-objective">
+                  {myObjective(q)} · {q.rewardXp} XP
+                </div>
+              </div>
+            )}
+          </For>
+        </div>
       </Show>
       <Show when={available().length > 0}>
         <div id="quest-board">

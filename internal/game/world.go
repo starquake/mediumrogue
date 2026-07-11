@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	mrand "math/rand/v2"
 	"slices"
 	"strings"
@@ -16,6 +17,22 @@ import (
 
 	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
+)
+
+// combatLogKey is the slog attribute key every combat-resolution log line
+// carries (slog.Info("combat", "event", ...)) — the seed of the milestone-12
+// analytics log (docs/roguelike-mp-plan.md §12). Filter on this key (msg ==
+// "combat") to isolate the sim's structured event stream from ordinary
+// server logs. combatEvent* names the "event" attribute's fixed vocabulary.
+const combatLogMsg = "combat"
+
+const (
+	combatEventMove   = "move"
+	combatEventAttack = "attack"
+	combatEventFizzle = "fizzle"
+	combatEventDeath  = "death"
+	combatEventPickup = "pickup"
+	combatEventXP     = "xp_award"
 )
 
 // Intent validation errors, mapped to HTTP statuses by the API layer.
@@ -37,6 +54,13 @@ var (
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
 	ErrOutOfRange = errors.New("target is out of range")
+	// ErrAttackTargetNotFound rejects an entity-targeted attack intent
+	// (item 7) naming an entity id that does not exist or is already dead.
+	ErrAttackTargetNotFound = errors.New("target entity not found")
+	// ErrAttackTargetNotHostile rejects an entity-targeted attack intent
+	// (item 7) naming a same-faction entity — ranged attacks only ever hit
+	// hostiles.
+	ErrAttackTargetNotHostile = errors.New("target is not hostile")
 	// ErrItemNotOwned rejects an equip intent naming an item instance id the
 	// entity does not own.
 	ErrItemNotOwned = errors.New("item not owned")
@@ -97,10 +121,21 @@ type entity struct {
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
-	// attackTarget is a pending ranged-attack target hex for this turn, or nil
-	// for none. Set by an "attack" intent (which clears path — you shoot, you
-	// don't move), resolved and cleared in the attack phase.
+	// attackTarget is a pending GROUND-targeted ranged-attack hex for this
+	// turn, or nil for none — a mage's AoE cast, ground-targeted by nature
+	// (the blast radius centers on a hex, not a victim). Set by an "attack"
+	// intent with no TargetEntityID (which clears path — you shoot, you
+	// don't move), resolved and cleared in the attack phase. Mutually
+	// exclusive with attackTargetEntity; see queueAttackLocked.
 	attackTarget *protocol.Hex
+	// attackTargetEntity is a pending single-target (bow) ranged attack's
+	// victim, named by entity id (item 7, playtest batch 2) — 0 for none, or
+	// for a ground-targeted attack (see attackTarget). Resolution re-aims at
+	// this entity's CURRENT (post-move) hex rather than trusting the hex
+	// captured at submit time, so a sidestepping or retreating victim is
+	// tracked: hits if still within the weapon's range from the shooter's
+	// own post-move hex, else fizzles (resolveEntityTargetedLocked).
+	attackTargetEntity int64
 	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
 	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
 	bubbleID int64
@@ -152,6 +187,11 @@ type World struct {
 	// now is the clock, injectable in tests so the two-clock gating can be driven
 	// deterministically without real time. Defaults to time.Now.
 	now func() time.Time
+	// logger receives the structured "combat" event stream (moves, bumps,
+	// ranged hits/fizzles, deaths, kill-XP awards, pickups) — the seed of the
+	// milestone-12 analytics log. Defaults to slog.Default() in NewWorld;
+	// override via SetLogger (mirrors SetAnnounce).
+	logger *slog.Logger
 
 	mu   sync.Mutex
 	turn int64
@@ -272,6 +312,7 @@ func NewWorld(
 		bubblePoll:      bubblePoll,
 		disconnectGrace: disconnectGrace,
 		now:             time.Now,
+		logger:          slog.Default(),
 		terrain:         terrain,
 		worldMap:        worldMap,
 		radius:          radius,
@@ -292,6 +333,18 @@ func NewWorld(
 // Map returns the immutable world map.
 func (w *World) Map() protocol.MapResponse {
 	return w.worldMap
+}
+
+// SetLogger installs the structured "combat" event sink (mirrors
+// SetAnnounce). A nil logger is ignored — callers that don't want the
+// stream keep NewWorld's slog.Default() rather than crashing on a nil
+// dereference the next time combat resolves.
+func (w *World) SetLogger(logger *slog.Logger) {
+	if logger == nil {
+		return
+	}
+
+	w.logger = logger
 }
 
 // Run advances the world until ctx is canceled, on a single control loop that
@@ -644,7 +697,7 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 			return err
 		}
 	case protocol.IntentAttack:
-		if err := w.queueAttackLocked(e, req.Target); err != nil {
+		if err := w.queueAttackLocked(e, req.Target, req.TargetEntityID); err != nil {
 			return err
 		}
 	case protocol.IntentEquip:
@@ -658,13 +711,20 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	// Lock-in: inside a combat bubble, submitting an intent commits this player
 	// for the bubble's action-gated turn. Once every player member has locked
 	// in, the bubble resolves immediately (rather than waiting for the poll or
-	// the patience timeout) and the tick hub is notified.
+	// the patience timeout) and the tick hub is notified — UNLESS the turn
+	// floor (bubbleFloorElapsedLocked, playtest item 5) has not yet elapsed
+	// since the bubble's previous resolution: a solo player spamming intents
+	// then stays ready-but-unresolved, and the poll loop's own
+	// bubbleReadyOrExpiredLocked check (same floor) picks the turn up the
+	// moment the floor allows it, rather than resolving faster than the
+	// world's own turn cadence.
 	if e.bubbleID != 0 {
 		if b, ok := w.bubbles[e.bubbleID]; ok {
 			b.ready[e.id] = struct{}{}
 
-			if w.allPlayersReadyLocked(b) {
-				now := w.now()
+			now := w.now()
+
+			if w.allPlayersReadyLocked(b) && w.bubbleFloorElapsedLocked(b, now) {
 				w.resolveBubbleTurnLocked(b, w.bubbleMembersLocked(b), now)
 				w.recomputeBubblesLocked(now)
 				w.ticks.Publish()
@@ -692,19 +752,26 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 
 	e.path = path
 	e.attackTarget = nil
+	e.attackTargetEntity = 0
 	e.pendingEquip = 0
 
 	return nil
 }
 
-// queueAttackLocked validates a ranged attack intent and queues it: the entity
-// must have a ranged weapon equipped (else ErrNoRangedWeapon) and the target must
-// be within its reach at submit time (else ErrOutOfRange). On success it records
-// the target and clears the route and any queued equip — a ranged attack
-// replaces the move AND the swap for this turn (the latest intent in the
-// window wins). The resolution-time re-check is defensive (nothing relocates
-// a shooter mid-turn today; it guards a future knockback/forced-move
-// mechanic).
+// queueAttackLocked validates a ranged attack intent and queues it: the
+// entity must have a ranged weapon equipped (else ErrNoRangedWeapon). A
+// single-target weapon (aoeRadius 0, a bow) with a non-zero targetEntityID
+// (item 7, playtest batch 2) is ENTITY-targeted: the named entity must exist
+// and be alive (else ErrAttackTargetNotFound), be a hostile — opposing faction
+// (else ErrAttackTargetNotHostile), and be within the weapon's reach from e's
+// current hex at submit time (else ErrOutOfRange); resolution re-aims at
+// the victim's post-move hex (resolveEntityTargetedLocked) rather than
+// trusting this submit-time position, so a sidestep or retreat is tracked.
+// Anything else (an AoE cast, or targetEntityID 0 — e.g. a defensive/legacy
+// hex-only bow shot) is GROUND-targeted at target, checked the same way
+// against e's current hex. On success it records the target and clears the
+// route and any queued equip — a ranged attack replaces the move AND the
+// swap for this turn (the latest intent in the window wins).
 //
 // INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
 // CombatRadius (validateMaxReach, run at content load by mustValidateContent),
@@ -713,10 +780,32 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // ranged-killed in the WORLD domain (where resolveWorldTurnLocked awards no
 // kill-XP) — add an in-bubble/target-in-member-set guard here then. Callers
 // hold w.mu.
-func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
+func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID int64) error {
 	def := rangedDefFor(e)
 	if def == nil {
 		return ErrNoRangedWeapon
+	}
+
+	if targetEntityID != 0 && def.aoeRadius == 0 {
+		victim, ok := w.entities[targetEntityID]
+		if !ok || victim.hp <= 0 {
+			return ErrAttackTargetNotFound
+		}
+
+		if !opposing(e, victim) {
+			return ErrAttackTargetNotHostile
+		}
+
+		if HexDistance(e.hex, victim.hex) > def.rangeHex {
+			return ErrOutOfRange
+		}
+
+		e.attackTargetEntity = targetEntityID
+		e.attackTarget = nil
+		e.path = nil
+		e.pendingEquip = 0
+
+		return nil
 	}
 
 	if HexDistance(e.hex, target) > def.rangeHex {
@@ -724,6 +813,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
 	}
 
 	t := target
+	e.attackTargetEntity = 0
 	e.attackTarget = &t
 	e.path = nil
 	e.pendingEquip = 0
@@ -731,13 +821,17 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex) error {
 	return nil
 }
 
-// queueEquipLocked validates and applies/queues an equip. Outside a bubble the
-// swap is immediate and free — it also clears any stale pendingEquip left over
-// from a bubble that dissolved before its queued swap resolved, so that swap
-// can never resurrect and silently override this free equip on the entity's
-// next combat resolution. Inside a bubble, the swap becomes the player's
-// action this turn (clearing move/attack — you swap, you don't also act).
-// Callers hold w.mu.
+// queueEquipLocked validates and applies/queues an equip OR unequip. An equip
+// intent naming an item instance ALREADY in its slot toggles it OFF instead
+// of re-equipping it (the slot falls back to 0 — fists for the close slot,
+// no ranged weapon at all for the ranged slot); any other owned, class-
+// matching item toggles ON, swapping into its slot. Outside a bubble the
+// toggle is immediate and free — it also clears any stale pendingEquip left
+// over from a bubble that dissolved before its queued swap resolved, so that
+// swap can never resurrect and silently override this free toggle on the
+// entity's next combat resolution. Inside a bubble, the toggle becomes the
+// player's action this turn (clearing move/attack — you swap, you don't
+// also act). Callers hold w.mu.
 func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	inst, ok := e.itemByID(itemID)
 	if !ok {
@@ -750,7 +844,7 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	}
 
 	if e.bubbleID == 0 {
-		e.applyEquip(inst.id, def.slot)
+		e.toggleEquip(inst.id, def.slot)
 		e.pendingEquip = 0
 
 		return nil
@@ -759,38 +853,56 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 	e.pendingEquip = itemID
 	e.path = nil
 	e.attackTarget = nil
+	e.attackTargetEntity = 0
 
 	return nil
 }
 
-// applyPendingEquip applies and clears e's queued equip, if any. Shared by
-// the resolution pass in resolveCombatLocked (the swap is the bubble-turn's
-// action) and by the bubble-dissolve branch of recomputeBubblesLocked (the
-// bubble vanished before its turn resolved — the player is back in world
-// time, where equips are free and immediate, so the queued swap applies now
-// instead of leaking into a later world turn as a silent late swap).
+// applyPendingEquip applies and clears e's queued equip/unequip toggle, if
+// any. Shared by the resolution pass in resolveCombatLocked (the swap is the
+// bubble-turn's action) and by the bubble-dissolve branch of
+// recomputeBubblesLocked (the bubble vanished before its turn resolved — the
+// player is back in world time, where toggles are free and immediate, so
+// the queued swap applies now instead of leaking into a later world turn as
+// a silent late swap).
 func applyPendingEquip(e *entity) {
 	if e.pendingEquip == 0 {
 		return
 	}
 
 	if inst, ok := e.itemByID(e.pendingEquip); ok {
-		e.applyEquip(inst.id, itemDefByID[inst.defID].slot)
+		e.toggleEquip(inst.id, itemDefByID[inst.defID].slot)
 	}
 
 	e.pendingEquip = 0
 }
 
-// applyEquip swaps instID into slot (protocol.ItemSlotClose or
-// ItemSlotRanged), replacing whatever instance was equipped there. Callers
-// must have already validated ownership and class (queueEquipLocked, or the
-// pending-equip pass in resolveCombatLocked).
-func (e *entity) applyEquip(instID int64, slot string) {
+// toggleEquip swaps instID into slot (protocol.ItemSlotClose or
+// ItemSlotRanged), replacing whatever instance was equipped there — unless
+// instID is ALREADY equipped in that slot, in which case it clears the slot
+// (0 = unequipped: fists fallback for close, no ranged weapon at all for
+// ranged — see closeDefFor/rangedDefFor). Re-derives the toggle direction
+// from the entity's CURRENT slot state at call time rather than a decision
+// cached at queue time: nothing else can change e's own slots between a
+// queued equip intent and its resolution (only this same pending action
+// touches them), so the two are equivalent, and this way queueEquipLocked's
+// free path and applyPendingEquip's queued path share one rule instead of
+// two. Callers must have already validated ownership and class
+// (queueEquipLocked, or the pending-equip pass in resolveCombatLocked).
+func (e *entity) toggleEquip(instID int64, slot string) {
 	switch slot {
 	case protocol.ItemSlotClose:
-		e.closeSlot = instID
+		if e.closeSlot == instID {
+			e.closeSlot = 0
+		} else {
+			e.closeSlot = instID
+		}
 	case protocol.ItemSlotRanged:
-		e.rangedSlot = instID
+		if e.rangedSlot == instID {
+			e.rangedSlot = 0
+		} else {
+			e.rangedSlot = instID
+		}
 	}
 }
 
@@ -1002,16 +1114,25 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 				award := applyRules(evEarnXP, totalXP, speciesCards(e.species), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
+
+				w.logger.Info(combatLogMsg, "event", combatEventXP, "id", e.id, "base", totalXP, "awarded", award)
 			}
 		}
 
 		// The chat stream doubles as the combat log: one kill summary per
 		// bubble turn (not per monster — a mage's AoE turn stays one line),
 		// naming the slain kinds. The summed base XP is quoted because it's
-		// the only shared number (species bonuses are per-player), and
-		// nobody is named because kill credit deliberately does not exist
-		// (XP-by-presence, plan §5).
-		w.announce("system", killSummary(slain))
+		// the only shared number (species bonuses are per-player). Kill
+		// credit deliberately does not exist for a MULTI-player bubble — the
+		// nameless wording stays. But when exactly one player is in the
+		// bubble at award time (playtest item 3), there is no competing
+		// credit to avoid: name them ("NAME slew a wolf (+20 XP)") — a solo
+		// hunt reads better attributed.
+		if players := playersOf(members); len(players) == 1 {
+			w.announce("system", killSoloSummary(players[0].name, slain))
+		} else {
+			w.announce("system", killSummary(slain))
+		}
 
 		w.tickKillQuestsLocked(members, len(slain))
 	}
@@ -1020,6 +1141,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 
 	clear(b.ready)
 	b.deadline = now.Add(w.combatPatience)
+	b.lastResolvedAt = now
 
 	w.turn++
 }
@@ -1176,13 +1298,33 @@ func (w *World) allPlayersReadyLocked(b *bubble) bool {
 }
 
 // bubbleReadyOrExpiredLocked reports whether b should resolve now: every player
-// has locked in, or its patience deadline has passed. Callers hold w.mu.
+// has locked in, or its patience deadline has passed — AND, either way, the
+// turn floor (bubbleFloorElapsedLocked, playtest item 5) has elapsed since
+// its previous resolution. Callers hold w.mu.
 func (w *World) bubbleReadyOrExpiredLocked(b *bubble, now time.Time) bool {
+	if !w.bubbleFloorElapsedLocked(b, now) {
+		return false
+	}
+
 	if !b.deadline.IsZero() && now.After(b.deadline) {
 		return true
 	}
 
 	return w.allPlayersReadyLocked(b)
+}
+
+// bubbleFloorElapsedLocked reports whether at least one world turn interval
+// has passed since b's previous resolution — the turn floor a bubble-turn
+// may never resolve faster than (playtest item 5: no solo action-spam), even
+// when every player is locked in. True for a bubble that has never resolved
+// (lastResolvedAt zero — its first turn is ungated by this floor). The floor
+// scales with w.interval, the world's configured turn interval (equal to
+// protocol.TurnSeconds in production, shrunk by tests/e2e the same way
+// TURN_INTERVAL is), never a hardcoded constant — see docs on
+// combatPatience for why the interval is already threaded through
+// NewWorld/config the same way. Callers hold w.mu.
+func (w *World) bubbleFloorElapsedLocked(b *bubble, now time.Time) bool {
+	return b.lastResolvedAt.IsZero() || now.Sub(b.lastResolvedAt) >= w.interval
 }
 
 // moveAndBumpLocked resolves the move phase: movers advance one hex from
@@ -1216,10 +1358,12 @@ func (w *World) moveAndBumpLocked(
 		case hasOpposing(occs, m):
 			bumps = append(bumps, pendingBump{m, next}) // stay; resolve after move phase
 		case len(occs) < protocol.StackCap:
+			from := m.hex
 			byHex[m.hex] = removeEntity(byHex[m.hex], m)
 			byHex[next] = append(byHex[next], m)
 			m.hex = next
 			m.path = m.path[1:]
+			w.logger.Info(combatLogMsg, "event", combatEventMove, "id", m.id, "kind", m.kind, "from", from, "to", next)
 		}
 		// else: same-faction hex full → wait (path retained).
 	}
@@ -1235,10 +1379,15 @@ func (w *World) moveAndBumpLocked(
 		case hasOpposing(occs, b.m):
 			attacks = append(attacks, pendingAttack{b.m, b.target})
 		case len(occs) < protocol.StackCap:
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "bump_target_vacated",
+				"attacker", b.m.id, "target_hex", b.target)
+
+			from := b.m.hex
 			byHex[b.m.hex] = removeEntity(byHex[b.m.hex], b.m)
 			byHex[b.target] = append(byHex[b.target], b.m)
 			b.m.hex = b.target
 			b.m.path = b.m.path[1:]
+			w.logger.Info(combatLogMsg, "event", combatEventMove, "id", b.m.id, "kind", b.m.kind, "from", from, "to", b.target)
 		}
 	}
 
@@ -1277,7 +1426,12 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		// (mirroring resolveRangedLocked's def := rangedDefFor(e) below) so
 		// the def is looked up exactly once per hit.
 		weapon := closeDefFor(a.attacker)
-		damage[victim.id] += w.rollDamageLocked(rng, a.attacker, victim, weapon, itemDamage(weapon, levelFor(a.attacker.xp)))
+		base := itemDamage(weapon, levelFor(a.attacker.xp))
+		dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
+		damage[victim.id] += dealt
+
+		w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", a.attacker.id, "victim", victim.id,
+			"weapon", weapon.id, "base", base, "dealt", dealt)
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
@@ -1290,20 +1444,28 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 // resolveRangedLocked folds every pending ranged attack into the shared damage
 // map (against pre-attack HP, so a bow shot lands simultaneously with bumps).
 // Shooters are processed in id order so the seeded single-target victim pick is
-// reproducible regardless of map iteration order. Range is re-checked against
-// post-move positions in byHex: a shot that is now out of range fizzles. A bow
-// (aoeRadius 0) damages one opposing occupant at the target hex — a stack picks
-// one hostile with rng, mirroring the bump victim pick. Magic (aoeRadius > 0)
-// damages every opposing-faction entity within aoeRadius of the target hex — no
-// friendly fire. Every shooter's pending target is cleared, hit or fizzle.
-// byHex holds exactly the resolving member set, so targets outside the domain
-// are naturally unreachable. Callers hold w.mu.
+// reproducible regardless of map iteration order. An ENTITY-targeted attack
+// (item 7, playtest batch 2 — attackTargetEntity != 0, a single-target bow
+// shot aimed at a specific victim rather than a hex) delegates to
+// resolveEntityTargetedLocked, which re-aims at the victim's post-move hex.
+// Everything else is GROUND-targeted at attackTarget's hex, re-checked
+// against post-move positions in byHex: a shot that is now out of range
+// fizzles. A bow (aoeRadius 0) shot this way damages one opposing occupant at
+// the target hex — a stack picks one hostile with rng, mirroring the bump
+// victim pick (this is the legacy/defensive hex-only bow path — kept for the
+// SetAttackTargetForTest bridge and any future hex-only ranged use; a real
+// client always sends an entity id for a single-target weapon). Magic
+// (aoeRadius > 0) damages every opposing-faction entity within aoeRadius of
+// the target hex — no friendly fire, ground-targeted by nature. Every
+// shooter's pending target is cleared, hit or fizzle. byHex holds exactly the
+// resolving member set, so targets outside the domain are naturally
+// unreachable. Callers hold w.mu.
 func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int) {
 	var shooters []*entity
 
 	for _, occs := range byHex {
 		for _, e := range occs {
-			if e.attackTarget != nil {
+			if e.attackTarget != nil || e.attackTargetEntity != 0 {
 				shooters = append(shooters, e)
 			}
 		}
@@ -1312,16 +1474,33 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 	slices.SortFunc(shooters, func(a, b *entity) int { return int(a.id - b.id) })
 
 	for _, e := range shooters {
-		target := *e.attackTarget
+		targetEntityID := e.attackTargetEntity
+		hexTarget := e.attackTarget
 		e.attackTarget = nil // resolved, whether it hits or fizzles
+		e.attackTargetEntity = 0
 
 		def := rangedDefFor(e)
 		if def == nil {
-			continue // unequipped mid-turn (equip intent, Task 4) → fizzle
+			// unequipped mid-turn (equip intent, Task 4) → fizzle
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped", "attacker", e.id)
+
+			continue
 		}
 
+		if targetEntityID != 0 {
+			w.resolveEntityTargetedLocked(rng, e, def, targetEntityID, damage)
+
+			continue
+		}
+
+		target := *hexTarget
+
 		if HexDistance(e.hex, target) > def.rangeHex {
-			continue // moved out of range this turn → fizzle
+			// moved out of range this turn → fizzle
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range", "attacker", e.id,
+				"weapon", def.id, "target_hex", target)
+
+			continue
 		}
 
 		dmg := itemDamage(def, levelFor(e.xp))
@@ -1334,6 +1513,48 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 
 		w.resolveAoELocked(rng, byHex, e, def, target, def.aoeRadius, dmg, damage)
 	}
+}
+
+// resolveEntityTargetedLocked resolves one entity-targeted single-target
+// ranged attack (item 7, playtest batch 2): re-aims at the victim's CURRENT
+// (post-move) hex rather than trusting the hex it happened to occupy at
+// submit time, so a sidestepping or retreating target is tracked the way a
+// hex-pinned shot never could — hits if the victim is still within the
+// weapon's range from the shooter's own post-move hex, else fizzles
+// (reason out_of_range, same as the ground-targeted path). A victim that
+// died or vanished this same turn — a simultaneous kill by another attacker,
+// resolved earlier in this same damage-accumulation pass — also fizzles
+// (reason target_gone) rather than panicking on a missing entity; damage
+// application happens all-at-once after every attack accumulates
+// (attackLocked), so "vanished" here really means removed by a PRIOR
+// resolution this turn (deaths, not this pass — resolveDeathsLocked runs
+// after this), i.e. any entity that already left w.entities entirely, which
+// resolveCombatLocked never does mid-attack-phase; this guard is therefore
+// mostly defensive, matching resolveBowLocked's own empty-hex no-op. Callers
+// hold w.mu.
+func (w *World) resolveEntityTargetedLocked(
+	rng *mrand.Rand, attacker *entity, weapon *itemDef, targetEntityID int64, damage map[int64]int,
+) {
+	victim, ok := w.entities[targetEntityID]
+	if !ok || victim.hp <= 0 {
+		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "target_gone", "attacker", attacker.id)
+
+		return
+	}
+
+	if HexDistance(attacker.hex, victim.hex) > weapon.rangeHex {
+		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range",
+			"attacker", attacker.id, "weapon", weapon.id, "victim", victim.id)
+
+		return
+	}
+
+	dmg := itemDamage(weapon, levelFor(attacker.xp))
+	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+	damage[victim.id] += dealt
+
+	w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
+		"weapon", weapon.id, "base", dmg, "dealt", dealt)
 }
 
 // resolveBowLocked accumulates single-target ranged damage: the opposing-faction
@@ -1351,7 +1572,11 @@ func (w *World) resolveBowLocked(
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 	victim := victims[rng.IntN(len(victims))]
-	damage[victim.id] += w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+	damage[victim.id] += dealt
+
+	w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
+		"weapon", weapon.id, "base", dmg, "dealt", dealt)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
@@ -1380,7 +1605,11 @@ func (w *World) resolveAoELocked(
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
 	for _, o := range victims {
-		damage[o.id] += w.rollDamageLocked(rng, attacker, o, weapon, dmg)
+		dealt := w.rollDamageLocked(rng, attacker, o, weapon, dmg)
+		damage[o.id] += dealt
+
+		w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", o.id,
+			"weapon", weapon.id, "base", dmg, "dealt", dealt)
 	}
 }
 
@@ -1410,6 +1639,26 @@ func killSummary(slain []*monsterDef) string {
 	}
 
 	return fmt.Sprintf("%s %s slain (+%d XP to everyone in the fight)", killPhrase(slain), was, total)
+}
+
+// killSoloSummary renders one bubble turn's monster deaths for the chat/
+// combat log when exactly one player was in the bubble at award time
+// (playtest item 3): named, past-tense, active voice — "NAME slew a wolf
+// (+20 XP)" — instead of killSummary's nameless passive wording (which
+// stays for a multi-player bubble, where kill credit deliberately does not
+// exist). Mirrors killSummary's grouping (killPhrase) and summed-XP quoting
+// for mixed-kind kills in the same turn.
+func killSoloSummary(playerName string, slain []*monsterDef) string {
+	if len(slain) == 0 {
+		return ""
+	}
+
+	total := 0
+	for _, k := range slain {
+		total += k.xp
+	}
+
+	return fmt.Sprintf("%s slew %s (+%d XP)", playerName, killPhrase(slain), total)
 }
 
 // killPhrase joins slain into an English noun-phrase list — "a wolf",
@@ -1516,11 +1765,16 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) []*monst
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
+			w.logger.Info(combatLogMsg, "event", combatEventDeath, "id", e.id, "kind", e.kind,
+				"monster_kind", e.monsterKind, "at", e.hex)
+
 			w.dropLootLocked(rng, kindOf(e), e.hex)
 			delete(w.entities, e.id)
 
 			continue
 		}
+
+		w.logger.Info(combatLogMsg, "event", combatEventDeath, "id", e.id, "kind", e.kind, "at", e.hex)
 
 		// Player: fall back to the start of the XP level you were in — keep the
 		// level, lose the within-level progress — then respawn in place of a
@@ -1599,6 +1853,7 @@ func (w *World) pickupLocked(members []*entity) {
 		for _, it := range items {
 			e.items = append(e.items, it)
 			w.announce("system", e.name+" picked up "+itemDefByID[it.defID].name)
+			w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", it.defID)
 		}
 
 		delete(w.groundItems, e.hex)

@@ -417,6 +417,19 @@
         padding-bottom: 0.4rem;
         border-bottom: 1px solid var(--dim);
       }
+      /* item 14, playtest batch 2: I may hold several quests at once — each
+         gets its own row, separated by a thin rule (except the last, whose
+         separation is #quest-mine's own border-bottom above). */
+      .quest-mine-row {
+        padding-bottom: 0.25rem;
+        margin-bottom: 0.25rem;
+        border-bottom: 1px solid rgba(90, 122, 92, 0.4);
+      }
+      .quest-mine-row:last-child {
+        padding-bottom: 0;
+        margin-bottom: 0;
+        border-bottom: none;
+      }
       #quest-board-title {
         margin-bottom: 0.25rem;
         color: var(--dim);
@@ -485,6 +498,18 @@
       .gear-equipped .gear-name {
         color: #7cb342;
       }
+      /* The "equipped" button is an active unequip toggle (item 2), not a
+         disabled label: green baseline like the equipped name, amber on
+         hover to signal the click's effect flips (equip -> unequip). */
+      .gear-equip-toggle {
+        color: #7cb342;
+        border-color: #4a6b2f;
+      }
+      .gear-equip-toggle:hover:not(:disabled) {
+        background: #3d2f16;
+        border-color: #c98a2b;
+        color: #e0a94a;
+      }
       .gear-stats {
         color: var(--dim);
       }
@@ -494,6 +519,30 @@
         /* Rule text gets its own full-width line under name + stats, instead
            of squeezing into whatever tail space the first line leaves. */
         flex-basis: 100%;
+      }
+      /* Enemy hover tooltip (item 13, playtest batch 2): a small DOM tooltip
+         near the cursor on a monster hex — pointer-events: none throughout
+         so it can never itself block the click it's floating over. */
+      #hover-tooltip {
+        position: fixed;
+        z-index: 20;
+        pointer-events: none;
+        background: rgba(11, 15, 11, 0.9);
+        border: 1px solid var(--dim);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+        text-shadow: 0 1px 2px #000;
+        white-space: nowrap;
+      }
+      #hover-tooltip[hidden] {
+        display: none;
+      }
+      #hover-tooltip .tooltip-kind {
+        color: var(--fg);
+      }
+      #hover-tooltip .tooltip-hp {
+        color: #d6544f;
+        margin-left: 0.4em;
       }
     </style>
   </head>
@@ -564,6 +613,9 @@
     <div id="left-panels">
       <div id="quest-root"></div>
       <div id="gear-root"></div>
+    </div>
+    <div id="hover-tooltip" hidden>
+      <span class="tooltip-kind"></span><span class="tooltip-hp"></span>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

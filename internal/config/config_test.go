@@ -31,8 +31,8 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("MonsterCount = %d, want 0", got)
 	}
 
-	if got, want := cfg.CombatPatience, 60*time.Second; got != want {
-		t.Errorf("CombatPatience = %s, want 60s", got)
+	if got, want := cfg.CombatPatience, 30*time.Second; got != want {
+		t.Errorf("CombatPatience = %s, want 30s", got)
 	}
 
 	if got, want := cfg.BubblePoll, 100*time.Millisecond; got != want {
@@ -57,7 +57,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("TURN_INTERVAL", "250ms")
 	t.Setenv("HEARTBEAT_INTERVAL", "1s")
 	t.Setenv("MONSTER_COUNT", "7")
-	t.Setenv("COMBAT_PATIENCE", "30s")
+	t.Setenv("COMBAT_PATIENCE", "45s")
 	t.Setenv("BUBBLE_POLL", "50ms")
 	t.Setenv("DISCONNECT_GRACE", "10s")
 	t.Setenv("SNAPSHOT_PATH", "/tmp/rogue-snapshot.json")
@@ -84,8 +84,8 @@ func TestLoadOverrides(t *testing.T) {
 		t.Errorf("MonsterCount = %d, want 7", got)
 	}
 
-	if got, want := cfg.CombatPatience, 30*time.Second; got != want {
-		t.Errorf("CombatPatience = %s, want 30s", got)
+	if got, want := cfg.CombatPatience, 45*time.Second; got != want {
+		t.Errorf("CombatPatience = %s, want 45s", got)
 	}
 
 	if got, want := cfg.BubblePoll, 50*time.Millisecond; got != want {

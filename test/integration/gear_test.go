@@ -40,20 +40,14 @@ func decodeTurnFrame(t *testing.T, r *bufio.Reader) protocol.TurnEvent {
 	}
 }
 
-// TestEquipOverHTTP proves the equip intent's success path over real
-// HTTP/SSE: join, grab an owned item id straight off the first turn bundle
-// (every class starts pre-equipped with its defaults — grantDefaultsLocked),
-// equip it again, and confirm the wire's equipped flags are consistent
-// afterward. Every class-default item already fills its own slot (one
-// close-slot item, plus a distinct ranged-slot item for Rogue/Mage), so
-// re-equipping any of them is a same-slot no-op swap — queueEquipLocked
-// applies it immediately outside a bubble and returns nil, same as a real
-// swap would. Seeing an actual true->false/false->true FLIP needs a SECOND
-// same-slot item, which only exists via a drop — and TestDropPickupLoop's
-// drop is not deterministically farmable into a spare same-slot item cheaply
-// (see its determinism note on why the drop roll itself can't be pinned), so
-// this test is deliberately scoped to the 202-path + wire-shape assertions
-// instead of a real flip.
+// TestEquipOverHTTP proves the equip intent's toggle semantics (item 2) over
+// real HTTP/SSE: join, grab an owned item id straight off the first turn
+// bundle (every class starts pre-equipped with its defaults —
+// grantDefaultsLocked), equip it AGAIN — which now unequips it, since an
+// equip intent naming an already-equipped item toggles it off — then equip
+// it a third time to prove the round trip back to equipped:true. Both swaps
+// apply synchronously outside a bubble (queueEquipLocked), so each is
+// visible on the very next turn bundle.
 func TestEquipOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -89,34 +83,45 @@ func TestEquipOverHTTP(t *testing.T) {
 		t.Fatalf("equip intent status = %d, want %d", got, want)
 	}
 
-	// The swap applies synchronously inside SubmitIntent (outside a bubble,
-	// queueEquipLocked is immediate) — so by the time ANY later turn bundle
-	// arrives, the wire already reflects it. Read the next one to prove the
-	// round trip, not just the 202 ack.
 	next := decodeTurnFrame(t, reader)
 
-	again, ok := entityOf(next, me.EntityID)
+	if got := equippedFlag(t, next, me.EntityID, item.ID); got {
+		t.Fatalf("item %d still shows equipped:true after toggling an already-equipped item off", item.ID)
+	}
+
+	// Toggle it back on: the round trip.
+	resp = postJSON(t, ts, "/api/intent", intent)
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("equip intent (toggle on) status = %d, want %d", got, want)
+	}
+
+	final := decodeTurnFrame(t, reader)
+
+	if got := equippedFlag(t, final, me.EntityID, item.ID); !got {
+		t.Fatalf("item %d still shows equipped:false after toggling it back on", item.ID)
+	}
+}
+
+// equippedFlag returns itemID's Equipped flag for entityID in bundle,
+// failing the test if either the entity or the item is missing from the
+// wire.
+func equippedFlag(t *testing.T, bundle protocol.TurnEvent, entityID, itemID int64) bool {
+	t.Helper()
+
+	e, ok := entityOf(bundle, entityID)
 	if !ok {
-		t.Fatal("joined rogue missing from post-equip turn bundle")
+		t.Fatalf("entity %d missing from turn bundle", entityID)
 	}
 
-	found := false
-
-	for _, it := range again.Items {
-		if it.ID != item.ID {
-			continue
-		}
-
-		found = true
-
-		if !it.Equipped {
-			t.Fatalf("item %d still shows equipped:false after a successful equip intent", it.ID)
+	for _, it := range e.Items {
+		if it.ID == itemID {
+			return it.Equipped
 		}
 	}
 
-	if !found {
-		t.Fatalf("item %d vanished from the wire after a successful equip intent", item.ID)
-	}
+	t.Fatalf("item %d vanished from the wire", itemID)
+
+	return false
 }
 
 // TestEquipValidation proves the two equip-intent rejections that don't need

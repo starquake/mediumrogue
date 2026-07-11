@@ -16,17 +16,34 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   and reflexes are irrelevant by design.
 - **Combat time bubbles**: when a player and a hostile come within 6 hexes,
   a local bubble freezes — its turns are **action-gated** (advance when every
-  player in it locks in an intent, or after a 60 s patience timeout). The
-  rest of the world keeps ticking. Bubbles form/merge/dissolve as connected
-  components; **only players extend a bubble's reach**. Walking into a
-  bubble's radius joins the fight — reinforcement is a core mechanic; fleeing
-  beyond the radius escapes it.
+  player in it locks in an intent, or after a 30 s patience timeout — lowered
+  from 60s, item 4, playtest batch 2). A
+  bubble-turn also never resolves sooner than `TURN_INTERVAL` after its own
+  previous resolution (item 5, playtest batch 2) — a floor against a solo
+  player spam-resolving faster than the world's own cadence; a straggler'd
+  multi-player bubble is unaffected by it in practice (real lock-ins rarely
+  land inside one interval). The rest of the world keeps ticking. Bubbles
+  form/merge/dissolve as connected components; **only players extend a
+  bubble's reach**. Walking into a bubble's radius joins the fight —
+  reinforcement is a core mechanic; fleeing beyond the radius escapes it.
 
 ### Movement
 - Flat-top hex grid, axial coordinates, grid-locked. **Click-to-move**
   (server BFS pathfinding, one hex per turn, re-validated each turn) or
   **QWE/ASD** keys for single steps. Up to **5 friendly entities stack** per
   hex (a full party moves as one blob; count badge rendered).
+- **Movement keys are ignored while typing** (item 10, playtest batch 2, bug
+  fix): a focused input/textarea/contenteditable (chat, in particular — w/a/
+  s/d are ordinary letters too) or the start screen being visible suppresses
+  the QWE/ASD handler.
+- **SPACE = wait** (item 11, playtest batch 2): the same own-hex move a
+  click already waits/cancels with — clears any queued path, and inside a
+  bubble it locks in this turn's action like any other move intent.
+- **Player name labels** (item 8, playtest batch 2): a small always-on name
+  tag above every PLAYER dot (not monsters — they get hover info instead,
+  item 13), styled like the count badge and moving with the dot's tween.
+  Party-color-tinted for a partymate, a brighter shade of my own dot's blue
+  for mine, neutral near-white for anyone else.
 - **In combat**: click-anywhere is replaced by tactical selection — only the
   tiles reachable this turn are clickable, tinted **blue** (open moves) /
   **strong red** (adjacent hostile = bump-attack); the equipped ranged
@@ -38,6 +55,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **No separate combat screen** — same map, same intents. **Bump-to-attack**
   melee; ranged **attack intent** (bow single-target, mage AoE radius 1),
   range 4 hexes, distance-only (no LOS), **no friendly fire**.
+- **Entity-targeted single-target ranged attacks** (item 7, playtest batch
+  2): a bow shot names its victim by **entity id** (`IntentRequest.
+  targetEntityId`), not a hex — clicking a hostile in range sends its id.
+  An AoE cast (mage) stays **ground-targeted** (a hex — the blast radius
+  makes that the natural target). Validated at submit (entity exists+alive,
+  hostile, in range) AND re-validated at resolution against the victim's
+  **post-move hex**: hits if still in range from the shooter's own post-move
+  hex, else fizzles — the shot tracks a sidestepping or retreating target
+  instead of trusting a stale hex.
 - **Phased resolution**: all moves resolve simultaneously (seeded-RNG
   tie-break on hex overflow), then all attacks land against **post-move
   positions** — retreating genuinely dodges; mutual kills are possible and
@@ -49,10 +75,19 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Feedback**: instant destination ring on walk clicks, one-shot flash on
   attack clicks, pending "…" on equip buttons, Diablo-style **floating damage
   numbers** (white over hostiles, red over players; killing blows shown as
-  remaining HP — derived client-side by diffing bundles), kill summaries and
-  player deaths announced in chat, naming the slain **kind(s)** ("a wolf was
-  slain (+20 XP to everyone in the fight)", "a wolf and a troll were slain
-  (+80 XP …)", "2 ghouls were slain (+70 XP …)", "NAME died").
+  remaining HP — derived client-side by diffing bundles), **committed-action
+  indicator** (item 6, playtest batch 2 — a solid step marker for a queued
+  move, a persistent crosshair for a queued attack, a small hourglass on my
+  own hex for a wait; shown while I've locked in this bubble-turn and it's
+  still waiting on the rest of the bubble, cleared on the next turn bundle;
+  `window.game.committedAction`), kill summaries and
+  player deaths announced in chat, naming the slain **kind(s)**. Two or more
+  players in the bubble at award time: nameless ("a wolf was slain (+20 XP to
+  everyone in the fight)", "a wolf and a troll were slain (+80 XP …)", "2
+  ghouls were slain (+70 XP …)") — no kill credit exists. **Exactly one**
+  player in the bubble (item 3, playtest batch 2): named, active voice
+  ("NAME slew a wolf (+20 XP)", mixed kinds group the same way — "NAME slew
+  a wolf and a troll (+80 XP)"). Player deaths: "NAME died".
 
 ### Classes & species (chosen on the start screen)
 | | Weapons (defaults) | HP | Role |
@@ -79,6 +114,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   camera **cuts** to the respawn instead of panning.
 - **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
+- **HUD stats line** (item 9, playtest batch 2): `Lv L · xp/XPPerLevel XP ·
+  (q, r)` — my entity's hex, live per turn bundle.
 
 ### Gear (milestone 6b.4, loot model updated 6c)
 - **Items are content data** (registry in `internal/game/content.go`): 5
@@ -94,9 +131,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   ITS kind's table. Items land on the death hex, render as map markers, and
   are **picked up by walking over them** (announced in chat). Inventory is
   unbounded; own many, equip one per slot (close / ranged).
-- **Equip**: free & instant out of combat; **your whole turn inside a
-  bubble** (a later move/attack replaces a queued swap; bubble dissolve
-  applies it). Gear panel lists items with stats, rule text, equipped state.
+- **Equip / unequip toggle** (item 2, playtest batch 2): free & instant out
+  of combat; **your whole turn inside a bubble** (a later move/attack
+  replaces a queued swap; bubble dissolve applies it). An equip intent
+  naming an item **already in its slot unequips it** instead of re-equipping
+  (slot → 0: fists fallback for close, no ranged weapon at all for ranged)
+  — the same free-outside/turn-inside rules apply to the toggle-off
+  direction. Gear panel lists items with stats, rule text, equipped state;
+  the "equipped" button is an active toggle (not disabled), amber on hover.
 
 ### Monsters (kinds & difficulty rings — milestone 6c)
 - **Five kinds**, content data in `internal/game/content.go` (`monsterDefs`),
@@ -114,6 +156,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   with a distinct on-map dot color and one-letter glyph (`entities.ts`'s
   `KIND_STYLE`); an unrecognized kind falls back to the old flat monster
   red with no glyph. A kill announces the kind by name (see Combat above).
+- **Enemy hover tooltip** (item 13, playtest batch 2): hovering a monster's
+  hex shows a small DOM tooltip near the cursor — kind display name + "HP
+  cur/max". Client-side only (positions/hp/maxHp already ride every turn
+  bundle); `pointer-events: none` throughout, so it never blocks a click.
 - **Difficulty rings**: the map bands into 3 concentric rings by hex
   distance from the origin (`RingCount`) — at the default `WORLD_RADIUS=24`
   that's ring 0 = 0–7 (home), ring 1 = 8–15, ring 2 = 16–24 (frontier).
@@ -133,10 +179,22 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   never spawn on/within 6 hexes of each other, with fallbacks for tiny maps.
 
 ### Quests, parties, chat
-- **Seeded 6-quest board** (3 kill, 3 reach), `/quest <id>` / `/abandon`,
-  one slot per player/party; joining a party abandons a personal quest;
-  dissolution returns the quest to the board. Kill quests tick via bubble
-  presence; countdown feedback in panel and chat.
+- **Seeded 6-quest board** (3 kill, 3 reach), `/quest <id>` / `/abandon <id>`.
+  **Multiple personal quests** (item 14, playtest batch 2 — amends 8.3's
+  one-slot rule): a player may hold **several personal quests
+  concurrently**, progressing and paying out independently; **a party still
+  holds at most one quest at a time**. **Joining a party no longer abandons
+  personal quests** (also amends 8.3) — they keep progressing alongside
+  whatever the party itself takes. `/abandon` now names the quest
+  explicitly (`<id>`), since "the" active quest is no longer unambiguous.
+  Dissolution still returns the PARTY's quest to the board. Kill quests tick
+  via bubble presence, once per distinct quest (a solo player's several
+  concurrent kill quests all tick from the same kill); countdown feedback in
+  panel and chat.
+- **Quest goal marker** (item 12, playtest batch 2): a pulsing gold diamond
+  on EACH of my active "reach" quests' goal hexes — above the ground-loot
+  layer, below entities. Kill quests get no marker (no single hex to point
+  at); a marker clears when its quest completes or is abandoned.
 - **Parties** via chat commands (`/invite <name>`, `/accept`, `/leave`):
   ≥2 members, dissolve below that, survive death, swept on disconnect.
   Partymates colored on-map; roster panel.
@@ -255,6 +313,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
+- **Combat event log** (item 1, playtest batch 2 — `internal/game`,
+  structured `slog`, the milestone-12 analytics seed): every resolution
+  path emits `slog.Info("combat", "event",
+  ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
+  `fizzle` (reasons: `out_of_range`, `unequipped`, `bump_target_vacated`),
+  `death`, `xp_award`, `pickup` — filterable on the `"combat"` msg key or the
+  `event` attribute. `World.SetLogger` installs the sink (defaults to
+  `slog.Default()`, mirrors `SetAnnounce`); `cmd/rogue/app` wires the
+  process logger in.
 
 ---
 
@@ -266,7 +333,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | `TURN_INTERVAL` | `5s` | world-turn period (tests shrink it) |
 | `HEARTBEAT_INTERVAL` | `15s` | SSE keep-alive cadence |
 | `MONSTER_COUNT` | `0` | monsters spawned at startup |
-| `COMBAT_PATIENCE` | `60s` | bubble AFK fallback before auto-resolve |
+| `COMBAT_PATIENCE` | `30s` | bubble AFK fallback before auto-resolve |
 | `BUBBLE_POLL` | `100ms` | control-loop poll (must be < TURN_INTERVAL) |
 | `DISCONNECT_GRACE` | `20s` | despawn delay for disconnected players |
 | `WORLD_SEED` | `0xC0FFEE` | procgen seed (decimal or 0x hex) |

@@ -98,7 +98,17 @@ func routeChatCommand(
 		out, err = deps.World.QuestTake(req.Token, id)
 	case "abandon":
 		sender = systemSender
-		out, err = deps.World.QuestAbandon(req.Token)
+
+		// Item 14, playtest batch 2: a player can hold several personal
+		// quests at once, so /abandon must name which one (mirrors /quest).
+		id, perr := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
+		if perr != nil {
+			respondError(w, deps.Logger, http.StatusUnprocessableEntity, "usage: /abandon <id>")
+
+			return "", "", false
+		}
+
+		out, err = deps.World.QuestAbandon(req.Token, id)
 	default:
 		sender = name
 		out, err = chat.RunCommand(text, chat.Sender{Name: name, Hex: senderHex})

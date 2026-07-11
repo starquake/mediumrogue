@@ -200,10 +200,11 @@ func TestKillDropPickedUpNextTurn(t *testing.T) {
 		t.Errorf("picked-up ItemView.Equipped = %v, want %v (owned, not auto-equipped)", got, want)
 	}
 
-	// Two lines in order: the kill summary from the turn the monster died,
-	// then the pickup announce from the walk-on a turn later.
+	// Two lines in order: the kill summary from the turn the monster died —
+	// oneHitKillBubble's solo "hero" (playtest item 3 names a solo killer)
+	// — then the pickup announce from the walk-on a turn later.
 	wantMsg := []string{
-		fmt.Sprintf("a wolf was slain (+%d XP to everyone in the fight)", game.MonsterXPForTest("wolf")),
+		fmt.Sprintf("hero slew a wolf (+%d XP)", game.MonsterXPForTest("wolf")),
 		"hero picked up " + killDropSeedDefName,
 	}
 	if !slices.Equal(announced, wantMsg) {
