@@ -236,7 +236,7 @@ func checkRestoredQuestAndArchive(t *testing.T, w2 *game.World, aliceID int64, b
 	}
 }
 
-// TestSnapshotTransientsZeroed: path, attackTarget, pendingEquip, and
+// TestSnapshotTransientsZeroed: path, attackTarget, pending, and
 // bubbleID (InCombat) are all zeroed on a restored entity, even when they
 // were non-zero at marshal time — none of them ride the snapshot.
 func TestSnapshotTransientsZeroed(t *testing.T) {
@@ -457,4 +457,112 @@ func TestSnapshotMismatchGates(t *testing.T) {
 			t.Fatalf("RestoreState with garbage data: got nil error, want a decode error")
 		}
 	})
+}
+
+// TestSnapshotRoundTripInventoryShapes: the v3 disk shape (the
+// inventory-slots milestone) round-trips the slot-keyed equipped map, the
+// backpack with a consumable STACK (count > 1), and an archived character
+// carrying the same shapes — ids, defs, entry indices, and counts all exact.
+func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
+	t.Parallel()
+
+	w, clk := newSnapshotWorld(t)
+
+	// Live player: armor equipped in the body slot, a 2-potion stack and a
+	// spare hammer in the backpack.
+	me, err := w.Join("", "packrat", protocol.ClassFighter, protocol.SpeciesDwarf)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// A live stream keeps packrat out of the sweep that archives sleeper.
+	w.StreamOpened(me.Token)
+
+	armorID := w.GrantItemForTest(me.EntityID, "leather-armor")
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentEquip, ItemID: armorID,
+	}); err != nil {
+		t.Fatalf("equip armor: %v", err)
+	}
+
+	stackID := w.GrantItemForTest(me.EntityID, "healing-potion")
+	w.GrantItemForTest(me.EntityID, "healing-potion")
+	hammerID := w.GrantItemForTest(me.EntityID, "iron-warhammer")
+
+	// Archived character with the same shapes: a second player, swept.
+	gone, err := w.Join("", "sleeper", protocol.ClassRogue, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("Join sleeper: %v", err)
+	}
+
+	w.GrantItemForTest(gone.EntityID, "healing-potion")
+	w.GrantItemForTest(gone.EntityID, "healing-potion")
+	w.GrantItemForTest(gone.EntityID, "healing-potion")
+	clk.advance(testDisconnectGrace + time.Second)
+
+	if !w.SweepForTest(clk.now()) {
+		t.Fatal("sweep did not archive the disconnected sleeper")
+	}
+
+	data, err := w.MarshalState()
+	if err != nil {
+		t.Fatalf("MarshalState: %v", err)
+	}
+
+	w2, _ := newSnapshotWorld(t)
+	if err := w2.RestoreState(data); err != nil {
+		t.Fatalf("RestoreState: %v", err)
+	}
+
+	// The live player's equipped map: same instance ids in the same slots.
+	if got, want := w2.EquippedInSlotForTest(me.EntityID, protocol.ItemTypeBody), armorID; got != want {
+		t.Errorf("restored body slot = %d, want %d", got, want)
+	}
+
+	closeInst, _ := w.EquippedSlotsForTest(me.EntityID)
+	if got, want := firstOf(w2.EquippedSlotsForTest(me.EntityID)), closeInst; got != want {
+		t.Errorf("restored melee slot = %d, want %d", got, want)
+	}
+
+	// The backpack: same entries at the same indices, stack count intact.
+	pre, post := w.BackpackForTest(me.EntityID), w2.BackpackForTest(me.EntityID)
+	if post != pre {
+		t.Errorf("restored backpack = %+v, want %+v", post, pre)
+	}
+
+	if got, want := post[0].DefID, "healing-potion"; got != want {
+		t.Errorf("restored backpack[0] = %q, want %q", got, want)
+	}
+
+	if got, want := post[0].Count, 2; got != want {
+		t.Errorf("restored stack count = %d, want %d", got, want)
+	}
+
+	// The archived character restores through Join with its stack intact.
+	back, err := w2.Join(gone.Token, "", "", "")
+	if err != nil {
+		t.Fatalf("Join restored sleeper: %v", err)
+	}
+
+	sleeperPack := w2.BackpackForTest(back.EntityID)
+	if got, want := sleeperPack[0].DefID, "healing-potion"; got != want {
+		t.Errorf("restored sleeper backpack[0] = %q, want %q", got, want)
+	}
+
+	if got, want := sleeperPack[0].Count, 3; got != want {
+		t.Errorf("restored sleeper stack count = %d, want %d", got, want)
+	}
+
+	// Uniqueness guard: the restored world's id counter is past every
+	// restored instance id, so a fresh grant can never collide.
+	fresh := w2.GrantItemForTest(me.EntityID, "venom-fang")
+	if fresh == 0 {
+		t.Fatal("GrantItemForTest on the restored world failed (backpack full?)")
+	}
+
+	for _, taken := range []int64{armorID, stackID, hammerID} {
+		if fresh == taken {
+			t.Errorf("fresh instance id %d collides with a restored one", fresh)
+		}
+	}
 }

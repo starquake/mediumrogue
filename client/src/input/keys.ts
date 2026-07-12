@@ -15,6 +15,7 @@ const KEY_TO_DIRECTION: Record<string, Direction> = {
 };
 
 const WAIT_KEY = "Space";
+const INVENTORY_KEY = "KeyI";
 
 export interface KeyCallbacks {
   onStep: (dir: Direction) => void;
@@ -24,6 +25,12 @@ export interface KeyCallbacks {
    * a normal move intent).
    */
   onWait: () => void;
+  /**
+   * `i`: toggle the character/inventory panel (inventory-slots milestone) —
+   * subject to the same typing-target and isBlocked guards as movement, so
+   * typing "i" into chat never opens it.
+   */
+  onToggleInventory?: () => void;
   /**
    * Reports whether movement keys should be ignored right now, beyond the
    * typing-target guard below — the start screen being visible (item 10,
@@ -59,6 +66,12 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
     if (ev.code === WAIT_KEY) {
       ev.preventDefault(); // SPACE also scrolls/activates a focused button by default
       callbacks.onWait();
+
+      return;
+    }
+
+    if (ev.code === INVENTORY_KEY && callbacks.onToggleInventory !== undefined) {
+      callbacks.onToggleInventory();
 
       return;
     }

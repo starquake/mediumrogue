@@ -29,7 +29,12 @@ import (
 // v2 (item 4, playtest feedback batch 3): added WorldID — persisted so a
 // restored world keeps its predecessor's identity instead of looking like a
 // reset to clients.
-const snapshotVersion = 2
+// v3 (inventory-slots milestone): entity/archive gear moved from a flat items
+// list + closeSlot/rangedSlot to a slot-keyed equipped map + a backpack with
+// consumable stacks. Bumped past main's v2 (WorldID): the DTO change is an
+// additional, independent breaking change. A v1/v2 snapshot is preserved-aside
+// + fresh on upgrade (app-level contract, unchanged).
+const snapshotVersion = 3
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -73,34 +78,49 @@ type itemInstanceDTO struct {
 	DefID string `json:"defId"`
 }
 
+// backpackEntryDTO mirrors backpackEntry: one gear instance (count 1) or one
+// consumable stack (count up to protocol.ItemStackCap). An empty entry
+// serializes as the zero value (count 0) so backpack indices survive the
+// round trip — a restored backpack has its items in the same entries.
+type backpackEntryDTO struct {
+	Item  itemInstanceDTO `json:"item"`
+	Count int             `json:"count"`
+}
+
 // entityDTO is the full persisted shape of one entity (player or monster).
 // Fields the design calls out as transient — path, attackTarget,
-// attackTargetEntity, pendingEquip, bubbleID, streams — are deliberately absent: RestoreState
+// attackTargetEntity, pending, bubbleID, streams — are deliberately absent: RestoreState
 // leaves them at their Go zero value on every restored entity, and a
 // restored PLAYER additionally gets disconnectedAt stamped to load time (see
 // RestoreState) rather than persisting the pre-shutdown value.
 type entityDTO struct {
-	ID          int64             `json:"id"`
-	Hex         protocol.Hex      `json:"hex"`
-	Token       string            `json:"token"`
-	Kind        string            `json:"kind"`
-	MonsterKind string            `json:"monsterKind"`
-	Name        string            `json:"name"`
-	PartyID     int64             `json:"partyId"`
-	Class       string            `json:"class"`
-	Species     string            `json:"species"`
-	HP          int               `json:"hp"`
-	MaxHP       int               `json:"maxHp"`
-	XP          int               `json:"xp"`
-	Items       []itemInstanceDTO `json:"items"`
-	CloseSlot   int64             `json:"closeSlot"`
-	RangedSlot  int64             `json:"rangedSlot"`
+	ID          int64                      `json:"id"`
+	Hex         protocol.Hex               `json:"hex"`
+	Token       string                     `json:"token"`
+	Kind        string                     `json:"kind"`
+	MonsterKind string                     `json:"monsterKind"`
+	Name        string                     `json:"name"`
+	PartyID     int64                      `json:"partyId"`
+	Class       string                     `json:"class"`
+	Species     string                     `json:"species"`
+	HP          int                        `json:"hp"`
+	MaxHP       int                        `json:"maxHp"`
+	XP          int                        `json:"xp"`
+	Equipped    map[string]itemInstanceDTO `json:"equipped"`
+	Backpack    []backpackEntryDTO         `json:"backpack"`
 }
 
-// groundItemDTO is every item instance dropped on one hex.
+// groundStackDTO mirrors groundStack: a dropped item instance plus its stack
+// count (a consumable stack drops whole; gear/loot is count 1).
+type groundStackDTO struct {
+	Item  itemInstanceDTO `json:"item"`
+	Count int             `json:"count"`
+}
+
+// groundItemDTO is every ground stack dropped on one hex.
 type groundItemDTO struct {
-	Hex   protocol.Hex      `json:"hex"`
-	Items []itemInstanceDTO `json:"items"`
+	Hex    protocol.Hex     `json:"hex"`
+	Stacks []groundStackDTO `json:"stacks"`
 }
 
 // questDTO mirrors quest in full — id/name/kind/targetN/goalHex/rewardXP are
@@ -123,13 +143,12 @@ type questDTO struct {
 
 // characterDTO mirrors characterRecord for the archive map.
 type characterDTO struct {
-	Name       string            `json:"name"`
-	Class      string            `json:"class"`
-	Species    string            `json:"species"`
-	XP         int               `json:"xp"`
-	Items      []itemInstanceDTO `json:"items"`
-	CloseSlot  int64             `json:"closeSlot"`
-	RangedSlot int64             `json:"rangedSlot"`
+	Name     string                     `json:"name"`
+	Class    string                     `json:"class"`
+	Species  string                     `json:"species"`
+	XP       int                        `json:"xp"`
+	Equipped map[string]itemInstanceDTO `json:"equipped"`
+	Backpack []backpackEntryDTO         `json:"backpack"`
 }
 
 // MarshalState serializes the world's persisted state to JSON: every entity
@@ -161,8 +180,8 @@ func (w *World) toDTOLocked() snapshotDTO {
 	}
 
 	groundItems := make([]groundItemDTO, 0, len(w.groundItems))
-	for hex, items := range w.groundItems {
-		groundItems = append(groundItems, groundItemDTO{Hex: hex, Items: itemInstancesToDTO(items)})
+	for hex, stacks := range w.groundItems {
+		groundItems = append(groundItems, groundItemDTO{Hex: hex, Stacks: groundStacksToDTO(stacks)})
 	}
 
 	quests := make([]questDTO, 0, len(w.quests))
@@ -197,7 +216,7 @@ func (w *World) toDTOLocked() snapshotDTO {
 // (disconnectedAt = now, streams = 0), not the pre-shutdown disconnect time:
 // the removal-grace clock restarts at load, so an unclaimed entity sweeps
 // (and archives) after one full grace from restart, not instantly. Path,
-// attackTarget, attackTargetEntity, pendingEquip, and bubbleID are left at
+// attackTarget, attackTargetEntity, pending, and bubbleID are left at
 // their zero value on every entity (players and monsters alike) — bubbles are never persisted
 // and are recomputed from positions on the first tick.
 func (w *World) RestoreState(data []byte) error {
@@ -280,13 +299,31 @@ func entitiesFromDTO(dtos []entityDTO, now time.Time) (map[int64]*entity, map[st
 	return entities, byToken
 }
 
-func groundItemsFromDTO(dtos []groundItemDTO) map[protocol.Hex][]itemInstance {
-	groundItems := make(map[protocol.Hex][]itemInstance, len(dtos))
+func groundItemsFromDTO(dtos []groundItemDTO) map[protocol.Hex][]groundStack {
+	groundItems := make(map[protocol.Hex][]groundStack, len(dtos))
 	for _, g := range dtos {
-		groundItems[g.Hex] = itemInstancesFromDTO(g.Items)
+		groundItems[g.Hex] = groundStacksFromDTO(g.Stacks)
 	}
 
 	return groundItems
+}
+
+func groundStacksToDTO(stacks []groundStack) []groundStackDTO {
+	dtos := make([]groundStackDTO, len(stacks))
+	for i, gs := range stacks {
+		dtos[i] = groundStackDTO{Item: itemInstanceDTO{ID: gs.inst.id, DefID: gs.inst.defID}, Count: gs.count}
+	}
+
+	return dtos
+}
+
+func groundStacksFromDTO(dtos []groundStackDTO) []groundStack {
+	stacks := make([]groundStack, len(dtos))
+	for i, d := range dtos {
+		stacks[i] = groundStack{inst: itemInstance{id: d.Item.ID, defID: d.Item.DefID}, count: d.Count}
+	}
+
+	return stacks
 }
 
 func questsFromDTO(dtos []questDTO) []*quest {
@@ -312,13 +349,13 @@ func entityToDTO(e *entity) entityDTO {
 		ID: e.id, Hex: e.hex, Token: e.token, Kind: e.kind, MonsterKind: e.monsterKind,
 		Name: e.name, PartyID: e.partyID, Class: e.class, Species: e.species,
 		HP: e.hp, MaxHP: e.maxHP, XP: e.xp,
-		Items: itemInstancesToDTO(e.items), CloseSlot: e.closeSlot, RangedSlot: e.rangedSlot,
+		Equipped: equippedToDTO(e.equipped), Backpack: backpackToDTO(e.backpack),
 	}
 }
 
 // entityFromDTO rebuilds an entity from its DTO. The caller (RestoreState)
 // is responsible for the player-only disconnectedAt/streams reset; every
-// other transient field (path, attackTarget, attackTargetEntity, pendingEquip,
+// other transient field (path, attackTarget, attackTargetEntity, pending,
 // bubbleID) is left
 // at its Go zero value by construction.
 func entityFromDTO(ed entityDTO) *entity {
@@ -326,26 +363,51 @@ func entityFromDTO(ed entityDTO) *entity {
 		id: ed.ID, hex: ed.Hex, token: ed.Token, kind: ed.Kind, monsterKind: ed.MonsterKind,
 		name: ed.Name, partyID: ed.PartyID, class: ed.Class, species: ed.Species,
 		hp: ed.HP, maxHP: ed.MaxHP, xp: ed.XP,
-		items: itemInstancesFromDTO(ed.Items), closeSlot: ed.CloseSlot, rangedSlot: ed.RangedSlot,
+		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
 	}
 }
 
-func itemInstancesToDTO(items []itemInstance) []itemInstanceDTO {
-	dtos := make([]itemInstanceDTO, len(items))
-	for i, it := range items {
-		dtos[i] = itemInstanceDTO{ID: it.id, DefID: it.defID}
+func equippedToDTO(equipped map[string]itemInstance) map[string]itemInstanceDTO {
+	dtos := make(map[string]itemInstanceDTO, len(equipped))
+	for slot, inst := range equipped {
+		dtos[slot] = itemInstanceDTO{ID: inst.id, DefID: inst.defID}
 	}
 
 	return dtos
 }
 
-func itemInstancesFromDTO(dtos []itemInstanceDTO) []itemInstance {
-	items := make([]itemInstance, len(dtos))
-	for i, d := range dtos {
-		items[i] = itemInstance{id: d.ID, defID: d.DefID}
+func equippedFromDTO(dtos map[string]itemInstanceDTO) map[string]itemInstance {
+	equipped := make(map[string]itemInstance, len(dtos))
+	for slot, d := range dtos {
+		equipped[slot] = itemInstance{id: d.ID, defID: d.DefID}
 	}
 
-	return items
+	return equipped
+}
+
+// backpackToDTO serializes all protocol.BackpackSize entries, empties
+// included, so indices survive the round trip (see backpackEntryDTO).
+func backpackToDTO(backpack [protocol.BackpackSize]backpackEntry) []backpackEntryDTO {
+	dtos := make([]backpackEntryDTO, len(backpack))
+	for i, be := range backpack {
+		dtos[i] = backpackEntryDTO{Item: itemInstanceDTO{ID: be.inst.id, DefID: be.inst.defID}, Count: be.count}
+	}
+
+	return dtos
+}
+
+// backpackFromDTO tolerates a shorter- or longer-than-BackpackSize persisted
+// list (impossible under the version gate; defensive only — extras are
+// dropped, missing entries stay empty).
+func backpackFromDTO(dtos []backpackEntryDTO) [protocol.BackpackSize]backpackEntry {
+	var backpack [protocol.BackpackSize]backpackEntry
+
+	for i := 0; i < len(backpack) && i < len(dtos); i++ {
+		d := dtos[i]
+		backpack[i] = backpackEntry{inst: itemInstance{id: d.Item.ID, defID: d.Item.DefID}, count: d.Count}
+	}
+
+	return backpack
 }
 
 func questToDTO(q *quest) questDTO {
@@ -367,13 +429,13 @@ func questFromDTO(qd questDTO) *quest {
 func characterToDTO(rec characterRecord) characterDTO {
 	return characterDTO{
 		Name: rec.name, Class: rec.class, Species: rec.species, XP: rec.xp,
-		Items: itemInstancesToDTO(rec.items), CloseSlot: rec.closeSlot, RangedSlot: rec.rangedSlot,
+		Equipped: equippedToDTO(rec.equipped), Backpack: backpackToDTO(rec.backpack),
 	}
 }
 
 func characterFromDTO(cd characterDTO) characterRecord {
 	return characterRecord{
 		name: cd.Name, class: cd.Class, species: cd.Species, xp: cd.XP,
-		items: itemInstancesFromDTO(cd.Items), closeSlot: cd.CloseSlot, rangedSlot: cd.RangedSlot,
+		equipped: equippedFromDTO(cd.Equipped), backpack: backpackFromDTO(cd.Backpack),
 	}
 }

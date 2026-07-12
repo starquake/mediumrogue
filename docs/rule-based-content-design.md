@@ -150,14 +150,31 @@ is what we preserve. Always write it.
 
 ## 4. Designing gear
 
-Gear is the system this pipeline is being built for. The decided frame:
+Gear is the system this pipeline is being built for. The decided frame
+(updated by the inventory-slots milestone):
 
-- Every character has two weapon slots: **close combat** and **ranged**.
-  You can own several items but only the equipped one per slot counts.
-  No melee weapon equipped → unarmed punch (minimal damage).
+- Every item has a **type**, and the type decides where it goes. The 12
+  types: `melee-weapon, thrown-weapon, ranged-weapon, staff, wand,
+  consumable, head, body, hands, ring, amulet, feet`. Every type except
+  `consumable` fills exactly one **equip slot** of the same name;
+  consumables have no slot — they live in the backpack as stacks.
+- A character has **8 equip slots**: the six body slots (head, body, hands,
+  ring, amulet, feet) plus **two class-shaped weapon slots** — fighter:
+  melee + thrown · rogue: melee + ranged · mage: staff + wand. A staff can
+  melee-bonk; a wand never melees. No melee-ish weapon equipped → unarmed
+  punch (minimal damage). No thrown weapons exist yet, so a fighter has no
+  ranged attack until that content lands.
+- Plus a **backpack of exactly 4 entries** — a gear item or a consumable
+  stack (up to 5 identical consumables) per entry. Dropping things is a real
+  decision; that's deliberate.
 - Classes have hard weapon lanes (§5) — gear creates **variety within a
   lane**, it never breaks the lane. There will be many fighter melee
   weapons; there will never be a fighter bow.
+- **Wearability is an item property, classes stay single**: a weapon card
+  names exactly which classes can wield it; an armor/jewelry card may name
+  SEVERAL classes (e.g. Leather Armor: fighter or rogue) or "any" (the
+  default for armor and jewelry). A character never has more than one
+  class — multi-classing does not exist.
 - The planned trade-off axes for weapons: **speed vs. damage vs. reach**;
   for magic: **damage vs. control vs. support**.
 
@@ -165,9 +182,14 @@ Gear is the system this pipeline is being built for. The decided frame:
 
 ```
 Name:        (evocative — names carry half the flavor)
-Slot:        close / ranged   (later maybe: armor, trinket)
-For class:   fighter / rogue / mage / any
+Type:        melee-weapon / thrown-weapon / ranged-weapon / staff / wand /
+             head / body / hands / ring / amulet / feet
+             (the slot follows from the type — don't specify it separately)
+Wearable by: fighter / rogue / mage / any — weapons must name classes
+             explicitly; armor & jewelry default to "any"; several classes
+             are fine (that's an item property, characters stay one class)
 Base stats:  damage, range in hexes (0 = melee), area radius (0 = single target)
+             (weapons only — armor/jewelry cards usually carry rules instead)
 Rules:       0 or more when/if/then rules
 Drops from:  what kind of monster/place should yield this?
              (real since milestone 6c: loot authority lives on the MONSTER,
@@ -179,8 +201,27 @@ Drops from:  what kind of monster/place should yield this?
 Intent:      the one-line reason this item exists
 ```
 
+**A consumable card** is smaller — a consumable never equips and carries no
+when/if/then rules; drinking it is an *action* (your whole turn in a fight,
+free outside one), not a combat event:
+
+```
+Name:        (evocative)
+Type:        consumable
+Effect:      what drinking one does — today's vocabulary: heal N HP
+             (clamped to your max; `heal` is a field on the item, not a
+             pipeline rule)
+Stacks:      up to 5 identical ones share a backpack entry; stacks never
+             split, drinking uses one
+Drops from:  same transcription rule as gear
+Intent:      the one-line reason this item exists
+```
+
 Base-stats-only items are completely fine — the plain "speed vs damage vs
 reach" spread is the bread and butter; rule-carrying items are the spice.
+Armor and jewelry are usually the opposite: little or no base stats, one
+good rule (Leather Armor: *when* taking damage, *then* −1, floor 1;
+Headband of Learning: *when* earning XP, *then* ×1.05).
 
 More examples of the range of what cards can express:
 
@@ -303,13 +344,17 @@ registry, which every gear card and species passive feeds today.
 
 ```
 ### <Name>
-Type:       gear / species / class tweak / mechanic
-Slot/lane:  (gear: close|ranged + which class; else: n/a)
-Base stats: (gear: damage / range / area; species & mechanics: n/a)
+Type:       gear / consumable / species / class tweak / mechanic
+Item type:  (gear: one of the 12 item types from §4 — the slot follows;
+             else: n/a)
+Wearable by: (gear: class list or "any" — see §4; else: n/a)
+Base stats: (weapons: damage / range / area; consumables: heal N;
+             armor/jewelry, species & mechanics: usually n/a)
 Rules:
   - WHEN <attack-roll | deal-damage | take-damage | earn-XP | on-kill>
     IF   <condition(s), or "always">
     THEN <add/subtract N | +N% | chance-based …>
+  (consumables carry no rules — their effect is the drink action itself)
 Intent:     one sentence — the feeling or decision this creates
 Fantasy:    optional — name/flavor/description text
 Questions:  anything you're unsure the engine can do (→ tier 2/3 check)

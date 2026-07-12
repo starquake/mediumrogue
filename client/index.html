@@ -10,6 +10,7 @@
         --fg: #c8e6c9;
         --dim: #5a7a5c;
         --bg: #0b0f0b;
+        --accent: #7cb342;
       }
       * {
         box-sizing: border-box;
@@ -112,6 +113,32 @@
       #copy-link.copied {
         color: #7cb342;
         border-color: #7cb342;
+      }
+      /* Inventory toggle: the character/paper-doll panel is large, so it is
+         not always-on — the `i` key (input/keys.ts) and this HUD button open
+         and close it. Same click-through-HUD discipline as #copy-link. */
+      #toggle-inventory {
+        display: block;
+        margin-top: 0.4rem;
+        padding: 0.15rem 0.5rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        color: var(--fg);
+        background: #16201a;
+        border: 1px solid var(--dim);
+        cursor: pointer;
+        pointer-events: auto;
+      }
+      #toggle-inventory:hover {
+        background: #2a3d2b;
+        border-color: var(--accent);
+      }
+      #toggle-inventory[hidden] {
+        display: none;
+      }
+      #toggle-inventory.open {
+        color: var(--accent);
+        border-color: var(--accent);
       }
       #turn-timer {
         margin-top: 0.4rem;
@@ -420,8 +447,7 @@
         overflow-y: auto;
         scrollbar-width: thin;
       }
-      #quest-root,
-      #gear-root {
+      #quest-root {
         pointer-events: none;
       }
       #quest-panel {
@@ -475,76 +501,376 @@
         padding-left: 1.2em;
         text-indent: -1.2em;
       }
-      /* Gear panel: second member of the #left-panels column (see above);
-         same opaque-panel-in-click-through-root discipline as the others. */
-      #gear-panel {
+      /* Character / paper-doll panel (inventory-slots milestone): the
+         Vitruvian hex-slot layout from the approved mockup
+         (scratchpad/inventory-mock.html). A large, TOGGLEABLE overlay (the
+         `i` key / #toggle-inventory) anchored left so the camera-centred
+         player stays visible; hidden until opened. Click-through root, opaque
+         panel — same discipline as the other overlays. */
+      #character-root,
+      #pickup-root {
+        position: fixed;
+        z-index: 15;
+        pointer-events: none;
+      }
+      #character-root {
+        /* Below the HUD (turn/stats/buttons/timer) so it never covers the
+           inventory-toggle button; a solid panel (below) then fully covers
+           the quest board while open — an inventory screen, not a peek. */
+        top: 8rem;
+        left: 1rem;
+        max-height: calc(100vh - 9rem);
+        overflow-y: auto;
+      }
+      /* Pickup modal: appears on walk-over regardless of the character panel
+         (spec) — centred near the top, above the character panel. */
+      #pickup-root {
+        top: 5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 25;
+      }
+      .panel {
         pointer-events: auto;
-        /* 23rem, matching #quest-panel (item 5): keeps long item descs
-           ("+3 damage while an ally shares the bubble") to one wrap at
-           most. */
-        width: 23rem;
-        background: rgba(11, 15, 11, 0.85);
+        background: rgba(11, 15, 11, 0.92);
         border: 1px solid var(--dim);
-        padding: 0.4rem 0.6rem;
+        padding: 1rem 1.2rem;
         text-shadow: 0 1px 2px #000;
       }
-      #gear-title {
-        margin-bottom: 0.25rem;
+      #character-panel {
+        pointer-events: auto;
+        /* Solid (not translucent like the mock's isolated panel): in-game it
+           overlays the quest board, which must not bleed through. */
+        background: #0b0f0b;
+        border: 1px solid var(--dim);
+        padding: 1rem 1.2rem;
+        text-shadow: 0 1px 2px #000;
+      }
+      .title {
         color: var(--dim);
         font-size: 0.7rem;
         letter-spacing: 0.2em;
         text-transform: uppercase;
+        margin-bottom: 0.7rem;
       }
-      .gear-row {
+      .panel-head {
         display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 0.15rem 0.4rem;
-        font-size: 0.8rem;
-        line-height: 1.4;
-        margin-bottom: 0.25rem;
+        align-items: center;
+        justify-content: space-between;
       }
-      .gear-row button {
+      .panel-close {
         font-family: inherit;
-        font-size: 0.7rem;
-        color: var(--fg);
-        background: #16201a;
-        border: 1px solid var(--dim);
-        padding: 0.05rem 0.35rem;
-        cursor: pointer;
-      }
-      .gear-row button:hover:not(:disabled) {
-        background: #2a3d2b;
-        border-color: #7cb342;
-      }
-      .gear-row button:disabled {
+        font-size: 1rem;
+        line-height: 1;
         color: var(--dim);
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0 0.2rem;
+      }
+      .panel-close:hover {
+        color: var(--fg);
+      }
+      /* Paper-doll: 8 hex slots positioned on a minimal body silhouette (the
+         mockup's silhouette is a placeholder — a cleaner soft radial hint
+         here; slot arrangement is the binding part). */
+      .doll {
+        position: relative;
+        width: 21rem;
+        height: 26rem;
+      }
+      .hex {
+        position: absolute;
+        width: 5.4rem;
+        height: 6.2rem;
+        clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+        background: var(--dim);
+        border: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.15rem;
+        cursor: pointer;
+        padding: 0.4rem;
+        color: var(--fg);
+        font-family: inherit;
+        isolation: isolate;
+      }
+      /* A clip-path element can't carry a real border — an inset box-shadow
+         gets clipped away on the diagonal edges (the old "border only on the
+         left/right" bug). Instead the parent's background IS the rim, and this
+         inset inner hexagon paints the fill on top, leaving an even edge all
+         the way around. */
+      .hex::before {
+        content: "";
+        position: absolute;
+        inset: 2px;
+        clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+        background: #101710;
+        z-index: 0;
+      }
+      .hex > * {
+        position: relative;
+        z-index: 1;
+      }
+      .hex:disabled {
         cursor: default;
       }
-      .gear-equipped .gear-name {
-        color: #7cb342;
+      .hex.filled {
+        background: var(--accent);
       }
-      /* The "equipped" button is an active unequip toggle (item 2), not a
-         disabled label: green baseline like the equipped name, amber on
-         hover to signal the click's effect flips (equip -> unequip). */
-      .gear-equip-toggle {
-        color: #7cb342;
-        border-color: #4a6b2f;
+      .hex.filled::before {
+        background: #16241a;
       }
-      .gear-equip-toggle:hover:not(:disabled) {
-        background: #3d2f16;
-        border-color: #c98a2b;
-        color: #e0a94a;
+      .hex.filled:hover:not(:disabled)::before {
+        background: #1d3021;
       }
-      .gear-stats {
+      .hex .slotname {
         color: var(--dim);
+        font-size: 0.6rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
       }
-      .gear-desc {
+      .hex .itemname {
+        font-size: 0.62rem;
+        text-align: center;
+        line-height: 1.25;
+        color: var(--fg);
+      }
+      .hex .empty {
+        color: #3d523f;
+        font-size: 1.1rem;
+      }
+      .hex.head {
+        left: 7.8rem;
+        top: 0;
+      }
+      .hex.hands {
+        left: 0.6rem;
+        top: 5rem;
+      }
+      .hex.ring {
+        right: 0.6rem;
+        top: 5rem;
+      }
+      .hex.amulet {
+        left: 7.8rem;
+        top: 6.6rem;
+      }
+      .hex.weap1 {
+        left: 0.6rem;
+        top: 12rem;
+      }
+      .hex.body {
+        left: 7.8rem;
+        top: 13.2rem;
+      }
+      .hex.weap2 {
+        right: 0.6rem;
+        top: 12rem;
+      }
+      .hex.feet {
+        left: 7.8rem;
+        top: 19.8rem;
+      }
+      /* Hover stat tooltip: an item's stats plus the delta vs the item equipped
+         in the same slot. Fixed-positioned beside the hovered hex/cell (see
+         showHover); pointer-events off so it never eats a click. */
+      .stat-tip {
+        position: fixed;
+        z-index: 60;
+        width: 14rem;
+        pointer-events: none;
+        background: #0d140d;
+        border: 1px solid var(--accent);
+        padding: 0.5rem 0.6rem;
+        color: var(--fg);
+        font-size: 0.72rem;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+      }
+      .stat-tip .tt-name {
+        font-weight: bold;
+        margin-bottom: 0.15rem;
+      }
+      .stat-tip .tt-cmp {
         color: var(--dim);
+        font-size: 0.62rem;
+        margin-bottom: 0.35rem;
+      }
+      .stat-tip .tt-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        line-height: 1.6;
+      }
+      .stat-tip .tt-label {
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.58rem;
+        align-self: center;
+      }
+      .stat-tip .tt-val {
+        font-variant-numeric: tabular-nums;
+      }
+      .stat-tip .tt-delta.up {
+        color: #7cd66c;
+      }
+      .stat-tip .tt-delta.down {
+        color: #e06c6c;
+      }
+      .stat-tip .tt-effect {
+        margin-top: 0.4rem;
+        line-height: 1.35;
+        color: var(--fg);
+      }
+      .stat-tip .tt-flavor {
+        margin-top: 0.4rem;
         font-style: italic;
-        /* Rule text gets its own full-width line under name + stats, instead
-           of squeezing into whatever tail space the first line leaves. */
-        flex-basis: 100%;
+        line-height: 1.35;
+        color: var(--dim);
+      }
+      .stat-tip .tt-none {
+        margin-top: 0.4rem;
+        color: var(--dim);
+      }
+      /* Backpack: 4 fixed cells beneath the paper-doll, stack counts + a
+         per-item drop button. */
+      .backpack {
+        display: flex;
+        gap: 0.6rem;
+      }
+      .cell {
+        width: 4.6rem;
+        height: 4.6rem;
+        border: 1px solid var(--dim);
+        background: #101710;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.2rem;
+        position: relative;
+        font-size: 0.62rem;
+        text-align: center;
+        padding: 0.3rem;
+      }
+      .cell.filled {
+        border-color: var(--accent);
+        background: #16241a;
+      }
+      .cell .empty {
+        color: #3d523f;
+        font-size: 1.1rem;
+      }
+      .cell-use {
+        font-family: inherit;
+        font-size: 0.62rem;
+        color: var(--fg);
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: center;
+        line-height: 1.2;
+        padding: 0;
+      }
+      .cell-use:hover:not(:disabled) {
+        color: var(--accent);
+      }
+      .cell-use:disabled {
+        cursor: default;
+        color: var(--dim);
+      }
+      .cell .count {
+        position: absolute;
+        right: 0.25rem;
+        bottom: 0.15rem;
+        color: var(--accent);
+        font-weight: bold;
+        font-size: 0.75rem;
+      }
+      .cell .drop {
+        margin-top: 0.15rem;
+        font-family: inherit;
+        font-size: 0.55rem;
+        color: var(--dim);
+        border: 1px solid var(--dim);
+        padding: 0.05rem 0.3rem;
+        background: #0d130d;
+        cursor: pointer;
+      }
+      .cell .drop:hover:not(:disabled) {
+        color: #ff6b5f;
+        border-color: #ff6b5f;
+      }
+      .cell .drop:disabled {
+        cursor: default;
+        opacity: 0.5;
+      }
+      /* Pickup modal: rows of name + type with an individual take button;
+         a rejected row shows inline backpack-full feedback and stays. */
+      .prompt {
+        width: 18rem;
+      }
+      .rowlist {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+      }
+      .grow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        border: 1px solid #22331f;
+        background: #0d130d;
+        padding: 0.45rem 0.6rem;
+      }
+      .grow.rejected {
+        border-color: #5a4a1e;
+      }
+      .grow .itemline {
+        font-size: 0.85rem;
+      }
+      .grow .typeline {
+        color: var(--dim);
+        font-size: 0.75rem;
+      }
+      .grow .full {
+        margin-top: 0.25rem;
+        color: #ffcc33;
+        font-size: 0.68rem;
+      }
+      .grow button {
+        flex: none;
+        width: 4.2rem;
+        padding: 0.3rem;
+        font-family: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+        border: 1px solid var(--accent);
+        background: #1b2b1c;
+        color: var(--fg);
+      }
+      .grow button:disabled {
+        opacity: 0.45;
+        cursor: default;
+        border-color: var(--dim);
+      }
+      #pickup-modal .buttons button {
+        width: 100%;
+        padding: 0.45rem;
+        font-family: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        border: 1px solid var(--dim);
+        background: #16201a;
+        color: var(--fg);
+      }
+      #pickup-modal .buttons button:hover {
+        background: #2a3d2b;
+        border-color: var(--accent);
       }
       /* Enemy hover tooltip (item 13, playtest batch 2): a small DOM tooltip
          near the cursor on a monster hex — pointer-events: none throughout
@@ -580,6 +906,7 @@
         <div id="status" data-connected="false">connecting…</div>
         <div id="stats">Lv — · —/— XP</div>
         <button id="copy-link" type="button" hidden>copy character link</button>
+        <button id="toggle-inventory" type="button" hidden>inventory (i)</button>
         <div id="turn-timer" data-phase="input"><div id="turn-timer-fill"></div></div>
         <div id="combat-panel" hidden>
           In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
@@ -587,9 +914,10 @@
       </header>
       <div id="left-panels">
         <div id="quest-root"></div>
-        <div id="gear-root"></div>
       </div>
     </div>
+    <div id="character-root"></div>
+    <div id="pickup-root"></div>
     <div id="start-screen" hidden>
       <div id="start-panel">
         <h1>Medium Rogue</h1>

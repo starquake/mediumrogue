@@ -147,28 +147,211 @@ export const SpeciesElf = "elf";
 export const SpeciesDwarf = "dwarf";
 /**
  * Intent kinds: the type of an IntentRequest. Kind is required — it must be
- * IntentMove, IntentAttack, or IntentEquip.
+ * one of the constants below. Every inventory action (equip, unequip, drop,
+ * pickup, drink) follows one shared rule: outside a combat bubble it applies
+ * immediately and costs nothing; inside a bubble it is the player's
+ * committed action for that turn.
  */
 export const IntentMove = "move";
 /**
  * Intent kinds: the type of an IntentRequest. Kind is required — it must be
- * IntentMove, IntentAttack, or IntentEquip.
+ * one of the constants below. Every inventory action (equip, unequip, drop,
+ * pickup, drink) follows one shared rule: outside a combat bubble it applies
+ * immediately and costs nothing; inside a bubble it is the player's
+ * committed action for that turn.
  */
 export const IntentAttack = "attack";
 /**
- * IntentEquip equips an owned item (IntentRequest.ItemID). Outside a combat
- * bubble it applies immediately and costs nothing; inside a bubble it is the
- * player's committed action for that turn.
+ * IntentEquip equips an owned item (IntentRequest.ItemID) from the
+ * backpack into its type-derived slot, swapping any displaced occupant
+ * back into the vacated backpack entry. Naming an already-equipped item
+ * toggles it OFF (equivalent to IntentUnequip — playtest batch 2's
+ * toggle behavior, kept).
  */
 export const IntentEquip = "equip";
 /**
- * Item slots: every item definition fills exactly one.
+ * IntentUnequip moves an equipped item (IntentRequest.ItemID) back into a
+ * free backpack entry; rejected if the backpack is full.
  */
-export const ItemSlotClose = "close";
+export const IntentUnequip = "unequip";
 /**
- * Item slots: every item definition fills exactly one.
+ * IntentDrop drops an owned item (IntentRequest.ItemID) — equipped or in
+ * the backpack; a consumable stack drops whole — onto the player's own
+ * hex as ground item(s).
  */
-export const ItemSlotRanged = "ranged";
+export const IntentDrop = "drop";
+/**
+ * IntentPickup picks up one ground item (IntentRequest.GroundItemID) from
+ * the player's own hex: merged into a matching consumable stack first,
+ * else into a free backpack entry; rejected with a clear error if
+ * neither exists. Items never auto-equip on pickup. Replaces walk-over
+ * auto-pickup (the inventory-slots milestone).
+ */
+export const IntentPickup = "pickup";
+/**
+ * IntentDrink drinks one unit of an owned consumable stack
+ * (IntentRequest.ItemID): applies the def's heal (clamped to max HP) and
+ * decrements the stack; an emptied stack frees its backpack entry.
+ */
+export const IntentDrink = "drink";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeMeleeWeapon = "melee-weapon";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeThrownWeapon = "thrown-weapon";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeRangedWeapon = "ranged-weapon";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeStaff = "staff";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeWand = "wand";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeConsumable = "consumable";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeHead = "head";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeBody = "body";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeHands = "hands";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeRing = "ring";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeAmulet = "amulet";
+/**
+ * Item types (the inventory-slots milestone's taxonomy): every item
+ * definition's itemType determines exactly which equip slot it fits
+ * (internal/game's slotForType — the slot key equals the type string itself
+ * for every type except consumable, which has no slot and lives only in the
+ * backpack as a stack). The five weapon types are the class-shaped weapon
+ * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+ * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+ * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+ * feet) are universal gear slots, not class-shaped.
+ */
+export const ItemTypeFeet = "feet";
+/**
+ * BackpackSize is the fixed number of backpack entries every entity has (the
+ * inventory-slots milestone). An entry holds one gear instance, or one
+ * consumable stack (identical defs merge up to ItemStackCap; stacks never
+ * split).
+ */
+export const BackpackSize = 4;
+/**
+ * ItemStackCap is the maximum count of identical consumables in one backpack
+ * stack. Distinct from StackCap (max FRIENDLY ENTITIES on one hex) — same
+ * launch value, unrelated invariant, kept as separate named constants so a
+ * future tuning change to one never accidentally reads as the other.
+ */
+export const ItemStackCap = 5;
 /**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
@@ -399,7 +582,13 @@ export interface ItemView {
   id: number /* int64 */;
   defId: string;
   name: string;
-  slot: string;
+  /**
+   * Type is the item's itemType (the ItemType* consts above); the equip
+   * slot is derived from it (the slot key equals the type for gear;
+   * consumables have no slot). Replaces the pre-inventory two-value Slot
+   * field.
+   */
+  type: string;
   damage: number /* int */;
   rangeHex: number /* int */;
   aoeRadius: number /* int */;
@@ -408,17 +597,32 @@ export interface ItemView {
    * half HP"); empty for rule-less items.
    */
   desc: string;
+  /**
+   * Flavor is the item's authored lore ("Fantasy") line; empty for items
+   * without lore. Cosmetic only — flavor text in the inventory tooltip.
+   */
+  flavor: string;
   equipped: boolean;
+  /**
+   * Count is the stack size for a consumable backpack stack (1..ItemStackCap);
+   * always 1 for gear.
+   */
+  count: number /* int */;
 }
 /**
- * GroundItemView is one dropped item lying on the map, waiting to be walked
- * over. ID is the item instance id (stable client key).
+ * GroundItemView is one dropped stack lying on the map, waiting to be picked
+ * up (IntentPickup). ID is the representative item instance id (stable client
+ * key, and the id a pickup intent names). Type feeds the client's pickup
+ * prompt (name + type); Count is the stack size (a consumable stack drops
+ * whole — 1..ItemStackCap; always 1 for gear).
  */
 export interface GroundItemView {
   id: number /* int64 */;
   hex: Hex;
   defId: string;
   name: string;
+  type: string;
+  count: number /* int */;
 }
 /**
  * Entity is one thing standing on the map: a player or a monster.
@@ -511,15 +715,21 @@ export interface IntentRequest {
   entityId: number /* int64 */;
   token: string;
   /**
-   * Kind is the intent type. Required: must be IntentMove ("move"),
-   * IntentAttack ("attack"), or IntentEquip ("equip").
+   * Kind is the intent type. Required: one of the Intent* constants (move,
+   * attack, equip, unequip, drop, pickup, drink).
    */
   kind: string;
   target: Hex;
   /**
-   * ItemID names the item to equip. Equip intents only.
+   * ItemID names the OWNED item an inventory action targets. Equip,
+   * unequip, drop, and drink intents only.
    */
   itemId: number /* int64 */;
+  /**
+   * GroundItemID names the GROUND item a pickup targets (GroundItemView.ID;
+   * it must lie on the player's own hex). Pickup intents only.
+   */
+  groundItemId: number /* int64 */;
   /**
    * TargetEntityID names a single-target ranged attack's victim by entity
    * id instead of a hex (item 7, playtest batch 2): 0 = none (ground-

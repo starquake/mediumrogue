@@ -1,6 +1,7 @@
 package game_test
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -35,8 +36,9 @@ const (
 // inside the fight (so the shared kill-XP/drop path runs). A real Join
 // (rather than PlaceEntityForTest) gives the player an actual display name,
 // so the announce-text tests can assert the exact "NAME picked up ITEM"
-// wording. Returns the player's id plus the post-kill snapshot.
-func oneHitKillBubble(t *testing.T, w *game.World, seed int64) (int64, protocol.TurnEvent) {
+// wording. Returns the player's join response (id + token — the pickup
+// tests submit real intents) plus the post-kill snapshot.
+func oneHitKillBubble(t *testing.T, w *game.World, seed int64) (protocol.JoinResponse, protocol.TurnEvent) {
 	t.Helper()
 
 	w.SetSeedForTest(seed)
@@ -64,7 +66,7 @@ func oneHitKillBubble(t *testing.T, w *game.World, seed int64) (int64, protocol.
 		t.Fatalf("monster %d should have died to the one-hit-kill bump", monsterID)
 	}
 
-	return playerID, snap
+	return me, snap
 }
 
 // TestPickDropCoversWolfsWholeTable: pickDropFrom, run over wolf's own drop
@@ -109,7 +111,8 @@ func TestKillDropVisibleInSnapshot(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	playerID, snap := oneHitKillBubble(t, w, killDropSeed)
+	me, snap := oneHitKillBubble(t, w, killDropSeed)
+	playerID := me.EntityID
 
 	if got, want := len(snap.GroundItems), 1; got != want {
 		t.Fatalf("len(GroundItems) = %d, want %d", got, want)
@@ -153,11 +156,12 @@ func TestKillMissDropsNothing(t *testing.T) {
 	}
 }
 
-// TestKillDropPickedUpNextTurn: the item dropped this turn (killDropSeed) is
-// not visible to pick up until the earliest a player can walk onto that hex
-// — next turn. Confirms the full drop -> walk-on -> pickup cycle: Items
-// grows, GroundItems empties, and the pickup announces.
-func TestKillDropPickedUpNextTurn(t *testing.T) {
+// TestKillDropPickedUpViaIntent: the item dropped on a kill is collected by
+// walking onto its hex and submitting an explicit pickup INTENT (the
+// inventory-slots milestone removed walk-over auto-pickup). Confirms the
+// full drop -> walk -> pickup-intent cycle: Items grows (unequipped, into
+// the backpack), GroundItems empties, and the pickup announces.
+func TestKillDropPickedUpViaIntent(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -166,13 +170,30 @@ func TestKillDropPickedUpNextTurn(t *testing.T) {
 
 	w.SetAnnounce(func(_, text string) { announced = append(announced, text) })
 
-	playerID, snap := oneHitKillBubble(t, w, killDropSeed)
+	me, snap := oneHitKillBubble(t, w, killDropSeed)
+	playerID := me.EntityID
 
 	corpseHex := snap.GroundItems[0].Hex
 	itemID := snap.GroundItems[0].ID
 
 	w.SetPathForTest(playerID, []protocol.Hex{corpseHex})
-	resolved := step(t, w)
+	walked := step(t, w)
+
+	// Walking onto the item no longer grants it: it is still on the ground.
+	if got, want := len(walked.GroundItems), 1; got != want {
+		t.Fatalf("len(GroundItems) after walk-on = %d, want %d (no auto-pickup)", got, want)
+	}
+
+	// The bubble dissolved with the kill, so the pickup intent is free and
+	// immediate.
+	err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: playerID, Token: me.Token, Kind: protocol.IntentPickup, GroundItemID: itemID,
+	})
+	if err != nil {
+		t.Fatalf("SubmitIntent pickup: %v", err)
+	}
+
+	resolved := w.Snapshot()
 
 	if got, want := len(resolved.GroundItems), 0; got != want {
 		t.Fatalf("len(GroundItems) after pickup = %d, want %d", got, want)
@@ -202,7 +223,7 @@ func TestKillDropPickedUpNextTurn(t *testing.T) {
 
 	// Two lines in order: the kill summary from the turn the monster died —
 	// oneHitKillBubble's solo "hero" (playtest item 3 names a solo killer)
-	// — then the pickup announce from the walk-on a turn later.
+	// — then the pickup announce from the accepted pickup intent.
 	wantMsg := []string{
 		fmt.Sprintf("hero slew a wolf (+%d XP)", game.MonsterXPForTest("wolf")),
 		"hero picked up " + killDropSeedDefName,
@@ -212,11 +233,11 @@ func TestKillDropPickedUpNextTurn(t *testing.T) {
 	}
 }
 
-// TestWalkOnPickupGrantsItemAndClearsGround: a player walking onto a ground
-// item (placed directly via GroundItemForTest, independent of the drop roll)
-// gains the instance and the ground list empties; the pickup announces
-// "NAME picked up ITEM".
-func TestWalkOnPickupGrantsItemAndClearsGround(t *testing.T) {
+// TestWalkOverDoesNotAutoPickup: a player walking onto a ground item no
+// longer auto-collects it (the inventory-slots milestone removed walk-over
+// auto-pickup) — the item stays on the ground until an explicit pickup
+// intent names it, and THAT grants it and announces "NAME picked up ITEM".
+func TestWalkOverDoesNotAutoPickup(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -237,8 +258,25 @@ func TestWalkOnPickupGrantsItemAndClearsGround(t *testing.T) {
 		t.Fatalf("alice's hex = %v, want %v (did not walk onto the item)", got, want)
 	}
 
+	if got, want := len(snap.GroundItems), 1; got != want {
+		t.Fatalf("len(GroundItems) after walk-on = %d, want %d (no auto-pickup)", got, want)
+	}
+
+	if got, want := len(announced), 0; got != want {
+		t.Fatalf("announced = %v, want none (walking over must not collect)", announced)
+	}
+
+	err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: alice.EntityID, Token: alice.Token, Kind: protocol.IntentPickup, GroundItemID: itemID,
+	})
+	if err != nil {
+		t.Fatalf("SubmitIntent pickup: %v", err)
+	}
+
+	snap = w.Snapshot()
+
 	if got, want := len(snap.GroundItems), 0; got != want {
-		t.Fatalf("len(GroundItems) = %d, want %d", got, want)
+		t.Fatalf("len(GroundItems) after pickup intent = %d, want %d", got, want)
 	}
 
 	player, ok := entityOfSnap(snap, alice.EntityID)
@@ -260,12 +298,11 @@ func TestWalkOnPickupGrantsItemAndClearsGround(t *testing.T) {
 	}
 }
 
-// TestTwoPlayersSameHexLowestIDCollects: two players standing on the same
-// hex when an item lands there resolve lowest-id-first — members arrives
-// id-sorted into pickupLocked, mirroring every other simultaneous tie-break
-// in this file (moveAndBumpLocked's victim pick, resolveDeathsLocked's
-// respawn order, ...).
-func TestTwoPlayersSameHexLowestIDCollects(t *testing.T) {
+// TestContestedPickupFirstIntentWins: two players on the same hex both go
+// for the same ground item — the first accepted pickup intent takes it, and
+// the second is rejected with ErrNoSuchGroundItem (the item is gone), the
+// intent-flow analog of the old walk-over lowest-id tie-break.
+func TestContestedPickupFirstIntentWins(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -275,16 +312,25 @@ func TestTwoPlayersSameHexLowestIDCollects(t *testing.T) {
 		t.Skip("origin is not walkable on this map")
 	}
 
-	idA, _ := w.PlaceEntityForTest(target)
-	idB, _ := w.PlaceEntityForTest(target)
-
-	if idA >= idB {
-		t.Fatalf("test assumes PlaceEntityForTest assigns ids in call order: idA=%d idB=%d", idA, idB)
-	}
+	idA, tokenA := w.PlaceEntityForTest(target)
+	idB, tokenB := w.PlaceEntityForTest(target)
 
 	itemID := w.GroundItemForTest(target, "pack-bow")
 
-	snap := step(t, w)
+	err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: idA, Token: tokenA, Kind: protocol.IntentPickup, GroundItemID: itemID,
+	})
+	if err != nil {
+		t.Fatalf("SubmitIntent pickup (A): %v", err)
+	}
+
+	if got, want := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: idB, Token: tokenB, Kind: protocol.IntentPickup, GroundItemID: itemID,
+	}), game.ErrNoSuchGroundItem; !errors.Is(got, want) {
+		t.Errorf("second pickup err = %v, want %v", got, want)
+	}
+
+	snap := w.Snapshot()
 
 	if got, want := len(snap.GroundItems), 0; got != want {
 		t.Fatalf("len(GroundItems) = %d, want %d", got, want)
@@ -298,10 +344,10 @@ func TestTwoPlayersSameHexLowestIDCollects(t *testing.T) {
 	}
 
 	if idx := slices.IndexFunc(a.Items, func(it protocol.ItemView) bool { return it.ID == itemID }); idx == -1 {
-		t.Errorf("lower-id player (A) did not collect the item: %+v", a.Items)
+		t.Errorf("first picker (A) did not collect the item: %+v", a.Items)
 	}
 
 	if got, want := len(b.Items), 1; got != want { // unchanged: just the starting iron sword
-		t.Errorf("higher-id player (B) Items = %d, want %d (must not have collected)", got, want)
+		t.Errorf("loser (B) Items = %d, want %d (must not have collected)", got, want)
 	}
 }

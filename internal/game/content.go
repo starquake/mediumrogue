@@ -49,47 +49,61 @@ func speciesCards(species string) []ruleCard {
 //nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init (mustValidateContent).
 var itemDefs = []*itemDef{
 	// Class defaults.
-	{id: idIronSword, name: "Iron Sword", slot: protocol.ItemSlotClose, class: protocol.ClassFighter, damage: 4},
-	{id: idDagger, name: "Dagger", slot: protocol.ItemSlotClose, class: protocol.ClassRogue, damage: 7},
 	{
-		id: idShortbow, name: "Shortbow", slot: protocol.ItemSlotRanged, class: protocol.ClassRogue,
-		damage: 6, rangeHex: 4,
+		id: idIronSword, name: "Iron Sword", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter}, damage: 4,
 	},
-	{id: idOakStaff, name: "Oak Staff", slot: protocol.ItemSlotClose, class: protocol.ClassMage, damage: 2},
 	{
-		id: idEmberFocus, name: "Ember Focus", slot: protocol.ItemSlotRanged, class: protocol.ClassMage,
-		damage: 4, rangeHex: 4, aoeRadius: 1,
+		id: idDagger, name: "Dagger", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassRogue}, damage: 7,
+	},
+	{
+		id: idShortbow, name: "Shortbow", itemType: protocol.ItemTypeRangedWeapon,
+		wearableBy: []string{protocol.ClassRogue}, damage: 6, rangeHex: 4,
+	},
+	{
+		id: idOakStaff, name: "Oak Staff", itemType: protocol.ItemTypeStaff,
+		wearableBy: []string{protocol.ClassMage}, damage: 2,
+	},
+	{
+		id: idEmberFocus, name: "Ember Focus", itemType: protocol.ItemTypeWand,
+		wearableBy: []string{protocol.ClassMage}, damage: 4, rangeHex: 4, aoeRadius: 1,
 	},
 
 	// Starter drop set.
 	{
-		id: idButchersCleaver, name: "Butcher's Cleaver", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
-		damage: 3, desc: "+3 damage vs targets below half HP",
+		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     3, desc: "+3 damage vs targets below half HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowPct, n: 50}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idIronWarhammer, name: "Iron Warhammer", slot: protocol.ItemSlotClose, class: protocol.ClassFighter,
-		damage: 6, desc: "a flat upgrade over the iron sword — rare",
+		id: idIronWarhammer, name: "Iron Warhammer", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     6, desc: "a flat upgrade over the iron sword — rare",
 	},
 	{
-		id: idVenomFang, name: "Venom Fang", slot: protocol.ItemSlotClose, class: protocol.ClassRogue,
-		damage: 5, desc: "+4 damage vs targets at full HP",
+		id: idVenomFang, name: "Venom Fang", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassRogue},
+		damage:     5, desc: "+4 damage vs targets at full HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}}, then: effect{kind: effAdd, n: 4}},
 		},
 	},
 	{
-		id: idPackBow, name: "Pack Bow", slot: protocol.ItemSlotRanged, class: protocol.ClassRogue,
-		damage: 5, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
+		id: idPackBow, name: "Pack Bow", itemType: protocol.ItemTypeRangedWeapon,
+		wearableBy: []string{protocol.ClassRogue},
+		damage:     5, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAllyInBubble}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idEmberStaff, name: "Ember Staff", slot: protocol.ItemSlotRanged, class: protocol.ClassMage,
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
+		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWand,
+		wearableBy: []string{protocol.ClassMage},
+		damage:     3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
@@ -99,18 +113,20 @@ var itemDefs = []*itemDef{
 	// review in the first-gear correspondence). Authored by the group's
 	// content designer — ids/names/numbers are his cards, transcribed.
 	{
-		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", slot: protocol.ItemSlotClose,
-		class:  protocol.ClassFighter,
-		damage: 4, desc: "+3 damage in a dwarf's hands",
+		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     4, desc: "+3 damage in a dwarf's hands",
+		flavor: "This ancient mattock still holds a razor-sharp edge.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
 				then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idWarMageStaff, name: "Staff of the War Mage", slot: protocol.ItemSlotRanged,
-		class:  protocol.ClassMage,
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWand,
+		wearableBy: []string{protocol.ClassMage},
+		damage:     3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		flavor: "Tuned to eliminate the weakest enemies.",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
 			// boring tail of a fight, and never scales into a boss-killer.
@@ -124,12 +140,48 @@ var itemDefs = []*itemDef{
 	// per-species-style condition against. Dragon-only drop (dragon's own
 	// table, below).
 	{
-		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", slot: protocol.ItemSlotClose,
-		class:  protocol.ClassFighter,
-		damage: 4, desc: "×1.5 damage vs dragons",
+		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     4, desc: "×1.5 damage vs dragons",
+		flavor: "Forged by a legendary hero to slay the evil dragon Werdmullerix.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
 				then: effect{kind: effMulPct, n: 150}},
+		},
+	},
+
+	// Healing Potion (inventory-slots task 2): the first consumable — heal is
+	// a def field consumed by the drink ACTION (inventory.go), not a combat
+	// pipeline event. Registered with the action machinery (its stack/drink
+	// tests need a real consumable); it rides the rat/wolf drop tables at low
+	// weight (task 3 — recovery layer 2 begins).
+	{
+		id: idHealingPotion, name: "Healing Potion", itemType: protocol.ItemTypeConsumable,
+		heal: 5, desc: "drink: +5 HP; stacks to 5",
+	},
+
+	// Inventory-slots starter armor (task 3, the designer's cards): the first
+	// non-weapon gear — leather-armor is the first multi-class WEARABILITY
+	// card (fighter OR rogue; characters stay single-class), and
+	// headband-of-learning defaults to "any" (empty wearableBy, the
+	// armor/jewelry rule).
+	{
+		id: idLeatherArmor, name: "Leather Armor", itemType: protocol.ItemTypeBody,
+		wearableBy: []string{protocol.ClassFighter, protocol.ClassRogue},
+		desc:       "take a little less from every hit",
+		flavor:     "Supple leather that lets you dodge out of harm's way.",
+		rules: []ruleCard{
+			// take-damage −1; applyRules' event-level clamp keeps every landed
+			// hit ≥1 (the card's "floor 1").
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -1}},
+		},
+	},
+	{
+		id: idHeadbandOfLearning, name: "Headband of Learning", itemType: protocol.ItemTypeHead,
+		desc:   "earn 5% more XP",
+		flavor: "Stimulates your tiny little brain, for faster learning.",
+		rules: []ruleCard{
+			{event: evEarnXP, then: effect{kind: effMulPct, n: percentBase + 5}},
 		},
 	},
 }
@@ -160,7 +212,11 @@ var monsterDefs = []*monsterDef{
 		// (a monster must notice a player before it can close into a combat
 		// bubble, or it sits frozen just outside its own aggro range forever).
 		maxHP: 4, damage: 1, xp: 8, aggroRadius: protocol.CombatRadius + 1, dropChance: 10,
-		drops: []drop{{defID: idButchersCleaver, weight: 1}},
+		drops: []drop{
+			{defID: idButchersCleaver, weight: 1},
+			// Low-weight potion (inventory-slots task 3): recovery layer 2.
+			{defID: idHealingPotion, weight: 1},
+		},
 		rings: []int{0, 1},
 	},
 	{
@@ -176,6 +232,11 @@ var monsterDefs = []*monsterDef{
 			{defID: idEmberStaff, weight: 4},
 			{defID: idAncientDwarvenMattock, weight: 4},
 			{defID: idWarMageStaff, weight: 4},
+			// Low-weight potion (inventory-slots task 3): appended LAST so the
+			// pre-existing entries keep their cumulative-weight positions and
+			// the pinned killDropSeed/killMissSeed (drops_test.go) survive
+			// where possible.
+			{defID: idHealingPotion, weight: 2},
 		},
 		rings: []int{1},
 	},

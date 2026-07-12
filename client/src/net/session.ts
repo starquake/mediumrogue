@@ -1,5 +1,5 @@
 import type { ChatRequest, ErrorResponse, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
-import { IntentEquip } from "../protocol.gen";
+import { IntentDrink, IntentDrop, IntentEquip, IntentPickup, IntentUnequip } from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
 
@@ -226,7 +226,7 @@ export async function submitIntent(
   kind: string,
   targetEntityId = 0,
 ): Promise<boolean> {
-  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0, targetEntityId });
+  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0, groundItemId: 0, targetEntityId });
 }
 
 /**
@@ -240,12 +240,72 @@ export async function submitEquip(
   identity: Pick<Identity, "entityId" | "token">,
   itemId: number,
 ): Promise<boolean> {
+  return submitItemAction(identity, IntentEquip, itemId);
+}
+
+/**
+ * Posts an inventory action naming an OWNED item by instance id — equip,
+ * unequip, drop, or drink. Every one follows the shared free-outside/
+ * turn-inside rule server-side; the target hex is unused (the zero hex
+ * satisfies the wire shape). Resolves true on a 202 accept, false on a
+ * typed rejection (e.g. backpack full for an unequip, not drinkable, ...).
+ */
+export async function submitItemAction(
+  identity: Pick<Identity, "entityId" | "token">,
+  kind: string,
+  itemId: number,
+): Promise<boolean> {
   return postIntent({
     entityId: identity.entityId,
     token: identity.token,
     target: { q: 0, r: 0 },
-    kind: IntentEquip,
+    kind,
     itemId,
+    groundItemId: 0,
+    targetEntityId: 0,
+  });
+}
+
+/** Posts an unequip intent for an owned equipped item (rejected if the backpack is full). */
+export async function submitUnequip(
+  identity: Pick<Identity, "entityId" | "token">,
+  itemId: number,
+): Promise<boolean> {
+  return submitItemAction(identity, IntentUnequip, itemId);
+}
+
+/** Posts a drop intent for an owned item (equipped or in the backpack; a stack drops whole). */
+export async function submitDrop(
+  identity: Pick<Identity, "entityId" | "token">,
+  itemId: number,
+): Promise<boolean> {
+  return submitItemAction(identity, IntentDrop, itemId);
+}
+
+/** Posts a drink intent for an owned consumable stack. */
+export async function submitDrink(
+  identity: Pick<Identity, "entityId" | "token">,
+  itemId: number,
+): Promise<boolean> {
+  return submitItemAction(identity, IntentDrink, itemId);
+}
+
+/**
+ * Posts a pickup intent for one ground item on the player's own hex. Resolves
+ * true on a 202 accept, false on a typed rejection (backpack full, or the
+ * item is no longer there) — the caller surfaces a false as per-row feedback.
+ */
+export async function submitPickup(
+  identity: Pick<Identity, "entityId" | "token">,
+  groundItemId: number,
+): Promise<boolean> {
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target: { q: 0, r: 0 },
+    kind: IntentPickup,
+    itemId: 0,
+    groundItemId,
     targetEntityId: 0,
   });
 }

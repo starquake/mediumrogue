@@ -87,7 +87,10 @@ func buildMonsterIndex() {
 
 	for _, def := range monsterDefs {
 		monsterDefByID[def.id] = def
-		def.claws = &itemDef{id: "claws", name: "Claws", slot: protocol.ItemSlotClose, damage: def.damage, rules: def.rules}
+		def.claws = &itemDef{
+			id: "claws", name: "Claws", itemType: protocol.ItemTypeMeleeWeapon,
+			damage: def.damage, rules: def.rules,
+		}
 	}
 }
 

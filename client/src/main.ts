@@ -6,8 +6,22 @@ import { Application, Container } from "pixi.js";
 
 import { mountChat } from "./chat/ChatPanel";
 import { appendChat, messages as chatMessages, sendChat as storeSendChat, setChatToken } from "./chat/store";
-import { mountGear } from "./gear/GearPanel";
-import { clearEquipPending, setInventory } from "./gear/store";
+import { mountCharacter } from "./gear/CharacterPanel";
+import { mountPickup } from "./gear/PickupModal";
+import {
+  backpack as backpackSignal,
+  clearPending,
+  equipped as equippedSignal,
+  markPending,
+  markPickupRejected,
+  modalOpen,
+  panelOpen,
+  pickupRows,
+  refreshPickup,
+  setInventory,
+  setWeaponSlots,
+  togglePanel,
+} from "./gear/store";
 import { bindMovementKeys } from "./input/keys";
 import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
@@ -20,8 +34,12 @@ import {
   loadIdentity,
   onForeignIdentityChange,
   reclaim,
+  submitDrink,
+  submitDrop,
   submitEquip,
   submitIntent,
+  submitPickup,
+  submitUnequip,
 } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
@@ -30,12 +48,18 @@ import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
+  ClassMage,
+  ClassRogue,
   CombatRadius,
   EntityMonster,
   EntityPlayer,
   IntentAttack,
   IntentMove,
-  ItemSlotRanged,
+  ItemTypeMeleeWeapon,
+  ItemTypeRangedWeapon,
+  ItemTypeStaff,
+  ItemTypeThrownWeapon,
+  ItemTypeWand,
   PlaybackSeconds,
   SpeciesHuman,
   StackCap,
@@ -176,8 +200,37 @@ export interface GameDebug {
   questGoalMarkers: { id: number; hex: Hex }[];
   /** This client's entity's owned items (id/defId/equipped), from the latest bundle. Empty until joined. */
   inventory: { id: number; defId: string; equipped: boolean }[];
-  /** Every item lying on the ground, from the latest bundle. */
-  groundItems: { id: number; hex: Hex }[];
+  /**
+   * My equipped gear keyed by slot (itemType) — the paper-doll's filled
+   * slots, from the latest bundle. Empty slots are absent keys. Exposed for
+   * e2e (the panel itself is DOM).
+   */
+  equipped: Record<string, { id: number; defId: string; name: string; type: string }>;
+  /**
+   * My backpack: BackpackSize entries, left-packed (nulls trail). A
+   * consumable entry carries count>1. Exposed for e2e.
+   */
+  backpack: ({ id: number; defId: string; name: string; type: string; count: number } | null)[];
+  /** Whether the character/paper-doll panel is open (the `i` key / HUD button). */
+  panelOpen: boolean;
+  /**
+   * The per-hex pickup modal: whether it is open plus its rows (each a
+   * ground stack's id/name/type/count and whether a take was rejected).
+   * Exposed for e2e; the modal itself is DOM.
+   */
+  pickupModal: {
+    open: boolean;
+    rows: { id: number; name: string; type: string; count: number; rejected: boolean }[];
+  };
+  /**
+   * Test hook: mark a pickup-modal row rejected (the backpack-full feedback
+   * render path), so e2e can exercise the inline ".full" feedback without a
+   * server that can produce a full backpack from class defaults. Drives only
+   * the client render — the server rejection itself is integration-tested.
+   */
+  rejectPickupRow: (groundItemId: number) => void;
+  /** Every item lying on the ground, from the latest bundle (count = stack size). */
+  groundItems: { id: number; hex: Hex; count: number }[];
   /**
    * Damage inferred from the latest bundle by diffing HP against the previous
    * one (the wire carries state, not hit events): one entry per entity that
@@ -225,10 +278,26 @@ function mustGet(id: string): HTMLElement {
   return el;
 }
 
+// weaponSlotsForClass mirrors internal/game's weaponSlotsFor: the two
+// class-shaped weapon-slot itemTypes ([close-ish, ranged-ish]) the paper-doll
+// labels and places. Fighter's thrown slot ships empty (no thrown content),
+// so a fighter's ranged-ish slot always renders empty — matching the server.
+function weaponSlotsForClass(cls: string): [string, string] {
+  switch (cls) {
+    case ClassRogue:
+      return [ItemTypeMeleeWeapon, ItemTypeRangedWeapon];
+    case ClassMage:
+      return [ItemTypeStaff, ItemTypeWand];
+    default: // fighter (and any unknown class): melee + (empty) thrown
+      return [ItemTypeMeleeWeapon, ItemTypeThrownWeapon];
+  }
+}
+
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
 const statsEl = mustGet("stats");
 const copyLinkEl = mustGet("copy-link") as HTMLButtonElement;
+const toggleInventoryEl = mustGet("toggle-inventory") as HTMLButtonElement;
 const turnTimerEl = mustGet("turn-timer");
 const combatPanelEl = mustGet("combat-panel");
 const combatWaitingEl = mustGet("combat-waiting");
@@ -401,6 +470,17 @@ window.game = {
   questGoalMarker: null,
   questGoalMarkers: [],
   inventory: [],
+  equipped: {},
+  backpack: [],
+  panelOpen: false,
+  pickupModal: { open: false, rows: [] },
+  rejectPickupRow: (groundItemId: number): void => {
+    markPickupRejected(groundItemId);
+    window.game.pickupModal = {
+      open: modalOpen(),
+      rows: pickupRows().map((r) => ({ id: r.id, name: r.name, type: r.type, count: r.count, rejected: r.rejected })),
+    };
+  },
   groundItems: [],
   damage: [],
   combatMoves: [],
@@ -688,19 +768,78 @@ async function start(): Promise<void> {
     });
   });
 
-  // equipItem POSTs an equip intent for an owned item (the panel's own
-  // "equip" button). Outside a bubble it applies immediately (still just a
-  // 202 ack here — the swap shows up on the next turn bundle); inside one
-  // it becomes this turn's action, same as any other intent. An equip
-  // supersedes any queued move/attack server-side — clear the
-  // committed-action indicator to match (item 6: "equip -> nothing new",
-  // the button already shows its own pending "…").
-  const equipItem = (itemId: number): void => {
+  // The character panel's inventory actions (equip/unequip/drop/drink) and
+  // the pickup modal's take all POST the matching intent. Outside a bubble
+  // the server applies immediately (the result rides the next turn bundle);
+  // inside one the action becomes this turn's committed action, superseding
+  // any queued move/attack — so clear the committed-action indicator to
+  // match (item 6), and mark the item pending so the click visibly registers
+  // until the next bundle answers. A pickup's target is a GROUND item id (not
+  // owned), so it does not take a pending mark; a rejected pickup (backpack
+  // full — the server 422s, submitPickup resolves false) marks its row.
+  const supersedeCommitted = (): void => {
     window.game.committedAction = null;
     feedbackLayer.setCommitted(null);
-    void submitEquip(identity, itemId);
   };
-  mountGear(mustGet("gear-root"), equipItem);
+
+  // Inventory panel toggle: the HUD button, the `i` key, and the panel's own
+  // close button all route through applyPanelOpen, which keeps the store
+  // signal, the HUD button's open-state class, and window.game.panelOpen in
+  // sync.
+  const applyPanelOpen = (open: boolean): void => {
+    if (panelOpen() !== open) {
+      togglePanel();
+    }
+    toggleInventoryEl.classList.toggle("open", panelOpen());
+    window.game.panelOpen = panelOpen();
+  };
+  const toggleInventory = (): void => applyPanelOpen(!panelOpen());
+
+  const characterActions = {
+    equip: (itemId: number): void => {
+      supersedeCommitted();
+      markPending(itemId);
+      void submitEquip(identity, itemId);
+    },
+    unequip: (itemId: number): void => {
+      supersedeCommitted();
+      markPending(itemId);
+      void submitUnequip(identity, itemId);
+    },
+    drop: (itemId: number): void => {
+      supersedeCommitted();
+      markPending(itemId);
+      void submitDrop(identity, itemId);
+    },
+    drink: (itemId: number): void => {
+      supersedeCommitted();
+      markPending(itemId);
+      void submitDrink(identity, itemId);
+    },
+    close: (): void => applyPanelOpen(false),
+  };
+
+  mountCharacter(mustGet("character-root"), characterActions);
+  mountPickup(mustGet("pickup-root"), {
+    take: (groundItemId: number): void => {
+      supersedeCommitted();
+      void submitPickup(identity, groundItemId).then((ok) => {
+        if (!ok) markPickupRejected(groundItemId);
+      });
+    },
+  });
+
+  // The character panel's weapon slots are class-shaped — set them once, now
+  // that the joined class is known, so the paper-doll labels and places the
+  // two weapon slots correctly (fighter melee+thrown, rogue melee+ranged,
+  // mage staff+wand).
+  setWeaponSlots(weaponSlotsForClass(joinedClass));
+
+  // The HUD toggle button reveals now that there is a character to show; the
+  // `i` key is bound via bindMovementKeys below (sharing the typing-focus
+  // guard). Both call toggleInventory (defined above).
+  toggleInventoryEl.hidden = false;
+  toggleInventoryEl.addEventListener("click", toggleInventory);
 
   // Re-join tracking: if this client's entity is absent from turn bundles for
   // a sustained spell, the disconnect-grace sweep removed it server-side (the
@@ -710,6 +849,9 @@ async function start(): Promise<void> {
   let missingSinceMs: number | null = null;
   let rejoining = false;
   let eventsController: EventsController;
+  // My hex on the previous bundle, so the pickup modal can tell a walk-over
+  // (open) from staying put (respect a dismissal) — see refreshPickup.
+  let lastPickupHex: Hex | null = null;
 
   // attemptRejoin reclaims OUR OWN already-known token (never re-reads
   // localStorage — see session.reclaim's doc, item 2 playtest feedback
@@ -843,12 +985,12 @@ async function start(): Promise<void> {
         window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
 
       if (self || inList(lastReach.moves, target)) {
-        clearEquipPending(); // a real intent replaces a queued in-bubble equip
+        clearPending(); // a real intent replaces a queued in-bubble action
         return walkTo(target);
       }
 
       if (inList(lastReach.bumps, target)) {
-        clearEquipPending();
+        clearPending();
         if (myRangedAoeRadius > 0 && isRangedAttackClick(target)) {
           return attackAt(target); // mage: blast the adjacent hostile
         }
@@ -856,7 +998,7 @@ async function start(): Promise<void> {
       }
 
       if (isRangedAttackClick(target)) {
-        clearEquipPending();
+        clearPending();
         return attackAt(target);
       }
 
@@ -865,7 +1007,7 @@ async function start(): Promise<void> {
 
     // A map click replaces a queued in-bubble equip server-side (latest
     // intent wins) — release its button's pending "…" to match.
-    clearEquipPending();
+    clearPending();
 
     return walkTo(target);
   };
@@ -971,17 +1113,23 @@ async function start(): Promise<void> {
         statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP · (${mine.hex.q}, ${mine.hex.r})`;
 
         // Gear: my owned items ride Entity.Items every bundle (full-snapshot
-        // philosophy, same as everything else here). The equipped ranged
-        // item's range/AoE radius (if any) also drives the click-vs-move UX
-        // hint above (isRangedAttackClick) — read here rather than mirrored
-        // as a client-side literal (milestone 6b.4).
+        // philosophy, same as everything else here). setInventory feeds the
+        // paper-doll's slot-keyed equipped map + backpack; the mirrors below
+        // expose the same to window.game for e2e. The equipped ranged item's
+        // range/AoE radius (if any) also drives the click-vs-move UX hint
+        // above (isRangedAttackClick) — the ranged-ish weapon types are
+        // thrown-weapon/ranged-weapon/wand.
         setInventory(mine.items);
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
           defId: it.defId,
           equipped: it.equipped,
         }));
-        const rangedItem = mine.items.find((it: ItemView) => it.slot === ItemSlotRanged && it.equipped);
+        window.game.equipped = equippedSignal();
+        window.game.backpack = backpackSignal();
+
+        const rangedTypes: string[] = [ItemTypeThrownWeapon, ItemTypeRangedWeapon, ItemTypeWand];
+        const rangedItem = mine.items.find((it: ItemView) => rangedTypes.includes(it.type) && it.equipped);
         myRangedRangeHex = rangedItem?.rangeHex ?? null;
         myRangedAoeRadius = rangedItem?.aoeRadius ?? 0;
       }
@@ -990,7 +1138,32 @@ async function start(): Promise<void> {
       // wholesale each turn (full-snapshot philosophy) regardless of join
       // status — a drop is visible to everyone, not just its eventual picker.
       groundItemLayer.update(event.groundItems);
-      window.game.groundItems = event.groundItems.map((gi: GroundItemView) => ({ id: gi.id, hex: gi.hex }));
+      window.game.groundItems = event.groundItems.map((gi: GroundItemView) => ({
+        id: gi.id,
+        hex: gi.hex,
+        count: gi.count,
+      }));
+
+      // Pickup modal (inventory-slots milestone): every ground stack lying on
+      // MY current hex becomes a modal row (name + type + count). The modal
+      // opens on walk-over regardless of the character panel; it stays
+      // dismissed while I remain on the hex (refreshPickup tracks a hex change
+      // to reopen on re-entry). moved = my hex differs from the previous bundle's.
+      const myHex = mine?.hex ?? null;
+      const moved = myHex !== null && (lastPickupHex === null || myHex.q !== lastPickupHex.q || myHex.r !== lastPickupHex.r);
+      lastPickupHex = myHex;
+      const rowsHere =
+        myHex === null
+          ? []
+          : event.groundItems
+              .filter((gi) => gi.hex.q === myHex.q && gi.hex.r === myHex.r)
+              .map((gi: GroundItemView) => ({ id: gi.id, name: gi.name, type: gi.type, count: gi.count }));
+      refreshPickup(rowsHere, moved);
+      window.game.pickupModal = {
+        open: modalOpen(),
+        rows: pickupRows().map((r) => ({ id: r.id, name: r.name, type: r.type, count: r.count, rejected: r.rejected })),
+      };
+      window.game.panelOpen = panelOpen();
 
       // Party roster: refreshed every turn from the bundle itself (no separate
       // party-membership stream) — solo (partyId 0) always renders an empty
@@ -1146,6 +1319,10 @@ async function start(): Promise<void> {
       }
       void clickTarget(me.hex);
     },
+    // `i` toggles the character/inventory panel — shares the movement keys'
+    // typing-focus guard (input/keys.ts) so typing "i" into chat never opens
+    // it, and the same start-screen block below.
+    onToggleInventory: toggleInventory,
     isBlocked: (): boolean => !startScreenEl.hidden,
   });
 

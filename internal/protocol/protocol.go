@@ -109,21 +109,73 @@ const (
 )
 
 // Intent kinds: the type of an IntentRequest. Kind is required — it must be
-// IntentMove, IntentAttack, or IntentEquip.
+// one of the constants below. Every inventory action (equip, unequip, drop,
+// pickup, drink) follows one shared rule: outside a combat bubble it applies
+// immediately and costs nothing; inside a bubble it is the player's
+// committed action for that turn.
 const (
 	IntentMove   = "move"
 	IntentAttack = "attack"
-	// IntentEquip equips an owned item (IntentRequest.ItemID). Outside a combat
-	// bubble it applies immediately and costs nothing; inside a bubble it is the
-	// player's committed action for that turn.
+	// IntentEquip equips an owned item (IntentRequest.ItemID) from the
+	// backpack into its type-derived slot, swapping any displaced occupant
+	// back into the vacated backpack entry. Naming an already-equipped item
+	// toggles it OFF (equivalent to IntentUnequip — playtest batch 2's
+	// toggle behavior, kept).
 	IntentEquip = "equip"
+	// IntentUnequip moves an equipped item (IntentRequest.ItemID) back into a
+	// free backpack entry; rejected if the backpack is full.
+	IntentUnequip = "unequip"
+	// IntentDrop drops an owned item (IntentRequest.ItemID) — equipped or in
+	// the backpack; a consumable stack drops whole — onto the player's own
+	// hex as ground item(s).
+	IntentDrop = "drop"
+	// IntentPickup picks up one ground item (IntentRequest.GroundItemID) from
+	// the player's own hex: merged into a matching consumable stack first,
+	// else into a free backpack entry; rejected with a clear error if
+	// neither exists. Items never auto-equip on pickup. Replaces walk-over
+	// auto-pickup (the inventory-slots milestone).
+	IntentPickup = "pickup"
+	// IntentDrink drinks one unit of an owned consumable stack
+	// (IntentRequest.ItemID): applies the def's heal (clamped to max HP) and
+	// decrements the stack; an emptied stack frees its backpack entry.
+	IntentDrink = "drink"
 )
 
-// Item slots: every item definition fills exactly one.
+// Item types (the inventory-slots milestone's taxonomy): every item
+// definition's itemType determines exactly which equip slot it fits
+// (internal/game's slotForType — the slot key equals the type string itself
+// for every type except consumable, which has no slot and lives only in the
+// backpack as a stack). The five weapon types are the class-shaped weapon
+// slots: fighter wears melee-weapon + thrown-weapon, rogue wears
+// melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
+// weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
+// feet) are universal gear slots, not class-shaped.
 const (
-	ItemSlotClose  = "close"
-	ItemSlotRanged = "ranged"
+	ItemTypeMeleeWeapon  = "melee-weapon"
+	ItemTypeThrownWeapon = "thrown-weapon"
+	ItemTypeRangedWeapon = "ranged-weapon"
+	ItemTypeStaff        = "staff"
+	ItemTypeWand         = "wand"
+	ItemTypeConsumable   = "consumable"
+	ItemTypeHead         = "head"
+	ItemTypeBody         = "body"
+	ItemTypeHands        = "hands"
+	ItemTypeRing         = "ring"
+	ItemTypeAmulet       = "amulet"
+	ItemTypeFeet         = "feet"
 )
+
+// BackpackSize is the fixed number of backpack entries every entity has (the
+// inventory-slots milestone). An entry holds one gear instance, or one
+// consumable stack (identical defs merge up to ItemStackCap; stacks never
+// split).
+const BackpackSize = 4
+
+// ItemStackCap is the maximum count of identical consumables in one backpack
+// stack. Distinct from StackCap (max FRIENDLY ENTITIES on one hex) — same
+// launch value, unrelated invariant, kept as separate named constants so a
+// future tuning change to one never accidentally reads as the other.
+const ItemStackCap = 5
 
 // Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
 // the client can show health bars once combat (6.3) starts changing it.
@@ -304,26 +356,41 @@ type QuestView struct {
 // whether it currently sits in its slot. The numbers ride the wire so the
 // client never compiles against item content.
 type ItemView struct {
-	ID        int64  `json:"id"`
-	DefID     string `json:"defId"`
-	Name      string `json:"name"`
-	Slot      string `json:"slot"`
+	ID    int64  `json:"id"`
+	DefID string `json:"defId"`
+	Name  string `json:"name"`
+	// Type is the item's itemType (the ItemType* consts above); the equip
+	// slot is derived from it (the slot key equals the type for gear;
+	// consumables have no slot). Replaces the pre-inventory two-value Slot
+	// field.
+	Type      string `json:"type"`
 	Damage    int    `json:"damage"`
 	RangeHex  int    `json:"rangeHex"`
 	AoERadius int    `json:"aoeRadius"`
 	// Desc is the authored human-readable rule text ("+3 vs targets below
 	// half HP"); empty for rule-less items.
-	Desc     string `json:"desc"`
+	Desc string `json:"desc"`
+	// Flavor is the item's authored lore ("Fantasy") line; empty for items
+	// without lore. Cosmetic only — flavor text in the inventory tooltip.
+	Flavor   string `json:"flavor"`
 	Equipped bool   `json:"equipped"`
+	// Count is the stack size for a consumable backpack stack (1..ItemStackCap);
+	// always 1 for gear.
+	Count int `json:"count"`
 }
 
-// GroundItemView is one dropped item lying on the map, waiting to be walked
-// over. ID is the item instance id (stable client key).
+// GroundItemView is one dropped stack lying on the map, waiting to be picked
+// up (IntentPickup). ID is the representative item instance id (stable client
+// key, and the id a pickup intent names). Type feeds the client's pickup
+// prompt (name + type); Count is the stack size (a consumable stack drops
+// whole — 1..ItemStackCap; always 1 for gear).
 type GroundItemView struct {
 	ID    int64  `json:"id"`
 	Hex   Hex    `json:"hex"`
 	DefID string `json:"defId"`
 	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Count int    `json:"count"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.
@@ -393,12 +460,16 @@ type JoinResponse struct {
 type IntentRequest struct {
 	EntityID int64  `json:"entityId"`
 	Token    string `json:"token"`
-	// Kind is the intent type. Required: must be IntentMove ("move"),
-	// IntentAttack ("attack"), or IntentEquip ("equip").
+	// Kind is the intent type. Required: one of the Intent* constants (move,
+	// attack, equip, unequip, drop, pickup, drink).
 	Kind   string `json:"kind"`
 	Target Hex    `json:"target"`
-	// ItemID names the item to equip. Equip intents only.
+	// ItemID names the OWNED item an inventory action targets. Equip,
+	// unequip, drop, and drink intents only.
 	ItemID int64 `json:"itemId"`
+	// GroundItemID names the GROUND item a pickup targets (GroundItemView.ID;
+	// it must lie on the player's own hex). Pickup intents only.
+	GroundItemID int64 `json:"groundItemId"`
 	// TargetEntityID names a single-target ranged attack's victim by entity
 	// id instead of a hex (item 7, playtest batch 2): 0 = none (ground-
 	// targeted — a mage's AoE cast, whose blast radius makes a hex the

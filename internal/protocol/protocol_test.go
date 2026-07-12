@@ -30,12 +30,13 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 						ID:        7,
 						DefID:     "sword",
 						Name:      "Sword",
-						Slot:      protocol.ItemSlotClose,
+						Type:      protocol.ItemTypeMeleeWeapon,
 						Damage:    4,
 						RangeHex:  1,
 						AoERadius: 0,
 						Desc:      "+3 vs targets below half HP",
 						Equipped:  true,
+						Count:     1,
 					},
 				},
 			},
@@ -46,6 +47,7 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 				Hex:   protocol.Hex{Q: 2, R: -1},
 				DefID: "bow",
 				Name:  "Bow",
+				Type:  protocol.ItemTypeRangedWeapon,
 			},
 		},
 	}
@@ -82,8 +84,12 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 		t.Errorf("ItemView.Name = %q, want %q", got, want)
 	}
 
-	if got, want := gotItem.Slot, wantItem.Slot; got != want {
-		t.Errorf("ItemView.Slot = %q, want %q", got, want)
+	if got, want := gotItem.Type, wantItem.Type; got != want {
+		t.Errorf("ItemView.Type = %q, want %q", got, want)
+	}
+
+	if got, want := gotItem.Count, wantItem.Count; got != want {
+		t.Errorf("ItemView.Count = %d, want %d", got, want)
 	}
 
 	if got, want := gotItem.Damage, wantItem.Damage; got != want {
@@ -125,6 +131,10 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 
 	if got, want := gotGround.Name, wantGround.Name; got != want {
 		t.Errorf("GroundItemView.Name = %q, want %q", got, want)
+	}
+
+	if got, want := gotGround.Type, wantGround.Type; got != want {
+		t.Errorf("GroundItemView.Type = %q, want %q", got, want)
 	}
 }
 

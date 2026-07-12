@@ -10,6 +10,18 @@ import { hexDistance, hexToPixel, HEX_SIZE, type Point } from "./hex";
 // map; it cuts straight to the new spot instead, matching a respawn's feel.
 const TELEPORT_HEX_DISTANCE = 8;
 
+// A move glides over this fixed, snappy window rather than the whole playback
+// phase — one hex step should read as a quick, deliberate step, not a slow
+// drift across the turn. Capped to the playback window in update() so a dot
+// always settles before the input phase opens.
+const MOVE_TWEEN_MS = 200;
+
+// Cubic ease-in-out: a dot accelerates off its old hex and eases into the new
+// one — reads far snappier than the previous linear glide.
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+}
+
 const OTHER_COLOR = 0xc8b458;
 const ME_COLOR = 0x8fd0ff;
 const PARTY_COLOR = 0x8fe08f;
@@ -98,8 +110,9 @@ function glyphFor(e: Entity): string {
 /**
  * The entity layer: one persistent dot per entity (keyed by id) plus a count
  * badge per stacked hex. On each turn bundle a dot's tween target is set to its
- * new hex; the ticker interpolates from the dot's current position over the
- * playback window, so a move glides instead of snapping. The server snapshot is
+ * new hex; the ticker interpolates from the dot's current position over a short
+ * eased window (MOVE_TWEEN_MS, cubic ease-in-out), so a move reads as a snappy
+ * step instead of a slow linear drift. The server snapshot is
  * authoritative — a short or dropped tween just lands the dot where the next
  * bundle already puts it, never a desync. Badges are static, drawn at the
  * final stacked-hex position; the moving dots underneath carry the motion.
@@ -176,7 +189,7 @@ export class EntityLayer {
         dot.current = teleported ? to : dot.current;
         dot.hex = e.hex;
         dot.elapsed = 0;
-        dot.duration = playbackMs;
+        dot.duration = Math.min(MOVE_TWEEN_MS, playbackMs);
         dot.mine = mine;
         dot.hostile = hostile;
         dot.partymate = partymate;
@@ -268,9 +281,10 @@ export class EntityLayer {
 
       dot.elapsed += ticker.deltaMS;
       const f = dot.duration > 0 ? Math.min(1, dot.elapsed / dot.duration) : 1;
+      const eased = easeInOutCubic(f);
       dot.current = {
-        x: dot.from.x + (dot.to.x - dot.from.x) * f,
-        y: dot.from.y + (dot.to.y - dot.from.y) * f,
+        x: dot.from.x + (dot.to.x - dot.from.x) * eased,
+        y: dot.from.y + (dot.to.y - dot.from.y) * eased,
       };
       this.drawDot(dot);
     }
