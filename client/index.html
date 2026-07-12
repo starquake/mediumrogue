@@ -578,16 +578,13 @@
         position: relative;
         width: 21rem;
         height: 26rem;
-        background:
-          radial-gradient(ellipse 20% 22% at 50% 40%, #16211570 0 60%, transparent 61%),
-          radial-gradient(ellipse 15% 8% at 50% 13%, #16211550 0 60%, transparent 61%);
       }
       .hex {
         position: absolute;
         width: 5.4rem;
         height: 6.2rem;
         clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-        background: #101710;
+        background: var(--dim);
         border: none;
         display: flex;
         flex-direction: column;
@@ -598,16 +595,35 @@
         padding: 0.4rem;
         color: var(--fg);
         font-family: inherit;
-        box-shadow: 0 0 0 2px var(--dim) inset;
+        isolation: isolate;
+      }
+      /* A clip-path element can't carry a real border — an inset box-shadow
+         gets clipped away on the diagonal edges (the old "border only on the
+         left/right" bug). Instead the parent's background IS the rim, and this
+         inset inner hexagon paints the fill on top, leaving an even edge all
+         the way around. */
+      .hex::before {
+        content: "";
+        position: absolute;
+        inset: 2px;
+        clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+        background: #101710;
+        z-index: 0;
+      }
+      .hex > * {
+        position: relative;
+        z-index: 1;
       }
       .hex:disabled {
         cursor: default;
       }
       .hex.filled {
-        box-shadow: 0 0 0 2px var(--accent) inset;
+        background: var(--accent);
+      }
+      .hex.filled::before {
         background: #16241a;
       }
-      .hex.filled:hover:not(:disabled) {
+      .hex.filled:hover:not(:disabled)::before {
         background: #1d3021;
       }
       .hex .slotname {
