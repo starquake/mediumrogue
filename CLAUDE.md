@@ -20,7 +20,10 @@ never from memory.
 
 - **Go server** (module root, standard go.dev server layout): authoritative
   simulation. `cmd/rogue` → `cmd/rogue/app` (lifecycle) → `internal/server`
-  (HTTP/SSE) → `internal/game` (world clock, later: turn resolution).
+  (HTTP/SSE) → `internal/game` (world clock, turn resolution, combat bubbles,
+  the modifier pipeline, content registries). State is in-memory with a
+  versioned JSON snapshot to disk (`internal/game/snapshot.go`); SQLite is
+  the decided *later* upgrade for runtime state (plan §7), not built.
 - **TypeScript + PixiJS client** (`client/`, Vite): renderer + intent sender.
   Built bundle is embedded into the Go binary via `internal/web` (go:embed).
 - **Wire**: HTTP POST up (intents), SSE down (`/api/events`: turn bundles,
@@ -56,6 +59,71 @@ Go may not be on PATH; the Makefile falls back to `/usr/local/go/bin/go`.
   precisely so tests can shrink them — thread new intervals the same way.
 - Game-rule constants (turn cadence, combat radius, stack cap) live in
   `internal/protocol` so both sides compile against the same numbers.
+
+### Domain patterns (established — follow, don't reinvent)
+
+- **Combat is a modifier pipeline** (`internal/game/rules.go`): species, gear,
+  and buffs are **pure-data rule cards** (a struct of string kinds + ints,
+  never a Go closure — the SQLite-serialization prerequisite) folded onto a
+  value at defined events (`deal-damage`, `take-damage`, `earn-xp`, …). Add an
+  effect by adding a card in `content.go`, not by editing a combat site.
+  Adding an event/condition/effect kind means updating **three** places that
+  must agree: the const block + `conditionHolds` in `rules.go`, and
+  `validateRuleCards` in `items.go` (a cross-reference comment marks them).
+- **Content lives in registries validated at init, fail-loud**: items and
+  monster kinds are data tables (`content.go`) indexed and checked by
+  `mustValidateContent()` at package init — a content bug **panics at process
+  start**, never mid-combat. New content is a table entry, not code.
+- **Determinism is load-bearing**: all randomness goes through a per-scope
+  seeded PCG (`math/rand/v2`); **sort any map-derived slice before drawing**
+  from rng. When a change reorders rng consumption, existing seeded tests
+  shift — **re-derive** their expected values, never weaken the assertion.
+  When migrating a value (e.g. a renamed monster), keep its numbers *byte-
+  identical* so pinned seeds survive.
+- **Snapshots are versioned** (`snapshot.go`, `snapshotVersion`): bump the
+  version on any state-shape change; on a version/seed/radius mismatch the
+  loader **rejects, preserves the file aside (`.rejected-<ts>`), and starts
+  fresh** — never migrate (the no-backward-compat rule applies to disk as to
+  the wire, pre-launch). JSON tags live on snapshot-private DTOs, never on the
+  `entity` struct — disk and wire stay decoupled.
+- **Structured logs are filterable event streams** (`log/slog`): combat and
+  identity events carry a category key (`"combat"`, `"identity"`) so they're
+  greppable apart from ordinary logs; secrets (tokens) are logged as an
+  8-char prefix, never in full. This is the seed of the analytics milestone.
+
+### Client (SolidJS + PixiJS) conventions
+
+- **Use `<Index>`, not `<For>`, for any list rendered from a turn bundle**
+  (inventory, backpack, quest rows, modal rows…). The client rebuilds state
+  from a full snapshot every turn, minting fresh object references; `<For>`
+  keys by reference and remounts the DOM every bundle, dropping in-flight
+  clicks (→ CI e2e `locator.click` timeouts). `<Index>` keys by position —
+  stable DOM. This bug has recurred several times; it is the default trap.
+- **De-race e2e by fixing the cause, never by raising timeouts**: poll on
+  `window.game.turn` increments or a `window.game` state flip before
+  asserting DOM (no `sleep`); open a default-closed panel and *confirm* it's
+  open before clicking its contents; reproduce a flake with
+  `--repeat-each=3 --workers=9` before declaring it fixed. Local-green /
+  CI-red is normal — CI is slower and headless.
+- **`window.game` is the test-and-debug surface** — every client feature that
+  adds state adds a field, synced when the real state changes (not a bundle
+  late). It is a design rule, not an afterthought.
+
+## How work lands
+
+- **Everything lands via a pull request**, never a direct push to `main`.
+- **Merge gate:** only merge a PR carrying the **`ready to merge`** label —
+  it *is* the review approval (GitHub won't let the author approve their own
+  PR). Check the label immediately before merging; if absent, surface it and
+  wait — adding it is the maintainer's signal.
+- **Milestone slices are designed before they're built**: write the spec, then
+  the implementation plan (`docs/superpowers/specs|plans/`), commit them, and
+  **pause for review** before writing code — do not auto-proceed plan →
+  implementation.
+- **Visual/looks-driven work gets a mockup first**: build an HTML mockup,
+  screenshot it, and get approval **before** implementing the real UI (a CRT
+  filter was built and rejected post-hoc; a paper-doll inventory was approved
+  from a mockup and built once).
 
 ## Maintenance reminders
 

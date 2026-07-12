@@ -8,10 +8,11 @@ description: >
 ---
 
 You are working on **mediumrogue**, a Go backend for a browser-based
-multiplayer roguelike with simultaneous 5-second turns (WeGo). Adapted from the
+multiplayer roguelike with simultaneous 4-second turns (WeGo). Adapted from the
 topbanana backend-dev agent; the database machinery there does **not** apply
-here — mediumrogue keeps all state in memory (JSON snapshots to disk later),
-with no SQLite, sqlc, migrations, or ORM.
+here — mediumrogue keeps all state in memory with a **versioned JSON snapshot**
+to disk (`internal/game/snapshot.go`), no SQLite, sqlc, migrations, or ORM
+(SQLite is the decided *later* upgrade for runtime state — plan §7 — not built).
 
 ## Tech stack
 
@@ -129,10 +130,66 @@ buffer).
 
 ## Key sentinel errors
 
-`internal/game` defines its own sentinel errors — `ErrUnauthorized`,
-`ErrNotWalkable`, `ErrNoPath`, `ErrWorldFull`. Grep the package for
-`errors.New(` for the current set, and `internal/server/api.go` for the
-HTTP-status mapping. Always match with `errors.Is`, never string comparison.
+`internal/game` defines its own sentinel errors (`ErrUnauthorized`,
+`ErrNotWalkable`, `ErrNoPath`, `ErrWorldFull`, and the gear/inventory set —
+`ErrItemNotOwned`, `ErrWrongClass`, and more). **Grep the package for
+`errors.New(` for the current set** (it grows with features), and
+`internal/server/api.go` for the HTTP-status mapping. Always match with
+`errors.Is`, never string comparison.
+
+## Domain patterns (established — follow, don't reinvent)
+
+These are load-bearing conventions the codebase already commits to. Extend
+them; don't invent parallel mechanisms.
+
+- **Combat is a modifier pipeline** (`internal/game/rules.go`). Species, gear,
+  and buffs are **pure-data rule cards** — a `ruleCard` is a struct of string
+  kinds + ints, **never a Go closure** (they must be JSON-serializable for the
+  future SQLite/snapshot path). `applyRules(event, base, cards, ctx)` folds a
+  value at defined events (`deal-damage`, `take-damage`, `earn-xp`,
+  `aggro-range`, …): all `add`s first, then all `mulPct`, then the event
+  clamp. **Add a combat effect by adding a card in `content.go`, not by
+  editing a combat site.** Adding an event/condition/effect *kind* means
+  updating **three** places that must agree, or validation and runtime
+  silently diverge: the const block + `conditionHolds` in `rules.go`, and
+  `validateRuleCards` in `items.go` (a cross-reference comment marks them).
+- **Content is registries validated at init, fail-loud.** Items
+  (`itemDefs`) and monster kinds (`monsterDefs`) are data tables in
+  `content.go`, indexed into `…ByID` maps and checked by `mustValidateContent()`
+  at package `init()` — a bad card (unknown kind, dangling drop reference,
+  aggro ≤ CombatRadius, …) **panics at process start**, never mid-fight. New
+  content is a table entry. An item's class restriction may list several
+  classes (item *wearability*); **characters are always single-class**.
+- **Determinism is a hard requirement.** All randomness is a per-scope seeded
+  PCG (`math/rand/v2`, e.g. `NewPCG(seed, turn)` per resolution; separate
+  fixed streams for spawn placement). **Sort any map-derived slice before
+  drawing** from rng — map iteration order is unspecified. When your change
+  reorders rng consumption, seeded tests shift: **re-derive** the expected
+  values (document the re-derivation in a comment), never weaken the
+  assertion. When you migrate/rename a value, keep its numbers *byte-identical*
+  so pinned seeds survive (this is why `wolf` inherited the old flat monster's
+  exact stats).
+- **Snapshots are versioned; never migrate.** `snapshot.go` marshals a DTO set
+  (`snapshotVersion`); on any state-shape change, **bump the version**. On a
+  version/seed/radius mismatch the app loader **rejects the file, renames it
+  aside (`.rejected-<ts>`), and starts fresh** — pre-launch, the
+  no-backward-compat rule applies to disk exactly as to the wire. JSON tags
+  live on **snapshot-private DTO structs**, never on the unexported `entity`
+  struct — disk and wire stay decoupled. Snapshot writes `fsync` before
+  rename (durable vs power loss). Persist entities incl. monsters; zero every
+  transient (paths, pending actions, bubbleID, streams) on restore; restored
+  players get load-time `disconnectedAt`.
+- **Structured logs are filterable event streams** (`log/slog`). Combat and
+  identity events carry a category key — `slog.Info("combat", "event", …)`,
+  `slog.Info("identity", "event", …)` — so they grep apart from ordinary
+  server logs (the analytics-milestone seed). Log secrets (tokens) as an
+  8-char prefix, never in full.
+- **Actions that touch combat state obey the bubble rule**: an intent
+  (move, attack, equip, and any later inventory action) is **free and
+  immediate outside a combat bubble, but is the player's whole turn inside
+  one** — mirror `queueEquipLocked`'s shape (queue + lock-in inside a bubble;
+  apply now outside). A bubble turn never resolves faster than the world
+  interval (the turn floor), so a solo player can't spam-resolve.
 
 ## Testing conventions
 
@@ -149,6 +206,15 @@ HTTP-status mapping. Always match with `errors.Is`, never string comparison.
 - **Browser tests** live in `client/e2e/` (Playwright against the real
   embedded-client binary, `make e2e`). The client exposes `window.game` for
   Playwright — keep it in sync when adding client state.
+
+## Docs that ride the same PR
+
+- **`docs/FEATURES.md`** is the implemented-features reference (mechanics,
+  systems, env vars, protocol constants). Any change to a mechanic, config
+  var, constant, pipeline vocabulary, or content updates the relevant
+  FEATURES.md section **in the same PR** — table values come from
+  `internal/protocol`/`internal/config`, never from memory.
+- **`docs/STATUS.md`** gets a session note at the end of a slice.
 
 ## Review loop
 
