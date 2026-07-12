@@ -153,12 +153,17 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
     occupant back into the vacated entry. Naming an already-equipped item
     **unequips** it (toggle).
   - **unequip** — equipped item → a free backpack entry (rejected if full).
-  - **drop** — an owned item (equipped or backpack; a stack drops whole)
-    lands on the player's own hex as ground item(s).
-  - **pickup** — an explicit intent (walk-over auto-pickup is **gone**): the
-    server gives the item a home in priority order — **matching stack merge →
-    free backpack entry → reject** with a clear error the client surfaces
-    ("backpack full — drop something first"). Items never auto-equip.
+  - **drop** — an owned item lands on the player's own hex as a single ground
+    stack: a consumable stack drops **whole** (one ground stack carrying its
+    count — it is not split), gear is count 1.
+  - **pickup** — an explicit intent (walk-over auto-pickup is **gone**), for
+    one whole ground stack: the server gives its units a home in priority
+    order — **top up a matching stack (to the cap) → free backpack entry**;
+    a partial fit takes what fits and **leaves the remainder** on the ground
+    as a smaller stack; nothing fits → **reject** with a clear error the
+    client surfaces ("backpack full — drop something first"). Items never
+    auto-equip. The client modal shows a stack as one row ("Healing Potion
+    ×3 · consumable").
   - **drink** — a consumable: applies its heal (clamped to max HP) and
     decrements the stack; an emptied stack frees its entry.
 - **Client** — a toggleable **paper-doll** panel (the `i` key, sharing the
@@ -366,7 +371,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (28 specs). The client exposes **`window.game`**
+  embedded-client binary (35 e2e tests across 21 spec files). The client exposes **`window.game`**
   (positions incl. `monsterKind`, hp, inventory, equipped, backpack,
   panelOpen, pickupModal, combatMoves, damage events, tapHex, sendChat,
   identityLink…) as the always-in-sync test/debug surface.
@@ -377,8 +382,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   structured `slog`, the milestone-12 analytics seed): every resolution
   path emits `slog.Info("combat", "event",
   ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
-  `fizzle` (reasons: `out_of_range`, `unequipped`, `bump_target_vacated`),
-  `death`, `xp_award`, `pickup` — filterable on the `"combat"` msg key or the
+  `fizzle` (reasons: `out_of_range`, `unequipped`, `bump_target_vacated`,
+  `pending_item_action`), `death`, `xp_award`, `pickup` (item defID, count),
+  `drop` (item defID, count, hex), `drink` (item defID, resulting hp) —
+  filterable on the `"combat"` msg key or the
   `event` attribute. `World.SetLogger` installs the sink (defaults to
   `slog.Default()`, mirrors `SetAnnounce`); `cmd/rogue/app` wires the
   process logger in.

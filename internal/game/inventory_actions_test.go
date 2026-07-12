@@ -217,7 +217,8 @@ func TestDropThenRePickupKeepsIdentity(t *testing.T) {
 }
 
 // TestDropStackDropsWhole: a consumable stack drops WHOLE — its backpack
-// entry frees and every unit lands on the hex (as single ground instances).
+// entry frees and it lands as ONE ground stack carrying its count (not N
+// single instances), and a re-pickup takes the whole stack back in one go.
 func TestDropStackDropsWhole(t *testing.T) {
 	t.Parallel()
 
@@ -249,14 +250,83 @@ func TestDropStackDropsWhole(t *testing.T) {
 	}
 
 	snap := w.Snapshot()
-	if got, want := len(snap.GroundItems), 3; got != want {
-		t.Fatalf("len(GroundItems) = %d, want %d (the whole stack)", got, want)
+	if got, want := len(snap.GroundItems), 1; got != want {
+		t.Fatalf("len(GroundItems) = %d, want %d (dropped whole as ONE stack)", got, want)
 	}
 
-	for _, g := range snap.GroundItems {
-		if got, want := g.DefID, defHealingPotion; got != want {
-			t.Errorf("ground def = %q, want %q", got, want)
-		}
+	ground := snap.GroundItems[0]
+	if got, want := ground.DefID, defHealingPotion; got != want {
+		t.Errorf("ground def = %q, want %q", got, want)
+	}
+
+	if got, want := ground.Count, 3; got != want {
+		t.Errorf("ground stack Count = %d, want %d", got, want)
+	}
+
+	// Re-pickup: the whole stack returns to the backpack in one intent.
+	if err := w.SubmitIntent(pickupIntent(id, token, stackID)); err != nil {
+		t.Fatalf("SubmitIntent pickup whole stack: %v", err)
+	}
+
+	if got, want := len(w.Snapshot().GroundItems), 0; got != want {
+		t.Errorf("len(GroundItems) after re-pickup = %d, want %d", got, want)
+	}
+
+	pack = w.BackpackForTest(id)
+	if got, want := pack[0].Count, 3; got != want {
+		t.Errorf("backpack[0].Count after re-pickup = %d, want %d (whole stack back)", got, want)
+	}
+}
+
+// TestPickupStackPartialFitLeavesRemainder: picking up a ground stack that
+// only partly fits (a nearly-full matching stack + no free entry beyond it)
+// takes what fits and leaves the remainder on the ground as a smaller stack.
+func TestPickupStackPartialFitLeavesRemainder(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	target := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, target) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	id, token := w.PlaceEntityForTest(target)
+
+	// Backpack: a 4-potion stack in entry 0, three gear items filling the
+	// rest — so the only room for potions is the 1 slot left in that stack.
+	for range 4 {
+		w.GrantItemForTest(id, defHealingPotion)
+	}
+
+	for range protocol.BackpackSize - 1 {
+		w.GrantItemForTest(id, defIronWarhammer)
+	}
+
+	// A 3-potion stack on the ground: only 1 fits (topping the stack to 5),
+	// 2 remain on the ground.
+	groundID := w.GroundStackForTest(target, defHealingPotion, 3)
+
+	if err := w.SubmitIntent(pickupIntent(id, token, groundID)); err != nil {
+		t.Fatalf("SubmitIntent partial pickup: %v", err)
+	}
+
+	pack := w.BackpackForTest(id)
+	if got, want := pack[0].Count, protocol.ItemStackCap; got != want {
+		t.Errorf("potion stack after partial pickup = %d, want the cap %d", got, want)
+	}
+
+	snap := w.Snapshot()
+	if got, want := len(snap.GroundItems), 1; got != want {
+		t.Fatalf("len(GroundItems) = %d, want %d (remainder stays)", got, want)
+	}
+
+	if got, want := snap.GroundItems[0].Count, 2; got != want {
+		t.Errorf("ground remainder Count = %d, want %d", got, want)
+	}
+
+	if got, want := snap.GroundItems[0].ID, groundID; got != want {
+		t.Errorf("ground remainder keeps its id = %d, want %d", got, want)
 	}
 }
 
@@ -498,6 +568,28 @@ func TestDrinkGearRejected(t *testing.T) {
 
 	if got, want := w.SubmitIntent(intentFor(me.EntityID, me.Token, protocol.IntentDrink, closeInst)),
 		game.ErrNotDrinkable; !errors.Is(got, want) {
+		t.Errorf("err = %v, want %v", got, want)
+	}
+}
+
+// TestEquipConsumableRejectedAsNotEquippable: equipping a consumable is
+// ErrNotEquippable ("that item can't be equipped"), a distinct error from
+// ErrWrongClass ("item is for a different class") — a consumable has no equip
+// slot at all, it is not merely for the wrong class.
+func TestEquipConsumableRejectedAsNotEquippable(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	potionID := w.GrantItemForTest(me.EntityID, defHealingPotion)
+
+	if got, want := w.SubmitIntent(intentFor(me.EntityID, me.Token, protocol.IntentEquip, potionID)),
+		game.ErrNotEquippable; !errors.Is(got, want) {
 		t.Errorf("err = %v, want %v", got, want)
 	}
 }

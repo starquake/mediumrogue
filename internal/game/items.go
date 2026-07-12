@@ -65,6 +65,16 @@ type backpackEntry struct {
 // empty reports whether this backpack entry holds nothing.
 func (be backpackEntry) empty() bool { return be.count == 0 }
 
+// groundStack is one item lying on the map: a gear instance (count 1) or a
+// whole consumable stack (count 1..protocol.ItemStackCap). Dropping a backpack
+// stack lands it here WHOLE as one groundStack (it is not split into N
+// instances); a monster loot drop is always count 1. The representative
+// instance's id is the stable id a pickup intent names.
+type groundStack struct {
+	inst  itemInstance
+	count int
+}
+
 // fistsDef is the built-in close-slot fallback for an empty-handed player:
 // not in the registry (no instance id, never owned, equipped, or dropped),
 // just the profile closeDefFor returns when a player's melee-ish weapon slot
@@ -175,19 +185,37 @@ func wearableByClass(def *itemDef, class string) bool {
 // no slot; drink, not equip, task 2, is its action) — canEquip always false
 // for one, matching slotForType's "no slot" contract.
 func canEquip(class string, def *itemDef) bool {
-	if def.itemType == protocol.ItemTypeConsumable {
-		return false
+	return equipValidate(class, def) == nil
+}
+
+// equipValidate is canEquip with a REASON: nil if class may equip def, else
+// ErrNotEquippable when def's type has no slot at all (a consumable — drink,
+// not equip, is its action), or ErrWrongClass when it's a slotted item this
+// class can't wear (wearability or weapon-slot shape). The two are distinct
+// so the intent surface can tell "wrong class" from "can't be equipped at
+// all". Callers that only need the boolean use canEquip.
+func equipValidate(class string, def *itemDef) error {
+	if slotForType(def.itemType) == "" {
+		return ErrNotEquippable // no equip slot (consumable)
 	}
 
 	if !wearableByClass(def, class) {
-		return false
+		return ErrWrongClass
 	}
 
 	if isWeaponType(def.itemType) {
-		return classHasWeaponSlot(class, def.itemType)
+		if !classHasWeaponSlot(class, def.itemType) {
+			return ErrWrongClass
+		}
+
+		return nil
 	}
 
-	return isGearType(def.itemType)
+	if !isGearType(def.itemType) {
+		return ErrNotEquippable
+	}
+
+	return nil
 }
 
 // canonicalSlotOrder is every non-consumable item type in a fixed order —

@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -15,22 +15,32 @@ function PickupModal(props: { actions: PickupActions }): JSXElement {
       <div id="pickup-modal" class="panel prompt">
         <div class="title">On the ground — pick what you want</div>
         <div class="rowlist">
-          <For each={pickupRows()}>
+          {/* Index, not For: main.ts rebuilds a fresh rows array every turn
+              bundle, so For (keyed by reference) would remount every row —
+              detaching the "take" button mid-click under load. Index keys by
+              position; the row DOM stays stable, content updates via the
+              accessor. */}
+          <Index each={pickupRows()}>
             {(row) => (
-              <div class="grow" classList={{ rejected: row.rejected }} data-ground={row.id}>
+              <div class="grow" classList={{ rejected: row().rejected }} data-ground={row().id}>
                 <div>
-                  <span class="itemline">{row.name}</span>
-                  <span class="typeline"> · {typeLabel(row.type)}</span>
-                  <Show when={row.rejected}>
+                  <span class="itemline">{row().count > 1 ? `${row().name} ×${row().count}` : row().name}</span>
+                  <span class="typeline"> · {typeLabel(row().type)}</span>
+                  <Show when={row().rejected}>
                     <div class="full">⚠ backpack full — drop something first</div>
                   </Show>
                 </div>
-                <button type="button" class="yes" disabled={row.rejected} onClick={() => props.actions.take(row.id)}>
+                <button
+                  type="button"
+                  class="yes"
+                  disabled={row().rejected}
+                  onClick={() => props.actions.take(row().id)}
+                >
                   take
                 </button>
               </div>
             )}
-          </For>
+          </Index>
         </div>
         <div class="buttons" style="margin-top:.9rem">
           <button type="button" class="pickup-close" onClick={() => dismissPickup()}>

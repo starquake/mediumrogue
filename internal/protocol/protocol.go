@@ -141,16 +141,6 @@ const (
 	IntentDrink = "drink"
 )
 
-// Item slots: every item definition fills exactly one. Deprecated by the
-// inventory-slots milestone's itemType taxonomy below — kept only until the
-// client (task 5) stops reading ItemView.Slot as one of these two coarse
-// values; internal/game no longer produces them (see ItemView.Slot's new
-// doc comment).
-const (
-	ItemSlotClose  = "close"
-	ItemSlotRanged = "ranged"
-)
-
 // Item types (the inventory-slots milestone's taxonomy): every item
 // definition's itemType determines exactly which equip slot it fits
 // (internal/game's slotForType — the slot key equals the type string itself
@@ -386,16 +376,18 @@ type ItemView struct {
 	Count int `json:"count"`
 }
 
-// GroundItemView is one dropped item lying on the map, waiting to be picked
-// up (IntentPickup). ID is the item instance id (stable client key, and the
-// id a pickup intent names). Type feeds the client's pickup prompt
-// (name + type).
+// GroundItemView is one dropped stack lying on the map, waiting to be picked
+// up (IntentPickup). ID is the representative item instance id (stable client
+// key, and the id a pickup intent names). Type feeds the client's pickup
+// prompt (name + type); Count is the stack size (a consumable stack drops
+// whole — 1..ItemStackCap; always 1 for gear).
 type GroundItemView struct {
 	ID    int64  `json:"id"`
 	Hex   Hex    `json:"hex"`
 	DefID string `json:"defId"`
 	Name  string `json:"name"`
 	Type  string `json:"type"`
+	Count int    `json:"count"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.

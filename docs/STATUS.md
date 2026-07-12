@@ -32,7 +32,7 @@ backpack-full feedback, "Close — leave the rest"); `window.game.{equipped,
 backpack,panelOpen,pickupModal}` synced; `inventory.spec.ts` replaces
 `gear.spec`. **Deviation:** backpack-full-rejection / stack-render / drink are
 integration-covered (the monster-free e2e server can't produce a full
-backpack or a consumable from class defaults). `make check` + `make e2e` (28
+backpack or a consumable from class defaults). `make check` + `make e2e` (35
 specs) green. **Next**: merge this PR; then plan §8 tooling (11 admin console,
 12 analytics) or deployment.*
 

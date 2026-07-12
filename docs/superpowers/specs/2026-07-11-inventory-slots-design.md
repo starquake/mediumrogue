@@ -56,19 +56,22 @@ established equip rule extends to everything)
 ## Pickup flow (replaces auto-pickup)
 
 Walking onto a hex with ground items no longer auto-grants. The client
-opens a **modal listing every item on that hex** — one row per item,
-**name + type** (`GroundItemView` gains `type`) — and the player picks the
-ones they want **one by one**: each click sends that item's pickup intent;
-the row leaves the list on success. The server validates each intent's
-free home in priority order: matching empty gear slot? → equip-less pickup
-into backpack first (items never auto-equip), so really: consumable stack
-merge → free backpack entry → otherwise **reject with a clear error**,
-which the modal surfaces as inline feedback on that row ("backpack full —
-drop something first") while the remaining rows stay pickable. Closing the
-modal leaves the remaining items on the ground; it reopens when the player
-leaves and re-enters the hex. Monster loot and player drops behave
-identically. In a combat bubble the modal never blocks the turn clock
-(patience keeps running).
+opens a **modal listing every stack on that hex** — one row per ground
+stack, **name (`×count` for a multi-unit stack) + type** (`GroundItemView`
+gains `type` and `count`) — and the player picks the ones they want **one
+by one**: each click sends that stack's pickup intent; the row leaves the
+list on success. A **dropped consumable stack lands WHOLE** (one ground
+stack carrying its count — not split into N instances). The server takes a
+whole stack in priority order — top up a matching consumable stack (to the
+`≤5` cap) → a free backpack entry; a **partial fit takes what fits and
+leaves the remainder** on the ground as a smaller stack; if nothing fits it
+**rejects with a clear error**, which the modal surfaces as inline feedback
+on that row ("backpack full — drop something first") while the remaining
+rows stay pickable. Items never auto-equip. Closing the modal leaves the
+remaining items on the ground; it reopens when the player leaves and
+re-enters the hex. Monster loot and player drops behave identically. In a
+combat bubble the modal never blocks the turn clock (patience keeps
+running).
 
 ## Starter content (making the systems real)
 

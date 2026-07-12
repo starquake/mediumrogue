@@ -236,7 +236,7 @@ func checkRestoredQuestAndArchive(t *testing.T, w2 *game.World, aliceID int64, b
 	}
 }
 
-// TestSnapshotTransientsZeroed: path, attackTarget, pendingEquip, and
+// TestSnapshotTransientsZeroed: path, attackTarget, pending, and
 // bubbleID (InCombat) are all zeroed on a restored entity, even when they
 // were non-zero at marshal time — none of them ride the snapshot.
 func TestSnapshotTransientsZeroed(t *testing.T) {
@@ -459,7 +459,7 @@ func TestSnapshotMismatchGates(t *testing.T) {
 	})
 }
 
-// TestSnapshotRoundTripInventoryShapes: the v2 disk shape (the
+// TestSnapshotRoundTripInventoryShapes: the v3 disk shape (the
 // inventory-slots milestone) round-trips the slot-keyed equipped map, the
 // backpack with a consumable STACK (count > 1), and an archived character
 // carrying the same shapes — ids, defs, entry indices, and counts all exact.

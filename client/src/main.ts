@@ -215,12 +215,22 @@ export interface GameDebug {
   panelOpen: boolean;
   /**
    * The per-hex pickup modal: whether it is open plus its rows (each a
-   * ground item's id/name/type and whether a take was rejected). Exposed for
-   * e2e; the modal itself is DOM.
+   * ground stack's id/name/type/count and whether a take was rejected).
+   * Exposed for e2e; the modal itself is DOM.
    */
-  pickupModal: { open: boolean; rows: { id: number; name: string; type: string; rejected: boolean }[] };
-  /** Every item lying on the ground, from the latest bundle. */
-  groundItems: { id: number; hex: Hex }[];
+  pickupModal: {
+    open: boolean;
+    rows: { id: number; name: string; type: string; count: number; rejected: boolean }[];
+  };
+  /**
+   * Test hook: mark a pickup-modal row rejected (the backpack-full feedback
+   * render path), so e2e can exercise the inline ".full" feedback without a
+   * server that can produce a full backpack from class defaults. Drives only
+   * the client render — the server rejection itself is integration-tested.
+   */
+  rejectPickupRow: (groundItemId: number) => void;
+  /** Every item lying on the ground, from the latest bundle (count = stack size). */
+  groundItems: { id: number; hex: Hex; count: number }[];
   /**
    * Damage inferred from the latest bundle by diffing HP against the previous
    * one (the wire carries state, not hit events): one entry per entity that
@@ -464,6 +474,13 @@ window.game = {
   backpack: [],
   panelOpen: false,
   pickupModal: { open: false, rows: [] },
+  rejectPickupRow: (groundItemId: number): void => {
+    markPickupRejected(groundItemId);
+    window.game.pickupModal = {
+      open: modalOpen(),
+      rows: pickupRows().map((r) => ({ id: r.id, name: r.name, type: r.type, count: r.count, rejected: r.rejected })),
+    };
+  },
   groundItems: [],
   damage: [],
   combatMoves: [],
@@ -1121,13 +1138,17 @@ async function start(): Promise<void> {
       // wholesale each turn (full-snapshot philosophy) regardless of join
       // status — a drop is visible to everyone, not just its eventual picker.
       groundItemLayer.update(event.groundItems);
-      window.game.groundItems = event.groundItems.map((gi: GroundItemView) => ({ id: gi.id, hex: gi.hex }));
+      window.game.groundItems = event.groundItems.map((gi: GroundItemView) => ({
+        id: gi.id,
+        hex: gi.hex,
+        count: gi.count,
+      }));
 
-      // Pickup modal (inventory-slots milestone): every ground item lying on
-      // MY current hex becomes a modal row (name + type). The modal opens on
-      // walk-over regardless of the character panel; it stays dismissed while
-      // I remain on the hex (refreshPickup tracks a hex change to reopen on
-      // re-entry). moved = my hex differs from the previous bundle's.
+      // Pickup modal (inventory-slots milestone): every ground stack lying on
+      // MY current hex becomes a modal row (name + type + count). The modal
+      // opens on walk-over regardless of the character panel; it stays
+      // dismissed while I remain on the hex (refreshPickup tracks a hex change
+      // to reopen on re-entry). moved = my hex differs from the previous bundle's.
       const myHex = mine?.hex ?? null;
       const moved = myHex !== null && (lastPickupHex === null || myHex.q !== lastPickupHex.q || myHex.r !== lastPickupHex.r);
       lastPickupHex = myHex;
@@ -1136,11 +1157,11 @@ async function start(): Promise<void> {
           ? []
           : event.groundItems
               .filter((gi) => gi.hex.q === myHex.q && gi.hex.r === myHex.r)
-              .map((gi: GroundItemView) => ({ id: gi.id, name: gi.name, type: gi.type }));
+              .map((gi: GroundItemView) => ({ id: gi.id, name: gi.name, type: gi.type, count: gi.count }));
       refreshPickup(rowsHere, moved);
       window.game.pickupModal = {
         open: modalOpen(),
-        rows: pickupRows().map((r) => ({ id: r.id, name: r.name, type: r.type, rejected: r.rejected })),
+        rows: pickupRows().map((r) => ({ id: r.id, name: r.name, type: r.type, count: r.count, rejected: r.rejected })),
       };
       window.game.panelOpen = panelOpen();
 

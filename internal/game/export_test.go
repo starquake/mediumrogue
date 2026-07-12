@@ -645,17 +645,24 @@ func DropTableIDsForTest(kind string) []string {
 	return ids
 }
 
-// GroundItemForTest drops a fresh item instance of defID directly onto hex,
-// bypassing the death-roll (dropLootLocked) entirely, so a pickup test can
-// engineer an exact ground-item board state without seed-hunting a kill's
-// drop roll. Returns the new instance id.
+// GroundItemForTest drops a fresh single ground item (count 1) of defID
+// directly onto hex, bypassing the death-roll (dropLootLocked) entirely, so a
+// pickup test can engineer an exact ground-item board state without
+// seed-hunting a kill's drop roll. Returns the new instance id.
 func (w *World) GroundItemForTest(hex protocol.Hex, defID string) int64 {
+	return w.GroundStackForTest(hex, defID, 1)
+}
+
+// GroundStackForTest drops a fresh ground STACK (count units) of defID onto
+// hex, so a pickup test can engineer a multi-unit consumable stack lying on
+// the ground. Returns the representative instance id.
+func (w *World) GroundStackForTest(hex protocol.Hex, defID string, count int) int64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	w.nextID++
 	inst := itemInstance{id: w.nextID, defID: defID}
-	w.groundItems[hex] = append(w.groundItems[hex], inst)
+	w.groundItems[hex] = append(w.groundItems[hex], groundStack{inst: inst, count: count})
 
 	return inst.id
 }

@@ -80,8 +80,8 @@ func craftInventorySnapshot() []byte {
 			},
 		}},
 		"groundItems": []map[string]any{{
-			"hex":   protocol.Hex{Q: 0, R: 0},
-			"items": []inst{{ID: invGroundFangID, DefID: "venom-fang"}},
+			"hex":    protocol.Hex{Q: 0, R: 0},
+			"stacks": []entry{{Item: inst{ID: invGroundFangID, DefID: "venom-fang"}, Count: 1}},
 		}},
 		"quests":  []any{},
 		"archive": map[string]any{},

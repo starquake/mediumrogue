@@ -1,5 +1,5 @@
-import { For, Show } from "solid-js";
-import type { JSXElement } from "solid-js";
+import { For, Index, Show } from "solid-js";
+import type { Accessor, JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
 import {
@@ -64,8 +64,15 @@ function HexSlot(props: { type: string; cls: string; actions: CharacterActions }
   );
 }
 
-function BackpackCell(props: { entry: BackpackEntry | null; actions: CharacterActions }): JSXElement {
-  const entry = (): BackpackEntry | null => props.entry;
+// BackpackCell takes an ACCESSOR (not a plain value) because it's rendered
+// under <Index>: main.ts rebuilds a fresh backpack array every turn bundle
+// (250ms in e2e), so <For> — which keys by reference — would remount every
+// cell's DOM every bundle, detaching the equip/drop buttons mid-click
+// ("element is not stable"). <Index> keys by POSITION: the cell DOM is
+// stable across bundles, only its content updates via this accessor. (The
+// old GearPanel used the same Index-not-For discipline for the same reason.)
+function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: CharacterActions }): JSXElement {
+  const entry = (): BackpackEntry | null => props.entry();
   const isConsumable = (): boolean => entry()?.type === ItemTypeConsumable;
 
   const cellClick = (): void => {
@@ -128,7 +135,7 @@ function CharacterPanel(props: { actions: CharacterActions }): JSXElement {
           Backpack
         </div>
         <div class="backpack">
-          <For each={backpack()}>{(entry) => <BackpackCell entry={entry} actions={props.actions} />}</For>
+          <Index each={backpack()}>{(entry) => <BackpackCell entry={entry} actions={props.actions} />}</Index>
         </div>
       </div>
     </Show>

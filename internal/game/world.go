@@ -125,6 +125,10 @@ var (
 	ErrItemNotEquipped = errors.New("item is not equipped")
 	// ErrNotDrinkable rejects a drink intent naming a non-consumable item.
 	ErrNotDrinkable = errors.New("item is not drinkable")
+	// ErrNotEquippable rejects an equip intent naming an item whose type has
+	// no equip slot at all (a consumable) — distinct from ErrWrongClass,
+	// which means a slotted item the class can't wear.
+	ErrNotEquippable = errors.New("that item can't be equipped")
 	// ErrNoSuchGroundItem rejects a pickup intent naming a ground item that
 	// is not lying on the player's own hex (stale id, or an item elsewhere).
 	ErrNoSuchGroundItem = errors.New("no such item here")
@@ -322,11 +326,14 @@ type World struct {
 	// via SetAnnounce.
 	announce func(sender, text string)
 	// groundItems is every dropped item currently lying on the map, keyed by
-	// hex. Populated by dropLootLocked (a slain monster's death hex), drained
-	// by pickupLocked (a player walking onto the hex takes everything there).
-	// Instance ids are minted from the same nextID sequence as entities and
-	// owned items — unique across the whole world.
-	groundItems map[protocol.Hex][]itemInstance
+	// hex. Populated by dropLootLocked (a slain monster's death hex) and by a
+	// player drop (dropItemLocked, inventory.go); drained one item at a time
+	// by an explicit pickup intent (pickupGroundLocked — walk-over auto-pickup
+	// was removed with the inventory system). Instance ids are minted from the
+	// same nextID sequence as entities and owned items — unique across the
+	// whole world. Each entry is a groundStack (a consumable stack drops
+	// whole; gear/loot is count 1).
+	groundItems map[protocol.Hex][]groundStack
 	// archive holds characters removed by the disconnect sweep (or loaded
 	// from a snapshot that was never re-claimed live): identity, XP, and
 	// gear, keyed by token. sweepDisconnectedLocked populates an entry in
@@ -412,7 +419,7 @@ func NewWorld(
 		seed:            seed,
 		quests:          generateQuests(worldSeed, worldMap),
 		announce:        func(string, string) {},
-		groundItems:     make(map[protocol.Hex][]itemInstance),
+		groundItems:     make(map[protocol.Hex][]groundStack),
 		archive:         make(map[string]characterRecord),
 	}
 }
@@ -970,8 +977,8 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 		return ErrItemNotOwned
 	}
 
-	if !canEquip(e.class, itemDefByID[inst.defID]) {
-		return ErrWrongClass
+	if err := equipValidate(e.class, itemDefByID[inst.defID]); err != nil {
+		return err
 	}
 
 	return w.commitItemActionLocked(e, protocol.IntentEquip, itemID, func() error {
@@ -1013,27 +1020,20 @@ func (w *World) queueDropLocked(e *entity, itemID int64) error {
 	})
 }
 
-// queuePickupLocked validates and applies/queues a pickup of one ground item
-// from the player's own hex: the item must lie there, and a home must exist
-// in the spec's priority order (mergeable stack > free entry >
-// ErrBackpackFull — validated here too, so a doomed pickup 422s immediately
-// instead of silently fizzling a whole bubble turn). Callers hold w.mu.
+// queuePickupLocked validates and applies/queues a pickup of one ground stack
+// from the player's own hex: the stack must lie there, and there must be room
+// for at least one unit of it — a mergeable consumable stack that isn't full,
+// or a free backpack entry (else ErrBackpackFull, validated here too so a
+// doomed pickup 422s immediately instead of silently fizzling a whole bubble
+// turn). A partial fit is allowed (pickupGroundLocked takes what fits and
+// leaves the remainder). Callers hold w.mu.
 func (w *World) queuePickupLocked(e *entity, groundItemID int64) error {
-	var found *itemInstance
-
-	for _, it := range w.groundItems[e.hex] {
-		if it.id == groundItemID {
-			found = &it
-
-			break
-		}
-	}
-
+	found, _ := w.findGroundStackLocked(e.hex, groundItemID)
 	if found == nil {
 		return ErrNoSuchGroundItem
 	}
 
-	if e.stackIndexFor(found.defID) < 0 && e.freeBackpackIndex() < 0 {
+	if !e.hasRoomForLocked(found.inst.defID) {
 		return ErrBackpackFull
 	}
 
@@ -1115,11 +1115,11 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 	groundItems := make([]protocol.GroundItemView, 0, len(w.groundItems))
 
-	for hex, items := range w.groundItems {
-		for _, it := range items {
-			def := itemDefByID[it.defID]
+	for hex, stacks := range w.groundItems {
+		for _, gs := range stacks {
+			def := itemDefByID[gs.inst.defID]
 			groundItems = append(groundItems, protocol.GroundItemView{
-				ID: it.id, Hex: hex, DefID: it.defID, Name: def.name, Type: def.itemType,
+				ID: gs.inst.id, Hex: hex, DefID: gs.inst.defID, Name: def.name, Type: def.itemType, Count: gs.count,
 			})
 		}
 	}
@@ -2024,31 +2024,9 @@ func (w *World) dropLootLocked(rng *mrand.Rand, k *monsterDef, at protocol.Hex) 
 
 	w.nextID++
 
-	inst := itemInstance{id: w.nextID, defID: defID}
-	w.groundItems[at] = append(w.groundItems[at], inst)
-}
-
-// takeItemLocked gives ground item it a home on player e in the spec's
-// priority order: merge into an existing consumable stack (the merged
-// instance's own id disappears — the stack keeps its representative
-// instance and just counts up), else a free backpack entry, else fails
-// (false; the caller leaves the item where it was). Items never auto-equip
-// on pickup, even into an empty matching slot — equipping is always an
-// explicit action. Callers hold w.mu.
-func (w *World) takeItemLocked(e *entity, it itemInstance) bool {
-	if idx := e.stackIndexFor(it.defID); idx >= 0 {
-		e.backpack[idx].count++
-
-		return true
-	}
-
-	if idx := e.freeBackpackIndex(); idx >= 0 {
-		e.backpack[idx] = backpackEntry{inst: it, count: 1}
-
-		return true
-	}
-
-	return false
+	// A monster loot drop is a single item (count 1) — even a potion, which
+	// stacks only once it is in a backpack.
+	w.groundItems[at] = append(w.groundItems[at], groundStack{inst: itemInstance{id: w.nextID, defID: defID}, count: 1})
 }
 
 // spawnStream is a fixed PCG stream for monster placement, distinct from the

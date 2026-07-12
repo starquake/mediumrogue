@@ -30,6 +30,8 @@ export interface PickupRow {
   id: number;
   name: string;
   type: string;
+  /** Stack size on the ground (a consumable stack drops whole; 1 for gear). */
+  count: number;
   /** Set when a take was rejected (backpack full) — inline feedback shows. */
   rejected: boolean;
 }
@@ -53,10 +55,32 @@ const [modalOpen, setModalOpenSig] = createSignal(false);
 // Item instance ids with an in-flight action (equip/unequip/drop/drink) whose
 // result has not yet ridden a turn bundle — shown as a brief pending mark, so
 // a click in a combat bubble (where the action waits for the turn) still
-// visibly registers.
-const [pending, setPendingSig] = createSignal<Set<number>>(new Set());
+// visibly registers. The value is the item's observable SIGNATURE at
+// mark-time (see itemSignature); a bundle whose signature still matches means
+// the action has not resolved yet (an in-bubble action, or a coalesced
+// world-turn bundle), so the mark is HELD — it clears only once the item's
+// state actually changed, not on any arriving bundle.
+const [pending, setPendingSig] = createSignal<Map<number, string>>(new Map());
 
 export { equipped, backpack, weaponSlots, panelOpen, pickupRows, modalOpen, pending };
+
+// lastItems is the most recent ItemView list — markPending reads it to
+// snapshot an item's signature at click time.
+let lastItems: ItemView[] = [];
+
+// itemSignature is an item's observable state on the wire: "eq" while
+// equipped, "bp:<count>" while a backpack entry, "" when absent. A pending
+// action is resolved the moment this value differs from the one captured
+// when the action was fired (equip↔unequip flip, drink decrement, drop →
+// gone).
+function itemSignature(items: ItemView[], id: number): string {
+  const it = items.find((i) => Number(i.id) === id);
+  if (it === undefined) {
+    return "";
+  }
+
+  return it.equipped ? "eq" : `bp:${it.count}`;
+}
 
 function emptyBackpack(): (BackpackEntry | null)[] {
   return Array.from({ length: BackpackSize }, () => null);
@@ -81,11 +105,12 @@ export function setWeaponSlots(slots: [string, string]): void {
 
 /**
  * Refreshes equipped + backpack from this bundle's ItemView list (equipped
- * items carry Equipped=true; the rest are backpack entries in wire order).
- * Clears the pending mark on any item that reached a settled state (its
- * presence/equipped flag matches nothing still in flight is left as-is — the
- * simplest rule: a fresh bundle clears every pending mark, since by then the
- * server has answered whatever was queued).
+ * items carry Equipped=true; the rest are backpack entries in wire order),
+ * then clears the pending mark on any item whose signature CHANGED since the
+ * action was fired (or that vanished) — the server's answer arrived. An item
+ * still at its mark-time signature keeps its mark (a queued in-bubble action,
+ * or a coalesced world-turn bundle that resolved nothing about it), so the
+ * "…" doesn't flash off early.
  */
 export function setInventory(items: ItemView[]): void {
   const eq: Record<string, SlotItem> = {};
@@ -105,25 +130,48 @@ export function setInventory(items: ItemView[]): void {
   setEquippedSig(eq);
   setBackpackSig(pack);
 
-  // A turn bundle is the server's answer to whatever was queued — clear
-  // every pending mark (a still-queued in-bubble action re-marks itself on
-  // the next click if the player re-submits).
-  if (pending().size > 0) {
-    setPendingSig(new Set<number>());
+  resolvePending(items);
+  lastItems = items;
+}
+
+// resolvePending drops any pending mark whose item's signature now differs
+// from the one captured at mark time (the action resolved) — holding the rest.
+function resolvePending(items: ItemView[]): void {
+  const cur = pending();
+  if (cur.size === 0) {
+    return;
+  }
+
+  let changed = false;
+  const next = new Map(cur);
+
+  for (const [id, sig] of cur) {
+    if (itemSignature(items, id) !== sig) {
+      next.delete(id);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    setPendingSig(next);
   }
 }
 
-/** Marks an owned item's action as in-flight (shows a pending "…" mark). */
+/**
+ * Marks an owned item's action as in-flight (shows a "…" mark), capturing the
+ * item's current signature so the mark holds until that state actually
+ * changes (see resolvePending).
+ */
 export function markPending(itemId: number): void {
-  const s = new Set(pending());
-  s.add(itemId);
-  setPendingSig(s);
+  const next = new Map(pending());
+  next.set(itemId, itemSignature(lastItems, itemId));
+  setPendingSig(next);
 }
 
 /** Clears every pending mark — a map click supersedes a queued in-bubble action. */
 export function clearPending(): void {
   if (pending().size > 0) {
-    setPendingSig(new Set<number>());
+    setPendingSig(new Map());
   }
 }
 
@@ -140,7 +188,7 @@ export function togglePanel(): void {
  * present and the modal is not dismissed for this hex, it opens; when the hex
  * is empty of items, it closes.
  */
-export function refreshPickup(rows: { id: number; name: string; type: string }[], moved: boolean): void {
+export function refreshPickup(rows: { id: number; name: string; type: string; count: number }[], moved: boolean): void {
   if (moved) {
     dismissed = false;
   }

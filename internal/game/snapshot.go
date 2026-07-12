@@ -89,7 +89,7 @@ type backpackEntryDTO struct {
 
 // entityDTO is the full persisted shape of one entity (player or monster).
 // Fields the design calls out as transient — path, attackTarget,
-// attackTargetEntity, pendingEquip, bubbleID, streams — are deliberately absent: RestoreState
+// attackTargetEntity, pending, bubbleID, streams — are deliberately absent: RestoreState
 // leaves them at their Go zero value on every restored entity, and a
 // restored PLAYER additionally gets disconnectedAt stamped to load time (see
 // RestoreState) rather than persisting the pre-shutdown value.
@@ -110,10 +110,17 @@ type entityDTO struct {
 	Backpack    []backpackEntryDTO         `json:"backpack"`
 }
 
-// groundItemDTO is every item instance dropped on one hex.
+// groundStackDTO mirrors groundStack: a dropped item instance plus its stack
+// count (a consumable stack drops whole; gear/loot is count 1).
+type groundStackDTO struct {
+	Item  itemInstanceDTO `json:"item"`
+	Count int             `json:"count"`
+}
+
+// groundItemDTO is every ground stack dropped on one hex.
 type groundItemDTO struct {
-	Hex   protocol.Hex      `json:"hex"`
-	Items []itemInstanceDTO `json:"items"`
+	Hex    protocol.Hex     `json:"hex"`
+	Stacks []groundStackDTO `json:"stacks"`
 }
 
 // questDTO mirrors quest in full — id/name/kind/targetN/goalHex/rewardXP are
@@ -173,8 +180,8 @@ func (w *World) toDTOLocked() snapshotDTO {
 	}
 
 	groundItems := make([]groundItemDTO, 0, len(w.groundItems))
-	for hex, items := range w.groundItems {
-		groundItems = append(groundItems, groundItemDTO{Hex: hex, Items: itemInstancesToDTO(items)})
+	for hex, stacks := range w.groundItems {
+		groundItems = append(groundItems, groundItemDTO{Hex: hex, Stacks: groundStacksToDTO(stacks)})
 	}
 
 	quests := make([]questDTO, 0, len(w.quests))
@@ -209,7 +216,7 @@ func (w *World) toDTOLocked() snapshotDTO {
 // (disconnectedAt = now, streams = 0), not the pre-shutdown disconnect time:
 // the removal-grace clock restarts at load, so an unclaimed entity sweeps
 // (and archives) after one full grace from restart, not instantly. Path,
-// attackTarget, attackTargetEntity, pendingEquip, and bubbleID are left at
+// attackTarget, attackTargetEntity, pending, and bubbleID are left at
 // their zero value on every entity (players and monsters alike) — bubbles are never persisted
 // and are recomputed from positions on the first tick.
 func (w *World) RestoreState(data []byte) error {
@@ -292,13 +299,31 @@ func entitiesFromDTO(dtos []entityDTO, now time.Time) (map[int64]*entity, map[st
 	return entities, byToken
 }
 
-func groundItemsFromDTO(dtos []groundItemDTO) map[protocol.Hex][]itemInstance {
-	groundItems := make(map[protocol.Hex][]itemInstance, len(dtos))
+func groundItemsFromDTO(dtos []groundItemDTO) map[protocol.Hex][]groundStack {
+	groundItems := make(map[protocol.Hex][]groundStack, len(dtos))
 	for _, g := range dtos {
-		groundItems[g.Hex] = itemInstancesFromDTO(g.Items)
+		groundItems[g.Hex] = groundStacksFromDTO(g.Stacks)
 	}
 
 	return groundItems
+}
+
+func groundStacksToDTO(stacks []groundStack) []groundStackDTO {
+	dtos := make([]groundStackDTO, len(stacks))
+	for i, gs := range stacks {
+		dtos[i] = groundStackDTO{Item: itemInstanceDTO{ID: gs.inst.id, DefID: gs.inst.defID}, Count: gs.count}
+	}
+
+	return dtos
+}
+
+func groundStacksFromDTO(dtos []groundStackDTO) []groundStack {
+	stacks := make([]groundStack, len(dtos))
+	for i, d := range dtos {
+		stacks[i] = groundStack{inst: itemInstance{id: d.Item.ID, defID: d.Item.DefID}, count: d.Count}
+	}
+
+	return stacks
 }
 
 func questsFromDTO(dtos []questDTO) []*quest {
@@ -330,7 +355,7 @@ func entityToDTO(e *entity) entityDTO {
 
 // entityFromDTO rebuilds an entity from its DTO. The caller (RestoreState)
 // is responsible for the player-only disconnectedAt/streams reset; every
-// other transient field (path, attackTarget, attackTargetEntity, pendingEquip,
+// other transient field (path, attackTarget, attackTargetEntity, pending,
 // bubbleID) is left
 // at its Go zero value by construction.
 func entityFromDTO(ed entityDTO) *entity {
@@ -340,26 +365,6 @@ func entityFromDTO(ed entityDTO) *entity {
 		hp: ed.HP, maxHP: ed.MaxHP, xp: ed.XP,
 		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
 	}
-}
-
-// itemInstancesToDTO/FromDTO convert flat instance lists — ground items only
-// since v2 (owned items live in equipped/backpack now).
-func itemInstancesToDTO(items []itemInstance) []itemInstanceDTO {
-	dtos := make([]itemInstanceDTO, len(items))
-	for i, it := range items {
-		dtos[i] = itemInstanceDTO{ID: it.id, DefID: it.defID}
-	}
-
-	return dtos
-}
-
-func itemInstancesFromDTO(dtos []itemInstanceDTO) []itemInstance {
-	items := make([]itemInstance, len(dtos))
-	for i, d := range dtos {
-		items[i] = itemInstance{id: d.ID, defID: d.DefID}
-	}
-
-	return items
 }
 
 func equippedToDTO(equipped map[string]itemInstance) map[string]itemInstanceDTO {

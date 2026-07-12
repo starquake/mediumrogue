@@ -1,6 +1,10 @@
 package game
 
-import "github.com/starquake/mediumrogue/internal/protocol"
+import (
+	"fmt"
+
+	"github.com/starquake/mediumrogue/internal/protocol"
+)
 
 // inventory.go: the five inventory ACTIONS (equip, unequip, drop, pickup,
 // drink) — task 2 of the inventory-slots milestone (spec:
@@ -97,8 +101,8 @@ func (*World) equipItemLocked(e *entity, itemID int64) error {
 	}
 
 	def := itemDefByID[inst.defID]
-	if !canEquip(e.class, def) {
-		return ErrWrongClass
+	if err := equipValidate(e.class, def); err != nil {
+		return err
 	}
 
 	// A toggle-OFF (already equipped) is an unequip: it needs a free
@@ -136,25 +140,22 @@ func (w *World) unequipItemLocked(e *entity, itemID int64) error {
 }
 
 // dropItemLocked removes an owned item from the player — an equipped item
-// clears its slot; a backpack entry frees (a consumable stack leaves whole) —
-// and lands it on the player's own hex as ground item(s). A stack of N
-// becomes N single ground instances (the representative instance keeps its
-// id; the extras mint fresh ones), so the ground model stays "one instance
-// per item" and a later pickup re-merges them one at a time under the
-// stack-cap rule. Callers hold w.mu.
+// clears its slot; a backpack entry frees (a consumable stack leaves WHOLE) —
+// and lands it on the player's own hex as a single ground stack carrying its
+// count (gear/single items are count 1). Two separate drops of the same
+// consumable onto the same hex stay two ground stacks; a pickup re-merges
+// them into the backpack under the stack-cap rule. Callers hold w.mu.
 func (w *World) dropItemLocked(e *entity, itemID int64) error {
 	inst, def, err := w.ownedDefLocked(e, itemID)
 	if err != nil {
 		return err
 	}
 
-	count := 1
-
 	if slot := slotForType(def.itemType); slot != "" {
 		if cur, ok := e.equipped[slot]; ok && cur.id == inst.id {
 			delete(e.equipped, slot)
-			w.groundItemsAddLocked(e.hex, inst, count)
-			w.logDropLocked(e, inst, count)
+			w.groundItemsAddLocked(e.hex, groundStack{inst: inst, count: 1})
+			w.logDropLocked(e, inst, 1)
 
 			return nil
 		}
@@ -167,24 +168,18 @@ func (w *World) dropItemLocked(e *entity, itemID int64) error {
 		return ErrItemNotOwned
 	}
 
-	count = e.backpack[idx].count
+	count := e.backpack[idx].count
 	e.backpack[idx] = backpackEntry{}
-	w.groundItemsAddLocked(e.hex, inst, count)
+	w.groundItemsAddLocked(e.hex, groundStack{inst: inst, count: count})
 	w.logDropLocked(e, inst, count)
 
 	return nil
 }
 
-// groundItemsAddLocked lands count copies of inst's def on hex: the
-// representative instance itself first, then count-1 freshly minted
-// instances (ids from the shared nextID sequence). Callers hold w.mu.
-func (w *World) groundItemsAddLocked(hex protocol.Hex, inst itemInstance, count int) {
-	w.groundItems[hex] = append(w.groundItems[hex], inst)
-
-	for range count - 1 {
-		w.nextID++
-		w.groundItems[hex] = append(w.groundItems[hex], itemInstance{id: w.nextID, defID: inst.defID})
-	}
+// groundItemsAddLocked lands one ground stack on hex (dropped whole; no
+// splitting). Callers hold w.mu.
+func (w *World) groundItemsAddLocked(hex protocol.Hex, gs groundStack) {
+	w.groundItems[hex] = append(w.groundItems[hex], gs)
 }
 
 // logDropLocked emits the drop combat-log event. Callers hold w.mu.
@@ -192,46 +187,101 @@ func (w *World) logDropLocked(e *entity, inst itemInstance, count int) {
 	w.logger.Info(combatLogMsg, "event", combatEventDrop, "id", e.id, "item", inst.defID, "count", count, "at", e.hex)
 }
 
-// pickupGroundLocked picks one ground item off the player's own hex, in the
-// spec's priority order: merge into a mergeable consumable stack, else a
-// free backpack entry, else ErrBackpackFull ("backpack full — drop something
-// first", which the client surfaces as feedback). Items never auto-equip,
-// even into an empty matching slot. The ground item must lie exactly on
-// e.hex — a pickup at range is ErrNoSuchGroundItem, same as a stale id.
-// Callers hold w.mu.
-func (w *World) pickupGroundLocked(e *entity, groundItemID int64) error {
-	items := w.groundItems[e.hex]
-
-	idx := -1
-
-	for i, it := range items {
-		if it.id == groundItemID {
-			idx = i
-
-			break
+// findGroundStackLocked returns the ground stack with the given representative
+// id on hex, and its index, or (nil, -1). Callers hold w.mu.
+func (w *World) findGroundStackLocked(hex protocol.Hex, groundItemID int64) (*groundStack, int) {
+	stacks := w.groundItems[hex]
+	for i := range stacks {
+		if stacks[i].inst.id == groundItemID {
+			return &stacks[i], i
 		}
 	}
 
-	if idx < 0 {
+	return nil, -1
+}
+
+// hasRoomForLocked reports whether e's backpack has room for at least one unit
+// of defID: a mergeable consumable stack that isn't at the cap, or a free
+// entry. Callers hold w.mu.
+func (e *entity) hasRoomForLocked(defID string) bool {
+	return e.stackIndexFor(defID) >= 0 || e.freeBackpackIndex() >= 0
+}
+
+// pickupGroundLocked picks one WHOLE ground stack off the player's own hex
+// into the backpack, taking what fits and leaving any remainder (a smaller
+// stack) on the ground. Units land in the spec's priority order: top up a
+// matching consumable stack first (to the cap), then fresh backpack entries
+// (each up to the cap); gear (count 1) simply takes a free entry. Items never
+// auto-equip. If NOTHING fits (a full matching stack and no free entry) the
+// pickup is ErrBackpackFull ("backpack full — drop something first"). The
+// stack must lie exactly on e.hex — a pickup at range is ErrNoSuchGroundItem,
+// same as a stale id. Callers hold w.mu.
+func (w *World) pickupGroundLocked(e *entity, groundItemID int64) error {
+	gs, idx := w.findGroundStackLocked(e.hex, groundItemID)
+	if gs == nil {
 		return ErrNoSuchGroundItem
 	}
 
-	it := items[idx]
-	if !w.takeItemLocked(e, it) {
+	taken := e.takeStackLocked(gs.inst, gs.count)
+	if taken == 0 {
 		return ErrBackpackFull
 	}
 
-	items = append(items[:idx], items[idx+1:]...)
-	if len(items) == 0 {
-		delete(w.groundItems, e.hex)
+	remaining := gs.count - taken
+	if remaining > 0 {
+		// Partial pickup: the leftover stays on the ground as a smaller stack.
+		w.groundItems[e.hex][idx].count = remaining
 	} else {
-		w.groundItems[e.hex] = items
+		stacks := w.groundItems[e.hex]
+		stacks = append(stacks[:idx], stacks[idx+1:]...)
+
+		if len(stacks) == 0 {
+			delete(w.groundItems, e.hex)
+		} else {
+			w.groundItems[e.hex] = stacks
+		}
 	}
 
-	w.announce("system", e.name+" picked up "+itemDefByID[it.defID].name)
-	w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", it.defID)
+	w.announce("system", pickupAnnounce(e.name, itemDefByID[gs.inst.defID].name, taken))
+	w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", gs.inst.defID, "count", taken)
 
 	return nil
+}
+
+// takeStackLocked absorbs up to count units of inst's def into e's backpack,
+// respecting the per-stack cap: it tops up a matching consumable stack first,
+// then — since a single ground stack is always <= ItemStackCap — puts whatever
+// remains into one free entry (which keeps the ground stack's representative
+// id). Returns how many units were actually taken (0 if nothing fit). Callers
+// hold w.mu.
+func (e *entity) takeStackLocked(inst itemInstance, count int) int {
+	remaining := count
+
+	if idx := e.stackIndexFor(inst.defID); idx >= 0 {
+		add := min(remaining, protocol.ItemStackCap-e.backpack[idx].count)
+		e.backpack[idx].count += add
+		remaining -= add
+	}
+
+	if remaining > 0 {
+		if idx := e.freeBackpackIndex(); idx >= 0 {
+			add := min(remaining, protocol.ItemStackCap)
+			e.backpack[idx] = backpackEntry{inst: inst, count: add}
+			remaining -= add
+		}
+	}
+
+	return count - remaining
+}
+
+// pickupAnnounce renders the pickup chat line: "NAME picked up ITEM" for a
+// single unit, "NAME picked up ITEM ×N" for a multi-unit stack.
+func pickupAnnounce(playerName, itemName string, count int) string {
+	if count > 1 {
+		return fmt.Sprintf("%s picked up %s ×%d", playerName, itemName, count)
+	}
+
+	return playerName + " picked up " + itemName
 }
 
 // drinkItemLocked drinks one unit of an owned consumable stack: heals the
