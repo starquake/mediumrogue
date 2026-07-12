@@ -189,3 +189,75 @@ func TestInviteUnknownNameRejected(t *testing.T) {
 		t.Errorf("/invite ghost status = %d, want %d", got, want)
 	}
 }
+
+// errBody decodes a 4xx JSON error body (protocol.ErrorResponse) to its message.
+func errBody(t *testing.T, resp *http.Response) string {
+	t.Helper()
+
+	var er protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&er); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+
+	return er.Error
+}
+
+// TestLeaveWhenNotInPartyRejected pins ErrNotInParty over HTTP: /leave with no
+// party is a 422 carrying the sentinel text (previously unit-covered only).
+func TestLeaveWhenNotInPartyRejected(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+	alice := joinNamed(t, ts, "alice")
+
+	resp := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: "/leave"})
+	if got, want := resp.StatusCode, http.StatusUnprocessableEntity; got != want {
+		t.Fatalf("/leave (no party) status = %d, want %d", got, want)
+	}
+
+	if got, want := errBody(t, resp), "not in a party"; !strings.Contains(got, want) {
+		t.Errorf("error = %q, should contain %q", got, want)
+	}
+}
+
+// TestUppercaseVerbRoutes: verbs are case-insensitive (cutVerb lowercases), so
+// /LEAVE reaches the leave handler exactly like /leave — proven by the
+// ErrNotInParty message coming back rather than the unknown-command path.
+func TestUppercaseVerbRoutes(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+	alice := joinNamed(t, ts, "alice")
+
+	resp := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: "/LEAVE"})
+	if got, want := resp.StatusCode, http.StatusUnprocessableEntity; got != want {
+		t.Fatalf("/LEAVE status = %d, want %d", got, want)
+	}
+
+	if got, want := errBody(t, resp), "not in a party"; !strings.Contains(got, want) {
+		t.Errorf("/LEAVE error = %q, should contain %q (case-insensitive routing)", got, want)
+	}
+}
+
+// TestAcceptWhenAlreadyInPartyRejected pins ErrAlreadyInParty over HTTP: once
+// alice and bob share a party, a re-invite + re-accept is a 422.
+func TestAcceptWhenAlreadyInPartyRejected(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+	alice, bob := formParty(t, ts)
+
+	if got, want := postJSON(t, ts, "/api/chat",
+		protocol.ChatRequest{Token: alice.Token, Text: "/invite bob"}).StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("re-invite status = %d, want %d", got, want)
+	}
+
+	resp := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: bob.Token, Text: "/accept"})
+	if got, want := resp.StatusCode, http.StatusUnprocessableEntity; got != want {
+		t.Fatalf("re-accept status = %d, want %d", got, want)
+	}
+
+	if got, want := errBody(t, resp), "already in that party"; !strings.Contains(got, want) {
+		t.Errorf("error = %q, should contain %q", got, want)
+	}
+}
