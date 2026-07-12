@@ -18,7 +18,7 @@ bottom.
 graph TD
   A["#55 / #56 — Gear foundation<br/>weapon type-properties · drop class gates"]
   B["Damage types<br/>(new system)"]
-  TH["#69 — To-hit / evasion<br/>(new system · RNG fork)"]
+  TH["#69 — Evasion & crit<br/>(decoupled ARPG chances)"]
   ACT["Combat action economy<br/>spend a turn on a non-attack action"]
   C["#57 / #61 — Skill system<br/>3 trees · rule-card skills"]
   D["#60 — XP & progression<br/>curve · front-loaded HP · skill points"]
@@ -94,16 +94,20 @@ graph TD
 | P1 | Apprentice's War Mage Robes | 5% cascade extra-hit | M | Needs a cascade-effect system (~SK6) | ❓ |
 | P2 | Infernal Chain Mail | Fire resistance (×0.5) | S | Needs DT1 | ❓ |
 
-## 8. Defence, to-hit & combat actions — #69
+## 8. Defence, evasion & combat actions — #69
 
 Combat is deterministic today (every attack lands its pipeline-computed
-damage). This cluster — surfaced by the #69 discussion — is the newest, and
-hinges on its own **RNG-in-combat** fork.
+damage). This cluster — surfaced by the #69 discussion — is the newest.
+**Combat resolution is ARPG stat-checks, not TTRPG rolls** (decided): defence
+and offence are *decoupled* percentage gear stats (`evasion%` / `crit%`), each
+a rule card the pipeline folds — never a coupled to-hit roll or `d20`. See the
+two combat-model design notes ("Were we mixing TTRPG and ARPG?" / "What if we
+moved to TTRPG?").
 
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
-| DF1 | Passive evasion / reduction | Gear rule cards: light = harder to hit (evasion %), heavy = damage-reduction (today's `take-damage -1`) | S–M | The light-vs-heavy split; evasion adds RNG, reduction stays deterministic | ❓ |
-| DF2 | To-hit system (#69) | The hit/miss roll — percent (baseline + mods, folds like `add`) or d20-vs-armor-rating | L | New `attack-roll` event; **RNG fork**; seeded PCG; clamp floor/ceiling | ❓ |
+| DF1 | Passive evasion / reduction | Gear rule cards: light = harder to hit (evasion %), heavy = damage-reduction (today's `take-damage -1`) | S–M | The light-vs-heavy split; evasion adds bounded seeded RNG, reduction stays deterministic | ❓ |
+| DF2 | Evasion & crit (#69) | Two **decoupled** ARPG chances — `evasion%` (defender dodges → 0 dmg) and `crit%` (attacker deals ×2) | L | New `evasion-check` / `crit-check` events; seeded PCG; evasion clamps to a ceiling, crit to `[0,100]` | ❓ |
 | ACT | **Combat action economy** | Spend a turn's action on a non-attack action | L | **Foundational — unblocks SK5 (active skills), combat-heal (#61), block, protect-ally** | ❓ |
 | ACT-B | Block / guard | Active defensive action; **no RNG** | M | Needs ACT; synergises with shields (#55) / Shield Wall (#57) | ❓ |
 | ACT-P | Protect an ally | Redirect a hit meant for an ally to you (co-op tank) | L | Needs ACT; new damage-redirect effect (like aura/cascade) | ❓ |
@@ -120,7 +124,7 @@ they all become reachable. It's the highest-leverage unlock in this cluster.
 | Q2 | Subclasses or new classes? | Subclasses — a subset of another tree, capstone-gated | ❓ |
 | Q3 | One-handed: an explicit tag or the default? | The default (absence of two-handed) | ❓ |
 | Q4 | What does a level-up give? | Skill points (not stat bumps) | ❓ |
-| Q5 | RNG in combat (hit/miss, crits)? | Determinism is load-bearing today; block/reduction keep it, d20/percent/glancing break it (seeded PCG required). The fork gating DF2/#69. | ❓ |
+| Q5 | RNG in combat (hit/miss, crits)? | **Decided:** yes, but only as *bounded, decoupled* seeded chances — `evasion%` (defence) and `crit%` (offence), drawn from the per-scope seeded PCG so determinism holds. No coupled to-hit roll, no `d20`. Block / reduction stay deterministic. | ✅ |
 
 ## Fast lane (independent of the big arc)
 
