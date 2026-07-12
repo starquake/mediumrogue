@@ -50,6 +50,12 @@ Actions `GITHUB_TOKEN`; check the package's visibility/permissions).
 Create a `deploy:dev` label in the repo (GitHub also auto-creates it on first
 use). Add it to a PR to deploy that PR to development.
 
+**The PR's branch must be current with `main`.** `pull_request`-triggered
+workflows run from the *PR branch's* copy of the workflow file, so a branch
+that predates the deploy pipeline (no `.github/workflows/deploy.yml`) will not
+fire on the label — nothing happens. Merge `main` into the branch first, then
+apply (or re-apply) the label.
+
 ## Manual redeploy
 `Actions → Deploy → Run workflow` offers a `staging`/`production` choice
 (re-deploys the current `:edge` or the latest release). Development is
