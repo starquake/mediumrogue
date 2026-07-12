@@ -157,6 +157,27 @@ func TestChatRejectsEmptyAndOversizeAndBadToken(t *testing.T) {
 	}
 }
 
+// TestChatCapCountsRunesNotBytes pins that MaxChatLen is a RUNE cap, not a byte
+// cap: "\u00e9" is 1 rune / 2 bytes, so MaxChatLen of them (2xMaxChatLen bytes)
+// must still be accepted, and one rune over rejected. The oversize case above
+// used ASCII only, where rune and byte counts coincide.
+func TestChatCapCountsRunesNotBytes(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+	alice := joinNamed(t, ts, "alice")
+
+	atCap := protocol.ChatRequest{Token: alice.Token, Text: strings.Repeat("\u00e9", protocol.MaxChatLen)}
+	if got, want := postJSON(t, ts, "/api/chat", atCap).StatusCode, http.StatusAccepted; got != want {
+		t.Errorf("MaxChatLen multibyte runes: status = %d, want %d (rune cap, not byte cap)", got, want)
+	}
+
+	overCap := protocol.ChatRequest{Token: alice.Token, Text: strings.Repeat("\u00e9", protocol.MaxChatLen+1)}
+	if got, want := postJSON(t, ts, "/api/chat", overCap).StatusCode, http.StatusUnprocessableEntity; got != want {
+		t.Errorf("MaxChatLen+1 multibyte runes: status = %d, want %d", got, want)
+	}
+}
+
 // TestJoinRequiresName: an empty display name is rejected at join.
 func TestJoinRequiresName(t *testing.T) {
 	t.Parallel()

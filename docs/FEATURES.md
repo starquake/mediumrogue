@@ -175,6 +175,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   inline backpack-full feedback on a rejected row (row stays pickable), and
   "Close — leave the rest" (reopens on hex re-entry). Monster loot and player
   drops behave identically.
+- **Hover stat tooltip** — hovering an equipped hex or a backpack cell shows a
+  floating tooltip: the item's `damage`/`range`/`AoE` and its effect line, and
+  — when a **different** item fills that slot — the delta vs the equipped item
+  (green `+N` / red `-N`), so a pickup can be weighed before equipping.
+  Stat-less gear shows "No combat stats". Below the stats, an item's authored
+  **flavor/lore** renders as dim italic (the `ItemView.Flavor` field, seeded
+  from the gear cards' `Fantasy:` text — e.g. the Wyrmslayer's dragon
+  Werdmullerix); flavor is cosmetic, never gameplay-affecting.
 
 ### Monsters (kinds & difficulty rings — milestone 6c)
 - **Five kinds**, content data in `internal/game/content.go` (`monsterDefs`),

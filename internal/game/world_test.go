@@ -2,6 +2,7 @@ package game_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,6 +142,25 @@ func TestJoinRejectsEmptyName(t *testing.T) {
 	_, err := w.Join("", "   ", protocol.ClassFighter, protocol.SpeciesHuman)
 	if got, want := err, game.ErrInvalidName; !errors.Is(got, want) {
 		t.Errorf("err = %v, want %v", got, want)
+	}
+}
+
+// TestJoinRejectsOversizeName covers validName's upper-bound branch (only the
+// empty/whitespace branch was previously exercised): a name longer than
+// protocol.MaxNameLen runes is rejected, one exactly at the cap is kept.
+func TestJoinRejectsOversizeName(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	over := strings.Repeat("a", protocol.MaxNameLen+1)
+	if _, err := w.Join("", over, protocol.ClassFighter, protocol.SpeciesHuman); !errors.Is(err, game.ErrInvalidName) {
+		t.Errorf("Join(name of %d runes) err = %v, want ErrInvalidName", protocol.MaxNameLen+1, err)
+	}
+
+	atCap := strings.Repeat("a", protocol.MaxNameLen)
+	if _, err := w.Join("", atCap, protocol.ClassFighter, protocol.SpeciesHuman); err != nil {
+		t.Errorf("Join(name of exactly %d runes) err = %v, want nil", protocol.MaxNameLen, err)
 	}
 }
 
