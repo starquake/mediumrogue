@@ -1,5 +1,53 @@
 # Project Status — resume here
 
+*Last updated: 2026-07-12 (later session) — **deployment is live and the
+inventory system is merged**; the project's next frontier is a **design
+backlog**, not code in flight.*
+
+*__Deployment (plan §10 launch infra) — LIVE.__ Three environments run from one
+image on the VPS (`zoot`, behind SWAG) via a GitHub Actions pipeline
+(`.github/workflows/{ci,deploy}.yml`, `deployments/`): **production**
+`mediumrogue.bananajuice.net` (a `v*` tag → `promote` → cosign-verified,
+digest-pinned deploy; first release **`v0.0.1`**, marked pre-release),
+**staging** `mediumrogue-staging.bananajuice.net` (auto on every push to
+`main`), **development** `mediumrogue-development.bananajuice.net` (a PR labeled
+`deploy:dev`; that PR's branch must be current with `main` or the label fires
+nothing). Build-once → cosign-sign → promote → deploy-by-digest over SSH; each
+env has its own world volume. Two bugs the static checks couldn't catch
+surfaced on the first real run and are fixed: SWAG's `proxy.conf` already sets
+`proxy_read_timeout`/buffering (env confs add only `proxy_buffering off`), and
+each env's SSH deploy user must be in the `docker` group. Operator runbook:
+`deployments/README.md`.*
+
+*__Inventory system — MERGED (PR #51).__ The six-task slots/backpack/pickup
+system (full task breakdown in the block below) landed, plus client polish:
+snappier **move animation** (a fixed 200 ms tween + cubic ease-in-out,
+replacing the linear whole-playback drift); paper-doll **fixes** (removed the
+silhouette blob under the amulet; hex borders now trace all six edges, not
+left/right only — a `clip-path` clips an inset box-shadow on the diagonals); a
+hover **stat tooltip** (damage/range/AoE + the effect line, compared vs the
+item equipped in that slot — green +N / red -N); and **item flavor/lore text** —
+a new `flavor` field on items/`ItemView`, seeded from the gear cards' `Fantasy:`
+lines (Wyrmslayer's dragon Werdmullerix, etc.), shown as dim italic in the
+tooltip.*
+
+*__Design backlog — the next arc.__ Eight design issues (#55–#62) form one
+interlinked arc: gear evolution (#55 weapon type-properties, #56 drop class
+restrictions) -> skills (#57, #61 three-tree principles + skill-card format) ->
+XP & progression (#60) -> subclasses (#58) -> skill UI (#62). Engine-grounded
+feedback is posted on every thread. The build-order dependency map is
+**`docs/design-roadmap.md`** — start there when picking up the design work.
+Separately, three cleanup issues remain: #27 (flaky reconnect e2e), #31, #36.*
+
+*__Next (nothing is on fire).__ Options, rough priority: (a) start the first
+design slice — the gear type-properties refactor (#55/#56) is the keystone —
+via spec -> plan -> review; (b) land the cheap wins that don't need the whole
+arc (XP curve + front-loaded HP are formulas; cut `DamagePerLevel`; stacking
+throwables); (c) cut a production release (tag `v0.1.0`) to put the inventory
+system in front of the group; (d) plan §8/§11-12 tooling (admin console,
+analytics). Small open PR **#63** records the AI-comment attribution convention
+— awaiting the `ready to merge` label.*
+
 *Last updated: 2026-07-12, after the **inventory system** (slots, backpack,
 drop & pickup) on branch `feat/inventory-slots` (PR open, not yet merged;
 built on top of batch 3, which is now merged to main). The widest
