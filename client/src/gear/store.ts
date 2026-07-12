@@ -8,8 +8,18 @@ import { BackpackSize } from "../protocol.gen";
 // modal, all refreshed each turn bundle by main.ts. Mirrors the approved
 // paper-doll mockup (scratchpad/inventory-mock.html).
 
+/** The comparable stats an item carries on the wire (ItemView), surfaced in
+ *  the hover tooltip. `damage`/`rangeHex`/`aoeRadius` are 0 for stat-less gear;
+ *  `desc` is the authored effect text ("×1.5 damage vs dragons"), "" if none. */
+export interface ItemStats {
+  damage: number;
+  rangeHex: number;
+  aoeRadius: number;
+  desc: string;
+}
+
 /** One equipped item, keyed in `equipped` by its slot (itemType string). */
-export interface SlotItem {
+export interface SlotItem extends ItemStats {
   id: number;
   defId: string;
   name: string;
@@ -17,7 +27,7 @@ export interface SlotItem {
 }
 
 /** One backpack entry — a gear instance or a consumable stack (count>1). */
-export interface BackpackEntry {
+export interface BackpackEntry extends ItemStats {
   id: number;
   defId: string;
   name: string;
@@ -119,10 +129,16 @@ export function setInventory(items: ItemView[]): void {
   let next = 0;
 
   for (const it of items) {
+    const stats: ItemStats = {
+      damage: it.damage,
+      rangeHex: it.rangeHex,
+      aoeRadius: it.aoeRadius,
+      desc: it.desc,
+    };
     if (it.equipped) {
-      eq[it.type] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type };
+      eq[it.type] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type, ...stats };
     } else if (next < pack.length) {
-      pack[next] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type, count: it.count };
+      pack[next] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type, count: it.count, ...stats };
       next++;
     }
   }
