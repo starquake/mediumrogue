@@ -120,28 +120,56 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **HUD stats line** (item 9, playtest batch 2): `Lv L · xp/XPPerLevel XP ·
   (q, r)` — my entity's hex, live per turn bundle.
 
-### Gear (milestone 6b.4, loot model updated 6c)
-- **Items are content data** (registry in `internal/game/content.go`): 5
-  class defaults + 8 drop items, including three designer-authored cards
-  (Ancient Dwarven Mattock: +3 damage in a dwarf's hands; Staff of the War
-  Mage: ×2 damage vs targets below 6 HP — a deliberate flat-threshold
-  execute; Wyrmslayer Greatsword: ×1.5 damage vs dragons specifically —
-  the first `targetKind`-conditioned card).
+### Gear & inventory (milestone 6b.4, loot 6c, inventory system: slots/backpack/drop/pickup/drink)
+- **12-type item taxonomy** (the item's `type` decides everything): five
+  weapon types `melee-weapon / thrown-weapon / ranged-weapon / staff / wand`,
+  a `consumable`, and six body types `head / body / hands / ring / amulet /
+  feet`. The equip **slot is derived from the type** — each gear type fits
+  exactly one slot; a consumable has no slot (it lives in the backpack).
+- **8 equip slots** — the six body slots plus **two class-shaped weapon
+  slots**: fighter = melee + thrown · rogue = melee + ranged · mage = staff +
+  wand. A staff can melee-bonk; a wand never melees. Empty melee-ish slot →
+  unarmed fists. **No thrown content exists yet**, so a fighter has no ranged
+  attack (its thrown slot ships empty). Plus a **backpack of exactly 4
+  entries**: a gear instance or a **consumable stack** per entry (identical
+  consumables merge, up to 5; stacks never split).
+- **Wearability is on the ITEM, classes stay single**: a weapon names exactly
+  which classes may wield it; armor/jewelry may name several (Leather Armor:
+  fighter or rogue) or default to **any**. Characters never multi-class.
+- **Items are content data** (`internal/game/content.go`): 5 class defaults +
+  designer drops (Ancient Dwarven Mattock, Staff of the War Mage, Wyrmslayer
+  Greatsword — the `targetKind` card) + **starter armor/consumable** (Leather
+  Armor: take-damage −1, floor 1; Headband of Learning: earn-XP ×1.05;
+  Healing Potion: drink +5 HP, stacks to 5).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
-  own chance-to-drop and its own weighted item table (`monsterDef.drops`) —
-  items no longer carry a drop weight at all. A slain monster rolls ITS
-  kind's chance (10–100%, see the Monsters table below); a hit picks from
-  ITS kind's table. Items land on the death hex, render as map markers, and
-  are **picked up by walking over them** (announced in chat). Inventory is
-  unbounded; own many, equip one per slot (close / ranged).
-- **Equip / unequip toggle** (item 2, playtest batch 2): free & instant out
-  of combat; **your whole turn inside a bubble** (a later move/attack
-  replaces a queued swap; bubble dissolve applies it). An equip intent
-  naming an item **already in its slot unequips it** instead of re-equipping
-  (slot → 0: fists fallback for close, no ranged weapon at all for ranged)
-  — the same free-outside/turn-inside rules apply to the toggle-off
-  direction. Gear panel lists items with stats, rule text, equipped state;
-  the "equipped" button is an active toggle (not disabled), amber on hover.
+  chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
+  rolls its own chance (10–100%) and picks from its own table (potions ride
+  the rat/wolf tables at low weight). Items land on the death hex and render
+  as map markers.
+- **Five inventory actions, one rule** — free & instant out of combat, **your
+  whole turn inside a bubble** (a later move/attack supersedes a queued
+  action; bubble dissolve applies it):
+  - **equip** — moves a backpack item into its slot, swapping any displaced
+    occupant back into the vacated entry. Naming an already-equipped item
+    **unequips** it (toggle).
+  - **unequip** — equipped item → a free backpack entry (rejected if full).
+  - **drop** — an owned item (equipped or backpack; a stack drops whole)
+    lands on the player's own hex as ground item(s).
+  - **pickup** — an explicit intent (walk-over auto-pickup is **gone**): the
+    server gives the item a home in priority order — **matching stack merge →
+    free backpack entry → reject** with a clear error the client surfaces
+    ("backpack full — drop something first"). Items never auto-equip.
+  - **drink** — a consumable: applies its heal (clamped to max HP) and
+    decrements the stack; an emptied stack frees its entry.
+- **Client** — a toggleable **paper-doll** panel (the `i` key, sharing the
+  movement keys' typing-focus guard, + a HUD button + an in-panel ×; default
+  closed since it is large): the 8 hex slots on a Vitruvian layout with the
+  two weapon slots labelled per class, a 4-cell backpack with stack counts and
+  per-item drop buttons. Walking onto a hex with ground items opens a **pickup
+  modal** — one row per item (name + type), an individual **take** button,
+  inline backpack-full feedback on a rejected row (row stays pickable), and
+  "Close — leave the rest" (reopens on hex re-entry). Monster loot and player
+  drops behave identically.
 
 ### Monsters (kinds & difficulty rings — milestone 6c)
 - **Five kinds**, content data in `internal/game/content.go` (`monsterDefs`),
@@ -271,12 +299,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   ground items, the quest board, the disconnect archive, the turn/id
   counters (so SSE ids and entity/item instance ids stay monotonic and
   collision-free across a restart), and the **worldId** (item 4, playtest
-  batch 3 — snapshot version 2; a restored world keeps its identity, see
-  the world-reset signal below). The map itself is **never** persisted —
+  batch 3 — worldId added at snapshot version 2; **version 3** adds the
+  slot-keyed equipped map + backpack/stacks of the inventory system; a
+  restored world keeps its identity, see the world-reset signal below). The
+  map itself is **never** persisted —
   it regenerates deterministically from `WORLD_SEED`/`WORLD_RADIUS`.
 - **What stays transient**: queued move paths, a pending ranged-attack
-  target, a queued equip, and combat-bubble membership (bubbles are never
-  persisted — recomputed from positions on the first tick after load). Every
+  target, a queued inventory action, and combat-bubble membership (bubbles
+  are never persisted — recomputed from positions on the first tick after
+  load). Every
   restored player comes back marked disconnected **as of the load time**
   (not its pre-shutdown value), so the removal-grace clock restarts cleanly
   at load instead of sweeping every restored player instantly.
@@ -303,7 +334,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   (HTTP/SSE, security headers, same-origin checks) → `internal/game` (world
   under one mutex; per-domain turn loops). Coalescing hub: a tick means
   "fetch latest state", never a delta.
-- **Wire**: POST `/api/join`, `/api/intent` (move/attack/equip), `/api/chat`;
+- **Wire**: POST `/api/join`, `/api/intent`
+  (move/attack/equip/unequip/drop/pickup/drink), `/api/chat`;
   GET `/api/map` (once), `/api/events` (SSE: full-snapshot turn bundles with
   turn-number ids, chat events, named heartbeats). Reconnect =
   resync-to-latest (`Last-Event-ID` as watermark only). JSON everywhere.
@@ -334,9 +366,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (27 specs). The client exposes **`window.game`**
-  (positions incl. `monsterKind`, hp, inventory, combatMoves, damage events,
-  tapHex, sendChat, identityLink…) as the always-in-sync test/debug surface.
+  embedded-client binary (28 specs). The client exposes **`window.game`**
+  (positions incl. `monsterKind`, hp, inventory, equipped, backpack,
+  panelOpen, pickupModal, combatMoves, damage events, tapHex, sendChat,
+  identityLink…) as the always-in-sync test/debug surface.
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
@@ -387,6 +420,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | `TurnSeconds` / `InputWindowSeconds` / `PlaybackSeconds` | 4 / 2 / 2 | turn anatomy |
 | `CombatRadius` | 6 | bubble trigger distance |
 | `StackCap` | 5 | max friendly entities per hex |
+| `BackpackSize` / `ItemStackCap` | 4 / 5 | backpack entries · max identical consumables per stack |
 | `MaxNameLen` / `MaxChatLen` | 24 / 500 | input caps (runes) |
 | `FighterMaxHP` / `RogueMaxHP` / `MageMaxHP` | 30 / 16 / 14 | level-1 HP |
 | `HPPerLevel` / `DamagePerLevel` | 4 / 1 | per-level growth (**flat-curve retune pending**) |
@@ -410,9 +444,12 @@ values are unchanged (20 / 3 / 30%).*
 
 Recorded in `roguelike-mp-plan.md` §0/§8/§9 and issue #36: flat-curve
 retune, skills as level-up perks (First Aid, Make Camp), downed state &
-revive, recovery layers beyond regen (potions, rests, sanctuary trade
-hub — the 6c sanctuary zone is only the monster-free ground, not the hub
-itself), continuous spawning with density-tracks-players, monster-kind
+revive, further recovery layers (rests, the sanctuary **trade hub** — the
+6c sanctuary zone is only the monster-free ground, not the hub itself;
+healing potions + the backpack-cap layer now ship with the inventory
+system), thrown-weapon content (the fighter's thrown slot ships empty) &
+wand↔staff interactions, item destruction/durability, backpack upgrades,
+trading, continuous spawning with density-tracks-players, monster-kind
 passives (the `rules` seam on `monsterDef` ships empty), ring UI
 indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
 (reconnect/respawn still uses a guarded random spawn, not a bed — milestone

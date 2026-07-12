@@ -1,7 +1,43 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-11 (later session), after "playtest feedback batch
-3" — 6 items on branch `feat/playtest-batch-3` (PR open, not yet merged),
+*Last updated: 2026-07-12, after the **inventory system** (slots, backpack,
+drop & pickup) on branch `feat/inventory-slots` (PR open, not yet merged;
+built on top of batch 3, which is now merged to main). The widest
+entity-model change since 6b.4, in 6 tasks. **Taxonomy & storage (task 1):**
+gear became a **12-type taxonomy** (`melee-weapon/thrown-weapon/
+ranged-weapon/staff/wand/consumable/head/body/hands/ring/amulet/feet`), the
+slot **derived from the type**; per-entity storage moved from a flat items
+list + close/ranged ids to a **slot-keyed `equipped` map** (8 slots: 6 body +
+2 class-shaped weapon slots — fighter melee+thrown, rogue melee+ranged, mage
+staff+wand) **+ a 4-entry `backpack`** with consumable stacks (≤5, merge
+never split). Wearability moved onto the ITEM (`wearableBy`; weapons name
+their classes, armor/jewelry default "any", may list several) — characters
+stay strictly single-class. The combat seam (`closeDefFor`/`rangedDefFor`)
+re-derives through the class shape; fighter's thrown slot ships empty (no
+ranged, unchanged). **Actions (task 2):** equip/unequip/drop/pickup/drink
+intents, one free-outside/turn-inside rule (generalized `pendingItemAction`);
+**auto-pickup removed** — pickup is an explicit intent, server gates
+merge→free-entry→**reject** with the exact "backpack full — drop something
+first". **Content (task 3):** Leather Armor (take-damage −1, fighter-or-rogue
+— first multi-class wearability card), Headband of Learning (earn-XP ×1.05,
+gear XP cards now fold at awards), Healing Potion (drink +5, stacks 5; rides
+rat/wolf tables low-weight); content guide vocabulary updated. **Persistence
+(task 4):** snapshot **v3** (v2 = batch-3's WorldID; v3 adds equipped/
+backpack/stacks), version-gate rejects v1 AND v2; full HTTP inventory loop +
+unit round-trip. **Client (task 5):** a toggleable **paper-doll** panel (the
+`i` key + HUD button + in-panel ×; default closed — it's large) transcribing
+the approved Vitruvian mockup, a 4-cell backpack with stack counts + drop
+buttons, and a per-hex **pickup modal** (rows name+type, per-row take, inline
+backpack-full feedback, "Close — leave the rest"); `window.game.{equipped,
+backpack,panelOpen,pickupModal}` synced; `inventory.spec.ts` replaces
+`gear.spec`. **Deviation:** backpack-full-rejection / stack-render / drink are
+integration-covered (the monster-free e2e server can't produce a full
+backpack or a consumable from class defaults). `make check` + `make e2e` (28
+specs) green. **Next**: merge this PR; then plan §8 tooling (11 admin console,
+12 analytics) or deployment.*
+
+*Previously (2026-07-11, later session), after "playtest feedback batch
+3" — 6 items on branch `feat/playtest-batch-3` (**now merged**, PR #50),
 on top of batch 2. **Item 1** turn cadence lowered 5/3/2 → **4/2/2**
 (`TurnSeconds`/`InputWindowSeconds`; playback unchanged) — the plan §9
 "feel-test the cadence" decision landing (3 s input felt slow in play).
