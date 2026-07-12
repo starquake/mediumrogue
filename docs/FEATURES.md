@@ -419,3 +419,24 @@ indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
 10a persisted characters and the world, but bed spawns stay future), admin
 console & analytics log, SQLite-for-state (the milestone 10a JSON snapshot
 is the decided interim store).
+
+## Deployment
+
+Three environments run from one binary image, on one VPS, behind SWAG. See
+`deployments/README.md` for the operator setup checklist.
+
+| Environment  | Domain                                    | Trigger                     | Image           |
+| ------------ | ----------------------------------------- | --------------------------- | --------------- |
+| production   | `mediumrogue.bananajuice.net`             | push a `v*.*.*` tag         | promoted semver |
+| staging      | `mediumrogue-staging.bananajuice.net`     | CI green on `main`          | `:edge`         |
+| development  | `mediumrogue-development.bananajuice.net` | `deploy:dev` label on a PR  | `pr-<n>`        |
+
+- **Pipeline:** `ci.yml` builds one image per green `main` commit
+  (`sha-<commit>` + `:edge`), cosign-signs it, and (on a `v*` tag) `promote`
+  retags it to semver. `deploy.yml` resolves the tag to its digest, verifies
+  the signature (staging/production; development skips it), and runs
+  `docker compose up -d` over SSH.
+- **State:** each environment keeps its own JSON world snapshot on its own
+  named volume (`SNAPSHOT_PATH=/data/world.json`); the three worlds are
+  independent.
+- **No secrets:** the deploy `.env` carries only `IMAGE_NAME`/`IMAGE_DIGEST`.
