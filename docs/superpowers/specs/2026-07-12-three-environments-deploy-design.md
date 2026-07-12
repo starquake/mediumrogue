@@ -179,10 +179,10 @@ services:
       - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL:-15s}
       - MONSTER_COUNT=${MONSTER_COUNT:-40}          # tune per env
       - WORLD_SEED=${WORLD_SEED:-}                  # empty → config default
-      - SNAPSHOT_PATH=/home/nonroot/data/world.json
+      - SNAPSHOT_PATH=/data/world.json
       - SNAPSHOT_INTERVAL=${SNAPSHOT_INTERVAL:-60s}
     volumes:
-      - mediumrogue_<env>_data:/home/nonroot/data
+      - mediumrogue_<env>_data:/data
     networks: [web]
     restart: unless-stopped
 volumes:
@@ -195,7 +195,12 @@ Notes:
 - Image pinned to the immutable digest resolved by `deploy.yml`, never a
   mutable tag — a later tag move cannot swap the running bytes.
 - Distroless-static app filesystem is ephemeral; the snapshot must live on the
-  named volume (`/home/nonroot/data`), matching topbanana's data-dir choice.
+  named volume, mounted at `/data`. The existing `Dockerfile` runs as **root**
+  (no `USER` directive), so a root-owned named volume at `/data` is writable
+  with zero setup — no Dockerfile change needed. (topbanana used
+  `/home/nonroot/data` because its image runs as `nonroot`; that path does not
+  exist here. Hardening to a nonroot image later is optional and would need the
+  volume ownership fixed.)
 - Each env's own volume → independent worlds. Dev/staging may run more monsters
   or a shorter turn for testing; production keeps the protocol default cadence.
 - No `ports:` — SWAG reaches the container by name on the `web` network.
