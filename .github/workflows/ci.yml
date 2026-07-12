@@ -3,10 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+    # Release tags promote the already-built main image; they do not
+    # re-run the suite or rebuild (see the promote job).
+    tags: ['v*.*.*']
   pull_request:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
 
 jobs:
   lint:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -19,6 +30,7 @@ jobs:
           version: v2.12.2
 
   test:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,6 +40,7 @@ jobs:
       - run: make test test-integration
 
   client:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -45,6 +58,7 @@ jobs:
       - run: make client
 
   e2e:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -58,3 +72,118 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci && npx playwright install --with-deps chromium
       - run: make e2e
+
+  # Build once, after the suite is green, so a published image always
+  # implies the tests passed for that commit. Release tags do not build
+  # here; the promote job retags this image instead.
+  docker-build:
+    needs: [lint, test, client, e2e]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Needed for cosign keyless signing (sigstore/fulcio OIDC) off PRs.
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # No semver tags here: version tags are created by the promote job.
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=edge,branch=main
+          flavor: |
+            latest=auto
+
+      # Build (and, off PRs, push) the image using the existing Dockerfile.
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Sign the pushed digest. The signature binds to the digest, so the
+      # promote job's retags inherit it.
+      - name: Sign the published Docker image
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes "{}@${DIGEST}"
+
+  # Promote the already-built, already-tested main image for this commit to
+  # its release tags. No rebuild, no re-run of the suite: the tag is cut on a
+  # main commit, so its sha-<commit> image already exists and was signed.
+  promote:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=auto
+
+      - name: Promote main image to release tags
+        env:
+          SRC: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          # Fail loudly if the tested main image is missing: a v* tag must
+          # point at a commit whose main build pushed its sha image.
+          if ! docker buildx imagetools inspect "$SRC" >/dev/null 2>&1; then
+            echo "ERROR: ${SRC} not found; tag a commit that was built on main" >&2
+            exit 1
+          fi
+          args=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && args+=( --tag "$tag" )
+          done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" "$SRC"

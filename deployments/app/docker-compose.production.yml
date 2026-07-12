@@ -1,0 +1,27 @@
+# Production. Pinned to the immutable digest deploy.yml resolves + verifies;
+# the ${IMAGE_DIGEST:?} guard fails the boot loudly if it is unset. No host
+# port: SWAG reaches the container by name on the shared `web` network.
+services:
+  mediumrogue-production:
+    image: ${IMAGE_NAME}@${IMAGE_DIGEST:?IMAGE_DIGEST must be set in .env or environment}
+    container_name: mediumrogue-production
+    environment:
+      - LISTEN_ADDR=0.0.0.0:8080
+      - TURN_INTERVAL=4s
+      - HEARTBEAT_INTERVAL=15s
+      - MONSTER_COUNT=40
+      # World snapshot lives on the named volume: the distroless app
+      # filesystem is ephemeral, so a snapshot elsewhere is lost on redeploy.
+      - SNAPSHOT_PATH=/data/world.json
+      - SNAPSHOT_INTERVAL=60s
+    volumes:
+      - mediumrogue_production_data:/data
+    networks:
+      - web
+    restart: unless-stopped
+
+volumes:
+  mediumrogue_production_data:
+networks:
+  web:
+    external: true

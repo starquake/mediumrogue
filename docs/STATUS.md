@@ -85,12 +85,24 @@ registry of 5 kinds, per-kind loot/aggro, difficulty rings, the Wyrmslayer
 Greatsword), the combat-feel batch, the first designer gear batch, four
 plan-doc decision batches, the playtest-ready batch, and `docs/FEATURES.md`
 (the what-is-real reference — keep it in sync alongside this file per
-CLAUDE.md's same-PR convention). **Requested next:** deployment itself
-(VPS/Caddy) is ops, not a milestone slice, and remains open; bed/home
-spawns stay future (plan §9). Backlog: issue #36, monster-kind passives
-(the `rules` seam on `monsterDef` ships empty), ring UI indicators.
-Milestone 9 (CRT shader) remains dropped. Update this file at the end of
-every working session (milestone landed, decisions made, next step).*
+CLAUDE.md's same-PR convention). **Requested next:** bed/home spawns stay
+future (plan §9). Backlog: issue #36, monster-kind passives (the `rules`
+seam on `monsterDef` ships empty), ring UI indicators. Milestone 9 (CRT
+shader) remains dropped.
+
+- **Deployment (landed, 2026-07-12):** three environments — production
+  (`mediumrogue.bananajuice.net`, `v*` tag), staging
+  (`mediumrogue-staging.bananajuice.net`, main), development
+  (`mediumrogue-development.bananajuice.net`, `deploy:dev` PR label) — via
+  `.github/workflows/{ci,deploy}.yml`, `deployments/app/*`, and
+  `deployments/swag/*`. Image is built once per green main commit, cosign-
+  signed, promoted on tag, deployed by digest over SSH behind SWAG. Copies
+  topbanana's pipeline minus all secrets. **Operator still owns** DNS CNAMEs,
+  GitHub Environments + SSH secrets, and placing the SWAG confs — see
+  `deployments/README.md`. First real end-to-end test happens after that
+  manual setup.
+
+Update this file at the end of every working session (milestone landed, decisions made, next step).*
 
 ## What this project is
 

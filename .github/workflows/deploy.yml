@@ -1,0 +1,376 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+  pull_request:
+    types: [labeled, synchronize]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    if: >-
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: ${{ vars.SERVER_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Copy docker-compose file
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "deployments/app/docker-compose.staging.yml"
+          target: "~/mediumrogue-staging"
+          strip_components: 2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: Resolve image digest
+        id: digest
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:edge
+        run: |
+          set -euo pipefail
+          DIGEST="$(docker buildx imagetools inspect "$IMAGE_REF" --format '{{.Manifest.Digest}}')"
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "ERROR: could not resolve a digest for ${IMAGE_REF} (got '${DIGEST}')" >&2
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify image signature
+        env:
+          IMAGE_DIGEST_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
+        run: |
+          cosign verify "$IMAGE_DIGEST_REF" \
+            --certificate-identity-regexp '^https://github\.com/starquake/mediumrogue/\.github/workflows/ci\.yml@refs/heads/main$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          IMAGE_DIGEST: ${{ steps.digest.outputs.digest }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: IMAGE_NAME,IMAGE_DIGEST,GITHUB_TOKEN,GITHUB_ACTOR
+          script: |
+            set -e
+            mkdir -p ~/mediumrogue-staging
+            cd ~/mediumrogue-staging
+            umask 077
+            cat > .env <<EOF
+            IMAGE_NAME='${IMAGE_NAME}'
+            IMAGE_DIGEST='${IMAGE_DIGEST}'
+            EOF
+            mv -f docker-compose.staging.yml docker-compose.yml
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            docker compose pull
+            docker compose up -d
+            docker logout ghcr.io
+
+      - name: Verify staging deployment
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
+              echo "Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Health check attempt $i/12 failed; retrying in 5s..."
+            sleep 5
+          done
+          echo "Health check failed after 12 attempts (60s); failing the deploy" >&2
+          exit 1
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    # The startsWith(head_branch, 'v') guard is a tag-vs-branch heuristic:
+    # it is safe only because ci.yml's `push` trigger is limited to
+    # branches:[main] + tags:['v*.*.*'], so no v-prefixed BRANCH can produce
+    # a push-event CI run. Keep that ci.yml filter in lockstep with this.
+    if: >-
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        startsWith(github.event.workflow_run.head_branch, 'v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    environment:
+      name: production
+      url: ${{ vars.SERVER_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Determine image tag
+        id: tag
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          IMAGE_TAG="${IMAGE_TAG#v}"
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # A manual dispatch runs from a branch (not a tag), so it has no
+            # semver to resolve — deploy the newest release via :latest. An
+            # automatic tag-push that isn't strict X.Y.Z (e.g. a v*.*.* that
+            # matched a prerelease like v1.0.0-rc1) must NOT fall back to
+            # :latest: that would silently deploy stale bytes to production.
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              IMAGE_TAG="latest"
+            else
+              echo "ERROR: '${IMAGE_TAG}' is not a strict semver release tag (X.Y.Z); refusing to deploy to production" >&2
+              exit 1
+            fi
+          fi
+          echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Copy docker-compose file
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "deployments/app/docker-compose.production.yml"
+          target: "~/mediumrogue-production"
+          strip_components: 2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: Resolve image digest
+        id: digest
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          DIGEST="$(docker buildx imagetools inspect "$IMAGE_REF" --format '{{.Manifest.Digest}}')"
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "ERROR: could not resolve a digest for ${IMAGE_REF} (got '${DIGEST}')" >&2
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify image signature
+        env:
+          IMAGE_DIGEST_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
+        run: |
+          cosign verify "$IMAGE_DIGEST_REF" \
+            --certificate-identity-regexp '^https://github\.com/starquake/mediumrogue/\.github/workflows/ci\.yml@refs/heads/main$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          IMAGE_DIGEST: ${{ steps.digest.outputs.digest }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: IMAGE_NAME,IMAGE_DIGEST,GITHUB_TOKEN,GITHUB_ACTOR
+          script: |
+            set -e
+            mkdir -p ~/mediumrogue-production
+            cd ~/mediumrogue-production
+            umask 077
+            cat > .env <<EOF
+            IMAGE_NAME='${IMAGE_NAME}'
+            IMAGE_DIGEST='${IMAGE_DIGEST}'
+            EOF
+            mv -f docker-compose.production.yml docker-compose.yml
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            docker compose pull
+            docker compose up -d
+            docker logout ghcr.io
+
+      - name: Verify production deployment
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
+              echo "Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Health check attempt $i/12 failed; retrying in 5s..."
+            sleep 5
+          done
+          echo "Health check failed after 12 attempts (60s); failing the deploy" >&2
+          exit 1
+
+  deploy-development:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    # Label-only. Fires when a same-repo PR carries the deploy:dev label
+    # (on the labeling event or on any later push while it stays labeled).
+    if: >-
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'deploy:dev') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    # Single dev slot: a newer labeled push cancels an in-flight dev deploy.
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: true
+    environment:
+      name: development
+      url: ${{ vars.SERVER_URL }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Copy docker-compose file
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "deployments/app/docker-compose.development.yml"
+          target: "~/mediumrogue-development"
+          strip_components: 2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build the PR's code and push a pr-<n> tag. No cosign: development is a
+      # throwaway sandbox fed only by the operator's own labeled PRs.
+      - name: Build and push PR image
+        id: build-and-push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resolve image digest
+        id: digest
+        env:
+          BUILD_DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BUILD_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "ERROR: build did not return a digest (got '${BUILD_DIGEST}')" >&2
+            exit 1
+          fi
+          echo "digest=${BUILD_DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to development server
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          IMAGE_DIGEST: ${{ steps.digest.outputs.digest }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: IMAGE_NAME,IMAGE_DIGEST,GITHUB_TOKEN,GITHUB_ACTOR
+          script: |
+            set -e
+            mkdir -p ~/mediumrogue-development
+            cd ~/mediumrogue-development
+            umask 077
+            cat > .env <<EOF
+            IMAGE_NAME='${IMAGE_NAME}'
+            IMAGE_DIGEST='${IMAGE_DIGEST}'
+            EOF
+            mv -f docker-compose.development.yml docker-compose.yml
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            docker compose pull
+            docker compose up -d
+            docker logout ghcr.io
+
+      - name: Verify development deployment
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
+              echo "Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Health check attempt $i/12 failed; retrying in 5s..."
+            sleep 5
+          done
+          echo "Health check failed after 12 attempts (60s); failing the deploy" >&2
+          exit 1
