@@ -108,7 +108,12 @@ export function connectEvents(getToken: () => string, callbacks: EventsCallbacks
     // state. The watchdog covers the errors it never detects.
     source.addEventListener("error", () => callbacks.onConnectionChange(false));
 
-    arm();
+    // Deliberately NOT armed here (before `open`): under heavy CPU load a
+    // connection can take longer than windowMs to establish, and a connect-time
+    // arm would close it before `open` ever fires — a close-before-open loop
+    // that starves reconnection. The watchdog is armed on open/turn/heartbeat,
+    // i.e. only once the stream is actually alive; a stream that never opens is
+    // retried by EventSource's own auto-reconnect (the `error` path above).
   };
 
   connect();

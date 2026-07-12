@@ -83,6 +83,13 @@ const storageStateFor = (port: number) => ({
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
+  // Cap parallelism proportionally. Each spec runs its OWN embedded-binary
+  // server, so at high worker counts the CPU is over-subscribed and
+  // timing-sensitive specs starve (the #27 reconnect flake, plus others that
+  // failed at --workers=14). "50%" scales down on many-core machines/CI and
+  // can never over-subscribe (a fixed number could RAISE workers on a small
+  // runner). Pass --workers=N on the CLI to tune a specific run.
+  workers: "50%",
   projects: specs.map((s, i) => ({
     name: s.name,
     testMatch: new RegExp(`${s.name}\\.spec\\.ts$`),
