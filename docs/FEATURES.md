@@ -1,7 +1,7 @@
 # Medium Rogue — implemented features reference
 
-*Everything that actually exists in the game as of 2026-07-11 (main through
-milestone 10a — persistence & identity).
+*Everything that actually exists in the game as of 2026-07-12 (main through
+the inventory system (PR #51) and the three-environment deployment).
 Design rationale lives in `roguelike-mp-plan.md`; current-session state in
 `STATUS.md`; the content-design vocabulary in `rule-based-content-design.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*

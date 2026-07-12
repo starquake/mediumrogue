@@ -448,9 +448,11 @@ show my own route: goal + every hex, local-only).
   small `{event, when, then}` data literals, never closures (a §7 SQLite
   persistence prerequisite). Three events implemented this slice: `deal-damage`,
   `take-damage`, `earn-XP` (`applyRules`, called from `attackLocked`,
-  `resolveBowLocked`, `resolveAoELocked`, and the kill-XP award); `attack-roll`,
-  `on-kill`, and `aggro-range` are documented in the content guide but not
-  implemented — no card needs them yet. The three species passives
+  `resolveBowLocked`, `resolveAoELocked`, and the kill-XP award); `on-kill`
+  is documented in the content guide but not implemented — no card needs it
+  yet; `aggro-range` shipped later in 6c. (The once-planned `attack-roll`
+  to-hit event was later **dropped** — combat is fully ARPG/decoupled, so
+  offence/defence are `crit%`/`evasion%` chances, not a coupled roll; see #69.) The three species passives
   (human/elf/dwarf) were migrated onto the pipeline unchanged (`content.go`'s
   `humanCards`/`elfCards`/`dwarfCards`), reproducing the old hardcoded numbers
   exactly (pinned by `rules_test.go`).
@@ -492,7 +494,8 @@ show my own route: goal + every hex, local-only).
   full kill→drop→walk loop has no e2e monster-spawn hook, so it stays
   integration-only).
   **Deferred** (tracked on issue #36): buffs/status effects and durations;
-  the `attack-roll`/`on-kill` pipeline events (`aggro-range` shipped in 6c);
+  the `on-kill` pipeline event (`aggro-range` shipped in 6c; the once-planned
+  `attack-roll` was later dropped for the ARPG `evasion%`/`crit%` model — #69);
   armor/trinket slots; an inventory cap; item despawn; drop-on-death (corpse
   runs); per-monster loot tables (**shipped in 6c** — see below); the
   milestone-12 per-modifier analytics trace.
@@ -671,8 +674,8 @@ the #36 backlog rather than blocking this slice.
   (see the `gear-equipment-system` note). No **species** passives yet (6b.3). No
   **terrain-blocked LOS** for ranged (distance-only). Killed monsters are removed
   and **do not respawn** (fixed pool depletes; continuous spawning is later).
-  `protocol.PlayerAttackDamage` is now an orphaned constant (melee uses class
-  weapons) — remove opportunistically.
+  `protocol.PlayerAttackDamage` was an orphaned constant here — since removed
+  (melee uses class weapons).
 - **`spawnHexLocked` is faction-blind**: `Join` and player respawn pick the
   nearest free walkable hex without avoiding monster-occupied hexes, so a
   player can spawn co-located with a monster (opposing co-occupancy). Inert

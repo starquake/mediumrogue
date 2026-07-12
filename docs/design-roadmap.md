@@ -100,9 +100,9 @@ Combat is deterministic today (every attack lands its pipeline-computed
 damage). This cluster — surfaced by the #69 discussion — is the newest.
 **Combat resolution is ARPG stat-checks, not TTRPG rolls** (decided): defence
 and offence are *decoupled* percentage gear stats (`evasion%` / `crit%`), each
-a rule card the pipeline folds — never a coupled to-hit roll or `d20`. See the
-two combat-model design notes ("Were we mixing TTRPG and ARPG?" / "What if we
-moved to TTRPG?").
+a rule card the pipeline folds — never a coupled to-hit roll or `d20`. The
+reasoning is in [`combat-model-notes.md`](combat-model-notes.md) ("Were we
+mixing TTRPG and ARPG?" / "What if we moved to TTRPG?").
 
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
