@@ -15,7 +15,10 @@ export interface ItemStats {
   damage: number;
   rangeHex: number;
   aoeRadius: number;
+  /** The mechanical effect line ("×1.5 damage vs dragons"). */
   desc: string;
+  /** The authored lore/"Fantasy" line; "" for items without lore. */
+  flavor: string;
 }
 
 /** One equipped item, keyed in `equipped` by its slot (itemType string). */
@@ -134,6 +137,7 @@ export function setInventory(items: ItemView[]): void {
       rangeHex: it.rangeHex,
       aoeRadius: it.aoeRadius,
       desc: it.desc,
+      flavor: it.flavor,
     };
     if (it.equipped) {
       eq[it.type] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type, ...stats };

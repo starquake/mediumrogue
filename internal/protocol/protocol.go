@@ -369,7 +369,10 @@ type ItemView struct {
 	AoERadius int    `json:"aoeRadius"`
 	// Desc is the authored human-readable rule text ("+3 vs targets below
 	// half HP"); empty for rule-less items.
-	Desc     string `json:"desc"`
+	Desc string `json:"desc"`
+	// Flavor is the item's authored lore ("Fantasy") line; empty for items
+	// without lore. Cosmetic only — flavor text in the inventory tooltip.
+	Flavor   string `json:"flavor"`
 	Equipped bool   `json:"equipped"`
 	// Count is the stack size for a consumable backpack stack (1..ItemStackCap);
 	// always 1 for gear.

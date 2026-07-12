@@ -116,6 +116,7 @@ var itemDefs = []*itemDef{
 		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeMeleeWeapon,
 		wearableBy: []string{protocol.ClassFighter},
 		damage:     4, desc: "+3 damage in a dwarf's hands",
+		flavor: "This ancient mattock still holds a razor-sharp edge.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
 				then: effect{kind: effAdd, n: 3}},
@@ -125,6 +126,7 @@ var itemDefs = []*itemDef{
 		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWand,
 		wearableBy: []string{protocol.ClassMage},
 		damage:     3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		flavor: "Tuned to eliminate the weakest enemies.",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
 			// boring tail of a fight, and never scales into a boss-killer.
@@ -141,6 +143,7 @@ var itemDefs = []*itemDef{
 		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeMeleeWeapon,
 		wearableBy: []string{protocol.ClassFighter},
 		damage:     4, desc: "×1.5 damage vs dragons",
+		flavor: "Forged by a legendary hero to slay the evil dragon Werdmullerix.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
 				then: effect{kind: effMulPct, n: 150}},
@@ -166,6 +169,7 @@ var itemDefs = []*itemDef{
 		id: idLeatherArmor, name: "Leather Armor", itemType: protocol.ItemTypeBody,
 		wearableBy: []string{protocol.ClassFighter, protocol.ClassRogue},
 		desc:       "take a little less from every hit",
+		flavor:     "Supple leather that lets you dodge out of harm's way.",
 		rules: []ruleCard{
 			// take-damage −1; applyRules' event-level clamp keeps every landed
 			// hit ≥1 (the card's "floor 1").
@@ -174,7 +178,8 @@ var itemDefs = []*itemDef{
 	},
 	{
 		id: idHeadbandOfLearning, name: "Headband of Learning", itemType: protocol.ItemTypeHead,
-		desc: "earn 5% more XP",
+		desc:   "earn 5% more XP",
+		flavor: "Stimulates your tiny little brain, for faster learning.",
 		rules: []ruleCard{
 			{event: evEarnXP, then: effect{kind: effMulPct, n: percentBase + 5}},
 		},

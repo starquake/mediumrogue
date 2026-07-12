@@ -21,6 +21,10 @@ import (
 // Pure data (the design doc's §7 SQLite prerequisite) — mirrors ruleCard.
 type itemDef struct {
 	id, name, desc string
+	// flavor is the card's authored lore ("Fantasy") line, shown as flavor
+	// text in the inventory tooltip — separate from desc's mechanical effect
+	// line, and never gameplay-affecting. Empty for items without lore.
+	flavor string
 	// itemType is one of the protocol.ItemType* consts — the taxonomy's 12
 	// types. It determines the item's slot (slotForType(itemType)): each type
 	// fits exactly one slot, except consumable, which has no slot (backpack

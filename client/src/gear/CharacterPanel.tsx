@@ -99,7 +99,7 @@ function StatTooltip(): JSXElement {
               when={hasCombat()}
               fallback={
                 <Show when={item().desc === ""}>
-                  <div class="tt-desc tt-none">No combat stats.</div>
+                  <div class="tt-none">No combat stats.</div>
                 </Show>
               }
             >
@@ -112,7 +112,10 @@ function StatTooltip(): JSXElement {
               </Show>
             </Show>
             <Show when={item().desc !== ""}>
-              <div class="tt-desc">{item().desc}</div>
+              <div class="tt-effect">{item().desc}</div>
+            </Show>
+            <Show when={item().flavor !== ""}>
+              <div class="tt-flavor">{item().flavor}</div>
             </Show>
           </div>
         );

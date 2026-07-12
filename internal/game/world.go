@@ -1171,6 +1171,7 @@ func itemViewOf(inst itemInstance, equipped bool, count int) protocol.ItemView {
 	return protocol.ItemView{
 		ID: inst.id, DefID: inst.defID, Name: def.name, Type: def.itemType,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
+		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
 	}
 }

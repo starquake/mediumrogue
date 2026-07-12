@@ -597,6 +597,11 @@ export interface ItemView {
    * half HP"); empty for rule-less items.
    */
   desc: string;
+  /**
+   * Flavor is the item's authored lore ("Fantasy") line; empty for items
+   * without lore. Cosmetic only — flavor text in the inventory tooltip.
+   */
+  flavor: string;
   equipped: boolean;
   /**
    * Count is the stack size for a consumable backpack stack (1..ItemStackCap);
