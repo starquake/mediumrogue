@@ -25,6 +25,12 @@ linters:
       min-complexity: 20
     lll:
       line-length: 120
+    # Enforce the CLAUDE.md rule automatically: every //nolint must name a
+    # specific linter and carry a reason comment. All existing suppressions
+    # already comply; this keeps a bare or unexplained //nolint from landing.
+    nolintlint:
+      require-explanation: true
+      require-specific: true
   exclusions:
     rules:
       # Test files may use long funcs, magic numbers, and unwrapped errors.
