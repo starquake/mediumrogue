@@ -269,6 +269,14 @@ while the others start with `mediumrogue-`.
 `proxy-confs` dir and reload SWAG. Ensure the external `web` docker network
 exists (it already does for topbanana). Ensure the SSH user can run `docker`.
 
+**TLS (you):** stay on the current HTTP-01 / enumerated-hostname setup — no
+wildcard, no DNS credential. Add the three names to SWAG's `SUBDOMAINS` list
+(`mediumrogue`, `mediumrogue-staging`, `mediumrogue-development`); SWAG
+re-issues the multi-SAN cert automatically. (Wildcard via DNS-01 was considered
+and declined: it would require giving SWAG an account-wide Hetzner DNS token,
+which we don't want. Revisit only if the hostname list ever becomes a real
+annoyance — it's orthogonal to everything else here.)
+
 **Registry (you):** the `ghcr.io/starquake/mediumrogue` package must be pullable
 by the host's `docker login` (the deploy uses `GITHUB_TOKEN`; confirm package
 visibility/permissions on first deploy).
