@@ -57,7 +57,7 @@ func craftInventorySnapshot() []byte {
 	}
 
 	snapshot := map[string]any{
-		"version":      2,
+		"version":      3,
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,
@@ -333,7 +333,7 @@ func assertRestartRoundTrip(t *testing.T, pwA *persistWorld, preRestart protocol
 	}
 }
 
-// TestCraftedSnapshotVersionGate: the crafted v2 snapshot with its version
+// TestCraftedSnapshotVersionGate: the crafted v3 snapshot with its version
 // field rewritten to 1 (the pre-inventory shape's version) is refused by
 // RestoreState — the world starts fresh instead of guessing at a migration
 // (the app layer then preserves the rejected file aside; that wiring is
