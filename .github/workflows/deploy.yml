@@ -116,9 +116,11 @@ jobs:
             docker logout ghcr.io
 
       - name: Verify staging deployment
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
         run: |
           for i in $(seq 1 12); do
-            if curl -fsS "${{ secrets.HEALTH_URL }}" >/dev/null; then
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
               echo "Health check passed (attempt $i)"
               exit 0
             fi
@@ -133,6 +135,10 @@ jobs:
     permissions:
       contents: read
       packages: read
+    # The startsWith(head_branch, 'v') guard is a tag-vs-branch heuristic:
+    # it is safe only because ci.yml's `push` trigger is limited to
+    # branches:[main] + tags:['v*.*.*'], so no v-prefixed BRANCH can produce
+    # a push-event CI run. Keep that ci.yml filter in lockstep with this.
     if: >-
       (github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
@@ -153,10 +159,21 @@ jobs:
         id: tag
         env:
           IMAGE_TAG: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           IMAGE_TAG="${IMAGE_TAG#v}"
           if [[ ! "$IMAGE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            IMAGE_TAG="latest"
+            # A manual dispatch runs from a branch (not a tag), so it has no
+            # semver to resolve — deploy the newest release via :latest. An
+            # automatic tag-push that isn't strict X.Y.Z (e.g. a v*.*.* that
+            # matched a prerelease like v1.0.0-rc1) must NOT fall back to
+            # :latest: that would silently deploy stale bytes to production.
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              IMAGE_TAG="latest"
+            else
+              echo "ERROR: '${IMAGE_TAG}' is not a strict semver release tag (X.Y.Z); refusing to deploy to production" >&2
+              exit 1
+            fi
           fi
           echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
@@ -234,9 +251,11 @@ jobs:
             docker logout ghcr.io
 
       - name: Verify production deployment
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
         run: |
           for i in $(seq 1 12); do
-            if curl -fsS "${{ secrets.HEALTH_URL }}" >/dev/null; then
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
               echo "Health check passed (attempt $i)"
               exit 0
             fi
@@ -342,9 +361,11 @@ jobs:
             docker logout ghcr.io
 
       - name: Verify development deployment
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
         run: |
           for i in $(seq 1 12); do
-            if curl -fsS "${{ secrets.HEALTH_URL }}" >/dev/null; then
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
               echo "Health check passed (attempt $i)"
               exit 0
             fi
