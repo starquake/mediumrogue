@@ -1,0 +1,24 @@
+# Staging. Tracks main via the :edge image (deploy.yml resolves it to a
+# verified digest). Same shape as production, separate world + volume.
+services:
+  mediumrogue-staging:
+    image: ${IMAGE_NAME}@${IMAGE_DIGEST:?IMAGE_DIGEST must be set in .env or environment}
+    container_name: mediumrogue-staging
+    environment:
+      - LISTEN_ADDR=0.0.0.0:8080
+      - TURN_INTERVAL=4s
+      - HEARTBEAT_INTERVAL=15s
+      - MONSTER_COUNT=40
+      - SNAPSHOT_PATH=/data/world.json
+      - SNAPSHOT_INTERVAL=60s
+    volumes:
+      - mediumrogue_staging_data:/data
+    networks:
+      - web
+    restart: unless-stopped
+
+volumes:
+  mediumrogue_staging_data:
+networks:
+  web:
+    external: true

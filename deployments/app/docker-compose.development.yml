@@ -1,0 +1,24 @@
+# Development. Runs whatever PR carries the deploy:dev label; image is a
+# pr-<n> build (unsigned). Separate world + volume; safe to wipe anytime.
+services:
+  mediumrogue-development:
+    image: ${IMAGE_NAME}@${IMAGE_DIGEST:?IMAGE_DIGEST must be set in .env or environment}
+    container_name: mediumrogue-development
+    environment:
+      - LISTEN_ADDR=0.0.0.0:8080
+      - TURN_INTERVAL=4s
+      - HEARTBEAT_INTERVAL=15s
+      - MONSTER_COUNT=40
+      - SNAPSHOT_PATH=/data/world.json
+      - SNAPSHOT_INTERVAL=60s
+    volumes:
+      - mediumrogue_development_data:/data
+    networks:
+      - web
+    restart: unless-stopped
+
+volumes:
+  mediumrogue_development_data:
+networks:
+  web:
+    external: true
