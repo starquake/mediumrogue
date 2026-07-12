@@ -44,7 +44,7 @@ func handleChat(deps Deps) http.Handler {
 		sender, broadcast := name, text
 
 		if strings.HasPrefix(text, "/") {
-			sender, broadcast, ok = routeChatCommand(w, deps, req, name, senderHex, text)
+			sender, broadcast, ok = routeChatCommand(w, deps, req.Token, name, senderHex, text)
 			if !ok {
 				return
 			}
@@ -65,7 +65,7 @@ const systemSender = "system"
 // every other command runs through chat.RunCommand under the player's own
 // name. On failure it writes the error response itself and returns ok=false.
 func routeChatCommand(
-	w http.ResponseWriter, deps Deps, req protocol.ChatRequest, name string, senderHex protocol.Hex, text string,
+	w http.ResponseWriter, deps Deps, token string, name string, senderHex protocol.Hex, text string,
 ) (string, string, bool) {
 	verb, rest := cutVerb(text)
 
@@ -78,13 +78,13 @@ func routeChatCommand(
 	switch verb {
 	case "invite":
 		sender = systemSender
-		out, err = deps.World.PartyInvite(req.Token, rest)
+		out, err = deps.World.PartyInvite(token, rest)
 	case "accept":
 		sender = systemSender
-		out, err = deps.World.PartyAccept(req.Token)
+		out, err = deps.World.PartyAccept(token)
 	case "leave":
 		sender = systemSender
-		out, err = deps.World.PartyLeave(req.Token)
+		out, err = deps.World.PartyLeave(token)
 	case "quest":
 		sender = systemSender
 
@@ -95,7 +95,7 @@ func routeChatCommand(
 			return "", "", false
 		}
 
-		out, err = deps.World.QuestTake(req.Token, id)
+		out, err = deps.World.QuestTake(token, id)
 	case "abandon":
 		sender = systemSender
 
@@ -108,7 +108,7 @@ func routeChatCommand(
 			return "", "", false
 		}
 
-		out, err = deps.World.QuestAbandon(req.Token, id)
+		out, err = deps.World.QuestAbandon(token, id)
 	default:
 		sender = name
 		out, err = chat.RunCommand(text, chat.Sender{Name: name, Hex: senderHex})
