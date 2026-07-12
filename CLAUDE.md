@@ -124,6 +124,14 @@ Go may not be on PATH; the Makefile falls back to `/usr/local/go/bin/go`.
   screenshot it, and get approval **before** implementing the real UI (a CRT
   filter was built and rejected post-hoc; a paper-doll inventory was approved
   from a mockup and built once).
+- **AI-authored issue/PR comments are marked as such**: when Claude posts a
+  GitHub comment on the maintainer's behalf (via
+  `gh issue comment`/`gh pr comment --body-file`), it opens with a visible
+  attribution header — `> 🤖 **Comment by Claude** (AI pair-programmer working
+  with @starquake) — posted through @starquake's account.` — because `gh` posts
+  under the maintainer's own account. Draft the wording and get the maintainer's
+  OK before posting a substantive or public comment; keep feedback
+  engine-grounded and leave design *decisions* to the maintainer/designer.
 
 ## Maintenance reminders
 
