@@ -79,23 +79,24 @@ My engineering read of the dependency graph (the *what-first*, not the
 skills are all one system deep. But it is an `L`, so it belongs after the
 cheap wins and the gear keystone.
 
-## 4. Issue hygiene (GitHub-side — not in this PR)
+## 4. Issue hygiene (GitHub-side — not in this PR) — ✅ all done
 
-These are issue-body edits, so they can't ride a PR. Recommended, for your OK:
+These were issue-body edits, so they couldn't ride a PR. All executed with
+the maintainer's OK (2026-07-13):
 
-- **#55** — one stale phrase in the "Combat (decided)" section: *"two future
-  **to-hit rolls**"*. Under ARPG it should read *"two independent
-  evasion/crit resolutions"* (each dual-wield hit resolves its own
-  `evasion-check`/`crit%`, not a to-hit roll). ⚠ Its **decisions comment**
-  may repeat the phrase — worth checking when you edit. I did **not** auto-edit
-  the issue overnight; say the word and I'll fix body + comment.
-- **#57** — cosmetic only: it's clean, but if you ever wrote "accuracy"
-  anywhere in the skill backlog, read it as "evasion/crit" now. No action
-  needed.
-- **#56, #58, #60, #61, #62, #31, #36** — verified free of TTRPG-drift
-  language. No changes.
-- **#69** — already rewritten to the ARPG model (title, body, decision
-  comment) earlier today.
+- **#55** — the stale *"two future to-hit rolls"* phrase fixed in **both** the
+  body and the decisions comment → *"two independent evasion/crit
+  resolutions"*.
+- **#57** — cosmetic only; verified clean, no action needed.
+- **#31, #56, #62** — verified free of TTRPG-drift language; no changes.
+- **#69** — rewritten to the ARPG model (title, body, decision comments),
+  including the Q6 AoE-always-hits update.
+- **After the Q2–Q11 decisions** (which post-date this doc's first draft),
+  the affected descriptions were synced to the decided state: **#58** body
+  rewritten (subclass model), **#60/#61** given appended "Decided so far"
+  blocks (NGB's original text untouched), **#36**'s spawn checklist bullet
+  updated to the Q9 decision. Every decision also has an AI-attributed
+  comment on its ticket.
 
 ## 5. What this PR changes
 
