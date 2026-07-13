@@ -101,7 +101,7 @@ func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 	}
 
 	level1Dealt := bump(t, 0)
-	level5Dealt := bump(t, 4*protocol.XPCurveBase) // 1600: levelFor(1600) == 5
+	level5Dealt := bump(t, 16*protocol.XPCurveBase) // 1600: levelFor(1600) == 5
 
 	if got, want := level5Dealt, level1Dealt; got != want {
 		t.Errorf("level-5 Fighter bump damage = %d, want %d (equal to level-1's — level must not scale damage)", got, want)
