@@ -393,3 +393,84 @@ func TestNonElfNeverCrits(t *testing.T) {
 		})
 	}
 }
+
+// Pinned seeds for the Misericorde's own crit roll (rng.IntN(100) < 15, the
+// item card's chance — distinct from ElfCritChancePercent's roll). Found the
+// same way meleeCritSeed/meleeMissSeed were: scanning seeds 0-39 with a
+// human Rogue (no species crit in play) wielding the Misericorde against a
+// fat-HP monster and printing dealt damage per seed — seed 0 misses (dealt
+// base 6), seed 1 procs (dealt 12, the x2). They happen to match
+// meleeCritSeed/meleeMissSeed exactly because both cards draw the pipeline's
+// first (and, here, only) chance roll at the same site or bump.
+const (
+	misericordeCritSeed = 1 // Misericorde procs (double damage) at this seed
+	misericordeMissSeed = 0 // Misericorde does not proc (base damage) at this seed
+)
+
+// misericordeBumpDamage places a human (non-elf) Rogue wielding the
+// Misericorde at the origin, bumps a fat-HP monster at a neighbour so it
+// survives even a crit, and returns the damage dealt — isolating the
+// weapon's own crit card as the only source of a multiplier in play.
+func misericordeBumpDamage(t *testing.T, seed int64) int {
+	t.Helper()
+
+	w := newWorld()
+	w.SetSeedForTest(seed)
+
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	monsterHex := walkableNeighbor(t, w, center)
+
+	pid, tok := w.PlaceEntityForTest(center)
+	w.SetClassForTest(pid, protocol.ClassRogue) // wearableBy the Misericorde
+	w.SetSpeciesForTest(pid, protocol.SpeciesHuman)
+
+	instID := w.GrantItemForTest(pid, "misericorde")
+	if err := w.SubmitIntent(equipIntent(pid, tok, instID)); err != nil {
+		t.Fatalf("SubmitIntent(equip Misericorde): %v", err)
+	}
+
+	const fatHP = 100
+
+	monsterID := w.PlaceMonsterForTest(monsterHex)
+	w.SetHPForTest(monsterID, fatHP) // survives even a crit, so HP is readable
+
+	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+	w.ResolveCombatOnlyForTest()
+
+	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
+	if !ok {
+		t.Fatalf("monster %d missing after a Misericorde bump (unexpected kill)", monsterID)
+	}
+
+	return fatHP - monster.HP
+}
+
+// TestMisericordeCritProcsSeeded: the Misericorde's 15% crit card deals
+// exactly double its 6 base damage (12) on a proc and exactly its base (6)
+// on a miss — the binding numbers for the fast-lane batch's first crit%
+// weapon.
+func TestMisericordeCritProcsSeeded(t *testing.T) {
+	t.Parallel()
+
+	const misericordeDamage = 6
+
+	t.Run("proc", func(t *testing.T) {
+		t.Parallel()
+
+		if got, want := misericordeBumpDamage(t, misericordeCritSeed), 2*misericordeDamage; got != want {
+			t.Errorf("Misericorde proc bump = %d, want %d (2x base %d)", got, want, misericordeDamage)
+		}
+	})
+
+	t.Run("no proc", func(t *testing.T) {
+		t.Parallel()
+
+		if got, want := misericordeBumpDamage(t, misericordeMissSeed), misericordeDamage; got != want {
+			t.Errorf("Misericorde non-proc bump = %d, want %d (base)", got, want)
+		}
+	})
+}

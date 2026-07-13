@@ -184,6 +184,30 @@ var itemDefs = []*itemDef{
 			{event: evEarnXP, then: effect{kind: effMulPct, n: percentBase + 5}},
 		},
 	},
+
+	// Crit%-weapons (fast-lane batch task 6, #69 Q5): the first weapons
+	// carrying a per-hit crit-chance card — the elf-crit card pattern
+	// (elfCards, above) applied to an ITEM instead of a species passive.
+	{
+		id: idMisericorde, name: "Misericorde", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassRogue},
+		damage:     6, desc: "15% chance to strike true for double damage",
+		flavor: "A blade thin enough to find the gap between any two plates.",
+		rules: []ruleCard{
+			{event: evDealDamage, when: []condition{{kind: condChance, n: 15}},
+				then: effect{kind: effMulPct, n: 200}},
+		},
+	},
+	{
+		id: idDuelistsSaber, name: "Duelist's Saber", itemType: protocol.ItemTypeMeleeWeapon,
+		wearableBy: []string{protocol.ClassFighter},
+		damage:     5, desc: "10% chance to land a perfect riposte for double",
+		flavor: "Its balance rewards patience; its edge rewards timing.",
+		rules: []ruleCard{
+			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
+				then: effect{kind: effMulPct, n: 200}},
+		},
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -237,6 +261,11 @@ var monsterDefs = []*monsterDef{
 			// the pinned killDropSeed/killMissSeed (drops_test.go) survive
 			// where possible.
 			{defID: idHealingPotion, weight: 2},
+			// Duelist's Saber (fast-lane batch task 6, #69 Q5): appended LAST
+			// for the same reason — every earlier entry keeps its
+			// cumulative-weight position, so killDropSeed/killMissSeed
+			// (drops_test.go) survive unchanged.
+			{defID: idDuelistsSaber, weight: 4},
 		},
 		rings: []int{1},
 	},
@@ -252,6 +281,11 @@ var monsterDefs = []*monsterDef{
 			{defID: idEmberStaff, weight: 4},
 			{defID: idAncientDwarvenMattock, weight: 4},
 			{defID: idWarMageStaff, weight: 4},
+			// Misericorde (fast-lane batch task 6, #69 Q5): appended LAST so
+			// every earlier entry keeps its cumulative-weight position (this
+			// kind is not pinned by drops_test.go today, but the rule holds
+			// regardless).
+			{defID: idMisericorde, weight: 4},
 		},
 		rings: []int{1, 2},
 	},

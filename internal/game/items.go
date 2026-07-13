@@ -473,6 +473,15 @@ const (
 	idHealingPotion      = "healing-potion"
 )
 
+// Crit%-weapon ids (fast-lane batch task 6, #69 Q5): the first weapons to
+// carry a per-hit crit-chance card (the elf-crit card pattern applied to an
+// item instead of a species), so a typo in content.go's registry entries or
+// the wolf/ghoul drop tables is a compile error instead of a silent miss.
+const (
+	idMisericorde   = "misericorde"
+	idDuelistsSaber = "duelists-saber"
+)
+
 // classDefaultIDs returns the item def ids a class starts with at Join: one
 // close-ish weapon, plus a ranged-ish weapon for Rogue and Mage (Fighter has
 // none — its thrown-weapon slot ships empty). An empty or unknown class
