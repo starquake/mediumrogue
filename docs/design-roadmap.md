@@ -125,9 +125,9 @@ Two combat-resolution questions raised on #69 (magic / AoE) are captured as
 
 | Q | Question | My input | Decision |
 |---|----------|----------|:--------:|
-| Q1 | Thrown weapons: lost when thrown, or retrievable? | Stack them; expend + optional ground drop; "returns to hand" = per-item enchant | ❓ |
-| Q2 | Subclasses or new classes? | Subclasses — a subset of another tree, capstone-gated | ❓ |
-| Q3 | One-handed: an explicit tag or the default? | The default (absence of two-handed) | ❓ |
+| Q1 | Thrown weapons: lost when thrown, or retrievable? | Stack them; expend + optional ground drop; "returns to hand" = per-item enchant | ⏸ parked 2026-07-12 (dropped from #55 scope; revisit with thrown content) |
+| Q2 | Subclasses or new classes? | Subclasses — a subset of another tree, capstone-gated (but see Q11) | ❓ |
+| Q3 | One-handed: an explicit tag or the default? | **Decided (#55 walkthrough):** the default — 1H = absence of the `two-handed` tag | ✅ |
 | Q4 | What does a level-up give? | Skill points (not stat bumps) | ❓ |
 | Q5 | RNG in combat (hit/miss, crits)? | **Decided:** yes, but only as *bounded, decoupled* seeded chances — `evasion%` (defence) and `crit%` (offence), drawn from the per-scope seeded PCG so determinism holds. No coupled to-hit roll, no `d20`. Block / reduction stay deterministic. | ✅ |
 | Q6 | AoE hit resolution: per-target, or one roll for all? | **Per-target `evasion%`** (my lean) — each defender's own stat decides their outcome; a single shared roll discards individual evasion. NGB leans one roll (magic "spectacular or fail spectacularly"). The D&D *save-vs-level* framing is **rejected** — it re-couples attacker/defender (TTRPG drift). | ❓ |
