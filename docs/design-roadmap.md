@@ -2,7 +2,9 @@
 
 The open design issues (#55–#62, plus the to-hit/defence thread #69) are one interconnected arc. This doc turns it
 into a **decision menu**: each row is a discrete piece of work you can
-green-light, cut, or shelve. Set the **Decision** column (edit this file, or
+green-light, cut, or shelve. Before green-lighting anything, `game-identity.md`
+is the one-page "what this game is / isn't" anchor — the check for whether a
+feature fits or drifts toward ARPG / MMO / TTRPG conventions the game doesn't share. Set the **Decision** column (edit this file, or
 tell me and I'll record it). Once decided, each **✅ Do** becomes its own small,
 pick-up-able issue that **links back to its design issue** — see *Next* at the
 bottom.
