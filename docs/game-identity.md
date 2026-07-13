@@ -47,7 +47,18 @@ keeps 15 players in one world from waiting on each other.
 
 ## Guardrails — be suspicious of a request that pulls toward…
 
-- **Real-time / twitch / reflex** anything → breaks determinism, the core pillar.
+- **Real-time / twitch / reflex** anything → breaks determinism, the core
+  pillar. **Asked and answered (2026-07-13): WeGo stays; realtime rejected.**
+  The wire (SSE/REST) is *not* the binding constraint — realtime dies on the
+  design: it makes reflexes/ping/APM matter among a mixed group of ~15
+  friends, kills seeded determinism (timing becomes an input), makes the
+  combat bubble meaningless (nothing left to reconcile), and demands a
+  different engine (prediction/reconciliation, per-frame simulation) to
+  converge on a browser Diablo-MMO we'd lose on feel. The formula is **ARPG
+  stat grammar, WeGo tempo** — we took ARPG's math and refused its clock, on
+  purpose. If combat feels slow/static, that's a *feel* problem with
+  WeGo-native fixes (playback drama, sound, tighter solo-bubble
+  `TURN_INTERVAL`), not a model problem.
 - **Initiative or "your turn, then mine"** → breaks WeGo simultaneity (and the
   15-player no-waiting premise).
 - **A coupled to-hit roll / Armor-Rating / AC / `d20`** → we chose decoupled
