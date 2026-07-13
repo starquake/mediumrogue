@@ -399,9 +399,10 @@ func TestNonElfNeverCrits(t *testing.T) {
 // same way meleeCritSeed/meleeMissSeed were: scanning seeds 0-39 with a
 // human Rogue (no species crit in play) wielding the Misericorde against a
 // fat-HP monster and printing dealt damage per seed — seed 0 misses (dealt
-// base 6), seed 1 procs (dealt 12, the x2). They happen to match
-// meleeCritSeed/meleeMissSeed exactly because both cards draw the pipeline's
-// first (and, here, only) chance roll at the same site or bump.
+// base 6), seed 1 procs (dealt 12, the x2). They happen to equal
+// meleeCritSeed/meleeMissSeed because both scenarios are a single first bump
+// on a fresh RNG stream, drawing the same one chance roll at the same
+// pipeline position — a coincidence of this test's setup, not a rule.
 const (
 	misericordeCritSeed = 1 // Misericorde procs (double damage) at this seed
 	misericordeMissSeed = 0 // Misericorde does not proc (base damage) at this seed
