@@ -109,7 +109,7 @@ mixing TTRPG and ARPG?" / "What if we moved to TTRPG?").
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
 | DF1 | Passive evasion / reduction | Gear rule cards: light = harder to hit (evasion %), heavy = damage-reduction (today's `take-damage -1`) | S–M | The light-vs-heavy split; evasion adds bounded seeded RNG, reduction stays deterministic | ❓ |
-| DF2 | Evasion & crit (#69) | Two **decoupled** ARPG chances — `evasion%` (defender dodges → 0 dmg) and `crit%` (attacker deals ×2) | L | New `evasion-check` / `crit-check` events; seeded PCG; evasion clamps to a ceiling, crit to `[0,100]` | ❓ |
+| DF2 | Evasion & crit (#69) | Two **decoupled** ARPG chances — `evasion%` (defender dodges → 0 dmg) and `crit%` (attacker deals ×2) | S+L | **Splits:** `crit%` ships as content *today* (elf's `deal-damage`+`chance` pattern — Tier 1, free); `evasion%` is the one new engine event (a 0-dmg dodge can't be a plain card — landed hits floor at 1). Seeded PCG; evasion clamps to a ceiling, crit to `[0,100]` | ❓ |
 | ACT | **Combat action economy** | Spend a turn's action on a non-attack action | L | **Foundational — unblocks SK5 (active skills), combat-heal (#61), block, protect-ally** | ❓ |
 | ACT-B | Block / guard | Active defensive action; **no RNG** | M | Needs ACT; synergises with shields (#55) / Shield Wall (#57) | ❓ |
 | ACT-P | Protect an ally | Redirect a hit meant for an ally to you (co-op tank) | L | Needs ACT; new damage-redirect effect (like aura/cascade) | ❓ |
@@ -117,6 +117,9 @@ mixing TTRPG and ARPG?" / "What if we moved to TTRPG?").
 **The `ACT` node re-shapes the arc:** block, combat-heal, protect-ally, *and*
 active skills (SK5) are all one system deep — build the action economy once and
 they all become reachable. It's the highest-leverage unlock in this cluster.
+
+Two combat-resolution questions raised on #69 (magic / AoE) are captured as
+**Q6** and **Q7** below.
 
 ## Open design questions (decide the *how*, not *whether*)
 
@@ -127,6 +130,8 @@ they all become reachable. It's the highest-leverage unlock in this cluster.
 | Q3 | One-handed: an explicit tag or the default? | The default (absence of two-handed) | ❓ |
 | Q4 | What does a level-up give? | Skill points (not stat bumps) | ❓ |
 | Q5 | RNG in combat (hit/miss, crits)? | **Decided:** yes, but only as *bounded, decoupled* seeded chances — `evasion%` (defence) and `crit%` (offence), drawn from the per-scope seeded PCG so determinism holds. No coupled to-hit roll, no `d20`. Block / reduction stay deterministic. | ✅ |
+| Q6 | AoE hit resolution: per-target, or one roll for all? | **Per-target `evasion%`** (my lean) — each defender's own stat decides their outcome; a single shared roll discards individual evasion. NGB leans one roll (magic "spectacular or fail spectacularly"). The D&D *save-vs-level* framing is **rejected** — it re-couples attacker/defender (TTRPG drift). | ❓ |
+| Q7 | Do monsters have levels / scale to average player level? | Currently **no** — difficulty is monster *kind* + distance *rings*, not a level number. Dynamic level-scaling (spell save-vs-level, monster power tracking the party) tensions with the **anti-rubberband** principle (XP5); a separate topic, approach cautiously. | ❓ |
 
 ## Fast lane (independent of the big arc)
 
