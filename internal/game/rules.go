@@ -168,7 +168,8 @@ func targetKindHolds(ctx ruleCtx, s string) bool {
 }
 
 // applyRules folds base through every card matching event whose conditions
-// hold: adds sum first, then multipliers apply in card order, then the
+// hold: adds sum first, then multiplier deltas sum and apply once (percent
+// fold is additive, not compounding — #61 principle 14), then the
 // event-level clamp (a landed hit always costs ≥1; XP never goes negative).
 func applyRules(event string, base int, cards []ruleCard, ctx ruleCtx) int {
 	add := 0
@@ -189,8 +190,19 @@ func applyRules(event string, base int, cards []ruleCard, ctx ruleCtx) int {
 	}
 
 	v := base + add
-	for _, m := range muls {
-		v = v * m / percentBase
+
+	// Percentages ADD within one event's fold (#61 principle 14, roadmap
+	// Q8): sum the deltas and apply once — a single integer truncation,
+	// trivially order-independent. Stages still compose across events
+	// (deal-damage -> take-damage -> future crit-check), so cross-stage
+	// effects remain true multipliers.
+	if len(muls) > 0 {
+		delta := 0
+		for _, m := range muls {
+			delta += m - percentBase
+		}
+
+		v = max(v*(percentBase+delta)/percentBase, 0)
 	}
 
 	switch event {
