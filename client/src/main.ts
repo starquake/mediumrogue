@@ -791,10 +791,10 @@ async function start(): Promise<void> {
     feedbackLayer.setCommitted(null);
   };
 
-  // Inventory panel toggle: the HUD button, the `i` key, and the panel's own
-  // close button all route through applyPanelOpen, which keeps the store
-  // signal, the HUD button's open-state class, and window.game.panelOpen in
-  // sync.
+  // Inventory panel toggle: the HUD button, the `i`/`c` keys, Escape, and the
+  // panel's own close button all route through applyPanelOpen, which keeps
+  // the store signal, the HUD button's open-state class, and
+  // window.game.panelOpen in sync.
   const applyPanelOpen = (open: boolean): void => {
     if (panelOpen() !== open) {
       togglePanel();
@@ -839,8 +839,9 @@ async function start(): Promise<void> {
   });
 
   // The HUD toggle button reveals now that there is a character to show; the
-  // `i` key is bound via bindMovementKeys below (sharing the typing-focus
-  // guard). Both call toggleInventory (defined above).
+  // `i`/`c`/Escape keys are bound via bindMovementKeys below (sharing the
+  // typing-focus guard). All route through toggleInventory/applyPanelOpen
+  // (defined above).
   toggleInventoryEl.hidden = false;
   toggleInventoryEl.addEventListener("click", toggleInventory);
 
@@ -1330,10 +1331,14 @@ async function start(): Promise<void> {
       }
       void clickTarget(me.hex);
     },
-    // `i` toggles the character/inventory panel — shares the movement keys'
-    // typing-focus guard (input/keys.ts) so typing "i" into chat never opens
-    // it, and the same start-screen block below.
+    // `i` / `c` toggle the character/inventory panel, Escape closes it —
+    // shares the movement keys' typing-focus guard (input/keys.ts) so typing
+    // "i", "c", or Escape into chat never touches the panel, and the same
+    // start-screen block below. Escape's isPanelOpen gate lives in
+    // keys.ts (a no-op while already closed, never a toggle).
     onToggleInventory: toggleInventory,
+    onClosePanel: (): void => applyPanelOpen(false),
+    isPanelOpen: (): boolean => panelOpen(),
     isBlocked: (): boolean => !startScreenEl.hidden,
   });
 
