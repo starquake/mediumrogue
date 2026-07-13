@@ -66,7 +66,7 @@ import {
   TerrainForest,
   TerrainGrass,
   TurnSeconds,
-  XPPerLevel,
+  XPCurveBase,
 } from "./protocol.gen";
 import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
@@ -1107,10 +1107,11 @@ async function start(): Promise<void> {
         window.game.class = mine.class;
         window.game.species = mine.species;
         window.game.name = mine.name;
-        const xpIntoLevel = mine.xp % XPPerLevel;
+        const xpFloor = XPCurveBase * (mine.level - 1) * (mine.level - 1);
+        const xpNext = XPCurveBase * mine.level * mine.level;
         // Position readout (item 9, playtest batch 2): live per bundle, so
         // it never drifts from the server-authoritative hex even mid-tween.
-        statsEl.textContent = `Lv ${mine.level} · ${xpIntoLevel}/${XPPerLevel} XP · (${mine.hex.q}, ${mine.hex.r})`;
+        statsEl.textContent = `Lv ${mine.level} · ${mine.xp - xpFloor}/${xpNext - xpFloor} XP · (${mine.hex.q}, ${mine.hex.r})`;
 
         // Gear: my owned items ride Entity.Items every bundle (full-snapshot
         // philosophy, same as everything else here). setInventory feeds the

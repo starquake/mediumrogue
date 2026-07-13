@@ -378,9 +378,11 @@ export const MonsterMaxHP = 10;
  */
 export const RegenPerTurn = 1;
 /**
- * XPPerLevel is the XP needed to advance one level.
+ * XPCurveBase scales the quadratic XP curve: the total XP required to
+ * REACH level L is XPCurveBase * (L-1)^2 (#60, roadmap XP1). Gaps grow
+ * linearly: 100, 300, 500, ...
  */
-export const XPPerLevel = 100;
+export const XPCurveBase = 100;
 /**
  * QuestKillRewardPerTarget is the flat per-target XP a kill quest's
  * reward is built from (targetN * QuestKillRewardPerTarget), independent

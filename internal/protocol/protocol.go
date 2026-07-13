@@ -195,13 +195,16 @@ const (
 // (mid-fight) does not either — being in a fight means no regen.
 const RegenPerTurn = 1
 
-// XP & leveling (milestone 6b.1). Flat curve for now; per-class/species tuning
-// is 6b.2/6b.3. Per-kill XP is monster-kind content data since 6c
-// (internal/game's monsterDef.xp) — wolf carries the old flat MonsterXP
-// value (20) forward unchanged; there is no single flat award anymore.
+// XP & leveling (milestone 6b.1; curve replaced by a quadratic one in the
+// fast-lane batch, XP1). Per-class/species tuning is 6b.2/6b.3. Per-kill XP
+// is monster-kind content data since 6c (internal/game's monsterDef.xp) —
+// wolf carries the old flat MonsterXP value (20) forward unchanged; there is
+// no single flat award anymore.
 const (
-	// XPPerLevel is the XP needed to advance one level.
-	XPPerLevel = 100
+	// XPCurveBase scales the quadratic XP curve: the total XP required to
+	// REACH level L is XPCurveBase * (L-1)^2 (#60, roadmap XP1). Gaps grow
+	// linearly: 100, 300, 500, ...
+	XPCurveBase = 100
 	// QuestKillRewardPerTarget is the flat per-target XP a kill quest's
 	// reward is built from (targetN * QuestKillRewardPerTarget), independent
 	// of which monster kind actually gets killed toward it — deliberately

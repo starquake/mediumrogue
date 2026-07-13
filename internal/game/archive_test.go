@@ -29,7 +29,7 @@ func TestSweepArchivesThenJoinRestores(t *testing.T) {
 
 	// Earn some XP (levels the character up) and grant a second close-slot
 	// item so gear-beyond-defaults also round-trips.
-	w.SetXPForTest(me.EntityID, 3*protocol.XPPerLevel+10)
+	w.SetXPForTest(me.EntityID, 3*protocol.XPCurveBase+10)
 
 	extraItem := w.GrantItemForTest(me.EntityID, "butchers-cleaver")
 
@@ -84,11 +84,15 @@ func TestSweepArchivesThenJoinRestores(t *testing.T) {
 		t.Errorf("restored Species = %q, want %q", got, want)
 	}
 
-	if got, want := restored.XP, 3*protocol.XPPerLevel+10; got != want {
+	if got, want := restored.XP, 3*protocol.XPCurveBase+10; got != want {
 		t.Errorf("restored XP = %d, want %d", got, want)
 	}
 
-	wantLevel := 1 + (3*protocol.XPPerLevel+10)/protocol.XPPerLevel
+	// 310 XP under the quadratic curve: level 2's floor is XPCurveBase*1^2=100,
+	// level 3's is XPCurveBase*2^2=400, so 310 lands in level 2 (was level 4
+	// under the old flat curve, 1+310/100).
+	// re-derived for XPCurveBase quadratic curve (fast-lane T1)
+	wantLevel := 2
 	if got, want := restored.Level, wantLevel; got != want {
 		t.Errorf("restored Level = %d, want %d", got, want)
 	}

@@ -147,9 +147,10 @@ func TestRespawnScalesMaxHPToLevel(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
-	// One level of XP: levelFor(XPPerLevel) == 2. Death floors XP to this level's
-	// start, so the respawn keeps level 2.
-	w.SetXPForTest(me.EntityID, protocol.XPPerLevel)
+	// One level of XP: levelFor(XPCurveBase) == 2 (the level-2 floor,
+	// XPCurveBase*(2-1)^2, is XPCurveBase itself). Death floors XP to this
+	// level's start, so the respawn keeps level 2.
+	w.SetXPForTest(me.EntityID, protocol.XPCurveBase)
 	w.SetHPForTest(me.EntityID, 0)
 
 	snap := step(t, w) // world resolution respawns the dead player

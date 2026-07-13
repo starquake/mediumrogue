@@ -78,8 +78,10 @@ func TestBumpDamageScalesWithLevel(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, center)
 
 	pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter
-	// XPPerLevel=100: 200 XP → level 3, i.e. two levels above 1.
-	w.SetXPForTest(pid, 2*protocol.XPPerLevel)
+	// Quadratic curve: level 3's floor is XPCurveBase*(3-1)^2 = 400, i.e. two
+	// levels above 1 (was 200 = 2*XPPerLevel under the old flat curve).
+	// re-derived for XPCurveBase quadratic curve (fast-lane T1)
+	w.SetXPForTest(pid, 4*protocol.XPCurveBase)
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 

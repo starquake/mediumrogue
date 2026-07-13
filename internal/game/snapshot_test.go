@@ -50,7 +50,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	// to catch bob): an open stream, unlike bob's, keeps her live.
 	w.StreamOpened(alice.Token)
 
-	w.SetXPForTest(alice.EntityID, 2*protocol.XPPerLevel+15)
+	w.SetXPForTest(alice.EntityID, 2*protocol.XPCurveBase+15)
 
 	extraItem := w.GrantItemForTest(alice.EntityID, "butchers-cleaver")
 	wantClose, wantRanged := w.EquippedSlotsForTest(alice.EntityID)
@@ -154,7 +154,7 @@ func checkRestoredAlice(
 		t.Errorf("restored alice Species = %q, want %q", got, want)
 	}
 
-	if got, want := restored.XP, 2*protocol.XPPerLevel+15; got != want {
+	if got, want := restored.XP, 2*protocol.XPCurveBase+15; got != want {
 		t.Errorf("restored alice XP = %d, want %d", got, want)
 	}
 

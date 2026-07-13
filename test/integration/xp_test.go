@@ -2,19 +2,39 @@ package integration_test
 
 import (
 	"bufio"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// levelForQuadraticCurve mirrors internal/game's unexported levelFor for
+// this wire-level assertion: the 1-based level for a cumulative XP total is
+// 1 + isqrt(xp/XPCurveBase). Integer sqrt (not math.Sqrt alone) avoids
+// float mis-rounding at perfect squares, matching the server's own math.
+func levelForQuadraticCurve(xp int) int {
+	n := xp / protocol.XPCurveBase
+
+	s := int(math.Sqrt(float64(n)))
+	for s > 0 && s*s > n {
+		s--
+	}
+
+	for (s+1)*(s+1) <= n {
+		s++
+	}
+
+	return 1 + s
+}
+
 // TestXPRisesOnMonsterKillOverHTTP exercises milestone 6b.1's headline
 // behavior over real HTTP/SSE: a joined player drives the nearest monster
 // (re-targeted every bundle, since monsters hunt back and can shift the board)
 // until it lands a killing blow. It asserts the player's own XP, as carried on
 // the wire, rises by at least wolfKillXP, and that Level tracks the
-// server's flat curve (1 + xp/XPPerLevel) at every observation — not just the
-// final one.
+// server's quadratic curve (1 + isqrt(xp/XPCurveBase)) at every observation —
+// not just the final one.
 //
 // A player starts at XP 0 / Level 1 and one kill of the seeded (default
 // wolf) monster awards the full wolfKillXP, so "xp reaches >= wolfKillXP" is
@@ -66,11 +86,11 @@ func TestXPRisesOnMonsterKillOverHTTP(t *testing.T) {
 
 		lastXP, lastLevel = myEntity.XP, myEntity.Level
 
-		// The server's flat leveling curve must hold on every single
+		// The server's quadratic leveling curve must hold on every single
 		// observation, not just at the end.
-		if got, want := myEntity.Level, 1+myEntity.XP/protocol.XPPerLevel; got != want {
-			t.Fatalf("player Level = %d, want %d (xp=%d, XPPerLevel=%d)",
-				got, want, myEntity.XP, protocol.XPPerLevel)
+		if got, want := myEntity.Level, levelForQuadraticCurve(myEntity.XP); got != want {
+			t.Fatalf("player Level = %d, want %d (xp=%d, XPCurveBase=%d)",
+				got, want, myEntity.XP, protocol.XPCurveBase)
 		}
 
 		if myEntity.XP >= wolfKillXP {

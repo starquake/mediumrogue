@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	mrand "math/rand/v2"
 	"slices"
 	"strings"
@@ -1911,8 +1912,33 @@ func pluralizeKind(id string) string {
 	return id + "s"
 }
 
-// levelFor returns the 1-based level for a cumulative XP total.
-func levelFor(xp int) int { return 1 + xp/protocol.XPPerLevel }
+// levelFor returns the 1-based level for a cumulative XP total: the largest
+// L with XPCurveBase*(L-1)^2 <= xp. Integer math only — float sqrt
+// mis-rounds near perfect squares.
+func levelFor(xp int) int { return 1 + isqrt(xp/protocol.XPCurveBase) }
+
+// xpFloorFor returns the cumulative XP at which the given level starts.
+func xpFloorFor(level int) int {
+	return protocol.XPCurveBase * (level - 1) * (level - 1)
+}
+
+// isqrt returns the integer square root: the largest s with s*s <= n.
+func isqrt(n int) int {
+	if n <= 0 {
+		return 0
+	}
+
+	s := int(math.Sqrt(float64(n)))
+	for s > 0 && s*s > n {
+		s--
+	}
+
+	for (s+1)*(s+1) <= n {
+		s++
+	}
+
+	return s
+}
 
 // syncMaxHPLocked recalibrates a player's maxHP to its class and current level
 // (via maxHPFor) after an XP change, clamping current HP to the new max. It does
@@ -1926,8 +1952,9 @@ func syncMaxHPLocked(e *entity) {
 	}
 }
 
-// levelFloorXP returns the XP at the start of xp's current level.
-func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
+// levelFloorXP returns the XP at the start of xp's current level (the
+// death floor: dying costs progress inside the level, never the level).
+func levelFloorXP(xp int) int { return xpFloorFor(levelFor(xp)) }
 
 // resolveDeathsLocked floors a dying player's XP to its level start, removes dead
 // monsters (rolling each one's ground-loot drop first — dropLootLocked), and
