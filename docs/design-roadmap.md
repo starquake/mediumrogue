@@ -80,7 +80,7 @@ graph TD
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
 | SU1 | Cross-class skill access | Access a *subset* of another tree, gated on a class capstone | L | Needs the skill trees (SK*) | ❓ |
-| SU2 | Subclasses, not new classes | Direction: extend via subclasses vs adding whole new classes | — | My input: subclasses (preserves class identity) | ❓ |
+| SU2 | Subclasses, not new classes | Direction: extend via subclasses vs adding whole new classes | — | **Decided: subclasses** (= Q2, 2026-07-13) | ✅ |
 
 ## 6. Skill UI — #62
 
@@ -126,7 +126,7 @@ Two combat-resolution questions raised on #69 (magic / AoE) are captured as
 | Q | Question | My input | Decision |
 |---|----------|----------|:--------:|
 | Q1 | Thrown weapons: lost when thrown, or retrievable? | Stack them; expend + optional ground drop; "returns to hand" = per-item enchant | ⏸ parked 2026-07-12 (dropped from #55 scope; revisit with thrown content) |
-| Q2 | Subclasses or new classes? | Subclasses — a subset of another tree, capstone-gated (but see Q11) | ❓ |
+| Q2 | Subclasses or new classes? | **Decided (2026-07-13): subclasses.** A hybrid (spellsword, arcane knight, ranger) = an unlock granting a *subset* of another class's tree; the character keeps its single class. The trio stays protected; no 4th-class costs. Gate per Q11. | ✅ |
 | Q3 | One-handed: an explicit tag or the default? | **Decided (#55 walkthrough):** the default — 1H = absence of the `two-handed` tag | ✅ |
 | Q4 | What does a level-up give? | **Decided (2026-07-13): one bankable skill point** — spent anytime outside combat (like equip), never a modal pick that could interrupt a bubble; allows banking and >1-cost capstones later | ✅ |
 | Q5 | RNG in combat (hit/miss, crits)? | **Decided:** yes, but only as *bounded, decoupled* seeded chances — `evasion%` (defence) and `crit%` (offence), drawn from the per-scope seeded PCG so determinism holds. No coupled to-hit roll, no `d20`. Block / reduction stay deterministic. | ✅ |
@@ -135,7 +135,7 @@ Two combat-resolution questions raised on #69 (magic / AoE) are captured as
 | Q8 | Percentage stacking: add or compound? | **Decided: percentages ADD within an event's fold** (sum the `mulPct` deltas, apply once — one truncation, order-independent); **stages compose across events** (deal-damage → take-damage → crit-check), so crit ×2 / damage-reduction stay true multipliers at their own stage. #61 principle 14 holds engine-wide, no carve-out. Small `applyRules` change; single-multiplier results are byte-identical, stacked-mult pinned tests get re-derived. | ✅ |
 | Q9 | Initial spawn: random scatter or bed/home default? | **Decided (merges both #36 positions):** first spawn = **seeded random scatter *within the sanctuary*** (de-clumps without dropping level-1s into outer rings); **bed thereafter** — spawn at your **last-visited bed** (no bed history), falling back to the sanctuary/Home if the bed is gone. Beds are their own later slice (claimable object + snapshot state → `snapshotVersion` bump); the sanctuary-jitter first spawn is a small `spawnHexLocked` tweak that can ship alone. | ✅ |
 | Q10 | Which skill model governs: plan §0 or the roadmap? | **Decided (2026-07-13): the 3-tree model (B) absorbs the plan's (A).** Class / Adventure / Survival trees per #61; the plan's class-agnostic life skills (First Aid, Make Camp) *are* the Adventure/Survival trees — nothing lost; the Class tree delivers #56's class-identity-via-skills. Plan §0 amended in place. | ✅ |
-| Q11 | Subclass capstone-gating vs #61 principle 5? | #58/SU1 gate cross-class access on a class capstone — but principle 5 says progress in one tree may never block another. Reconcile: either subclass trees are exempt (they're not one of the 3 standard trees) or the gate needs a different key. | ❓ |
+| Q11 | Subclass capstone-gating vs #61 principle 5? | **Decided (2026-07-13, direction — principle-5 scoping awaits NGB's nod):** the capstone gate **stays**; principle 5 is **scoped to the three standard trees** (Class/Adventure/Survival stay mutually independent — its clear intent). A subclass tree is *locked bonus content*: unlocking it via your class capstone is an unlock, not blocked progression. A flavor deed/quest may *accompany* the capstone in the eventual spec. | ✅ |
 
 ## Fast lane (independent of the big arc)
 
