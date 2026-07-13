@@ -35,36 +35,12 @@ func TestEquipOutsideBubbleAppliesImmediately(t *testing.T) {
 		t.Fatalf("SubmitIntent equip: %v", err)
 	}
 
-	closeInst, _ := w.EquippedSlotsForTest(me.EntityID)
-	if got, want := closeInst, instID; got != want {
-		t.Errorf("close slot = %d, want %d (equip outside a bubble must be immediate)", got, want)
-	}
-}
-
-// TestEquipWrongClassRejected: an item registered for a different class than
-// the entity's is rejected with ErrWrongClass, even though the entity owns it
-// (GrantItemForTest bypasses the class-default grant to engineer this).
-func TestEquipWrongClassRejected(t *testing.T) {
-	t.Parallel()
-
-	w := newWorld()
-
-	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
-	if err != nil {
-		t.Fatalf("Join: %v", err)
-	}
-
-	// "dagger" is a Rogue-class item; me is a Fighter.
-	instID := w.GrantItemForTest(me.EntityID, "dagger")
-
-	if got, want := w.SubmitIntent(equipIntent(me.EntityID, me.Token, instID)), game.ErrWrongClass; !errors.Is(got, want) {
-		t.Errorf("err = %v, want %v", got, want)
-	}
-
-	// The wrong-class swap must not have taken effect.
-	closeInst, _ := w.EquippedSlotsForTest(me.EntityID)
-	if closeInst == instID {
-		t.Errorf("close slot = %d, want unchanged (wrong-class equip must not apply)", instID)
+	// The fighter's main-hand already holds its class default (iron sword),
+	// so the warhammer lands in off-hand (weaponTargetSlot's placement
+	// matrix).
+	_, offInst := w.EquippedSlotsForTest(me.EntityID)
+	if got, want := offInst, instID; got != want {
+		t.Errorf("off-hand slot = %d, want %d (equip outside a bubble must be immediate)", got, want)
 	}
 }
 
@@ -182,8 +158,10 @@ func TestEquipInBubbleQueuesClearsPathAppliesAfterTurn(t *testing.T) {
 
 	resolved := w.Snapshot()
 
-	if closeInst, _ := w.EquippedSlotsForTest(idA); closeInst != instID {
-		t.Errorf("close slot after resolution = %d, want %d", closeInst, instID)
+	// A's main-hand already holds its class default (iron sword), so the
+	// warhammer lands in off-hand (weaponTargetSlot's placement matrix).
+	if _, offInst := w.EquippedSlotsForTest(idA); offInst != instID {
+		t.Errorf("off-hand slot after resolution = %d, want %d", offInst, instID)
 	}
 
 	if got, want := hexOfSnap(resolved, idA), hexA0; got != want {
@@ -358,8 +336,10 @@ func TestImmediateEquipClearsStalePendingEquip(t *testing.T) {
 		t.Fatalf("SubmitIntent equip: %v", err)
 	}
 
-	if closeInst, _ := w.EquippedSlotsForTest(id); closeInst != newInst {
-		t.Fatalf("close slot after immediate equip = %d, want %d", closeInst, newInst)
+	// main-hand already holds the class default (iron sword), so the cleaver
+	// lands in off-hand (weaponTargetSlot's placement matrix).
+	if _, offInst := w.EquippedSlotsForTest(id); offInst != newInst {
+		t.Fatalf("off-hand slot after immediate equip = %d, want %d", offInst, newInst)
 	}
 
 	// A full world-domain resolution (not ResolveCombatOnlyForTest, which
@@ -367,8 +347,8 @@ func TestImmediateEquipClearsStalePendingEquip(t *testing.T) {
 	// re-apply a stale pendingEquip left uncleared by the immediate-equip path.
 	step(t, w)
 
-	if closeInst, _ := w.EquippedSlotsForTest(id); closeInst != newInst {
-		t.Errorf("close slot after resolution = %d, want %d (stale pendingEquip must not revert it)", closeInst, newInst)
+	if _, offInst := w.EquippedSlotsForTest(id); offInst != newInst {
+		t.Errorf("off-hand slot after resolution = %d, want %d (stale pendingEquip must not revert it)", offInst, newInst)
 	}
 }
 
@@ -482,9 +462,11 @@ func TestBubbleDissolveAppliesPendingEquip(t *testing.T) {
 		t.Fatalf("A still in combat after sweep; expected the bubble to dissolve")
 	}
 
-	// The queued swap applied at dissolve and is no longer pending.
-	if closeInst, _ := w.EquippedSlotsForTest(idA); closeInst != instID {
-		t.Errorf("close slot after dissolve = %d, want %d (queued equip must apply at dissolve)", closeInst, instID)
+	// The queued swap applied at dissolve and is no longer pending. A's
+	// main-hand already holds its class default (iron sword), so the
+	// warhammer lands in off-hand (weaponTargetSlot's placement matrix).
+	if _, offInst := w.EquippedSlotsForTest(idA); offInst != instID {
+		t.Errorf("off-hand slot after dissolve = %d, want %d (queued equip must apply at dissolve)", offInst, instID)
 	}
 
 	if got, want := w.PendingEquipForTest(idA), int64(0); got != want {

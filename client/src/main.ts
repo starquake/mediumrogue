@@ -48,24 +48,22 @@ import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
-  ClassMage,
-  ClassRogue,
   CombatRadius,
   EntityMonster,
   EntityPlayer,
   IntentAttack,
   IntentMove,
-  ItemTypeMeleeWeapon,
-  ItemTypeRangedWeapon,
-  ItemTypeStaff,
-  ItemTypeThrownWeapon,
-  ItemTypeWand,
+  ItemTypeWeapon,
   PlaybackSeconds,
+  SlotMainHand,
+  SlotOffHand,
   SpeciesHuman,
   StackCap,
   TerrainForest,
   TerrainGrass,
   TurnSeconds,
+  WeaponTagMagic,
+  WeaponTagRanged,
   XPCurveBase,
 } from "./protocol.gen";
 import { DamageNumberLayer } from "./render/damage";
@@ -278,20 +276,6 @@ function mustGet(id: string): HTMLElement {
   return el;
 }
 
-// weaponSlotsForClass mirrors internal/game's weaponSlotsFor: the two
-// class-shaped weapon-slot itemTypes ([close-ish, ranged-ish]) the paper-doll
-// labels and places. Fighter's thrown slot ships empty (no thrown content),
-// so a fighter's ranged-ish slot always renders empty — matching the server.
-function weaponSlotsForClass(cls: string): [string, string] {
-  switch (cls) {
-    case ClassRogue:
-      return [ItemTypeMeleeWeapon, ItemTypeRangedWeapon];
-    case ClassMage:
-      return [ItemTypeStaff, ItemTypeWand];
-    default: // fighter (and any unknown class): melee + (empty) thrown
-      return [ItemTypeMeleeWeapon, ItemTypeThrownWeapon];
-  }
-}
 
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
@@ -829,11 +813,9 @@ async function start(): Promise<void> {
     },
   });
 
-  // The character panel's weapon slots are class-shaped — set them once, now
-  // that the joined class is known, so the paper-doll labels and places the
-  // two weapon slots correctly (fighter melee+thrown, rogue melee+ranged,
-  // mage staff+wand).
-  setWeaponSlots(weaponSlotsForClass(joinedClass));
+  // The character panel's two weapon slots are the gear keystone's hands
+  // (#55/#56) — no longer class-shaped, so this is now a fixed pair.
+  setWeaponSlots([SlotMainHand, SlotOffHand]);
 
   // The HUD toggle button reveals now that there is a character to show; the
   // `i` key is bound via bindMovementKeys below (sharing the typing-focus
@@ -1118,8 +1100,9 @@ async function start(): Promise<void> {
         // paper-doll's slot-keyed equipped map + backpack; the mirrors below
         // expose the same to window.game for e2e. The equipped ranged item's
         // range/AoE radius (if any) also drives the click-vs-move UX hint
-        // above (isRangedAttackClick) — the ranged-ish weapon types are
-        // thrown-weapon/ranged-weapon/wand.
+        // above (isRangedAttackClick) — every weapon shares ItemTypeWeapon
+        // since the gear keystone (#55/#56); a ranged or magic tag means it
+        // fires the ranged/AoE attack path.
         setInventory(mine.items);
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
@@ -1129,8 +1112,12 @@ async function start(): Promise<void> {
         window.game.equipped = equippedSignal();
         window.game.backpack = backpackSignal();
 
-        const rangedTypes: string[] = [ItemTypeThrownWeapon, ItemTypeRangedWeapon, ItemTypeWand];
-        const rangedItem = mine.items.find((it: ItemView) => rangedTypes.includes(it.type) && it.equipped);
+        const rangedItem = mine.items.find(
+          (it: ItemView) =>
+            it.equipped &&
+            it.type === ItemTypeWeapon &&
+            (it.tags.includes(WeaponTagRanged) || it.tags.includes(WeaponTagMagic)),
+        );
         myRangedRangeHex = rangedItem?.rangeHex ?? null;
         myRangedAoeRadius = rangedItem?.aoeRadius ?? 0;
       }

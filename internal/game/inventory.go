@@ -89,11 +89,13 @@ func (w *World) applyPendingItemLocked(e *entity) {
 }
 
 // equipItemLocked applies an equip toggle NOW: validates ownership and
-// wearability (unlike the other four appliers it re-validates fully, since
-// queueEquipLocked shares it with the pending path) and swaps the item
-// into its slot through the backpack (toggleEquip — naming an already-
-// equipped item unequips it instead, the playtest batch 2 toggle). Callers
-// hold w.mu.
+// equippability (unlike the other four appliers it re-validates fully, since
+// queueEquipLocked shares it with the pending path) and swaps the item into
+// its slot through the backpack — armor/jewelry via toggleEquip directly
+// (its slot is fixed by itemType); a weapon via equipWeaponLocked (its slot
+// is a hand chosen at equip time, plus the two-handed eviction rules).
+// Naming an already-equipped item unequips it instead (the playtest batch 2
+// toggle). Callers hold w.mu.
 func (*World) equipItemLocked(e *entity, itemID int64) error {
 	inst, ok := e.itemByID(itemID)
 	if !ok {
@@ -101,8 +103,12 @@ func (*World) equipItemLocked(e *entity, itemID int64) error {
 	}
 
 	def := itemDefByID[inst.defID]
-	if err := equipValidate(e.class, def); err != nil {
+	if err := equipValidate(def); err != nil {
 		return err
+	}
+
+	if def.isWeapon() {
+		return e.equipWeaponLocked(inst, def)
 	}
 
 	// A toggle-OFF (already equipped) is an unequip: it needs a free
@@ -125,8 +131,8 @@ func (w *World) unequipItemLocked(e *entity, itemID int64) error {
 		return err
 	}
 
-	slot := slotForType(def.itemType)
-	if cur, ok := e.equipped[slot]; !ok || cur.id != inst.id {
+	slot := currentSlotOf(e, inst, def)
+	if slot == "" {
 		return ErrItemNotEquipped
 	}
 
@@ -151,14 +157,12 @@ func (w *World) dropItemLocked(e *entity, itemID int64) error {
 		return err
 	}
 
-	if slot := slotForType(def.itemType); slot != "" {
-		if cur, ok := e.equipped[slot]; ok && cur.id == inst.id {
-			delete(e.equipped, slot)
-			w.groundItemsAddLocked(e.hex, groundStack{inst: inst, count: 1})
-			w.logDropLocked(e, inst, 1)
+	if slot := currentSlotOf(e, inst, def); slot != "" {
+		delete(e.equipped, slot)
+		w.groundItemsAddLocked(e.hex, groundStack{inst: inst, count: 1})
+		w.logDropLocked(e, inst, 1)
 
-			return nil
-		}
+		return nil
 	}
 
 	idx := e.findBackpackIndex(inst.id)

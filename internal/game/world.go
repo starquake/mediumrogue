@@ -102,9 +102,6 @@ var (
 	// ErrItemNotOwned rejects an equip intent naming an item instance id the
 	// entity does not own.
 	ErrItemNotOwned = errors.New("item not owned")
-	// ErrWrongClass rejects an equip intent naming an item whose class does not
-	// match the entity's class.
-	ErrWrongClass = errors.New("item is for a different class")
 	// ErrInvalidClass rejects a Join for a new entity whose Class is not one of
 	// ClassFighter, ClassRogue, ClassMage.
 	ErrInvalidClass = errors.New("invalid class")
@@ -127,8 +124,9 @@ var (
 	// ErrNotDrinkable rejects a drink intent naming a non-consumable item.
 	ErrNotDrinkable = errors.New("item is not drinkable")
 	// ErrNotEquippable rejects an equip intent naming an item whose type has
-	// no equip slot at all (a consumable) — distinct from ErrWrongClass,
-	// which means a slotted item the class can't wear.
+	// no equip slot at all (a consumable — drink, not equip, is its action).
+	// Class gates are gone (gear keystone, #56): anyone may equip anything
+	// that HAS a slot.
 	ErrNotEquippable = errors.New("that item can't be equipped")
 	// ErrNoSuchGroundItem rejects a pickup intent naming a ground item that
 	// is not lying on the player's own hex (stale id, or an item elsewhere).
@@ -219,14 +217,16 @@ type entity struct {
 	// time, before its first stream opens): the start of its removal-grace clock.
 	// Only consulted while streams == 0. Players only.
 	disconnectedAt time.Time
-	// equipped is the entity's worn/wielded gear, keyed by slot (the 8 typed
-	// slots of the inventory-slots milestone: the six universal body slots
-	// plus the class's two class-shaped weapon slots — slot keys are itemType
-	// strings, see slotForType/weaponSlotsFor in items.go). Players only;
-	// monsters own no items and fight with their kind's own claws profile
-	// (monsterDef.claws). Granted at Join by grantDefaultsLocked; gear
-	// survives death (never cleared by respawn). May be nil on a
-	// monster/zero-value fixture — equippedDefIn treats nil as all-empty.
+	// equipped is the entity's worn/wielded gear, keyed by slot (the gear
+	// keystone's 8 slots: main-hand + off-hand — a weapon's slot is a hand
+	// chosen at equip time, weaponTargetSlot — plus the six universal
+	// armor/jewelry slots, whose keys equal their itemType; see slotForType
+	// in items.go). Class gates are gone: any class may equip any item that
+	// has a slot. Players only; monsters own no items and fight with their
+	// kind's own claws profile (monsterDef.claws). Granted at Join by
+	// grantDefaultsLocked; gear survives death (never cleared by respawn).
+	// May be nil on a monster/zero-value fixture — equippedDefIn treats nil
+	// as all-empty.
 	equipped map[string]itemInstance
 	// backpack is the entity's protocol.BackpackSize carry entries: one gear
 	// instance or one consumable stack per entry (backpackEntry, items.go).
@@ -978,7 +978,7 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 		return ErrItemNotOwned
 	}
 
-	if err := equipValidate(e.class, itemDefByID[inst.defID]); err != nil {
+	if err := equipValidate(itemDefByID[inst.defID]); err != nil {
 		return err
 	}
 
@@ -996,7 +996,7 @@ func (w *World) queueUnequipLocked(e *entity, itemID int64) error {
 		return err
 	}
 
-	if cur, ok := e.equipped[slotForType(def.itemType)]; !ok || cur.id != inst.id {
+	if currentSlotOf(e, inst, def) == "" {
 		return ErrItemNotEquipped
 	}
 
@@ -1136,11 +1136,12 @@ func (w *World) Snapshot() protocol.TurnEvent {
 // itemViewsLocked builds the wire item list for one entity: an ItemView per
 // owned item instance — equipped gear first, in canonicalSlotOrder (so the
 // list order is deterministic despite e.equipped being a map), then backpack
-// entries in index order. Slot carries the def's itemType (the taxonomy
-// string; see protocol.ItemView.Slot's doc comment). Always a non-nil
-// slice — empty (not null) for a monster (which owns nothing) or a player
-// who owns nothing, so the wire shape matches the generated TS type's
-// non-optional ItemView[]. Callers hold w.mu.
+// entries in index order. Type carries the def's itemType (the taxonomy
+// string); Tags/TwoHanded carry a weapon's tag set and two-handedness (see
+// protocol.ItemView's doc comments). Always a non-nil slice — empty (not
+// null) for a monster (which owns nothing) or a player who owns nothing, so
+// the wire shape matches the generated TS type's non-optional ItemView[].
+// Callers hold w.mu.
 func itemViewsLocked(e *entity) []protocol.ItemView {
 	views := make([]protocol.ItemView, 0, len(e.equipped)+len(e.backpack))
 
@@ -1171,6 +1172,7 @@ func itemViewOf(inst itemInstance, equipped bool, count int) protocol.ItemView {
 
 	return protocol.ItemView{
 		ID: inst.id, DefID: inst.defID, Name: def.name, Type: def.itemType,
+		Tags: def.tags, TwoHanded: def.twoHanded,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,

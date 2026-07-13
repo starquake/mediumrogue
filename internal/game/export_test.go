@@ -469,15 +469,15 @@ func ItemRangeForTest(id string) int { return itemDefByID[id].rangeHex }
 // ItemAoERadiusForTest exposes a registry item's aoeRadius by id.
 func ItemAoERadiusForTest(id string) int { return itemDefByID[id].aoeRadius }
 
-// RangedWeaponForTest exposes a class's default ranged item. It returns, in
-// order, the damage, range in hexes, AoE radius, and whether the class has a
-// ranged default at all (false for Fighter and any classless entity). Levels
-// do not scale damage (#60, roadmap XP3).
+// RangedWeaponForTest exposes a class's default ranged/magic-tagged weapon.
+// It returns, in order, the damage, range in hexes, AoE radius, and whether
+// the class has one at all (false for Fighter and any classless entity,
+// whose class defaults are melee-tagged only). Levels do not scale damage
+// (#60, roadmap XP3).
 func RangedWeaponForTest(class string) (int, int, int, bool) {
-	rangedSlot := weaponSlotsFor(class)[1]
-
 	for _, id := range classDefaultIDs(class) {
-		if def := itemDefByID[id]; def.itemType == rangedSlot {
+		def := itemDefByID[id]
+		if def.hasTag(protocol.WeaponTagRanged) || def.hasTag(protocol.WeaponTagMagic) {
 			return itemDamage(def), def.rangeHex, def.aoeRadius, true
 		}
 	}
@@ -519,18 +519,18 @@ func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
 	return inst.id
 }
 
-// EquippedSlotsForTest returns an entity's equipped close-ish and ranged-ish
-// weapon-slot item instance ids (0 = empty), re-derived through the
-// class-shaped weapon slots (weaponSlotsFor), so pre-inventory equip tests
-// keep their close/ranged assertions across the storage change.
+// EquippedSlotsForTest returns an entity's main-hand and off-hand item
+// instance ids (0 = empty) — the gear keystone's two weapon slots, replacing
+// the old class-shaped close/ranged pair. For every class default kit, main
+// still holds the melee-ish item and off the ranged-ish one (fighter's
+// off-hand is simply empty), so pre-keystone equip tests keep their
+// close/ranged assertions unchanged across the storage model change.
 func (w *World) EquippedSlotsForTest(id int64) (int64, int64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if e, ok := w.entities[id]; ok {
-		slots := weaponSlotsFor(e.class)
-
-		return e.equipped[slots[0]].id, e.equipped[slots[1]].id
+		return e.equipped[protocol.SlotMainHand].id, e.equipped[protocol.SlotOffHand].id
 	}
 
 	return 0, 0

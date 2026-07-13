@@ -4,11 +4,11 @@ import { render } from "solid-js/web";
 
 import {
   ItemTypeAmulet,
-  ItemTypeBody,
+  ItemTypeBoots,
+  ItemTypeChest,
   ItemTypeConsumable,
-  ItemTypeFeet,
-  ItemTypeHands,
-  ItemTypeHead,
+  ItemTypeGloves,
+  ItemTypeHelmet,
   ItemTypeRing,
 } from "../protocol.gen";
 import type { BackpackEntry, ItemStats, SlotItem } from "./store";
@@ -24,16 +24,17 @@ export interface CharacterActions {
   close: () => void;
 }
 
-// The six universal body slots, positioned on the Vitruvian paper-doll per
-// the approved mockup. The two class-shaped weapon slots (weap1/weap2) are
-// added around the body from weaponSlots().
+// The six universal armor/jewelry slots, positioned on the Vitruvian
+// paper-doll per the approved mockup. The two hand slots (weap1/weap2) are
+// added around the body from weaponSlots() — main-hand/off-hand since the
+// gear keystone (#55/#56), no longer class-shaped.
 const BODY_SLOTS: { type: string; cls: string }[] = [
-  { type: ItemTypeHead, cls: "head" },
-  { type: ItemTypeHands, cls: "hands" },
+  { type: ItemTypeHelmet, cls: "head" },
+  { type: ItemTypeGloves, cls: "hands" },
   { type: ItemTypeRing, cls: "ring" },
   { type: ItemTypeAmulet, cls: "amulet" },
-  { type: ItemTypeBody, cls: "body" },
-  { type: ItemTypeFeet, cls: "feet" },
+  { type: ItemTypeChest, cls: "body" },
+  { type: ItemTypeBoots, cls: "feet" },
 ];
 
 // isPending mirrors an item's in-flight action mark.
