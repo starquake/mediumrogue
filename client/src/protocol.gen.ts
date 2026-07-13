@@ -378,9 +378,11 @@ export const MonsterMaxHP = 10;
  */
 export const RegenPerTurn = 1;
 /**
- * XPPerLevel is the XP needed to advance one level.
+ * XPCurveBase scales the quadratic XP curve: the total XP required to
+ * REACH level L is XPCurveBase * (L-1)^2 (#60, roadmap XP1). Gaps grow
+ * linearly: 100, 300, 500, ...
  */
-export const XPPerLevel = 100;
+export const XPCurveBase = 100;
 /**
  * QuestKillRewardPerTarget is the flat per-target XP a kill quest's
  * reward is built from (targetN * QuestKillRewardPerTarget), independent
@@ -407,13 +409,20 @@ export const MageMaxHP = 14;
  */
 export const FistsDamage = 1;
 /**
- * HPPerLevel is the additional max HP gained per level above 1.
+ * HPGainBase/HPGainMin shape the front-loaded HP curve (#60, roadmap
+ * XP2): the max-HP gain when advancing FROM level n is
+ * max(HPGainMin, HPGainBase-(n-1)) — 8,7,6,...,1 then +1 forever.
  */
-export const HPPerLevel = 4;
+export const HPGainBase = 8;
 /**
- * DamagePerLevel is the additional damage gained per level above 1.
+ * Per-class base stats (level 1). Level scaling: MaxHP += the front-loaded
+ * curve's cumulative bonus (see HPGainBase/HPGainMin below).
+ * Weapon damage/range/AoE are content data now (internal/game's item
+ * registry, milestone 6b.4) — see itemDamage there; levels do not scale
+ * damage (#60, roadmap XP3: no raw-stat scaling — levels give HP and,
+ * later, skill points).
  */
-export const DamagePerLevel = 1;
+export const HPGainMin = 1;
 /**
  * HumanXPBonusPercent is the XP gain multiplier for Human species (e.g. +50%).
  */

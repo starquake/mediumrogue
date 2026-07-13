@@ -255,6 +255,15 @@ func (w *World) RestoreState(data []byte) error {
 	w.bubbles = make(map[int64]*bubble)
 	w.pendingInvites = make(map[int64]int64)
 
+	// Level and maxHP are DERIVED from stored XP + class; recompute on load
+	// so curve changes (XP1/XP2) apply to existing characters without a
+	// snapshot-version bump — shape is unchanged, only derivable values.
+	for _, e := range w.entities {
+		if e.class != "" { // players only; a monster's maxHP is its kind's
+			syncMaxHPLocked(e)
+		}
+	}
+
 	players := 0
 
 	for _, e := range w.entities {

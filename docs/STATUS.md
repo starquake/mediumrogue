@@ -1,7 +1,82 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-13 — **the design backlog is decided**; the next
-frontier is green-lighting build slices.*
+*Last updated: 2026-07-13 — **fast-lane batch 1 landed**; branch
+`feat/fast-lane-batch`, PR open against `main` (not yet merged).*
+
+*__Fast-lane batch 1 — six slices landed, one commit each + review
+fixes.__ The `design-roadmap.md` fast-lane list (XP1/XP2/XP3, Q8, Q9's
+scatter half, DF2's `crit%` half) shipped as spec → plan → TDD-per-task,
+mirroring the inventory-slots milestone's process:
+**(T1) quadratic XP curve** (`9c0d4c4`) — `protocol.XPCurveBase=100`
+replaces the flat `XPPerLevel`; total XP to **reach** level L is
+`XPCurveBase*(L-1)^2` (100, 300, 500 gaps); death floor now falls to the
+current level's start under the new curve; client XP bar reworked to the
+same formula. **(T2) front-loaded HP curve** (`7856f89`, marker fix
+`b93c805`) — `protocol.HPGainBase=8`/`HPGainMin=1` replace the flat
+`HPPerLevel`; gain advancing from level n = `max(1, 8-(n-1))` (8,7,6,…,1
+then +1 forever); `syncMaxHPLocked` recomputes derived max HP on snapshot
+restore so persisted characters land on the new curve, not a stale value.
+**(T3) `DamagePerLevel` cut** (`f721df2`, regression fix `96993c4`) — item
+damage is content-data base + rule cards only, no level term;
+`itemDamage(*itemDef)` dropped its `level` parameter everywhere. **(T4)
+additive percentage fold** (`654d14d`, #61 principle 14 / Q8) — every
+`mulPct` card's delta from 100% sums into one combined percentage per
+event, one truncation, order-independent; stages still compose across
+separate events. **(T5) sanctuary-scatter spawn** (`f1c6bc5`, Q9) — widened
+`spawnHexLocked` from the origin clearing to the full `SanctuaryRadius` for
+**both** joins and respawns (a deliberate scope widening beyond the
+brief's "joins only" — flagged and accepted in the task's spec note).
+**(T6) two crit%-weapons** (`bde4c8b`, comment fix `e62270b`) — Misericorde
+(rogue, dmg 6, 15% → ×2, ghoul drop) and Duelist's Saber (fighter, dmg 5,
+10% → ×2, wolf drop): the first item-side crit-chance cards, the elf-crit
+pattern applied to gear instead of a species passive.
+
+**Re-derived seeds/pins** (determinism discipline — every reorder of rng
+consumption or changed formula got its expected values re-derived, never
+weakened, each with a `// re-derived for … (fast-lane T#)` marker comment):
+- T1: `internal/game/archive_test.go`, `internal/game/class_test.go`,
+  `internal/game/melee_damage_test.go`, `internal/game/snapshot_test.go`,
+  `internal/game/xp_test.go`, `test/integration/xp_test.go` — every XP/level
+  expectation re-derived off `XPCurveBase*(L-1)^2` instead of the flat
+  `1+XP/100`.
+- T2: `internal/game/class_test.go` (`TestMaxHPForScalesWithLevel`, all
+  three classes L1–5) and `internal/game/snapshot_test.go`
+  (`checkRestoredAlice`'s re-derived `MaxHP`) carry the mandated
+  `// re-derived for front-loaded HP curve (fast-lane T2)` marker.
+- T3: `internal/game/melee_damage_test.go`'s
+  `TestAttackDamageDoesNotScaleWithLevel` regression — the level-5 attacker
+  bump is `16*protocol.XPCurveBase` (=1600 XP, the correct L5 threshold
+  under the quadratic curve), not the first-draft `4*XPCurveBase` (=L3),
+  fixed post-merge in `96993c4`.
+- T4: `internal/game/rules.go`/`rules_test.go` — `TestApplyRulesFoldOrder`
+  and friends carry the fold-order comment/tests for the additive-percentage
+  change; no existing pinned seed shifted (every landed test was
+  single-multiplier, confirmed by a full `go test ./...` green before and
+  after).
+- T5: `internal/game/*_test.go` spawn/bubble tests — every origin-clearing
+  positional assumption converted to a sanctuary-wide one (candidates sorted
+  before the seeded draw so determinism holds); no numeric seed value
+  changed, only positional assumptions.
+- T6: `internal/game/drops_test.go`'s `TestWolfCarriesTodaysExactNumbers` —
+  extended to cover the new trailing `idDuelistsSaber` drop-table entry
+  (appended last, so every earlier entry's cumulative-weight position is
+  unchanged and `killDropSeed`/`killMissSeed` survive).
+
+**Comment-only cleanup folded in**: `internal/game/world.go`'s
+`spawnHexSpiralLocked` doc comment updated from "the tier-3 fallback …
+neither clearing tier above … the origin clearing is exhausted" to the
+accurate tier-4/sanctuary wording (`spawnHexLocked` has three sanctuary
+tiers before this fallback, not one "clearing" tier) — no behavior change.
+
+**⚠️ DEPLOY NOTE — read before the next deploy**: the quadratic XP curve
+(T1) is a **cheaper** curve early and a **steeper** one late, so existing
+characters' levels **drop** when the new curve is applied to their stored
+XP (levels are derived from XP, never stored independently) — e.g. a
+character sitting on 500 XP was level 6 under the old flat curve
+(`1 + XP/100`) and becomes **level 3** under the new quadratic one
+(`100*(L-1)^2 <= 500` → L=3). XP itself is untouched; only the
+level-from-XP derivation changes. **Announce this in the group chat at
+deploy time** so nobody reads a level drop as a bug or lost progress.
 
 *__Design sprint (2026-07-12 → 13) — the ARPG pivot & eleven decisions.__
 The combat-resolution talk had drifted TTRPG (d20, baseline hit chance,

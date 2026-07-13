@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { GameDebug } from "../src/main";
-import { XPPerLevel } from "../src/protocol.gen";
+import { XPCurveBase } from "../src/protocol.gen";
 
 declare global {
   interface Window {
@@ -47,10 +47,12 @@ test("a fresh player starts at level 1 with 0 XP, exposed on window.game and the
 
   // The stats HUD paints what window.game reports, including the live
   // position readout (item 9, playtest batch 2) — the spawn hex varies per
-  // run, so read it from window.game.me rather than hardcoding one.
+  // run, so read it from window.game.me rather than hardcoding one. Level 1's
+  // XP-to-next is XPCurveBase*1^2 == XPCurveBase (same number as the old flat
+  // curve at level 1, but now a curve rather than a coincidence).
   const hex = await page.evaluate(() => window.game.me?.hex ?? null);
   expect(hex).not.toBeNull();
-  await expect(page.locator("#stats")).toHaveText(`Lv 1 · 0/${XPPerLevel} XP · (${hex?.q}, ${hex?.r})`);
+  await expect(page.locator("#stats")).toHaveText(`Lv 1 · 0/${XPCurveBase} XP · (${hex?.q}, ${hex?.r})`);
 });
 
 test("the hex world renders from server map data", async ({ page }) => {

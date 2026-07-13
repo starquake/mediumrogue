@@ -49,7 +49,7 @@ func TestMonsterKillAnnouncedInChatNamesNobodyForTwoPlayers(t *testing.T) {
 	w.SetAnnounce(func(_, text string) { announced = append(announced, text) })
 
 	idA, tokA, _, _, monsterID, form := twoPlayerBubble(t, w)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 
 	target := hexOfSnap(form, monsterID)
 	if err := w.SubmitIntent(protocol.IntentRequest{

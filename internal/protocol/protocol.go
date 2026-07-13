@@ -195,13 +195,16 @@ const (
 // (mid-fight) does not either — being in a fight means no regen.
 const RegenPerTurn = 1
 
-// XP & leveling (milestone 6b.1). Flat curve for now; per-class/species tuning
-// is 6b.2/6b.3. Per-kill XP is monster-kind content data since 6c
-// (internal/game's monsterDef.xp) — wolf carries the old flat MonsterXP
-// value (20) forward unchanged; there is no single flat award anymore.
+// XP & leveling (milestone 6b.1; curve replaced by a quadratic one in the
+// fast-lane batch, XP1). Per-class/species tuning is 6b.2/6b.3. Per-kill XP
+// is monster-kind content data since 6c (internal/game's monsterDef.xp) —
+// wolf carries the old flat MonsterXP value (20) forward unchanged; there is
+// no single flat award anymore.
 const (
-	// XPPerLevel is the XP needed to advance one level.
-	XPPerLevel = 100
+	// XPCurveBase scales the quadratic XP curve: the total XP required to
+	// REACH level L is XPCurveBase * (L-1)^2 (#60, roadmap XP1). Gaps grow
+	// linearly: 100, 300, 500, ...
+	XPCurveBase = 100
 	// QuestKillRewardPerTarget is the flat per-target XP a kill quest's
 	// reward is built from (targetN * QuestKillRewardPerTarget), independent
 	// of which monster kind actually gets killed toward it — deliberately
@@ -210,10 +213,12 @@ const (
 	QuestKillRewardPerTarget = 20
 )
 
-// Per-class base stats (level 1). Level scaling: MaxHP += HPPerLevel * (level - 1).
+// Per-class base stats (level 1). Level scaling: MaxHP += the front-loaded
+// curve's cumulative bonus (see HPGainBase/HPGainMin below).
 // Weapon damage/range/AoE are content data now (internal/game's item
-// registry, milestone 6b.4) — see itemDamage there; DamagePerLevel is the
-// shared per-level scaling knob both class HP and item damage read.
+// registry, milestone 6b.4) — see itemDamage there; levels do not scale
+// damage (#60, roadmap XP3: no raw-stat scaling — levels give HP and,
+// later, skill points).
 const (
 	// FighterMaxHP is the level-1 max HP for Fighter class (tanky melee).
 	FighterMaxHP = 30
@@ -226,10 +231,11 @@ const (
 	// close-slot fallback; see internal/game's fistsDef).
 	FistsDamage = 1
 
-	// HPPerLevel is the additional max HP gained per level above 1.
-	HPPerLevel = 4
-	// DamagePerLevel is the additional damage gained per level above 1.
-	DamagePerLevel = 1
+	// HPGainBase/HPGainMin shape the front-loaded HP curve (#60, roadmap
+	// XP2): the max-HP gain when advancing FROM level n is
+	// max(HPGainMin, HPGainBase-(n-1)) — 8,7,6,...,1 then +1 forever.
+	HPGainBase = 8
+	HPGainMin  = 1
 )
 
 // Per-species passive bonuses (tunable, applied per-species in 6b.3+).

@@ -51,7 +51,7 @@ func TestKillGrantsXP(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
 
 	// Kill XP is only earned inside a combat bubble (a real fight). One world
 	// resolution with the monster adjacent forms that bubble around the idle
@@ -77,8 +77,9 @@ func TestKillGrantsXP(t *testing.T) {
 		t.Errorf("killer XP = %d, want %d (wolf's full kill XP)", got, want)
 	}
 
-	// 20 XP is still level 1 (XPPerLevel=100); the level-up crossing is exercised
-	// separately in TestKillCrossingLevelBoundaryLevelsUp.
+	// 20 XP is still level 1 (XPCurveBase=100, level-2 floor=100); the
+	// level-up crossing is exercised separately in
+	// TestKillCrossingLevelBoundaryLevelsUp.
 	if got, want := player.Level, 1; got != want {
 		t.Errorf("killer Level = %d, want %d", got, want)
 	}
@@ -104,7 +105,7 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	idB, _ := w.PlaceEntityForTest(ns[1])
 
 	monsterID := w.PlaceMonsterForTest(center)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // dies to a single hit
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // dies to a single hit
 
 	// Kill XP is only earned inside a combat bubble (a real fight). One world
 	// resolution forms the bubble around the two idle players and the monster; the
@@ -185,8 +186,9 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 }
 
 // TestKillCrossingLevelBoundaryLevelsUp: a player one kill short of the next
-// level crosses XPPerLevel on the kill and their derived Level increments. Joins
-// as a Dwarf so the boundary math uses wolf's base kill XP (no Human bonus).
+// level crosses the level-2 floor (XPCurveBase, since XPCurveBase*(2-1)^2 ==
+// XPCurveBase) on the kill and their derived Level increments. Joins as a
+// Dwarf so the boundary math uses wolf's base kill XP (no Human bonus).
 func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	t.Parallel()
 
@@ -199,7 +201,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	}
 
 	// One wolf kill's XP below the level-2 boundary: still level 1 before the kill.
-	w.SetXPForTest(me.EntityID, protocol.XPPerLevel-game.MonsterXPForTest("wolf"))
+	w.SetXPForTest(me.EntityID, protocol.XPCurveBase-game.MonsterXPForTest("wolf"))
 
 	before, ok := entityOfSnap(w.Snapshot(), me.EntityID)
 	if !ok {
@@ -212,7 +214,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 
 	// Kill XP is only earned inside a combat bubble; form it with one world
 	// resolution (player idle, monster survives), then land the kill inside it.
@@ -229,7 +231,7 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 		t.Fatalf("player %d missing after the kill", me.EntityID)
 	}
 
-	if got, want := player.XP, protocol.XPPerLevel; got != want {
+	if got, want := player.XP, protocol.XPCurveBase; got != want {
 		t.Errorf("post-kill XP = %d, want %d (exactly the boundary)", got, want)
 	}
 
@@ -302,7 +304,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
 	// One hit each is lethal in both directions: a mutual kill.
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
 
 	if !submitOK(w, me, monsterHex) {

@@ -153,7 +153,7 @@ func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
 	hexes := walkableNeighborsN(t, w, startHex, targetN)
 	for _, h := range hexes {
 		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
+		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
 	}
 
 	step(t, w) // forming turn: the monsters chase into the bubble
@@ -338,7 +338,7 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 	// rather than completing it out from under the test).
 	hexes := walkableNeighborsN(t, w, alice.Hex, 1)
 	monsterID := w.PlaceMonsterForTest(hexes[0])
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
 
 	step(t, w) // forming turn: the monster chases into the bubble
 
@@ -484,6 +484,15 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 	w := newPartyWorld(t)
 	alice := joinNamed(t, w, "alice")
 	bob := joinNamed(t, w, "bob")
+
+	// Pin bob onto alice's hex: spawnHexLocked scatters across the whole
+	// sanctuary (re-derived: sanctuary scatter (fast-lane T5, Q9)), so two
+	// independent joins can land far enough apart that bob never shares
+	// alice's combat bubble — this test is about party-wide XP sharing
+	// within one bubble, not spawn placement.
+	w.SetHexForTest(bob.EntityID, alice.Hex)
+	bob.Hex = alice.Hex
+
 	mustInviteAccept(t, w, alice, bob, "bob")
 
 	qID, targetN := killQuest(t, w, 2)
@@ -500,7 +509,7 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 
 	for _, h := range hexes {
 		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
+		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
 	}
 
 	// Forming turn: both idle, the monsters chase into the shared bubble.
@@ -574,7 +583,7 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 	hexes := walkableNeighborsN(t, w, alice.Hex, targetN)
 
 	monster0 := w.PlaceMonsterForTest(hexes[0])
-	w.SetHPForTest(monster0, game.ItemDamageForTest("iron-sword", 1))
+	w.SetHPForTest(monster0, game.ItemDamageForTest("iron-sword"))
 
 	step(t, w) // forming turn
 
@@ -594,7 +603,7 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 	mustInviteAccept(t, w, alice, bob, "bob")
 
 	monster1 := w.PlaceMonsterForTest(hexes[1])
-	w.SetHPForTest(monster1, game.ItemDamageForTest("iron-sword", 1))
+	w.SetHPForTest(monster1, game.ItemDamageForTest("iron-sword"))
 
 	step(t, w) // settle turn: bob and monster1 join the existing bubble
 
@@ -842,7 +851,7 @@ func TestKillQuestTickAnnouncesProgress(t *testing.T) {
 	hexes := walkableNeighborsN(t, w, alice.Hex, targetN)
 	for _, h := range hexes {
 		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
+		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
 	}
 
 	step(t, w) // forming turn

@@ -21,6 +21,11 @@ func TestApplyRulesFoldOrder(t *testing.T) {
 	t.Parallel()
 
 	// adds sum first, then multipliers, then the event clamp: (10+3-1)*200/100 = 24.
+	// re-derived: additive fold (fast-lane T4, #61 p14) — only one mulPct
+	// card here, so summed-delta and compounding agree (single truncation
+	// either way); the value is unchanged by design (see
+	// TestApplyRulesMulPctAddsNotCompounds for the two-card case that
+	// differs: 121 compounding vs 120 additive).
 	cards := []ruleCard{
 		{event: evDealDamage, then: effect{kind: effAdd, n: 3}},
 		{event: evDealDamage, then: effect{kind: effMulPct, n: 200}},
@@ -244,5 +249,75 @@ func TestApplyRulesTargetKind(t *testing.T) {
 	// nil victim (defensive): fails closed.
 	if got, want := applyRules(evDealDamage, 4, card, ruleCtx{}), 4; got != want {
 		t.Errorf("applyRules nil victim = %d, want %d", got, want)
+	}
+}
+
+func TestApplyRulesMulPctAddsNotCompounds(t *testing.T) {
+	t.Parallel()
+
+	cards := []ruleCard{
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 110}},
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 110}},
+	}
+
+	// Two +10% cards on base 100: additive = 120, compounding would be 121.
+	if got, want := applyRules(evDealDamage, 100, cards, ruleCtx{}), 120; got != want {
+		t.Errorf("two +10%% cards on 100 = %d, want %d (add, not compound)", got, want)
+	}
+}
+
+func TestApplyRulesMulPctOrderIndependent(t *testing.T) {
+	t.Parallel()
+
+	a := []ruleCard{
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 150}},
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 200}},
+	}
+	b := []ruleCard{a[1], a[0]}
+
+	if got, want := applyRules(evDealDamage, 3, a, ruleCtx{}), applyRules(evDealDamage, 3, b, ruleCtx{}); got != want {
+		t.Errorf("fold is order-dependent: %d vs %d", got, want)
+	}
+
+	// +50% and +100% on base 3: 3 * 250 / 100 = 7 (single truncation).
+	if got, want := applyRules(evDealDamage, 3, a, ruleCtx{}), 7; got != want {
+		t.Errorf("stacked mults on 3 = %d, want %d", got, want)
+	}
+}
+
+func TestApplyRulesMulPctNegativeDeltaAndFloor(t *testing.T) {
+	t.Parallel()
+
+	// -50% and +20% = -30%: base 10 -> 7.
+	mixed := []ruleCard{
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 50}},
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 120}},
+	}
+	if got, want := applyRules(evDealDamage, 10, mixed, ruleCtx{}), 7; got != want {
+		t.Errorf("mixed deltas on 10 = %d, want %d", got, want)
+	}
+
+	// Sum of deltas <= -100% floors at 0 (deal-damage has no 1-floor).
+	kill := []ruleCard{
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 0}},
+	}
+	if got, want := applyRules(evDealDamage, 10, kill, ruleCtx{}), 0; got != want {
+		t.Errorf("-100%% on 10 = %d, want %d", got, want)
+	}
+}
+
+func TestApplyRulesMulPctStackedDeltasClampAtZero(t *testing.T) {
+	t.Parallel()
+
+	// Two n:40 cards: deltas (40-100)+(40-100) = -120, so the pre-clamp
+	// product 10*(100-120)/100 = -2 goes NEGATIVE — the max(...,0) clamp's
+	// protective branch, which the single n:0 case never reaches.
+	cards := []ruleCard{
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 40}},
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 40}},
+	}
+
+	if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{}), 0; got != want {
+		t.Errorf("stacked deltas below -100%% on 10 = %d, want %d", got, want)
 	}
 }

@@ -48,7 +48,7 @@ func TestBumpDealsDamageAttackerStays(t *testing.T) {
 		t.Fatalf("monster %d missing from snapshot after a single bump", monsterID)
 	}
 
-	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword", 1); got != want {
+	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword"); got != want {
 		t.Errorf("monster HP = %d, want %d", got, want)
 	}
 
@@ -91,7 +91,7 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 		t.Fatalf("monster %d should survive the first hit", monsterID)
 	}
 
-	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword", 1); got != want {
+	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword"); got != want {
 		t.Fatalf("monster HP after first hit = %d, want %d", got, want)
 	}
 
@@ -102,7 +102,7 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 		t.Fatalf("monster %d should survive the second hit", monsterID)
 	}
 
-	if got, want := monster.HP, protocol.MonsterMaxHP-2*game.ItemDamageForTest("iron-sword", 1); got != want {
+	if got, want := monster.HP, protocol.MonsterMaxHP-2*game.ItemDamageForTest("iron-sword"); got != want {
 		t.Fatalf("monster HP after second hit = %d, want %d", got, want)
 	}
 
@@ -209,7 +209,7 @@ func TestBumpMutualKill(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
 	// One hit each is lethal in both directions.
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
 
 	if !submitOK(w, me, monsterHex) {

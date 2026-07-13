@@ -75,7 +75,7 @@ func TestPerKindKillXP(t *testing.T) {
 
 	trollHex := walkableNeighbor(t, w, me.Hex)
 	trollID := w.PlaceMonsterKindForTest(trollHex, kindTroll)
-	w.SetHPForTest(trollID, game.ItemDamageForTest("iron-sword", 1)) // one bump is lethal
+	w.SetHPForTest(trollID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
 
 	step(t, w) // forms the bubble
 

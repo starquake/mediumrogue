@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { GameDebug } from "../src/main";
-import { SpeciesDwarf, XPPerLevel } from "../src/protocol.gen";
+import { SpeciesDwarf, XPCurveBase } from "../src/protocol.gen";
 import type { Hex, QuestView } from "../src/protocol.gen";
 
 declare global {
@@ -113,13 +113,16 @@ test("quests: take a reach quest, walk to its goal, and it completes with a visi
 
   // 5. XP visibly jumped: exact reward (dwarf has no XP% passive) reflected
   // both in window.game.xp and the rendered #stats HUD text ("Lv L ·
-  // xpIntoLevel/XPPerLevel XP" — see main.ts).
+  // xpIntoLevel/xpForLevel XP" — see main.ts). The fresh player starts at 0
+  // XP and the reach reward (questReachRewardXP=20) stays well under the
+  // level-2 floor (XPCurveBase=100), so this stays level 1 the whole test —
+  // level 1's floor is 0 and its next-level XP is XPCurveBase itself.
   const xpAfter = xpBefore + target.rewardXp;
   await expect.poll(() => page.evaluate(() => window.game.xp)).toBe(xpAfter);
   await expect
     .poll(() => page.locator("#stats").textContent())
     .not.toBe(statsBefore);
-  await expect(page.locator("#stats")).toContainText(`${xpAfter % XPPerLevel}/${XPPerLevel} XP`);
+  await expect(page.locator("#stats")).toContainText(`${xpAfter}/${XPCurveBase} XP`);
 
   // 6. A system chat line announced the completion.
   await expect

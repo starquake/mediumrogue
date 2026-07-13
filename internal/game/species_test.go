@@ -45,7 +45,7 @@ func TestHumanKillXPBonus(t *testing.T) {
 	w.SetSpeciesForTest(dwarf, protocol.SpeciesDwarf)
 
 	monsterID := w.PlaceMonsterForTest(center)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // dies to a single hit
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // dies to a single hit
 
 	// One world resolution forms the bubble around the two idle players and the
 	// monster; the kill then lands inside the bubble (kill XP is only earned in a
@@ -107,7 +107,7 @@ func elfBumpDamage(t *testing.T, seed int64) int {
 func TestElfCritMelee(t *testing.T) {
 	t.Parallel()
 
-	swordDamage := game.ItemDamageForTest("iron-sword", 1)
+	swordDamage := game.ItemDamageForTest("iron-sword")
 
 	t.Run("crit", func(t *testing.T) {
 		t.Parallel()
@@ -166,7 +166,7 @@ func elfBowDamage(t *testing.T, seed int64) int {
 func TestElfCritBow(t *testing.T) {
 	t.Parallel()
 
-	bowDamage := game.ItemDamageForTest("shortbow", 1)
+	bowDamage := game.ItemDamageForTest("shortbow")
 
 	t.Run("crit", func(t *testing.T) {
 		t.Parallel()
@@ -256,7 +256,7 @@ func TestDwarfDamageReductionRanged(t *testing.T) {
 		t.Fatalf("dwarf monster %d missing after a bow shot", monsterID)
 	}
 
-	if got, want := 100-monster.HP, game.ItemDamageForTest("shortbow", 1)-protocol.DwarfDamageReduction; got != want {
+	if got, want := 100-monster.HP, game.ItemDamageForTest("shortbow")-protocol.DwarfDamageReduction; got != want {
 		t.Errorf("dwarf ranged hit = %d, want %d (bow reduced by %d)",
 			got, want, protocol.DwarfDamageReduction)
 	}
@@ -330,13 +330,13 @@ func TestElfCritThenDwarfDR(t *testing.T) {
 		t.Fatalf("dwarf monster %d missing after an elf crit bump", monsterID)
 	}
 
-	wantDealt := protocol.ElfCritMultiplier*game.ItemDamageForTest("iron-sword", 1) - protocol.DwarfDamageReduction
+	wantDealt := protocol.ElfCritMultiplier*game.ItemDamageForTest("iron-sword") - protocol.DwarfDamageReduction
 	if got := protocol.MonsterMaxHP - monster.HP; got != wantDealt {
 		t.Errorf("elf-crits-dwarf dealt = %d, want %d (crit THEN DR)", got, wantDealt)
 	}
 
 	// Guard against the reversed order producing the same number by accident.
-	reversed := (game.ItemDamageForTest("iron-sword", 1) - protocol.DwarfDamageReduction) * protocol.ElfCritMultiplier
+	reversed := (game.ItemDamageForTest("iron-sword") - protocol.DwarfDamageReduction) * protocol.ElfCritMultiplier
 	if reversed == wantDealt {
 		t.Fatalf("test cannot distinguish ordering: crit-then-DR (%d) == DR-then-crit (%d)", wantDealt, reversed)
 	}
@@ -385,11 +385,93 @@ func TestNonElfNeverCrits(t *testing.T) {
 					t.Fatalf("monster %d missing (seed %d, %s)", monsterID, seed, sp.name)
 				}
 
-				if got, want := protocol.MonsterMaxHP-monster.HP, game.ItemDamageForTest("iron-sword", 1); got != want {
+				if got, want := protocol.MonsterMaxHP-monster.HP, game.ItemDamageForTest("iron-sword"); got != want {
 					t.Fatalf("%s bump at seed %d = %d, want %d (no crit for non-elf)",
 						sp.name, seed, got, want)
 				}
 			}
 		})
 	}
+}
+
+// Pinned seeds for the Misericorde's own crit roll (rng.IntN(100) < 15, the
+// item card's chance — distinct from ElfCritChancePercent's roll). Found the
+// same way meleeCritSeed/meleeMissSeed were: scanning seeds 0-39 with a
+// human Rogue (no species crit in play) wielding the Misericorde against a
+// fat-HP monster and printing dealt damage per seed — seed 0 misses (dealt
+// base 6), seed 1 procs (dealt 12, the x2). They happen to equal
+// meleeCritSeed/meleeMissSeed because both scenarios are a single first bump
+// on a fresh RNG stream, drawing the same one chance roll at the same
+// pipeline position — a coincidence of this test's setup, not a rule.
+const (
+	misericordeCritSeed = 1 // Misericorde procs (double damage) at this seed
+	misericordeMissSeed = 0 // Misericorde does not proc (base damage) at this seed
+)
+
+// misericordeBumpDamage places a human (non-elf) Rogue wielding the
+// Misericorde at the origin, bumps a fat-HP monster at a neighbour so it
+// survives even a crit, and returns the damage dealt — isolating the
+// weapon's own crit card as the only source of a multiplier in play.
+func misericordeBumpDamage(t *testing.T, seed int64) int {
+	t.Helper()
+
+	w := newWorld()
+	w.SetSeedForTest(seed)
+
+	center := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, center) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	monsterHex := walkableNeighbor(t, w, center)
+
+	pid, tok := w.PlaceEntityForTest(center)
+	w.SetClassForTest(pid, protocol.ClassRogue) // wearableBy the Misericorde
+	w.SetSpeciesForTest(pid, protocol.SpeciesHuman)
+
+	instID := w.GrantItemForTest(pid, "misericorde")
+	if err := w.SubmitIntent(equipIntent(pid, tok, instID)); err != nil {
+		t.Fatalf("SubmitIntent(equip Misericorde): %v", err)
+	}
+
+	const fatHP = 100
+
+	monsterID := w.PlaceMonsterForTest(monsterHex)
+	w.SetHPForTest(monsterID, fatHP) // survives even a crit, so HP is readable
+
+	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+	w.ResolveCombatOnlyForTest()
+
+	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
+	if !ok {
+		t.Fatalf("monster %d missing after a Misericorde bump (unexpected kill)", monsterID)
+	}
+
+	return fatHP - monster.HP
+}
+
+// TestMisericordeCritProcsSeeded: the Misericorde's 15% crit card deals
+// exactly double its 6 base damage (12) on a proc and exactly its base (6)
+// on a miss — the binding numbers for the fast-lane batch's first crit%
+// weapon.
+func TestMisericordeCritProcsSeeded(t *testing.T) {
+	t.Parallel()
+
+	const misericordeDamage = 6
+
+	t.Run("proc", func(t *testing.T) {
+		t.Parallel()
+
+		if got, want := misericordeBumpDamage(t, misericordeCritSeed), 2*misericordeDamage; got != want {
+			t.Errorf("Misericorde proc bump = %d, want %d (2x base %d)", got, want, misericordeDamage)
+		}
+	})
+
+	t.Run("no proc", func(t *testing.T) {
+		t.Parallel()
+
+		if got, want := misericordeBumpDamage(t, misericordeMissSeed), misericordeDamage; got != want {
+			t.Errorf("Misericorde non-proc bump = %d, want %d (base)", got, want)
+		}
+	})
 }

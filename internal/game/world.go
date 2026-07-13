@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	mrand "math/rand/v2"
 	"slices"
 	"strings"
@@ -1618,14 +1619,14 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		victim := victims[rng.IntN(len(victims))]
 
 		// Melee/bump damage: the attacker's equipped close-slot item (or the
-		// fists/claws fallback — closeDefFor), level-scaled via itemDamage. A
-		// monster's closeDefFor is its KIND's own claws profile (6c —
-		// monsterDef.claws, e.g. a rat's 1 vs a dragon's 9); levelFor(0) == 1
-		// keeps the level-scaling term 0 for monsters. Resolved once here
-		// (mirroring resolveRangedLocked's def := rangedDefFor(e) below) so
-		// the def is looked up exactly once per hit.
+		// fists/claws fallback — closeDefFor) via itemDamage; levels do not
+		// scale damage (#60, roadmap XP3). A monster's closeDefFor is its
+		// KIND's own claws profile (6c — monsterDef.claws, e.g. a rat's 1 vs
+		// a dragon's 9). Resolved once here (mirroring resolveRangedLocked's
+		// def := rangedDefFor(e) below) so the def is looked up exactly once
+		// per hit.
 		weapon := closeDefFor(a.attacker)
-		base := itemDamage(weapon, levelFor(a.attacker.xp))
+		base := itemDamage(weapon)
 		dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
 		damage[victim.id] += dealt
 
@@ -1702,7 +1703,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 			continue
 		}
 
-		dmg := itemDamage(def, levelFor(e.xp))
+		dmg := itemDamage(def)
 
 		if def.aoeRadius == 0 {
 			w.resolveBowLocked(rng, byHex, e, def, target, dmg, damage)
@@ -1748,7 +1749,7 @@ func (w *World) resolveEntityTargetedLocked(
 		return
 	}
 
-	dmg := itemDamage(weapon, levelFor(attacker.xp))
+	dmg := itemDamage(weapon)
 	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
 	damage[victim.id] += dealt
 
@@ -1911,8 +1912,33 @@ func pluralizeKind(id string) string {
 	return id + "s"
 }
 
-// levelFor returns the 1-based level for a cumulative XP total.
-func levelFor(xp int) int { return 1 + xp/protocol.XPPerLevel }
+// levelFor returns the 1-based level for a cumulative XP total: the largest
+// L with XPCurveBase*(L-1)^2 <= xp. Integer math only — float sqrt
+// mis-rounds near perfect squares.
+func levelFor(xp int) int { return 1 + isqrt(xp/protocol.XPCurveBase) }
+
+// xpFloorFor returns the cumulative XP at which the given level starts.
+func xpFloorFor(level int) int {
+	return protocol.XPCurveBase * (level - 1) * (level - 1)
+}
+
+// isqrt returns the integer square root: the largest s with s*s <= n.
+func isqrt(n int) int {
+	if n <= 0 {
+		return 0
+	}
+
+	s := int(math.Sqrt(float64(n)))
+	for s > 0 && s*s > n {
+		s--
+	}
+
+	for (s+1)*(s+1) <= n {
+		s++
+	}
+
+	return s
+}
 
 // syncMaxHPLocked recalibrates a player's maxHP to its class and current level
 // (via maxHPFor) after an XP change, clamping current HP to the new max. It does
@@ -1926,8 +1952,9 @@ func syncMaxHPLocked(e *entity) {
 	}
 }
 
-// levelFloorXP returns the XP at the start of xp's current level.
-func levelFloorXP(xp int) int { return (xp / protocol.XPPerLevel) * protocol.XPPerLevel }
+// levelFloorXP returns the XP at the start of xp's current level (the
+// death floor: dying costs progress inside the level, never the level).
+func levelFloorXP(xp int) int { return xpFloorFor(levelFor(xp)) }
 
 // resolveDeathsLocked floors a dying player's XP to its level start, removes dead
 // monsters (rolling each one's ground-loot drop first — dropLootLocked), and
@@ -2472,23 +2499,26 @@ func nearestPlayer(from protocol.Hex, players []*entity) *entity {
 const spawnPointStream uint64 = 0x50A5
 
 // spawnHexLocked picks a hex for a player join or respawn: a random
-// walkable, capacity-available hex in the origin's forced clearing
-// (worldgen.go's clearingRadius) that is not occupied by, or within
-// CombatRadius of, a living monster (tooCloseToMonsterLocked) — so a spawn
-// can never land a player ON a monster or form an instant combat bubble the
-// moment they appear (both observed live, #36). Random, not the old
-// spiral-nearest-to-origin search: players (and respawns) no longer pile
-// deterministically onto the same hex.
+// walkable, capacity-available hex anywhere in the sanctuary
+// (protocol.SanctuaryRadius of the origin) that is not occupied by, or
+// within CombatRadius of, a living monster (tooCloseToMonsterLocked) — so a
+// spawn can never land a player ON a monster or form an instant combat
+// bubble the moment they appear (both observed live, #36). Random, not the
+// old spiral-nearest-to-origin search: players (and respawns) no longer pile
+// deterministically onto the same hex. Per Q9, the sanctuary is every join's
+// and respawn's shared "home" until beds land as a per-player anchor —
+// scattering across the whole sanctuary rather than just the small origin
+// clearing is intentional.
 //
 // Four tiers, each engaged only if the one above yields nothing, so a small
 // or crowded map never fails a join outright — but "not literally on top of a
 // monster" is relaxed dead last, since that specific case can silently stall
 // combat forever (occupiedByMonsterLocked's doc comment), not just risk an
 // instant bubble:
-//  1. clearing hexes clear of monsters entirely (the common case)
-//  2. clearing hexes not occupied by one, ignoring the CombatRadius
-//     preference (a monster-dense clearing may leave nothing outside it)
-//  3. clearing hexes at all, ignoring both monster checks (the clearing
+//  1. sanctuary hexes clear of monsters entirely (the common case)
+//  2. sanctuary hexes not occupied by one, ignoring the CombatRadius
+//     preference (a monster-dense sanctuary may leave nothing outside it)
+//  3. sanctuary hexes at all, ignoring both monster checks (the sanctuary
 //     itself is saturated — every hex in it has a monster standing on it)
 //  4. spawnHexSpiralLocked over the WHOLE reachable region, ignoring every
 //     guard — the pre-#36 search, kept verbatim as the last resort so "a
@@ -2498,33 +2528,33 @@ const spawnPointStream uint64 = 0x50A5
 func (w *World) spawnHexLocked() (protocol.Hex, error) {
 	origin := protocol.Hex{Q: 0, R: 0}
 
-	var clearingSafe, clearingUnoccupied, clearingAny []protocol.Hex
+	var sanctuarySafe, sanctuaryUnoccupied, sanctuaryAny []protocol.Hex
 
 	for h := range w.spawnable {
-		if HexDistance(origin, h) > clearingRadius || w.occupancyLocked(h) >= protocol.StackCap {
+		if HexDistance(origin, h) > protocol.SanctuaryRadius || w.occupancyLocked(h) >= protocol.StackCap {
 			continue
 		}
 
-		clearingAny = append(clearingAny, h)
+		sanctuaryAny = append(sanctuaryAny, h)
 
 		if w.occupiedByMonsterLocked(h) {
 			continue
 		}
 
-		clearingUnoccupied = append(clearingUnoccupied, h)
+		sanctuaryUnoccupied = append(sanctuaryUnoccupied, h)
 
 		if !w.tooCloseToMonsterLocked(h) {
-			clearingSafe = append(clearingSafe, h)
+			sanctuarySafe = append(sanctuarySafe, h)
 		}
 	}
 
-	candidates := clearingSafe
+	candidates := sanctuarySafe
 	if len(candidates) == 0 {
-		candidates = clearingUnoccupied
+		candidates = sanctuaryUnoccupied
 	}
 
 	if len(candidates) == 0 {
-		candidates = clearingAny
+		candidates = sanctuaryAny
 	}
 
 	if len(candidates) == 0 {
@@ -2541,9 +2571,10 @@ func (w *World) spawnHexLocked() (protocol.Hex, error) {
 
 // spawnHexSpiralLocked is the pre-#36 search: the free walkable hex nearest
 // the origin, spiraling outward, ignoring the monster guard entirely — the
-// tier-3 fallback spawnHexLocked reaches for only when neither clearing tier
-// above yields a single candidate (an extremely crowded or tiny map), so a
-// join never hard-fails just because the origin clearing is exhausted.
+// tier-4 fallback spawnHexLocked reaches for only when none of the three
+// sanctuary tiers above yields a single candidate (an extremely crowded or
+// tiny map), so a join never hard-fails just because the sanctuary is
+// exhausted.
 // Callers hold w.mu.
 //
 // Faction-blind by design in this fallback path: it can land a player on a

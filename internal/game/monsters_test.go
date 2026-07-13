@@ -76,6 +76,10 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		// healing potion — recovery layer 2. Appended LAST so the pre-existing
 		// entries keep their cumulative-weight positions.
 		{defID: idHealingPotion, weight: 2},
+		// Appended by the fast-lane batch (task 6, #69 Q5): the Duelist's
+		// Saber, wolf's crit% signature drop. Appended LAST for the same
+		// reason — every earlier entry keeps its cumulative-weight position.
+		{defID: idDuelistsSaber, weight: 4},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {

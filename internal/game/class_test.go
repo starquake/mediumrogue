@@ -106,7 +106,8 @@ func TestFighterIsTankierThanRogueAndMage(t *testing.T) {
 }
 
 // TestMaxHPForScalesWithLevel: MaxHP grows monotonically with level for every
-// class, adding HPPerLevel per level above 1.
+// class, adding the front-loaded curve's cumulative bonus (levelHPBonus) per
+// level above 1.
 func TestMaxHPForScalesWithLevel(t *testing.T) {
 	t.Parallel()
 
@@ -116,10 +117,11 @@ func TestMaxHPForScalesWithLevel(t *testing.T) {
 		t.Run(class, func(t *testing.T) {
 			t.Parallel()
 
+			// re-derived for front-loaded HP curve (fast-lane T2)
 			for level := 1; level <= 5; level++ {
 				got := game.MaxHPForTest(class, level)
 
-				if want := game.MaxHPForTest(class, 1) + protocol.HPPerLevel*(level-1); got != want {
+				if want := game.MaxHPForTest(class, 1) + game.LevelHPBonusForTest(level); got != want {
 					t.Errorf("MaxHPForTest(%q, %d) = %d, want %d", class, level, got, want)
 				}
 
@@ -130,6 +132,40 @@ func TestMaxHPForScalesWithLevel(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestLevelHPBonusFrontLoaded pins the front-loaded HP curve's cumulative
+// bonus directly against the spec table: gains fall 8,7,6,...,1 then floor at
+// +1 per level forever (#60, roadmap XP2).
+func TestLevelHPBonusFrontLoaded(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		level int
+		want  int
+	}{
+		{1, 0}, {2, 8}, {3, 15}, {5, 26}, {9, 36}, {10, 37}, {12, 39},
+	}
+	for _, c := range cases {
+		if got, want := game.LevelHPBonusForTest(c.level), c.want; got != want {
+			t.Errorf("levelHPBonus(%d) = %d, want %d", c.level, got, want)
+		}
+	}
+}
+
+// TestMaxHPForUsesCurve pins maxHPFor's use of the front-loaded curve against
+// the spec table's fighter row (base 30).
+func TestMaxHPForUsesCurve(t *testing.T) {
+	t.Parallel()
+
+	// Fighter base 30: spec table pins L5 = 56, L10 = 67.
+	if got, want := game.MaxHPForTest(protocol.ClassFighter, 5), 56; got != want {
+		t.Errorf("maxHPFor(fighter, 5) = %d, want %d", got, want)
+	}
+
+	if got, want := game.MaxHPForTest(protocol.ClassFighter, 10), 67; got != want {
+		t.Errorf("maxHPFor(fighter, 10) = %d, want %d", got, want)
 	}
 }
 
@@ -147,9 +183,10 @@ func TestRespawnScalesMaxHPToLevel(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
-	// One level of XP: levelFor(XPPerLevel) == 2. Death floors XP to this level's
-	// start, so the respawn keeps level 2.
-	w.SetXPForTest(me.EntityID, protocol.XPPerLevel)
+	// One level of XP: levelFor(XPCurveBase) == 2 (the level-2 floor,
+	// XPCurveBase*(2-1)^2, is XPCurveBase itself). Death floors XP to this
+	// level's start, so the respawn keeps level 2.
+	w.SetXPForTest(me.EntityID, protocol.XPCurveBase)
 	w.SetHPForTest(me.EntityID, 0)
 
 	snap := step(t, w) // world resolution respawns the dead player
@@ -186,12 +223,12 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("rogue bow", func(t *testing.T) {
 		t.Parallel()
 
-		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassRogue, 1)
+		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassRogue)
 		if !ok {
 			t.Fatal("rogue should have a ranged weapon")
 		}
 
-		if got, want := dmg, game.ItemDamageForTest("shortbow", 1); got != want {
+		if got, want := dmg, game.ItemDamageForTest("shortbow"); got != want {
 			t.Errorf("rogue bow damage = %d, want %d", got, want)
 		}
 
@@ -207,12 +244,12 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("mage magic", func(t *testing.T) {
 		t.Parallel()
 
-		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassMage, 1)
+		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassMage)
 		if !ok {
 			t.Fatal("mage should have a ranged weapon")
 		}
 
-		if got, want := dmg, game.ItemDamageForTest("ember-focus", 1); got != want {
+		if got, want := dmg, game.ItemDamageForTest("ember-focus"); got != want {
 			t.Errorf("mage magic damage = %d, want %d", got, want)
 		}
 
@@ -228,7 +265,7 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("fighter has no ranged", func(t *testing.T) {
 		t.Parallel()
 
-		if _, _, _, ok := game.RangedWeaponForTest(protocol.ClassFighter, 1); ok {
+		if _, _, _, ok := game.RangedWeaponForTest(protocol.ClassFighter); ok {
 			t.Error("fighter should have no ranged weapon")
 		}
 	})

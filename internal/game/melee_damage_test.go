@@ -19,8 +19,8 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 		class string
 		want  int
 	}{
-		{"fighter sword", protocol.ClassFighter, game.ItemDamageForTest("iron-sword", 1)},
-		{"rogue dagger", protocol.ClassRogue, game.ItemDamageForTest("dagger", 1)},
+		{"fighter sword", protocol.ClassFighter, game.ItemDamageForTest("iron-sword")},
+		{"rogue dagger", protocol.ClassRogue, game.ItemDamageForTest("dagger")},
 	}
 
 	for _, tc := range tests {
@@ -60,45 +60,58 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 	}
 }
 
-// TestBumpDamageScalesWithLevel: a higher-level player bumps for more — the
-// class close weapon gains DamagePerLevel for each level above 1. A level-3
-// Fighter's sword deals its iron-sword base + 2*DamagePerLevel, strictly above the
-// level-1 sword.
-func TestBumpDamageScalesWithLevel(t *testing.T) {
+// TestAttackDamageDoesNotScaleWithLevel: DamagePerLevel is cut (#60, roadmap
+// XP3) — a level-5 attacker's sword hit equals a level-1's. Two identical
+// Fighters, one at level 1 (xp 0) and one at level 5 (xp
+// XPCurveBase*(5-1)^2 == 1600), each bump an identical monster off identical
+// boards with identical seeds: the damage dealt must be equal, and must equal
+// the level-1 base (the pinned combat number from the old
+// DamagePerLevel-scaled test — re-derived: DamagePerLevel cut (fast-lane
+// T3)).
+func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 	t.Parallel()
 
-	w := newWorld()
-	w.SetSeedForTest(21)
+	bump := func(t *testing.T, xp int) int {
+		t.Helper()
 
-	center := protocol.Hex{Q: 0, R: 0}
-	if !isWalkable(w, center) {
-		t.Skip("origin is not walkable on this map")
+		w := newWorld()
+		w.SetSeedForTest(21)
+
+		center := protocol.Hex{Q: 0, R: 0}
+		if !isWalkable(w, center) {
+			t.Skip("origin is not walkable on this map")
+		}
+
+		monsterHex := walkableNeighbor(t, w, center)
+
+		pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter by default
+		w.SetXPForTest(pid, xp)
+
+		monsterID := w.PlaceMonsterForTest(monsterHex)
+
+		w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+		w.ResolveCombatOnlyForTest()
+
+		monster, ok := entityOfSnap(w.Snapshot(), monsterID)
+		if !ok {
+			t.Fatalf("monster %d missing after a single bump", monsterID)
+		}
+
+		return protocol.MonsterMaxHP - monster.HP
 	}
 
-	monsterHex := walkableNeighbor(t, w, center)
+	level1Dealt := bump(t, 0)
+	level5Dealt := bump(t, 16*protocol.XPCurveBase) // 1600: levelFor(1600) == 5
 
-	pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter
-	// XPPerLevel=100: 200 XP → level 3, i.e. two levels above 1.
-	w.SetXPForTest(pid, 2*protocol.XPPerLevel)
-
-	monsterID := w.PlaceMonsterForTest(monsterHex)
-
-	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
-	w.ResolveCombatOnlyForTest()
-
-	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
-	if !ok {
-		t.Fatalf("monster %d missing after a single bump", monsterID)
+	if got, want := level5Dealt, level1Dealt; got != want {
+		t.Errorf("level-5 Fighter bump damage = %d, want %d (equal to level-1's — level must not scale damage)", got, want)
 	}
 
-	dealt := protocol.MonsterMaxHP - monster.HP
-
-	if got, want := dealt, game.ItemDamageForTest("iron-sword", 1)+2*protocol.DamagePerLevel; got != want {
-		t.Errorf("level-3 Fighter bump damage = %d, want %d (sword + DamagePerLevel per level)", got, want)
-	}
-
-	if got, floor := dealt, game.ItemDamageForTest("iron-sword", 1); got <= floor {
-		t.Errorf("level-3 bump damage = %d, want > level-1 sword %d (level must raise it)", got, floor)
+	// re-derived: DamagePerLevel cut (fast-lane T3) — the old test asserted
+	// base + 2*DamagePerLevel for a level-3 attacker; damage is now always
+	// exactly the weapon's base regardless of level.
+	if got, want := level1Dealt, game.ItemDamageForTest("iron-sword"); got != want {
+		t.Errorf("bump damage = %d, want %d (iron-sword base, level-free)", got, want)
 	}
 }
 
