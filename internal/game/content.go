@@ -67,7 +67,7 @@ var itemDefs = []*itemDef{
 		tags: []string{protocol.WeaponTagRanged}, damage: 4, rangeHex: 4,
 	},
 	{
-		id: idOakStaff, name: "Oak Staff", itemType: protocol.ItemTypeWeapon,
+		id: idOakWand, name: "Oak Wand", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, damage: 2,
 	},
 	{
@@ -110,9 +110,10 @@ var itemDefs = []*itemDef{
 		},
 	},
 	{
+		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
 		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMagic},
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
+		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
+		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
@@ -132,9 +133,10 @@ var itemDefs = []*itemDef{
 		},
 	},
 	{
+		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
 		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMagic},
-		damage: 3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
+		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
 		flavor: "Tuned to eliminate the weakest enemies.",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the

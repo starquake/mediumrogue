@@ -52,7 +52,7 @@ rests on base HP + starting kit. The identity mechanism moves to the Class
 skill tree (Q10).*
 
 **Starting kits (unchanged in effect):** fighter Iron Sword (main); rogue
-Dagger (main) + Shortbow (off); mage Oak Staff (main) + Ember Focus (off).
+Dagger (main) + Shortbow (off); mage Oak Wand (main) + Ember Focus (off).
 
 ## 3. Combat — the decided #55 resolution
 
@@ -89,13 +89,16 @@ below are the binding numbers):
 | Wyrmslayer Greatsword | 4 → **9** | melee, **2H** | ×1.5 vs dragons |
 | Shortbow | 6 → **4** | ranged | 1H by design (dagger+bow lives) |
 | Pack Bow | 5 → **3** | ranged | +3 ally intact |
-| Oak Staff | 2 → **2** | melee | the mage's bonk; 1H (staff+wand lives) |
+| Oak Wand | 2 → **2** | melee | the mage's bonk; 1H (staff+wand lives) |
 | Ember Focus | 4 → **3** | magic | AoE tax; range 4, AoE 1 |
-| Ember Staff | 3 → **3** | magic | ×2 adjacent intact |
-| Staff of the War Mage | 3 → **3** | magic | ×2 vs <6HP intact |
+| Ember Staff | 3 → **6** | magic, **2H** | ×2 adjacent intact |
+| Staff of the War Mage | 3 → **6** | magic, **2H** | ×2 vs <6HP intact |
 
 Monster stats unchanged. Fists stay 1. Rule cards unchanged except where
 noted (none change).
+
+**Amended 2026-07-13 post-review: wands 1H, staves 2H at doubled damage;
+Oak Staff renamed Oak Wand — maintainer decision.**
 
 ## 5. Wire, snapshot, client
 

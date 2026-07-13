@@ -73,10 +73,10 @@ func TestKeystoneRetagAndRebalance(t *testing.T) {
 		{idWyrmslayerGreatsword, 9, []string{protocol.WeaponTagMelee}, true},
 		{idShortbow, 4, []string{protocol.WeaponTagRanged}, false},
 		{idPackBow, 3, []string{protocol.WeaponTagRanged}, false},
-		{idOakStaff, 2, []string{protocol.WeaponTagMelee}, false},
+		{idOakWand, 2, []string{protocol.WeaponTagMelee}, false},
 		{idEmberFocus, 3, []string{protocol.WeaponTagMagic}, false},
-		{idEmberStaff, 3, []string{protocol.WeaponTagMagic}, false},
-		{idWarMageStaff, 3, []string{protocol.WeaponTagMagic}, false},
+		{idEmberStaff, 6, []string{protocol.WeaponTagMagic}, true},
+		{idWarMageStaff, 6, []string{protocol.WeaponTagMagic}, true},
 	}
 
 	for _, c := range cases {

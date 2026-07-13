@@ -21,7 +21,7 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 	}{
 		{"fighter sword", protocol.ClassFighter, game.ItemDamageForTest("iron-sword")},
 		{"rogue dagger", protocol.ClassRogue, game.ItemDamageForTest("dagger")},
-		{"mage oak staff", protocol.ClassMage, game.ItemDamageForTest("oak-staff")},
+		{"mage oak wand", protocol.ClassMage, game.ItemDamageForTest("oak-wand")},
 	}
 
 	for _, tc := range tests {

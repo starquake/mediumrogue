@@ -11,7 +11,7 @@ import (
 
 // TestClassDefaultDamageMatchesLiveBalance pins the exact numbers the gear
 // keystone rebalance (§4, "1H ≈ ½ 2H") leaves class defaults at: iron-sword
-// 4, dagger 4, shortbow 4 rng4, oak-staff 2, ember-focus 3 rng4 aoe1.
+// 4, dagger 4, shortbow 4 rng4, oak-wand 2, ember-focus 3 rng4 aoe1.
 func TestClassDefaultDamageMatchesLiveBalance(t *testing.T) {
 	t.Parallel()
 
@@ -22,7 +22,7 @@ func TestClassDefaultDamageMatchesLiveBalance(t *testing.T) {
 		{idIronSword, 4, 0, 0},
 		{idDagger, 4, 0, 0},   // re-derived: gear keystone rebalance (7 -> 4)
 		{idShortbow, 4, 4, 0}, // re-derived: gear keystone rebalance (6 -> 4)
-		{idOakStaff, 2, 0, 0},
+		{idOakWand, 2, 0, 0},
 		{idEmberFocus, 3, 4, 1}, // re-derived: gear keystone rebalance (4 -> 3)
 	}
 
@@ -48,7 +48,7 @@ func TestClassDefaultDamageMatchesLiveBalance(t *testing.T) {
 
 // TestClassDefaultTypesAndTags pins the gear keystone's re-typing of the
 // class defaults: every one is the single ItemTypeWeapon, distinguished by
-// tag — sword/dagger/oak-staff melee, shortbow ranged, ember-focus magic.
+// tag — sword/dagger/oak-wand melee, shortbow ranged, ember-focus magic.
 func TestClassDefaultTypesAndTags(t *testing.T) {
 	t.Parallel()
 
@@ -59,7 +59,7 @@ func TestClassDefaultTypesAndTags(t *testing.T) {
 		{idIronSword, protocol.WeaponTagMelee},
 		{idDagger, protocol.WeaponTagMelee},
 		{idShortbow, protocol.WeaponTagRanged},
-		{idOakStaff, protocol.WeaponTagMelee},
+		{idOakWand, protocol.WeaponTagMelee},
 		{idEmberFocus, protocol.WeaponTagMagic},
 	}
 
@@ -468,14 +468,14 @@ func TestCloseDefForEquippedWeapon(t *testing.T) {
 		t.Errorf("closeDefFor(equipped dagger) = %v, want the dagger def", got)
 	}
 
-	// oak-staff is melee-tagged (a "staff bonk") even in the off-hand.
+	// oak-wand is melee-tagged (a "wand bonk") even in the off-hand.
 	mage := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassMage,
-		equipped: map[string]itemInstance{protocol.SlotOffHand: {id: 2, defID: idOakStaff}},
+		equipped: map[string]itemInstance{protocol.SlotOffHand: {id: 2, defID: idOakWand}},
 	}
 
-	if got := closeDefFor(mage); got == nil || got.id != idOakStaff {
-		t.Errorf("closeDefFor(mage with staff) = %v, want the oak-staff def (staff bonk)", got)
+	if got := closeDefFor(mage); got == nil || got.id != idOakWand {
+		t.Errorf("closeDefFor(mage with wand) = %v, want the oak-wand def (wand bonk)", got)
 	}
 }
 
@@ -1105,7 +1105,8 @@ func TestFirstGearCardsPinned(t *testing.T) {
 		t.Fatal("war-mage-staff not registered")
 	}
 
-	if got, want := staff.damage, 3; got != want {
+	// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
+	if got, want := staff.damage, 6; got != want {
 		t.Errorf("staff damage = %d, want %d", got, want)
 	}
 

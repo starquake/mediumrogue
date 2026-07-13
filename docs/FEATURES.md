@@ -104,7 +104,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 |---|---|---|---|
 | **Fighter** | Iron Sword (4) | 30 | melee, tanky, holds the front |
 | **Rogue** | Dagger (4) + Shortbow (4, rng 4) | 16 | high single-target, squishy |
-| **Mage** | Oak Staff (2 bonk) + Ember Focus (3, rng 4, AoE 1) | 14 | area damage, back line |
+| **Mage** | Oak Wand (2 bonk) + Ember Focus (3, rng 4, AoE 1) | 14 | area damage, back line |
 
 Default kits are granted into the hand slots (main-hand/off-hand) at join
 time via the same placement path a player's own equip intent uses — not a
@@ -179,25 +179,33 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   `aoeRadius` independently, no shared pick needed. A single-weapon attacker
   (the common case, and every class's starting kit) is unaffected — this is
   byte-identical to the old single-hit resolution when exactly one weapon
-  fires.
+  fires. **Wands are one-handed, staves are two-handed at doubled damage**
+  (keystone amendment, 2026-07-13) — Ember Focus is now the game's only
+  one-handed magic weapon, so dual-AoE stacking via dual-wielding two staves
+  is no longer possible (a two-handed weapon locks the off-hand).
 - **Weapons — content data** (`internal/game/content.go`'s `itemDefs`, 15
   registry weapons; rebalanced to the keystone's "1H ≈ ½ 2H" pass —
-  several 1H damages moved down, the 2H anchor moved up):
+  several 1H damages moved down, the 2H anchor moved up). **Naming
+  convention** (keystone amendment, 2026-07-13): **wands are one-handed,
+  staves are two-handed at doubled damage** — the mage's starter Oak Staff
+  was renamed **Oak Wand** to match (id/name only, stats unchanged), and
+  Ember Staff / Staff of the War Mage both doubled from 3 to 6 damage and
+  now occupy both hands:
 
   | Weapon | Tags | 2H | Dmg | Rng | AoE | Effect | Source |
-  |---|---|:---:|---:|---:|---:|---|---|
+  |---|---|:---:|---:|---:|---:|---:|---|---|
   | Iron Sword | melee | | 4 | – | – | — | fighter default |
   | Dagger | melee | | 4 | – | – | — | rogue default |
   | Shortbow | ranged | | 4 | 4 | – | — | rogue default |
-  | Oak Staff | melee | | 2 | – | – | — | mage default |
+  | Oak Wand | melee | | 2 | – | – | — | mage default |
   | Ember Focus | magic | | 3 | 4 | 1 | — | mage default |
   | Butcher's Cleaver | melee | | 3 | – | – | +3 dmg vs targets below half HP | starter drop (rat) |
   | Iron Warhammer | melee | | 5 | – | – | flat upgrade over Iron Sword — rare | starter drop |
   | Venom Fang | melee | | 3 | – | – | +4 dmg vs targets at full HP | starter drop |
   | Pack Bow | ranged | | 3 | 4 | – | +3 dmg while an ally shares the bubble | starter drop |
-  | Ember Staff | magic | | 3 | 4 | 1 | ×2 dmg vs adjacent targets | starter drop |
+  | Ember Staff | magic | ✅ | 6 | 4 | 1 | ×2 dmg vs adjacent targets | starter drop |
   | Ancient Dwarven Mattock | melee | | 4 | – | – | +3 dmg in a dwarf's hands | designer batch |
-  | Staff of the War Mage | magic | | 3 | 4 | 1 | ×2 dmg vs targets below 6 HP (flat) | designer batch |
+  | Staff of the War Mage | magic | ✅ | 6 | 4 | 1 | ×2 dmg vs targets below 6 HP (flat) | designer batch |
   | Wyrmslayer Greatsword | melee | ✅ | 9 | – | – | ×1.5 dmg vs dragons | dragon drop (100%, weight 2) |
   | Misericorde | melee | | 4 | – | – | 15% chance to deal ×2 | ghoul drop |
   | Duelist's Saber | melee | | 4 | – | – | 10% chance to deal ×2 | wolf drop |

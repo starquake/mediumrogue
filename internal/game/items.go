@@ -507,7 +507,7 @@ const (
 	idIronSword  = "iron-sword"
 	idDagger     = "dagger"
 	idShortbow   = "shortbow"
-	idOakStaff   = "oak-staff"
+	idOakWand    = "oak-wand"
 	idEmberFocus = "ember-focus"
 )
 
@@ -561,7 +561,7 @@ func classDefaultIDs(class string) []string {
 	case protocol.ClassRogue:
 		return []string{idDagger, idShortbow}
 	case protocol.ClassMage:
-		return []string{idOakStaff, idEmberFocus}
+		return []string{idOakWand, idEmberFocus}
 	default:
 		return nil
 	}
@@ -572,7 +572,7 @@ func classDefaultIDs(class string) []string {
 // the world's shared id sequence, placed through the SAME toggleEquip
 // primitive a player's own equip intent uses (weaponTargetSlot picks the
 // hand — fighter's iron sword lands main; rogue's dagger lands main, then
-// its shortbow lands off since main is now taken; mage's oak staff/ember
+// its shortbow lands off since main is now taken; mage's oak wand/ember
 // focus the same way) — no bare "owned but unequipped" starting state (the
 // backpack starts with all protocol.BackpackSize entries free). Callers hold
 // w.mu and must call this after the entity is stored in w.entities —

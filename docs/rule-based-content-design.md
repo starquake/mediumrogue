@@ -260,7 +260,7 @@ and their identities are **decided** (plan §0):
 |---|---|---|---|---|
 | **Fighter** | Iron Sword | medium | tanky | holds the front |
 | **Rogue** | Dagger + Shortbow | high single-target | squishy | flexible mid-line |
-| **Mage** | Oak Staff + Ember Focus | area damage | squishy | back line vs. groups |
+| **Mage** | Oak Wand + Ember Focus | area damage | squishy | back line vs. groups |
 
 In rule terms, a class is: **base max HP + a starting kit + (future) its
 Class skill tree (#61/Q10) — gear is NOT class-gated anymore (#56): anyone
