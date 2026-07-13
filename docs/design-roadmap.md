@@ -69,9 +69,9 @@ graph TD
 
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
-| XP1 | Quadratic XP curve | Fast early levels, steep late | S | **Cheap** (formula); independent | ❓ |
-| XP2 | Front-loaded HP curve | HP gains fall off with level (replaces linear `HPPerLevel`) | S | **Cheap** (formula); independent | ❓ |
-| XP3 | Cut `DamagePerLevel` | A level stops inflating raw weapon damage | S | Defines the "no raw-stat scaling" philosophy | ❓ |
+| XP1 | Quadratic XP curve | Fast early levels, steep late | S | **Cheap** (formula); independent | ✅ done (fast-lane batch, shipped 2026-07-13) |
+| XP2 | Front-loaded HP curve | HP gains fall off with level (replaces linear `HPPerLevel`) | S | **Cheap** (formula); independent | ✅ done (fast-lane batch, shipped 2026-07-13) |
+| XP3 | Cut `DamagePerLevel` | A level stops inflating raw weapon damage | S | Defines the "no raw-stat scaling" philosophy | ✅ done (fast-lane batch, shipped 2026-07-13) |
 | XP4 | Levels grant skill points | Level-up gives points to spend in trees, not stat bumps | M | Ties #60 ↔ #61 | ❓ |
 | XP5 | Anti-rubberband gear rule | High-level gear trades raw stats for modifiers/set bonuses | — | Ongoing content *guideline*, not a discrete build | ❓ |
 
@@ -109,7 +109,14 @@ mixing TTRPG and ARPG?" / "What if we moved to TTRPG?").
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
 | DF1 | Passive evasion / reduction | Gear rule cards: light = harder to hit (evasion %), heavy = damage-reduction (today's `take-damage -1`) | S–M | The light-vs-heavy split; evasion adds bounded seeded RNG, reduction stays deterministic | ❓ |
-| DF2 | Evasion & crit (#69) | Two **decoupled** ARPG chances — `evasion%` (defender dodges → 0 dmg) and `crit%` (attacker deals ×2) | S+L | **Splits:** `crit%` ships as content *today* (elf's `deal-damage`+`chance` pattern — Tier 1, free); `evasion%` is the one new engine event (a 0-dmg dodge can't be a plain card — landed hits floor at 1). Seeded PCG; evasion clamps to a ceiling, crit to `[0,100]` | ❓ |
+| DF2 | Evasion & crit (#69) | Two **decoupled** ARPG chances — `evasion%` (defender dodges → 0 dmg) and `crit%` (attacker deals ×2) | S+L | **Splits:** `crit%` ships as content *today* (elf's `deal-damage`+`chance` pattern — Tier 1, free); `evasion%` is the one new engine event (a 0-dmg dodge can't be a plain card — landed hits floor at 1). Seeded PCG; evasion clamps to a ceiling, crit to `[0,100]` | 🔶 crit% half shipped |
+
+**DF-crit shipped 2026-07-13** (fast-lane batch task 6, #69 Q5): the `crit%`
+half of DF2 is no longer just the elf species passive — Misericorde (rogue,
+15% → ×2) and Duelist's Saber (fighter, 10% → ×2) are the game's first
+**item-side** crit%-weapons, both the same `deal-damage`+`chance`+`mulPct`
+rule-card pattern, just carried by gear instead of species. `evasion%`
+(the DF2 half needing the new `evasion-check` event) remains unbuilt.
 | ACT | **Combat action economy** | Spend a turn's action on a non-attack action | L | **Foundational — unblocks SK5 (active skills), combat-heal (#61), block, protect-ally** | ❓ |
 | ACT-B | Block / guard | Active defensive action; **no RNG** | M | Needs ACT; synergises with shields (#55) / Shield Wall (#57) | ❓ |
 | ACT-P | Protect an ally | Redirect a hit meant for an ally to you (co-op tank) | L | Needs ACT; new damage-redirect effect (like aura/cascade) | ❓ |
@@ -132,8 +139,8 @@ see **Q6** and **Q7** below.
 | Q5 | RNG in combat (hit/miss, crits)? | **Decided:** yes, but only as *bounded, decoupled* seeded chances — `evasion%` (defence) and `crit%` (offence), drawn from the per-scope seeded PCG so determinism holds. No coupled to-hit roll, no `d20`. Block / reduction stay deterministic. | ✅ |
 | Q6 | AoE hit resolution: per-target, or one roll for all? | **Decided (2026-07-13): neither — AoE always hits.** Evasion applies to *targeted* attacks only; area damage is undodgeable (you dodge attacks, not explosions). Keeps AoE fully deterministic, magic always spectacular (NGB's goal, minus the whole-turn fizzle feel-bad), and creates counterplay: evasion/light armour beats melee & arrows, damage-reduction/heavy armour is the anti-mage answer. `take-damage` cards still apply to AoE. The D&D *save-vs-level* framing stays **rejected** (re-couples attacker/defender). | ✅ |
 | Q7 | Do monsters have levels / scale to average player level? | **Decided (2026-07-13): no levels, no scaling.** Kinds + distance rings stay the difficulty model — progress must stay *felt* (the wolf that nearly killed you at L1 dies fast at L5). Ceiling-raising later = **authored variants** (new registry entries that change *behavior/rules*, not just bigger numbers), placed farther out. **Dynamic party-scaling is rejected** — anti-rubberband, and incoherent in a shared world (whose level? stats shifting as friends log in/out; breaks determinism/pinned tests). | ✅ |
-| Q8 | Percentage stacking: add or compound? | **Decided: percentages ADD within an event's fold** (sum the `mulPct` deltas, apply once — one truncation, order-independent); **stages compose across events** (deal-damage → take-damage → crit-check), so crit ×2 / damage-reduction stay true multipliers at their own stage. #61 principle 14 holds engine-wide, no carve-out. Small `applyRules` change; single-multiplier results are byte-identical, stacked-mult pinned tests get re-derived. | ✅ |
-| Q9 | Initial spawn: random scatter or bed/home default? | **Decided (merges both #36 positions):** first spawn = **seeded random scatter *within the sanctuary*** (de-clumps without dropping level-1s into outer rings); **bed thereafter** — spawn at your **last-visited bed** (no bed history), falling back to the sanctuary/Home if the bed is gone. Beds are their own later slice (claimable object + snapshot state → `snapshotVersion` bump); the sanctuary-jitter first spawn is a small `spawnHexLocked` tweak that can ship alone. | ✅ |
+| Q8 | Percentage stacking: add or compound? | **Decided: percentages ADD within an event's fold** (sum the `mulPct` deltas, apply once — one truncation, order-independent); **stages compose across events** (deal-damage → take-damage → crit-check), so crit ×2 / damage-reduction stay true multipliers at their own stage. #61 principle 14 holds engine-wide, no carve-out. Small `applyRules` change; single-multiplier results are byte-identical, stacked-mult pinned tests get re-derived. | ✅ shipped 2026-07-13 |
+| Q9 | Initial spawn: random scatter or bed/home default? | **Decided (merges both #36 positions):** first spawn = **seeded random scatter *within the sanctuary*** (de-clumps without dropping level-1s into outer rings); **bed thereafter** — spawn at your **last-visited bed** (no bed history), falling back to the sanctuary/Home if the bed is gone. Beds are their own later slice (claimable object + snapshot state → `snapshotVersion` bump); the sanctuary-jitter first spawn is a small `spawnHexLocked` tweak that can ship alone. | ✅ shipped 2026-07-13 (scatter half only — joins AND respawns per `spawnHexLocked`; beds stay future) |
 | Q10 | Which skill model governs: plan §0 or the roadmap? | **Decided (2026-07-13): the 3-tree model (B) absorbs the plan's (A).** Class / Adventure / Survival trees per #61; the plan's class-agnostic life skills (First Aid, Make Camp) *are* the Adventure/Survival trees — nothing lost; the Class tree delivers #56's class-identity-via-skills. Plan §0 amended in place. | ✅ |
 | Q11 | Subclass capstone-gating vs #61 principle 5? | **Decided (2026-07-13, direction — principle-5 scoping awaits NGB's nod):** the capstone gate **stays**; principle 5 is **scoped to the three standard trees** (Class/Adventure/Survival stay mutually independent — its clear intent). A subclass tree is *locked bonus content*: unlocking it via your class capstone is an unlock, not blocked progression. A flavor deed/quest may *accompany* the capstone in the eventual spec. | ✅ |
 
@@ -142,6 +149,11 @@ see **Q6** and **Q7** below.
 If you want momentum without committing to the whole skill arc, these ship on
 their own: **G4** (stacking throwables), **XP1/XP2** (curve + HP formulas),
 **XP3** (cut `DamagePerLevel`). Small, satisfying, no dependencies.
+
+**Batch 1 shipped 2026-07-13**: XP1, XP2, XP3, Q8 (additive fold), Q9's
+scatter half (sanctuary-scatter spawn/respawn), and DF2's `crit%` half
+(Misericorde/Duelist's Saber) — six independent slices, one commit each.
+**G4** (stacking throwables) is the one item on this list still unbuilt.
 
 ## Next: turn decisions into issues
 

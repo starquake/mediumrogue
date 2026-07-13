@@ -2571,9 +2571,10 @@ func (w *World) spawnHexLocked() (protocol.Hex, error) {
 
 // spawnHexSpiralLocked is the pre-#36 search: the free walkable hex nearest
 // the origin, spiraling outward, ignoring the monster guard entirely — the
-// tier-3 fallback spawnHexLocked reaches for only when neither clearing tier
-// above yields a single candidate (an extremely crowded or tiny map), so a
-// join never hard-fails just because the origin clearing is exhausted.
+// tier-4 fallback spawnHexLocked reaches for only when none of the three
+// sanctuary tiers above yields a single candidate (an extremely crowded or
+// tiny map), so a join never hard-fails just because the sanctuary is
+// exhausted.
 // Callers hold w.mu.
 //
 // Faction-blind by design in this fallback path: it can land a player on a

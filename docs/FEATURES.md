@@ -1,7 +1,10 @@
 # Medium Rogue — implemented features reference
 
-*Everything that actually exists in the game as of 2026-07-12 (main through
-the inventory system (PR #51) and the three-environment deployment).
+*Everything that actually exists in the game as of 2026-07-13 (main through
+the inventory system (PR #51), the three-environment deployment, and the
+fast-lane batch — quadratic XP curve, front-loaded HP curve, level-free
+damage, the additive percentage fold, sanctuary-scatter spawn/respawn, and
+the first two crit%-weapons).
 Design rationale lives in `roguelike-mp-plan.md`; current-session state in
 `STATUS.md`; the content-design vocabulary in `rule-based-content-design.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*
@@ -108,20 +111,28 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 ### Progression, XP & death
 - XP from kills: **every player in the bubble gets the full amount per kill
   as it happens** — no split, no kill credit, no battle-end payout. Quest
-  completions pay all current holders in full. Flat curve: level =
-  1 + XP/100; +4 max HP and +1 weapon damage per level (**retune pending**:
-  toolbox-progression decision says these go much flatter).
-- **Death**: XP falls to the start of the current level (levels never lost),
-  respawn at full HP with the **same identity and all gear** (gear always
-  survives death — decided). Respawn location scattered across the
+  completions pay all current holders in full. **Quadratic curve** (fast-lane
+  batch, #60 XP1): total XP to **reach** level L is `XPCurveBase * (L-1)^2` —
+  fast early levels (100, 300, 500 XP for L2/3/4 — gaps grow linearly),
+  steep later. **Front-loaded HP curve** (#60 XP2): the max-HP gain when
+  advancing from level n is `max(HPGainMin, HPGainBase-(n-1))` — 8, 7, 6, …
+  falling to a floor of 1 XP per level forever. **Damage no longer scales
+  with level at all** (#60 XP3, `DamagePerLevel` cut): a weapon's damage is
+  its content-data base plus any rule-card modifiers, full stop — levels
+  give HP only (skill points are a later, unbuilt slice).
+- **Death**: XP falls to the start of the current level (levels never
+  lost — the "level start" floor is level-aware under the quadratic curve
+  too), respawn at full HP with the **same identity and all gear** (gear
+  always survives death — decided). Respawn location scattered across the
   **sanctuary** (any walkable, capacity-available hex within
   `SanctuaryRadius`, guarded against landing on/adjacent to a living
   monster — same `spawnHexLocked` tiers as a fresh join, Q9); the camera
   **cuts** to the respawn instead of panning.
 - **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
-- **HUD stats line** (item 9, playtest batch 2): `Lv L · xp/XPPerLevel XP ·
-  (q, r)` — my entity's hex, live per turn bundle.
+- **HUD stats line** (item 9, playtest batch 2; XP portion reworked for the
+  quadratic curve, fast-lane batch): `Lv L · (xp into this level)/(XP needed
+  this level) XP · (q, r)` — my entity's hex, live per turn bundle.
 
 ### Gear & inventory (milestone 6b.4, loot 6c, inventory system: slots/backpack/drop/pickup/drink)
 - **12-type item taxonomy** (the item's `type` decides everything): five
@@ -143,7 +154,13 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   designer drops (Ancient Dwarven Mattock, Staff of the War Mage, Wyrmslayer
   Greatsword — the `targetKind` card) + **starter armor/consumable** (Leather
   Armor: take-damage −1, floor 1; Headband of Learning: earn-XP ×1.05;
-  Healing Potion: drink +5 HP, stacks to 5).
+  Healing Potion: drink +5 HP, stacks to 5) + **crit%-weapons** (fast-lane
+  batch, #69 Q5 — the first weapons carrying a per-hit crit-chance card, the
+  elf-crit pattern applied to an item instead of a species passive):
+  Misericorde (rogue-only, dmg 6, 15% chance to deal ×2, "A blade thin
+  enough to find the gap between any two plates.", ghoul drop) and Duelist's
+  Saber (fighter-only, dmg 5, 10% chance to deal ×2, "Its balance rewards
+  patience; its edge rewards timing.", wolf drop).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride
@@ -374,10 +391,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   `targetHPFull`, `allyInBubble`, `targetAdjacent`, `attackerSpecies`,
   `targetKind` (victim is a monster of a specific registered kind — 6c,
   validated against the monster registry). Effects: `add`, `mulPct`. Fold
-  order: all adds → all multipliers → event clamp (damage ≥1, XP ≥0).
-  Sources: species cards + acting/equipped item cards. Content validated at
-  process start (fail-loud). Every damage and XP number in the game flows
-  through it.
+  order: all adds → **percentages add within the fold** (every `mulPct`
+  card's delta from 100% sums into one combined percentage, applied with a
+  single truncation — #61 principle 14, roadmap Q8, fast-lane batch) → event
+  clamp (damage ≥1, XP ≥0); stages still compose across separate events
+  (e.g. deal-damage → take-damage), each a true multiplier at its own stage.
+  Sources: species cards + acting/equipped item cards — weapon **damage
+  itself carries no level scaling** (content-data base + cards only, #60
+  XP3). Content validated at process start (fail-loud). Every damage and XP
+  number in the game flows through it.
 - **Determinism**: per-resolution PCG rng seeded (worldSeed, turn); map
   iteration sorted before any rng draw; spawn randomness on separate
   fixed streams. Fully reproducible turns.
@@ -442,8 +464,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | `BackpackSize` / `ItemStackCap` | 4 / 5 | backpack entries · max identical consumables per stack |
 | `MaxNameLen` / `MaxChatLen` | 24 / 500 | input caps (runes) |
 | `FighterMaxHP` / `RogueMaxHP` / `MageMaxHP` | 30 / 16 / 14 | level-1 HP |
-| `HPPerLevel` / `DamagePerLevel` | 4 / 1 | per-level growth (**flat-curve retune pending**) |
-| `XPPerLevel` / `QuestKillRewardPerTarget` | 100 / 20 | leveling & flat per-target kill-quest reward |
+| `HPGainBase` / `HPGainMin` | 8 / 1 | front-loaded HP curve: gain advancing FROM level n = `max(HPGainMin, HPGainBase-(n-1))` — 8,7,6,…,1 then +1 forever (#60 XP2) |
+| `XPCurveBase` / `QuestKillRewardPerTarget` | 100 / 20 | quadratic XP curve: total XP to **reach** level L = `XPCurveBase*(L-1)^2` (#60 XP1) & flat per-target kill-quest reward |
 | `MonsterMaxHP` / `FistsDamage` | 10 / 1 | pre-6c monster baseline (wolf's HP) & unarmed profile |
 | `HumanXPBonusPercent` / `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 50 / 20 / 2 / 1 | species knobs |
 | `RegenPerTurn` | 1 | out-of-combat HP per world turn |
@@ -462,13 +484,14 @@ values are unchanged (20 / 3 / 30%).*
 ## 5. Decided but not yet built
 
 Recorded in `roguelike-mp-plan.md` §0/§8/§9, `design-roadmap.md` (Q1–Q11
-all decided 2026-07-13), and issue #36: flat-curve retune, the **3-tree
+all decided 2026-07-13), and issue #36: the **3-tree
 skill system** (Class/Adventure/Survival; level-up = one bankable skill
 point; First Aid & Make Camp seed the Survival/Adventure trees), the
-**decoupled `evasion%`/`crit%` combat chances** (#69 — crit is pure content
-via the elf-crit pattern; evasion needs the new pre-damage `evasion-check`
-event; AoE always hits), the **additive percentage fold** (#61 principle
-14), downed state & revive, further recovery layers (rests, the sanctuary
+**`evasion%` combat chance** (#69 — needs the new pre-damage
+`evasion-check` event; AoE always hits; `crit%` is no longer on this list —
+it shipped as pure content, first the elf-species passive and now two
+crit%-weapons, fast-lane batch task 6), downed state & revive, further
+recovery layers (rests, the sanctuary
 **trade hub** — the 6c sanctuary zone is only the monster-free ground, not
 the hub itself; healing potions + the backpack-cap layer now ship with the
 inventory system), thrown-weapon content (the fighter's thrown slot ships
