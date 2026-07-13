@@ -305,3 +305,19 @@ func TestApplyRulesMulPctNegativeDeltaAndFloor(t *testing.T) {
 		t.Errorf("-100%% on 10 = %d, want %d", got, want)
 	}
 }
+
+func TestApplyRulesMulPctStackedDeltasClampAtZero(t *testing.T) {
+	t.Parallel()
+
+	// Two n:40 cards: deltas (40-100)+(40-100) = -120, so the pre-clamp
+	// product 10*(100-120)/100 = -2 goes NEGATIVE — the max(...,0) clamp's
+	// protective branch, which the single n:0 case never reaches.
+	cards := []ruleCard{
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 40}},
+		{event: evDealDamage, then: effect{kind: effMulPct, n: 40}},
+	}
+
+	if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{}), 0; got != want {
+		t.Errorf("stacked deltas below -100%% on 10 = %d, want %d", got, want)
+	}
+}

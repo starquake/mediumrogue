@@ -195,7 +195,7 @@ var itemDefs = []*itemDef{
 		flavor: "A blade thin enough to find the gap between any two plates.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 15}},
-				then: effect{kind: effMulPct, n: 200}},
+				then: effect{kind: effMulPct, n: percentBase + 100}},
 		},
 	},
 	{
@@ -205,7 +205,7 @@ var itemDefs = []*itemDef{
 		flavor: "Its balance rewards patience; its edge rewards timing.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
-				then: effect{kind: effMulPct, n: 200}},
+				then: effect{kind: effMulPct, n: percentBase + 100}},
 		},
 	},
 }
