@@ -7,9 +7,9 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// TestBumpDamageUsesClassCloseWeapon: a player's melee bump deals its class
-// close-weapon damage, not a flat constant. A Fighter's bump hits for the sword
-// (4) and a Rogue's for the dagger (7) — different numbers off the same board —
+// TestBumpDamageUsesClassCloseWeapon: a player's melee bump deals its
+// melee-tagged main-hand weapon (starting kit) damage, not a flat constant.
+// A Fighter's bump hits for the sword (4) and a Rogue's for the dagger (4) —
 // each dropping the monster's HP by exactly that weapon's level-1 damage.
 func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 	t.Parallel()
@@ -21,6 +21,7 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 	}{
 		{"fighter sword", protocol.ClassFighter, game.ItemDamageForTest("iron-sword")},
 		{"rogue dagger", protocol.ClassRogue, game.ItemDamageForTest("dagger")},
+		{"mage oak staff", protocol.ClassMage, game.ItemDamageForTest("oak-staff")},
 	}
 
 	for _, tc := range tests {
@@ -116,14 +117,13 @@ func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 }
 
 // Pinned seeds for the Duelist's Saber's own 10% crit-chance card (condChance
-// n=10), found the same way misericordeCritSeed/misericordeMissSeed were
-// (species_test.go): a fresh RNG stream's single crit-chance draw, scanned
-// 0-39 — seed 0 rolls 67 (>=10, no proc), seed 1 rolls 8 (<10, proc). In the
-// dual-wield bump below, the dagger hit consumes NO rng (no chance card on
-// it), so the ONE draw the saber's own card consumes is the stream's SECOND
-// draw overall — the first is the attack phase's victim pick
-// (rng.IntN(len(victims)), always 1 candidate here, but IntN still advances
-// the generator).
+// n=10): this is the attack's SECOND RNG draw (victim pick is first). Found
+// the same way misericordeCritSeed/misericordeMissSeed were (species_test.go),
+// scanned 0-39 — seed 0 rolls 67 (>=10, no proc), seed 1 rolls 8 (<10, proc).
+// In the dual-wield bump below, the dagger hit consumes NO rng (no chance card
+// on it), confirming the saber's crit card consumes the stream's second draw
+// (rng.IntN(len(victims)) for victim pick always advances the generator, even
+// with 1 candidate).
 // re-derived: dual-wield per-hit resolution
 const (
 	saberCritSeed = 1 // Duelist's Saber procs (double damage) at this seed
