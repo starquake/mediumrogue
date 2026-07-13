@@ -344,7 +344,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 
 - **Architecture**: single Go binary (authoritative simulation) embedding
   the built TS/PixiJS client via `go:embed`. `cmd/rogue` → `internal/server`
-  (HTTP/SSE, security headers, same-origin checks) → `internal/game` (world
+  (HTTP/SSE, security headers; no same-origin/CSRF check yet — tracked as
+  debt in STATUS) → `internal/game` (world
   under one mutex; per-domain turn loops). Coalescing hub: a tick means
   "fetch latest state", never a delta.
 - **Wire**: POST `/api/join`, `/api/intent`

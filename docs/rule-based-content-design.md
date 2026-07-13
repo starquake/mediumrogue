@@ -45,7 +45,7 @@ them, like a factory line of small machines each making one adjustment.
 **Concretely:** dwarf damage reduction stops being a special case inside the
 combat code and becomes a card that reads:
 
-> **Dwarf toughness** — *when* taking damage, reduce the damage by 2
+> **Dwarf toughness** — *when* taking damage, reduce the damage by 1
 > (never below 1).
 
 The engine doesn't know what a dwarf is. It just sees "this entity carries a
@@ -142,7 +142,7 @@ Every rule is three fill-in-the-blank slots.
 A worked example, written exactly as you'd hand it to us:
 
 > **Item — Butcher's Cleaver** (fighter melee weapon)
-> Base: damage 4 (vs. sword's 5), melee.
+> Base: damage 3 (vs. sword's 4), melee.
 > Rule: *when* dealing damage, *if* the target is below half health,
 > *then* +3 damage.
 > Intent: a finisher weapon — worse opener, brutal closer.
@@ -237,7 +237,7 @@ More examples of the range of what cards can express:
 > Rule: *when* dealing damage, *if* at least one ally shares the bubble,
 > *then* +2 damage. Intent: a party-play bow — weaker solo.
 
-> **Ember Staff** (mage, ranged) — damage 2, range 4, area radius 1.
+> **Ember Staff** (mage, ranged) — damage 3, range 4, area radius 1.
 > Rule: *when* dealing damage, *if* the target is adjacent to you, *then*
 > double damage. Intent: a risky brawler-mage staff; rewards standing
 > dangerously close.

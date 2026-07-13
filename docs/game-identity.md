@@ -32,9 +32,9 @@ Built for a ~15-friend group who hop on together for an evening.
 
 | Looks like… | …but isn't, because |
 |---|---|
-| **an ARPG** (Diablo/PoE) | No real-time twitch, no random-affix loot slot-machine, no rarity tiers / crafting / currency / trade, and a deliberately **flat power curve** (no level/gear treadmill). We took ARPG's *stat math*, not its *structure*. |
+| **an ARPG** (Diablo/PoE) | No real-time twitch, no random-affix loot slot-machine, no rarity tiers / crafting / currency / market economy, and a deliberately **flat power curve** (no level/gear treadmill). We took ARPG's *stat math*, not its *structure*. |
 | **an MMO-lite** | No async come-and-go payoff: the fun (simultaneous co-op combat, XP-by-presence) rewards being online *together*. A global turn clock, a fixed trust-roster, no matchmaking / sharding / economy. It's a **session game**, not a log-in-whenever world. |
-| **a TTRPG** (D&D) | No initiative, no sequential turns, no action economy, no coupled `d20`-vs-AC to-hit roll. Combat is decoupled percentage stat-checks resolved simultaneously. |
+| **a TTRPG** (D&D) | No initiative, no sequential turns, no D&D-style multi-action turn (action + bonus + reaction), no coupled `d20`-vs-AC to-hit roll. Combat is decoupled percentage stat-checks resolved simultaneously. *(The roadmap's "combat action economy" (`ACT`) is a different thing — it's about which single action your one WeGo intent can be, e.g. block or heal instead of attack. That fits.)* |
 
 ## Why the combination is coherent
 
@@ -52,8 +52,11 @@ keeps 15 players in one world from waiting on each other.
   15-player no-waiting premise).
 - **A coupled to-hit roll / Armor-Rating / AC / `d20`** → we chose decoupled
   `evasion%` / `crit%` on purpose (see `combat-model-notes.md`).
-- **Random-affix loot, rarity tiers, crafting, currency, trade, an economy** →
-  loot is authored rule-cards; the chase is *designed*, not rolled.
+- **Random-affix loot, rarity tiers, crafting, currency, a market economy** →
+  loot is authored rule-cards; the chase is *designed*, not rolled. *(Simple
+  friend-to-friend trading and the decided sanctuary trade-hub / merchant NPC
+  (plan §9) are in scope — the guardrail is against auction-house-style
+  economy machinery, not against handing a friend a sword.)*
 - **A power/gear treadmill, infinite vertical scaling, endgame grind** →
   progression is utility/modifier-based; raw-stat scaling is deliberately cut.
 - **Matchmaking, strangers, sharding, anti-grief machinery** → the fixed

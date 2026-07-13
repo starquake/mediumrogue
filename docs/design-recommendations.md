@@ -120,6 +120,20 @@ Doc-sync so the repo stops teaching the retired coupled-roll model:
   in-repo so the roadmap pointer resolves.
 - **`docs/design-recommendations.md`** (new) — this file.
 
+**Added by the contradiction sweep (second pass):** README 5s→4s turn fix;
+CLAUDE.md heartbeat-comments→named-events; content-design example numbers
+re-pinned to shipped values (dwarf −1, Cleaver 3 vs sword 4, Ember Staff 3);
+plan fixes (patience 30s, dwarf flat not %, §0 combat-math bullet updated to
+decided state, §8 quest-slot bullet marked amended, same-origin check marked
+*open* — it was claimed but never built, FEATURES now agrees); four stale
+STATUS placeholders marked since-shipped (gear/inventory, spawn guard, SPACE
+wait, bubble waiting-state); game-identity disambiguation (WeGo "combat
+action economy" ≠ D&D multi-action turns; friend-trade/sanctuary hub in
+scope, market-economy machinery the actual guardrail); roadmap **Q8–Q11**
+capture the four unresolved conflicts (%-stacking add-vs-compound, spawn
+fork on #36, plan-vs-roadmap skill-model governance, capstone-gate vs
+principle 5).
+
 No code, protocol, or content changes. No behaviour change.
 
 ## 6. Other staleness noticed (⚠ FLAG — not fixed here)

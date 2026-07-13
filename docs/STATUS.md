@@ -668,21 +668,18 @@ the #36 backlog rather than blocking this slice.
 
 ## Known placeholders / debt (all deliberate)
 
-- **No gear/inventory yet**: classes (6b.2) use **class-default equipped weapons**
-  (rogue dagger+bow, fighter sword, mage staff) with an unarmed (fists) fallback;
-  there's no inventory, equip/swap, or loot drops — that's a later gear slice
-  (see the `gear-equipment-system` note). No **species** passives yet (6b.3). No
-  **terrain-blocked LOS** for ranged (distance-only). Killed monsters are removed
-  and **do not respawn** (fixed pool depletes; continuous spawning is later).
-  `protocol.PlayerAttackDamage` was an orphaned constant here — since removed
-  (melee uses class weapons).
-- **`spawnHexLocked` is faction-blind**: `Join` and player respawn pick the
-  nearest free walkable hex without avoiding monster-occupied hexes, so a
-  player can spawn co-located with a monster (opposing co-occupancy). Inert
-  (only *movers* bump-attack, so co-located entities just sit until one moves,
-  then resolve normally) but technically violates the §5 "hostiles never share
-  a hex" invariant — add a faction-aware spawn guard when it matters. **6.4
-  note:** with time-bubble domain scoping, a joiner/respawn near an active
+- ~~No gear/inventory yet~~ **since shipped**: gear/loot drops (6b.4), species
+  passives (6b.3), the full inventory system (slots + backpack, PR #51). Still
+  true from this era: no **terrain-blocked LOS** for ranged (distance-only),
+  and killed monsters **do not respawn** (fixed pool depletes; continuous
+  spawning is later). `protocol.PlayerAttackDamage` was an orphaned constant
+  here — since removed (melee uses class weapons).
+- ~~`spawnHexLocked` is faction-blind~~ **since guarded** (the #36 fix):
+  `spawnHexLocked` now prefers hexes not occupied by — or within
+  `CombatRadius` of — a living monster, falling back through tiers to the
+  old faction-blind spiral only as a last resort (`world.go`'s
+  `tooCloseToMonsterLocked`/`occupiedByMonsterLocked`). **6.4
+  note (still relevant):** with time-bubble domain scoping, a joiner/respawn near an active
   bubble is also invisible to that bubble's scoped resolution for one pass
   (self-heals at the pass-end recompute) — the domain split now leans on the
   post-recompute separation invariant, so fix this when continuous spawning lands.
@@ -738,12 +735,11 @@ the #36 backlog rather than blocking this slice.
   accumulation is fixed at the root, so this could be simplified back to a shared
   server (with a short `DISCONNECT_GRACE`) as a follow-up. Add a new e2e spec to
   the `specs` list for now.
-- **No explicit wait input**: standing still = not sending an intent. An
-  explicit wait intent may become useful inside combat time bubbles
-  (milestone 6) — decide then.
-- **No combat-bubble "waiting for: …" timer state**: the turn timer shows
-  playback/input phases only; the milestone-6 combat time bubble will need a
-  distinct "paused, waiting on nearby players" state.
+- ~~No explicit wait input~~ **since shipped**: SPACE = an explicit wait
+  intent (see FEATURES §Movement; `wait_test.go`).
+- ~~No combat-bubble "waiting for: …" timer state~~ **since shipped**:
+  `BubbleView.WaitingForIDs` + `PatienceRemainingMs` on the wire and the
+  "In combat — waiting for: …" panel in the client (see FEATURES §Time).
 - **Reconnect/resync model is resync-to-latest, not replay**: with
   full-snapshot turn bundles and a coalescing hub, `Last-Event-ID` is honoured
   only as a watermark to avoid re-painting an already-seen turn — a
