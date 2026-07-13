@@ -39,11 +39,23 @@ graph TD
 
 ## 1. Gear foundation — #55 / #56
 
+**The gear keystone shipped 2026-07-13** (G1+G2+G3, one spec → plan → 4-task
+build on `feat/arpg-inventory`): weapons carry tags (melee/ranged/magic) +
+`twoHanded` instead of five class-shaped item types; hand slots
+(`main-hand`/`off-hand`) replace the per-class weapon-slot pair; every class
+equip gate is gone (`wearableBy`/`ErrWrongClass` deleted); the registry's 15
+weapons were rebalanced to a "1H ≈ ½ 2H" pass and the Wyrmslayer Greatsword
+became the game's first two-handed weapon; combat now resolves every fitting
+held weapon as its own hit (dual-wield). Snapshot version bumped 3→4 (old
+worlds reject and reset). `docs/FEATURES.md`'s Gear & inventory section and
+`docs/rule-based-content-design.md` §4 are the up-to-date reference; G4
+(stacking throwables) is the one item on this list still unbuilt.
+
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
-| G1 | Weapon type-properties | Weapons carry a *set* of tags (melee/ranged/thrown/magic/two-handed) instead of one `itemType` | M | **Keystone** — unblocks property-skills. `1h` = absence of `2h` | ❓ |
-| G2 | Generic hand slots | Drop per-class weapon slots; any weapon fits a hand slot (two-handed greys the other) | M | Pairs with G1 | ❓ |
-| G3 | Drop class gear restrictions | Anyone equips anything; class identity comes from skills, not gates (#56) | M | Philosophy shift; designer endorsed | ❓ |
+| G1 | Weapon type-properties | Weapons carry a *set* of tags (melee/ranged/magic) instead of one `itemType` | M | **Keystone** — unblocks property-skills. `1h` = absence of `2h` | ✅ done (2026-07-13) |
+| G2 | Generic hand slots | Drop per-class weapon slots; any weapon fits a hand slot (two-handed greys the other) | M | Pairs with G1 | ✅ done (2026-07-13) |
+| G3 | Drop class gear restrictions | Anyone equips anything; class identity comes from skills, not gates (#56) | M | Philosophy shift; designer endorsed | ✅ done (2026-07-13) |
 | G4 | Stacking throwables | Javelins/axes stack like consumables; a throw spends one | S | **Cheap**; reuses backpack stacks | ❓ |
 | G5 | Multi-mode weapons | One weapon, melee + thrown modes with per-mode damage (the "Kangaroo axe") | L | Optional flavor; needs a mode choice + per-mode damage | ❓ |
 

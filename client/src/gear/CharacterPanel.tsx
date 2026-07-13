@@ -221,7 +221,7 @@ function CharacterPanel(props: { actions: CharacterActions }): JSXElement {
         <div class="title panel-head">
           <span>Character</span>
           <span class="keyhint">C / I toggles · Esc closes</span>
-          <button type="button" class="panel-close" title="close (i)" onClick={() => props.actions.close()}>
+          <button type="button" class="panel-close" title="close (C / I / Esc)" onClick={() => props.actions.close()}>
             ×
           </button>
         </div>

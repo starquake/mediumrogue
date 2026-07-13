@@ -1,10 +1,14 @@
 # Medium Rogue — implemented features reference
 
 *Everything that actually exists in the game as of 2026-07-13 (main through
-the inventory system (PR #51), the three-environment deployment, and the
+the inventory system (PR #51), the three-environment deployment, the
 fast-lane batch — quadratic XP curve, front-loaded HP curve, level-free
 damage, the additive percentage fold, sanctuary-scatter spawn/respawn, and
-the first two crit%-weapons).
+the first two crit%-weapons — and the gear keystone (#55/#56): weapon tags
+replace class-shaped weapon types, hand slots replace per-class weapon
+slots, class equip gates are dropped, weapons are rebalanced, the game's
+first two-handed weapon ships, and combat resolves every fitting held
+weapon as its own hit).
 Design rationale lives in `roguelike-mp-plan.md`; current-session state in
 `STATUS.md`; the content-design vocabulary in `rule-based-content-design.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*
@@ -99,8 +103,12 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | | Weapons (defaults) | HP | Role |
 |---|---|---|---|
 | **Fighter** | Iron Sword (4) | 30 | melee, tanky, holds the front |
-| **Rogue** | Dagger (7) + Shortbow (6, rng 4) | 16 | high single-target, squishy |
-| **Mage** | Oak Staff (2 bonk) + Ember Focus (4, rng 4, AoE 1) | 14 | area damage, back line |
+| **Rogue** | Dagger (4) + Shortbow (4, rng 4) | 16 | high single-target, squishy |
+| **Mage** | Oak Staff (2 bonk) + Ember Focus (3, rng 4, AoE 1) | 14 | area damage, back line |
+
+Default kits are granted into the hand slots (main-hand/off-hand) at join
+time via the same placement path a player's own equip intent uses — not a
+class-shaped weapon-slot special case (gear keystone, #55/#56).
 
 | Species | Passive (pipeline rule card) |
 |---|---|
@@ -134,33 +142,75 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   quadratic curve, fast-lane batch): `Lv L · (xp into this level)/(XP needed
   this level) XP · (q, r)` — my entity's hex, live per turn bundle.
 
-### Gear & inventory (milestone 6b.4, loot 6c, inventory system: slots/backpack/drop/pickup/drink)
-- **12-type item taxonomy** (the item's `type` decides everything): five
-  weapon types `melee-weapon / thrown-weapon / ranged-weapon / staff / wand`,
-  a `consumable`, and six body types `head / body / hands / ring / amulet /
-  feet`. The equip **slot is derived from the type** — each gear type fits
-  exactly one slot; a consumable has no slot (it lives in the backpack).
-- **8 equip slots** — the six body slots plus **two class-shaped weapon
-  slots**: fighter = melee + thrown · rogue = melee + ranged · mage = staff +
-  wand. A staff can melee-bonk; a wand never melees. Empty melee-ish slot →
-  unarmed fists. **No thrown content exists yet**, so a fighter has no ranged
-  attack (its thrown slot ships empty). Plus a **backpack of exactly 4
-  entries**: a gear instance or a **consumable stack** per entry (identical
-  consumables merge, up to 5; stacks never split).
-- **Wearability is on the ITEM, classes stay single**: a weapon names exactly
-  which classes may wield it; armor/jewelry may name several (Leather Armor:
-  fighter or rogue) or default to **any**. Characters never multi-class.
-- **Items are content data** (`internal/game/content.go`): 5 class defaults +
-  designer drops (Ancient Dwarven Mattock, Staff of the War Mage, Wyrmslayer
-  Greatsword — the `targetKind` card) + **starter armor/consumable** (Leather
-  Armor: take-damage −1, floor 1; Headband of Learning: earn-XP ×1.05;
-  Healing Potion: drink +5 HP, stacks to 5) + **crit%-weapons** (fast-lane
-  batch, #69 Q5 — the first weapons carrying a per-hit crit-chance card, the
-  elf-crit pattern applied to an item instead of a species passive):
-  Misericorde (rogue-only, dmg 6, 15% chance to deal ×2, "A blade thin
-  enough to find the gap between any two plates.", ghoul drop) and Duelist's
-  Saber (fighter-only, dmg 5, 10% chance to deal ×2, "Its balance rewards
-  patience; its edge rewards timing.", wolf drop).
+### Gear & inventory (milestone 6b.4, loot 6c, inventory system: slots/backpack/drop/pickup/drink; gear keystone #55/#56: weapon tags, hand slots, gates dropped, rebalance + first 2H)
+- **8-type item taxonomy** (`internal/protocol`'s `ItemType*` consts): one
+  `weapon` type — carrying **tags** (`WeaponTagMelee` / `WeaponTagRanged` /
+  `WeaponTagMagic`, which attacks fire it — a weapon needs ≥1) plus a
+  `twoHanded` bool — replaces the old five class-shaped weapon types
+  (`melee-weapon/thrown-weapon/ranged-weapon/staff/wand`); a `consumable`;
+  and six armor/jewelry types that each map 1:1 to a slot: `helmet`, `chest`,
+  `gloves`, `boots`, `ring`, `amulet`.
+- **Eight equip slots** (`Slot*` consts): `main-hand` and `off-hand` — chosen
+  at equip time, not fixed per class — plus the six armor slots above. A
+  weapon's landing hand is `weaponTargetSlot`: two-handed, or an empty
+  main-hand → main-hand; else an empty off-hand → off-hand; else main-hand
+  (a swap, evicting the current occupant back to the backpack, rejected if
+  the backpack has no room). Empty hands fall back to unarmed fists
+  (`FistsDamage`). A consumable has no slot (backpack-only). Backpack stays
+  **exactly 4 entries**: a gear instance or a consumable stack (identical
+  consumables merge, up to 5; stacks never split) per entry.
+- **Class equip gates dropped (#55/#56)** — any class may equip any item.
+  `wearableBy` and the `ErrWrongClass` rejection are gone entirely; class
+  identity now comes from starting kits (below) and, later, skills — not
+  equip-time restrictions.
+- **Two-handed weapons**: `TwoHanded=true` occupies main-hand **and** locks
+  off-hand — equipping one evicts whatever the off-hand held back to the
+  backpack (rejected if full); the off-hand hex greys out while it's locked.
+  The Wyrmslayer Greatsword is the game's first (and so far only) two-handed
+  weapon.
+- **Dual-wield / per-hit combat (#55 task 2)** — every fitting **held**
+  weapon fires as its own hit, not just one "best" weapon: a bump resolves
+  every melee-tagged held weapon against the same picked victim; a ranged
+  attack resolves every ranged/magic-tagged held weapon that still reaches
+  the target. Two single-target ranged weapons dual-wielded into a stacked
+  hex **share one stack-victim pick** (mirroring melee's one-victim-then-
+  every-weapon rule) rather than splitting the stack across independent rng
+  draws — each AoE (magic) weapon still hits every hostile within its own
+  `aoeRadius` independently, no shared pick needed. A single-weapon attacker
+  (the common case, and every class's starting kit) is unaffected — this is
+  byte-identical to the old single-hit resolution when exactly one weapon
+  fires.
+- **Weapons — content data** (`internal/game/content.go`'s `itemDefs`, 15
+  registry weapons; rebalanced to the keystone's "1H ≈ ½ 2H" pass —
+  several 1H damages moved down, the 2H anchor moved up):
+
+  | Weapon | Tags | 2H | Dmg | Rng | AoE | Effect | Source |
+  |---|---|:---:|---:|---:|---:|---|---|
+  | Iron Sword | melee | | 4 | – | – | — | fighter default |
+  | Dagger | melee | | 4 | – | – | — | rogue default |
+  | Shortbow | ranged | | 4 | 4 | – | — | rogue default |
+  | Oak Staff | melee | | 2 | – | – | — | mage default |
+  | Ember Focus | magic | | 3 | 4 | 1 | — | mage default |
+  | Butcher's Cleaver | melee | | 3 | – | – | +3 dmg vs targets below half HP | starter drop (rat) |
+  | Iron Warhammer | melee | | 5 | – | – | flat upgrade over Iron Sword — rare | starter drop |
+  | Venom Fang | melee | | 3 | – | – | +4 dmg vs targets at full HP | starter drop |
+  | Pack Bow | ranged | | 3 | 4 | – | +3 dmg while an ally shares the bubble | starter drop |
+  | Ember Staff | magic | | 3 | 4 | 1 | ×2 dmg vs adjacent targets | starter drop |
+  | Ancient Dwarven Mattock | melee | | 4 | – | – | +3 dmg in a dwarf's hands | designer batch |
+  | Staff of the War Mage | magic | | 3 | 4 | 1 | ×2 dmg vs targets below 6 HP (flat) | designer batch |
+  | Wyrmslayer Greatsword | melee | ✅ | 9 | – | – | ×1.5 dmg vs dragons | dragon drop (100%, weight 2) |
+  | Misericorde | melee | | 4 | – | – | 15% chance to deal ×2 | ghoul drop |
+  | Duelist's Saber | melee | | 4 | – | – | 10% chance to deal ×2 | wolf drop |
+
+  `Rng`/`AoE` "–" = 0 (adjacent-only / single-target). Misericorde and
+  Duelist's Saber are the first item-side **crit%-weapons** (fast-lane
+  batch, #69 Q5) — the elf-crit `deal-damage`+`chance` card pattern applied
+  to gear instead of a species passive; both are now equippable by any
+  class (gates dropped) though the "rogue"/"fighter" naming is a flavor
+  holdover from before #56.
+- **Non-weapon items**: Leather Armor (chest: take-damage −1, floor 1),
+  Headband of Learning (helmet: earn-XP ×1.05), Healing Potion (consumable:
+  drink +5 HP, stacks to 5).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride
@@ -169,9 +219,11 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):
-  - **equip** — moves a backpack item into its slot, swapping any displaced
-    occupant back into the vacated entry. Naming an already-equipped item
-    **unequips** it (toggle).
+  - **equip** — moves a backpack item into its slot (`weaponTargetSlot` for a
+    weapon, its type for armor/jewelry), swapping any displaced occupant
+    back into the vacated entry (a two-handed weapon may evict the off-hand
+    too — see above). Naming an already-equipped item **unequips** it
+    (toggle).
   - **unequip** — equipped item → a free backpack entry (rejected if full).
   - **drop** — an owned item lands on the player's own hex as a single ground
     stack: a consumable stack drops **whole** (one ground stack carrying its
@@ -186,23 +238,33 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
     ×3 · consumable").
   - **drink** — a consumable: applies its heal (clamped to max HP) and
     decrements the stack; an emptied stack frees its entry.
-- **Client** — a toggleable **paper-doll** panel (the `i` key, sharing the
-  movement keys' typing-focus guard, + a HUD button + an in-panel ×; default
-  closed since it is large): the 8 hex slots on a Vitruvian layout with the
-  two weapon slots labelled per class, a 4-cell backpack with stack counts and
-  per-item drop buttons. Walking onto a hex with ground items opens a **pickup
-  modal** — one row per item (name + type), an individual **take** button,
-  inline backpack-full feedback on a rejected row (row stays pickable), and
-  "Close — leave the rest" (reopens on hex re-entry). Monster loot and player
-  drops behave identically.
+- **Keybindings** — `C` or `I` toggles the character panel (either key,
+  interchangeably), `Esc` closes it (a genuine no-op while already closed,
+  never a toggle); all three share the movement keys' typing-focus guard
+  (`client/src/input/keys.ts`), so typing "c"/"i"/Escape into chat or the
+  join-name field never touches the panel.
+- **Client** — a toggleable **paper-doll** panel (`C`/`I` keys + a HUD button
+  + an in-panel × whose tooltip lists all three; default closed since it is
+  large): the eight named hexes (Helmet, Amulet, Gloves, Ring, Main Hand,
+  Chest, Off-Hand, Boots) on the approved ARPG mockup's Vitruvian layout —
+  the off-hand hex **greys out** with a "two-handed grip" ghost label and is
+  unclickable while a two-handed weapon occupies main-hand — plus a 4-cell
+  backpack with stack counts and per-item drop buttons. Walking onto a hex
+  with ground items opens a **pickup modal** — one row per item (name +
+  type), an individual **take** button, inline backpack-full feedback on a
+  rejected row (row stays pickable), and "Close — leave the rest" (reopens
+  on hex re-entry). Monster loot and player drops behave identically.
 - **Hover stat tooltip** — hovering an equipped hex or a backpack cell shows a
-  floating tooltip: the item's `damage`/`range`/`AoE` and its effect line, and
-  — when a **different** item fills that slot — the delta vs the equipped item
-  (green `+N` / red `-N`), so a pickup can be weighed before equipping.
-  Stat-less gear shows "No combat stats". Below the stats, an item's authored
-  **flavor/lore** renders as dim italic (the `ItemView.Flavor` field, seeded
-  from the gear cards' `Fantasy:` text — e.g. the Wyrmslayer's dragon
-  Werdmullerix); flavor is cosmetic, never gameplay-affecting.
+  floating tooltip: the item's `damage`/`range`/`AoE` and its effect line,
+  and — when a **different** item fills the slot the hovered item occupies
+  **or would occupy** (`targetSlotFor`, the client's mirror of
+  `weaponTargetSlot` — so a backpack weapon compares against the hand it
+  would actually land in) — the delta vs that item (green `+N` / red `-N`),
+  so a pickup can be weighed before equipping. Stat-less gear shows "No
+  combat stats". Below the stats, an item's authored **flavor/lore** renders
+  as dim italic (the `ItemView.Flavor` field, seeded from the gear cards'
+  `Fantasy:` text — e.g. the Wyrmslayer's dragon Werdmullerix); flavor is
+  cosmetic, never gameplay-affecting.
 
 ### Monsters (kinds & difficulty rings — milestone 6c)
 - **Five kinds**, content data in `internal/game/content.go` (`monsterDefs`),
@@ -332,10 +394,13 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   ground items, the quest board, the disconnect archive, the turn/id
   counters (so SSE ids and entity/item instance ids stay monotonic and
   collision-free across a restart), and the **worldId** (item 4, playtest
-  batch 3 — worldId added at snapshot version 2; **version 3** adds the
-  slot-keyed equipped map + backpack/stacks of the inventory system; a
-  restored world keeps its identity, see the world-reset signal below). The
-  map itself is **never** persisted —
+  batch 3 — worldId added at snapshot version 2; version 3 added the
+  slot-keyed equipped map + backpack/stacks of the inventory system;
+  **version 4** (the gear keystone, #55/#56) re-keys equipped weapon slots
+  from class-shaped names to the hand slots `main-hand`/`off-hand` and
+  collapses the five weapon item-types into one `weapon` type + tags/
+  twoHanded; a restored world keeps its identity, see the world-reset signal
+  below). The map itself is **never** persisted —
   it regenerates deterministically from `WORLD_SEED`/`WORLD_RADIUS`.
 - **What stays transient**: queued move paths, a pending ranged-attack
   target, a queued inventory action, and combat-bubble membership (bubbles
