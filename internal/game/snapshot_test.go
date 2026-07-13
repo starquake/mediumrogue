@@ -168,6 +168,7 @@ func checkRestoredAlice(
 	// alice's XP (2*XPCurveBase+15) was set directly via SetXPForTest, which
 	// bypasses the earn-xp sync, so her pre-marshal MaxHP is still the stale
 	// level-1 bar — restore must resolve it to her actual level (2).
+	// re-derived for front-loaded HP curve (fast-lane T2)
 	if got, want := restored.MaxHP, game.MaxHPForTest(protocol.ClassRogue, 2); got != want {
 		t.Errorf("restored alice MaxHP = %d, want %d (recomputed from class+XP)", got, want)
 	}

@@ -117,6 +117,7 @@ func TestMaxHPForScalesWithLevel(t *testing.T) {
 		t.Run(class, func(t *testing.T) {
 			t.Parallel()
 
+			// re-derived for front-loaded HP curve (fast-lane T2)
 			for level := 1; level <= 5; level++ {
 				got := game.MaxHPForTest(class, level)
 
