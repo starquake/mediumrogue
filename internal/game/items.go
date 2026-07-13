@@ -395,51 +395,85 @@ func (e *entity) equipWeaponLocked(inst itemInstance, def *itemDef) error {
 	return nil
 }
 
-// closeDefFor is the def an entity bumps with: its kind's claws profile for a
-// monster (which owns no items and never equips — checked first, so a
-// monster never falls through to the fists case), else the first
-// melee-tagged held weapon in hand order (heldWeapons), else fists for a
-// bare/unarmed player (single-hit shim — task 2 makes bump damage fold every
-// melee-tagged held weapon). Panics if a monster entity's monsterKind names
-// no registered kind — every production spawn path sets a real one; this
-// only guards a malformed fixture.
+// closeDefFor is the def an entity's bump would highlight (the client's range
+// hint) or falls back to when only one hit matters (unequipped-mid-turn
+// guards): meleeDefsFor(e)'s first entry — its kind's claws for a monster, its
+// first melee-tagged held weapon in hand order, or fists for a bare/unarmed
+// player. A real bump resolves EVERY entry of meleeDefsFor, not just this one
+// (attackLocked) — this shim is for non-combat callers only.
 func closeDefFor(e *entity) *itemDef {
+	return meleeDefsFor(e)[0]
+}
+
+// meleeDefsFor returns every melee hit an entity's bump delivers this turn, in
+// hand order (heldWeapons — main before off): a monster's kind claws profile
+// (single — monsters own no items and never equip; checked first, so a
+// monster never falls through to the fists case), else every melee-tagged
+// held weapon, else fists for a bare/unarmed player. Never empty. Panics if a
+// monster entity's monsterKind names no registered kind — every production
+// spawn path sets a real one; this only guards a malformed fixture.
+func meleeDefsFor(e *entity) []*itemDef {
 	if e.kind == protocol.EntityMonster {
 		k := kindOf(e)
 		if k == nil {
-			panic("game: closeDefFor monster entity has no registered kind")
+			panic("game: meleeDefsFor monster entity has no registered kind")
 		}
 
-		return k.claws
+		return []*itemDef{k.claws}
 	}
+
+	var out []*itemDef
 
 	for _, def := range e.heldWeapons() {
 		if def.hasTag(protocol.WeaponTagMelee) {
-			return def
+			out = append(out, def)
 		}
 	}
 
-	return fistsDef
+	if len(out) == 0 {
+		return []*itemDef{fistsDef}
+	}
+
+	return out
 }
 
-// rangedDefFor is the def an entity shoots with: the longest-range
-// ranged/magic-tagged held weapon (heldWeapons), or nil if none held — no
-// ranged weapon at all (a fighter with only a melee weapon, e.g., has no
-// ranged attack) — single-hit shim, task 2 makes this multi-weapon aware.
+// rangedDefFor is the LONGEST-range ranged/magic-tagged held weapon
+// (rangedDefsFor(e, 0) — every rangeHex is >= 0, so dist 0 never filters any
+// held ranged/magic weapon out, only feeds them all to the reduction below),
+// or nil if none held at all — used only to gate "does this entity have any
+// ranged attack whatsoever" (ErrNoRangedWeapon, the mid-turn-unequip fizzle
+// check), independent of any particular shot's distance. A real shot resolves
+// EVERY def rangedDefsFor(e, dist) returns, not just this one.
 func rangedDefFor(e *entity) *itemDef {
 	var best *itemDef
 
-	for _, def := range e.heldWeapons() {
-		if !def.hasTag(protocol.WeaponTagRanged) && !def.hasTag(protocol.WeaponTagMagic) {
-			continue
-		}
-
+	for _, def := range rangedDefsFor(e, 0) {
 		if best == nil || def.rangeHex > best.rangeHex {
 			best = def
 		}
 	}
 
 	return best
+}
+
+// rangedDefsFor returns every ranged/magic-tagged held weapon that reaches
+// dist hexes, in hand order (heldWeapons — main before off): each fires as
+// its own hit this turn (a bow's single-target shot, a magic weapon's own
+// AoE). Empty if the entity holds no such weapon, or none reaches dist.
+func rangedDefsFor(e *entity, dist int) []*itemDef {
+	var out []*itemDef
+
+	for _, def := range e.heldWeapons() {
+		if !def.hasTag(protocol.WeaponTagRanged) && !def.hasTag(protocol.WeaponTagMagic) {
+			continue
+		}
+
+		if def.rangeHex >= dist {
+			out = append(out, def)
+		}
+	}
+
+	return out
 }
 
 // heldWeapons returns e's equipped hand weapons, main then off (fixed

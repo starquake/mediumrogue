@@ -172,6 +172,76 @@ func TestMageAoENoFriendlyFire(t *testing.T) {
 	}
 }
 
+// TestRangedFiresAllInRange: a player dual-wielding the Shortbow (main, range
+// 4) and the Ember Focus (off, magic, range 4, aoe 1) fires BOTH at a ground
+// target within both weapons' range — the shortbow's single-target hit and
+// the ember focus's AoE (whose ring covers the target hex itself) both land
+// on the monster standing there, for their summed damage. Beyond both
+// weapons' range, the intent is rejected exactly as a single ranged weapon's
+// would be (ErrOutOfRange at submit) — no partial-reach carve-out.
+func TestRangedFiresAllInRange(t *testing.T) {
+	t.Parallel()
+
+	equipDualRanged := func(t *testing.T, w *game.World, id int64, token string) {
+		t.Helper()
+
+		shortbowID := w.GrantItemForTest(id, "shortbow")
+		if err := w.SubmitIntent(equipIntent(id, token, shortbowID)); err != nil {
+			t.Fatalf("SubmitIntent(equip shortbow): %v", err)
+		}
+
+		emberFocusID := w.GrantItemForTest(id, "ember-focus")
+		if err := w.SubmitIntent(equipIntent(id, token, emberFocusID)); err != nil {
+			t.Fatalf("SubmitIntent(equip ember focus): %v", err)
+		}
+	}
+
+	t.Run("both weapons fire", func(t *testing.T) {
+		t.Parallel()
+
+		w := newWorld()
+		w.SetSeedForTest(1)
+
+		rogueHex := protocol.Hex{Q: 0, R: 0}
+		target := protocol.Hex{Q: 3, R: 0} // distance 3 <= both shortbow and ember-focus range (4)
+
+		rogueID, token := w.PlaceEntityForTest(rogueHex)
+		w.SetClassForTest(rogueID, "") // clear defaults: both hands start empty
+		equipDualRanged(t, w, rogueID, token)
+
+		monsterID := w.PlaceMonsterForTest(target)
+
+		if err := w.SubmitIntent(attackIntent(rogueID, token, target)); err != nil {
+			t.Fatalf("SubmitIntent(attack): %v", err)
+		}
+
+		w.ResolveCombatOnlyForTest()
+
+		snap := w.Snapshot()
+
+		wantHP := protocol.MonsterMaxHP - game.ItemDamageForTest("shortbow") - game.ItemDamageForTest("ember-focus")
+		if got := entityHP(t, snap, monsterID); got != wantHP {
+			t.Errorf("monster HP = %d, want %d (bow single-target hit + focus AoE, both landing)", got, wantHP)
+		}
+	})
+
+	t.Run("out of range for both rejected", func(t *testing.T) {
+		t.Parallel()
+
+		w := newWorld()
+
+		rogueID, token := w.PlaceEntityForTest(protocol.Hex{Q: 0, R: 0})
+		w.SetClassForTest(rogueID, "")
+		equipDualRanged(t, w, rogueID, token)
+
+		// Distance 5 > both shortbow and ember-focus range (4).
+		err := w.SubmitIntent(attackIntent(rogueID, token, protocol.Hex{Q: 5, R: 0}))
+		if got, want := err, game.ErrOutOfRange; !errors.Is(got, want) {
+			t.Errorf("err = %v, want %v", got, want)
+		}
+	})
+}
+
 // TestRangedIntentIsLockIn: inside a bubble, an attack intent counts as the
 // player's lock-in — the frozen bubble stays put until the submission, then
 // resolves immediately. The rogue's bow lands on the monster and the monster
