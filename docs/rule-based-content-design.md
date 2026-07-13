@@ -8,13 +8,14 @@ without writing code. Game-design background lives in
 `combat-modifier-pipeline` decision (plan §8, milestone 6b).*
 
 > **Status:** the pipeline is **live** (milestone 6b.4). Events implemented:
-> `deal-damage`, `take-damage`, `earn-XP` — the three species bonuses and
-> gear's rule-carrying items all run through it today
-> (`internal/game/rules.go`). `attack-roll`, `on-kill`, and `aggro-range` are
-> still future (§2's event table below flags each as not-yet-implemented);
-> a design written in that vocabulary now still lands as a Tier-2 vocabulary
-> addition, not a rewrite. Everything below describes the system as it
-> actually runs.
+> `deal-damage`, `take-damage`, `earn-XP`, and `aggro-range` (shipped in 6c)
+> — the three species bonuses and gear's rule-carrying items all run through
+> it today (`internal/game/rules.go`). `on-kill` is still future. The old
+> coupled **`attack-roll`** (a single to-hit roll) has been **dropped**:
+> combat is fully **ARPG**, so defence and offence are *decoupled* percentage
+> chances — `evasion%` (defender dodges) and `crit%` (attacker crits) — never
+> one to-hit roll or `d20` (see §2 and issue #69). Everything below describes
+> the system as it actually runs.
 
 ---
 
@@ -44,7 +45,7 @@ them, like a factory line of small machines each making one adjustment.
 **Concretely:** dwarf damage reduction stops being a special case inside the
 combat code and becomes a card that reads:
 
-> **Dwarf toughness** — *when* taking damage, reduce the damage by 2
+> **Dwarf toughness** — *when* taking damage, reduce the damage by 1
 > (never below 1).
 
 The engine doesn't know what a dwarf is. It just sees "this entity carries a
@@ -65,7 +66,7 @@ effects rich enough.
 You need a feel for how a fight actually runs, because rules hook into its
 moments. The short version (full detail: plan §5):
 
-- The world moves in **shared 5-second turns**; near enemies, time freezes
+- The world moves in **shared 4-second turns**; near enemies, time freezes
   locally into a **combat bubble** where turns wait for everyone's choice.
   Same rules everywhere — only the clock differs.
 - Within a turn, **all movement resolves first, then all attacks land** —
@@ -91,17 +92,20 @@ These are the moments the engine will expose. Every rule must name one:
 | **take-damage** | yes | …an incoming hit's damage is applied to you | dwarf toughness, armor, shields, vulnerabilities |
 | **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
 | **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards; no card uses this yet — future sneaky/loud gear |
-| **attack-roll** | not yet | …an attack is being aimed: hit chance, crit chance, crit size | "lucky" weapons, accuracy debuffs, a miss chance |
+| **crit-check** | not yet | …an attacker's chance to land a **critical hit** is computed | `crit%` weapon stats, elf precision (today a `deal-damage` chance card — see note) |
+| **evasion-check** | not yet | …a defender's chance to **avoid an incoming *targeted* hit** is computed (AoE is undodgeable — you dodge attacks, not explosions; #69) | `evasion%` light armour, "hard to hit" species — an evaded hit deals 0 (see note) |
 | **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
 
-`attack-roll` and `on-kill` are documented here so designs can be written
-against them now, but nothing calls them yet — a card naming one would sit
-unused until the event ships. **Elf's crit ended up modeled as a
-`deal-damage` effect** (a chance-conditioned ×2 multiplier), not a separate
-`attack-roll` roll — fewer moving parts, same result, and it's the pattern
-to reach for first: only add a real `attack-roll` event once something needs
-an actual to-hit/miss check (a genuine `attack-roll` candidate: the sketch
-species idea *"Halfling — hard to hit"* in §6 below).
+`crit-check`, `evasion-check`, and `on-kill` are documented here so designs
+can be written against them now, but nothing calls them yet. **Combat is
+ARPG and decoupled** (issue #69): offence and defence are independent
+percentage chances, never a single coupled to-hit roll. **Crit is already
+expressible today** as a `deal-damage` card with a `chance` condition and a
+×2 multiplier — exactly how **elf's crit** ships — so a dedicated
+`crit-check` event is a convenience, not a requirement. **Evasion is the
+genuinely new machinery:** a fully-dodged hit deals 0, which today's pipeline
+can't express (a landed hit is floored at 1), so it needs a new *pre-damage*
+`evasion-check` event.
 
 This list will grow (likely candidates: `aggro-range` for the backlogged
 "monster aggro radius via the pipeline" idea, *turn-start / turn-end* for
@@ -124,8 +128,8 @@ Every rule is three fill-in-the-blank slots.
   load), current HP ("below half health"), party membership.
 - *About the situation:* distance to target, target adjacent or not, number
   of enemies in the bubble, allies on your hex, melee vs. ranged hit.
-- *Chance:* "30% of the time" — the dice-roll condition (elf crits work
-  this way).
+- *Chance:* "30% of the time" — the `chance` condition, a seeded server-side
+  roll (elf crits work this way).
 
 **THEN — one effect.** The starter set:
 
@@ -138,7 +142,7 @@ Every rule is three fill-in-the-blank slots.
 A worked example, written exactly as you'd hand it to us:
 
 > **Item — Butcher's Cleaver** (fighter melee weapon)
-> Base: damage 4 (vs. sword's 5), melee.
+> Base: damage 3 (vs. sword's 4), melee.
 > Rule: *when* dealing damage, *if* the target is below half health,
 > *then* +3 damage.
 > Intent: a finisher weapon — worse opener, brutal closer.
@@ -233,7 +237,7 @@ More examples of the range of what cards can express:
 > Rule: *when* dealing damage, *if* at least one ally shares the bubble,
 > *then* +2 damage. Intent: a party-play bow — weaker solo.
 
-> **Ember Staff** (mage, ranged) — damage 2, range 4, area radius 1.
+> **Ember Staff** (mage, ranged) — damage 3, range 4, area radius 1.
 > Rule: *when* dealing damage, *if* the target is adjacent to you, *then*
 > double damage. Intent: a risky brawler-mage staff; rewards standing
 > dangerously close.
@@ -260,7 +264,7 @@ What you can design here:
 - **Depth within a class** — mostly via its gear pool (§4) and, later,
   **class ability rules**, e.g. *fighter:* "when taking damage, if 2+
   enemies are adjacent, −1 damage taken (shield wall)"; *rogue:* "when
-  attack-rolling, if the target is at full HP, +crit chance (ambush)."
+  dealing damage, if the target is at full HP, +crit chance (ambush)."
 - **Class-distinct level growth** — e.g. mage damage scales faster than
   mage HP. Cheap to do, big balance lever.
 - **A fourth class** is possible but expensive everywhere (balance, sprites,
@@ -276,7 +280,7 @@ any class** — species picks a *style*, class picks a *job*. The decided
 three, written as rule cards:
 
 > **Human — fast learner:** *when* earning XP, +X%.
-> **Elf — deadly precision:** *when* attack-rolling, X% chance the hit
+> **Elf — deadly precision:** *when* dealing damage, X% chance the hit
 > crits for double damage.
 > **Dwarf — stone-tough:** *when* taking damage, −X (never below 1).
 
@@ -285,9 +289,11 @@ three, written as rule cards:
 A good new-species proposal is **one or two passive rules that create a
 playstyle** and stay fun across all classes. Sketches of the shape:
 
-> **Halfling — hard to hit:** when attack-rolled *against*, X% chance the
-> attack misses outright. (Needs a "miss" concept at attack-roll — small
-> engine addition, then reusable for smoke bombs, blur spells…)
+> **Halfling — hard to hit:** *when* taking damage, X% chance to **evade** it
+> entirely (0 damage). (This is the `evasion%` mechanic — issue #69; it needs
+> the new pre-damage `evasion-check` event, since today a landed hit is
+> floored at 1 and can't be authored down to 0 as a plain card. Then reusable
+> for smoke bombs, blur spells…)
 
 > **Orc — bloodlust:** when dealing damage, if below half HP, +X damage.
 > A high-risk style that gets scarier as it gets hurt.
@@ -325,9 +331,9 @@ A few engine truths to design *with*, not against:
 - **Simultaneous phased turns** (moves, then attacks) is the bedrock.
   Retreat-dodging and mutual kills are features. Nothing may depend on
   within-turn ordering like "who acted first."
-- **Determinism:** all randomness is a server dice roll. "X% chance" is
-  fine; "player skill-shot timing" is not — there are no reflexes in this
-  game, ever.
+- **Determinism:** all randomness is a seeded server-side roll (a per-scope
+  PCG keyed on world seed + turn). "X% chance" is fine; "player skill-shot
+  timing" is not — there are no reflexes in this game, ever.
 - **No friendly fire** (current rule), stack cap 5, random-member hits on
   stacks, XP-by-presence-in-bubble — see plan §5 if a design touches these.
 - **Every number is a knob.** Never fight over 3 vs 4 damage on paper;
@@ -351,7 +357,7 @@ Wearable by: (gear: class list or "any" — see §4; else: n/a)
 Base stats: (weapons: damage / range / area; consumables: heal N;
              armor/jewelry, species & mechanics: usually n/a)
 Rules:
-  - WHEN <attack-roll | deal-damage | take-damage | earn-XP | on-kill>
+  - WHEN <deal-damage | take-damage | earn-XP | crit-check | evasion-check | on-kill>
     IF   <condition(s), or "always">
     THEN <add/subtract N | +N% | chance-based …>
   (consumables carry no rules — their effect is the drink action itself)
