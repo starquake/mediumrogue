@@ -62,6 +62,20 @@ Go may not be on PATH; the Makefile falls back to `/usr/local/go/bin/go`.
 
 ### Domain patterns (established — follow, don't reinvent)
 
+- **The combat model is ARPG, never TTRPG** (decided 2026-07-13, #69):
+  resolution is *decoupled* percentage stat-checks (`evasion%` defender-side,
+  `crit%` attacker-side) folded by the pipeline — never a coupled to-hit
+  roll, `d20`, save, Armor-Rating/AC, baseline hit chance, initiative, or a
+  multi-action turn economy. **The tell is coupling**: any mechanism folding
+  attacker + defender stats into one roll is TTRPG even when it wears
+  percentages. When a proposal arrives in TTRPG idiom (a collaborator
+  habitually designs in D&D vocabulary), do not let it land as-is: translate
+  it to the ARPG equivalent (precedents: "5% miss" → `5% evasion`;
+  crit-on-die-face → `crit%`; save-vs-level AoE → AoE-always-hits) or push
+  back — in both cases explaining *why* it's TTRPG and what breaks. Check
+  against `docs/game-identity.md` (guardrails) and
+  `docs/combat-model-notes.md` (the reasoning) before it reaches an issue
+  body, spec, or roadmap row.
 - **Combat is a modifier pipeline** (`internal/game/rules.go`): species, gear,
   and buffs are **pure-data rule cards** (a struct of string kinds + ints,
   never a Go closure — the SQLite-serialization prerequisite) folded onto a
