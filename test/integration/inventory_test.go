@@ -172,7 +172,9 @@ func TestInventoryLoopOverHTTP(t *testing.T) {
 
 	reader := bufio.NewReader(get(t, tsA, "/api/events").Body)
 
-	// The crafted inventory rides the wire: equipped sword (type weapon),
+	// The crafted inventory rides the wire: equipped sword (type main-hand —
+	// an equipped weapon's Type is the hand it occupies, not the generic
+	// "weapon" taxonomy string, since the gear keystone's dual-wield model),
 	// a count-3 potion stack (type consumable), and the ground venom-fang
 	// with its type.
 	first := waitForBundle(t, reader, "restored inventory visible", func(b protocol.TurnEvent) bool {
@@ -182,8 +184,8 @@ func TestInventoryLoopOverHTTP(t *testing.T) {
 	})
 
 	sword, _ := itemOf(first, invSwordID)
-	if !sword.Equipped || sword.Type != protocol.ItemTypeWeapon {
-		t.Errorf("sword view = %+v, want equipped weapon", sword)
+	if !sword.Equipped || sword.Type != protocol.SlotMainHand {
+		t.Errorf("sword view = %+v, want equipped in main-hand", sword)
 	}
 
 	potion, ok := itemOf(first, invPotionID)
@@ -297,8 +299,8 @@ func assertRestartRoundTrip(t *testing.T, pwA *persistWorld, preRestart protocol
 	})
 
 	if sword, ok := itemOf(postSnap, invSwordID); !ok || !sword.Equipped ||
-		sword.Type != protocol.ItemTypeWeapon {
-		t.Errorf("server B sword view = %+v (ok=%v), want equipped weapon", sword, ok)
+		sword.Type != protocol.SlotMainHand {
+		t.Errorf("server B sword view = %+v (ok=%v), want equipped in main-hand", sword, ok)
 	}
 
 	if potion, ok := itemOf(postSnap, invPotionID); !ok || potion.Count != 2 {

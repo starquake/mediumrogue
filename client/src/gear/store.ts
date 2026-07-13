@@ -1,16 +1,55 @@
 import { createSignal } from "solid-js";
 
 import type { ItemView } from "../protocol.gen";
-import { BackpackSize } from "../protocol.gen";
+import {
+  BackpackSize,
+  ItemTypeWeapon,
+  SlotAmulet,
+  SlotBoots,
+  SlotChest,
+  SlotGloves,
+  SlotHelmet,
+  SlotMainHand,
+  SlotOffHand,
+  SlotRing,
+} from "../protocol.gen";
 
-// The character/inventory store (inventory-slots milestone, task 5): the
-// slot-keyed equipped map + the fixed-size backpack + the per-hex pickup
-// modal, all refreshed each turn bundle by main.ts. Mirrors the approved
-// paper-doll mockup (scratchpad/inventory-mock.html).
+// The character/inventory store: the slot-keyed equipped map + the
+// fixed-size backpack + the per-hex pickup modal, all refreshed each turn
+// bundle by main.ts. Slot model per the gear keystone's approved ARPG panel
+// (docs/superpowers/specs/2026-07-13-arpg-character-inventory-design.md):
+// eight named slots, two of them hands, a two-handed weapon greying the
+// off-hand.
+
+/** The eight equip slots in the paper-doll's fixed render order. */
+export const SLOT_ORDER = [
+  SlotHelmet,
+  SlotAmulet,
+  SlotGloves,
+  SlotRing,
+  SlotMainHand,
+  SlotChest,
+  SlotOffHand,
+  SlotBoots,
+] as const;
+
+/** The approved mockup's slot labels, keyed by slot name. */
+export const SLOT_LABELS: Record<string, string> = {
+  [SlotHelmet]: "Helmet",
+  [SlotAmulet]: "Amulet",
+  [SlotGloves]: "Gloves",
+  [SlotRing]: "Ring",
+  [SlotMainHand]: "Main Hand",
+  [SlotChest]: "Chest",
+  [SlotOffHand]: "Off-Hand",
+  [SlotBoots]: "Boots",
+};
 
 /** The comparable stats an item carries on the wire (ItemView), surfaced in
  *  the hover tooltip. `damage`/`rangeHex`/`aoeRadius` are 0 for stat-less gear;
- *  `desc` is the authored effect text ("×1.5 damage vs dragons"), "" if none. */
+ *  `desc` is the authored effect text ("×1.5 damage vs dragons"), "" if none.
+ *  `tags`/`twoHanded` are weapon-only (empty/false otherwise) — twoHanded
+ *  drives the off-hand's greyed "two-handed grip" lock. */
 export interface ItemStats {
   damage: number;
   rangeHex: number;
@@ -19,9 +58,18 @@ export interface ItemStats {
   desc: string;
   /** The authored lore/"Fantasy" line; "" for items without lore. */
   flavor: string;
+  tags: string[];
+  twoHanded: boolean;
 }
 
-/** One equipped item, keyed in `equipped` by its slot (itemType string). */
+/**
+ * One equipped item, keyed in `equipped` by the SLOT it occupies — one of
+ * the eight SLOT_ORDER names. `type` is the item's ItemView.Type: for
+ * armor/jewelry that already equals the slot key, but for a weapon the
+ * server sets it to the occupied HAND (SlotMainHand/SlotOffHand) rather than
+ * the generic "weapon" taxonomy string, precisely so two held weapons never
+ * collide under one key here.
+ */
 export interface SlotItem extends ItemStats {
   id: number;
   defId: string;
@@ -29,7 +77,9 @@ export interface SlotItem extends ItemStats {
   type: string;
 }
 
-/** One backpack entry — a gear instance or a consumable stack (count>1). */
+/** One backpack entry — a gear instance or a consumable stack (count>1).
+ *  `type` here is the generic taxonomy string (a weapon has no hand yet —
+ *  see targetSlotFor). */
 export interface BackpackEntry extends ItemStats {
   id: number;
   defId: string;
@@ -49,15 +99,13 @@ export interface PickupRow {
   rejected: boolean;
 }
 
-// equipped: slot (itemType) -> the item filling it. Absent key = empty slot.
+// equipped: slot (one of the eight SLOT_ORDER names) -> the item filling it.
+// Absent key = empty slot.
 const [equipped, setEquippedSig] = createSignal<Record<string, SlotItem>>({});
 // backpack: BackpackSize entries, left-packed (nulls trail) — the wire lists
 // only non-empty entries, and their index is not player-meaningful (pickup/
 // drop use the first free slot), so left-packing matches the mockup exactly.
 const [backpack, setBackpackSig] = createSignal<(BackpackEntry | null)[]>(emptyBackpack());
-// The class's two weapon-slot itemTypes ([close-ish, ranged-ish]) — set once
-// at join so the paper-doll can label and place the two class-shaped slots.
-const [weaponSlots, setWeaponSlotsSig] = createSignal<[string, string]>(["", ""]);
 // Whether the character panel is open (toggled by the `i` key / HUD button).
 // Closed by default — the paper-doll is large, so it is not always-on.
 const [panelOpen, setPanelOpenSig] = createSignal(false);
@@ -75,7 +123,7 @@ const [modalOpen, setModalOpenSig] = createSignal(false);
 // state actually changed, not on any arriving bundle.
 const [pending, setPendingSig] = createSignal<Map<number, string>>(new Map());
 
-export { equipped, backpack, weaponSlots, panelOpen, pickupRows, modalOpen, pending };
+export { equipped, backpack, panelOpen, pickupRows, modalOpen, pending };
 
 // lastItems is the most recent ItemView list — markPending reads it to
 // snapshot an item's signature at click time.
@@ -99,21 +147,43 @@ function emptyBackpack(): (BackpackEntry | null)[] {
   return Array.from({ length: BackpackSize }, () => null);
 }
 
-/** slotLabel is the human label for a slot/itemType ("melee-weapon" -> "Melee"). */
-export function slotLabel(type: string): string {
-  const base = type.replace(/-weapon$/, "");
-
-  return base.charAt(0).toUpperCase() + base.slice(1);
-}
-
-/** typeLabel is the ground-row type text ("melee-weapon" -> "melee weapon"). */
+/** typeLabel is the ground-row type text ("healing-potion" -> ground row's
+ *  "consumable" -> "consumable"; kept generic for any future hyphenated type). */
 export function typeLabel(type: string): string {
   return type.replace(/-/g, " ");
 }
 
-/** Sets the class's two weapon-slot itemTypes ([close-ish, ranged-ish]). */
-export function setWeaponSlots(slots: [string, string]): void {
-  setWeaponSlotsSig(slots);
+/**
+ * offHandLocked reports whether the off-hand slot is locked by a two-handed
+ * main-hand weapon (the approved mockup's greyed "two-handed grip" state).
+ */
+export function offHandLocked(): boolean {
+  return equipped()[SlotMainHand]?.twoHanded === true;
+}
+
+/**
+ * targetSlotFor mirrors the server's weaponTargetSlot placement rule
+ * (internal/game/items.go) client-side, so the hover tooltip can compare a
+ * backpack weapon against the hand it would actually land in: two-handed or
+ * an empty main-hand -> main-hand; else an empty off-hand -> off-hand; else
+ * main-hand (the swap case). A non-weapon item's slot equals its type
+ * already (armor/jewelry); a consumable has no slot ("" — never compared,
+ * the tooltip only compares combat-stat items).
+ */
+export function targetSlotFor(item: { type: string; twoHanded: boolean }): string {
+  if (item.type !== ItemTypeWeapon) {
+    return item.type;
+  }
+
+  if (item.twoHanded || equipped()[SlotMainHand] === undefined) {
+    return SlotMainHand;
+  }
+
+  if (equipped()[SlotOffHand] === undefined) {
+    return SlotOffHand;
+  }
+
+  return SlotMainHand;
 }
 
 /**
@@ -138,6 +208,8 @@ export function setInventory(items: ItemView[]): void {
       aoeRadius: it.aoeRadius,
       desc: it.desc,
       flavor: it.flavor,
+      tags: it.tags,
+      twoHanded: it.twoHanded,
     };
     if (it.equipped) {
       eq[it.type] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type, ...stats };

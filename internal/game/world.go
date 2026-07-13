@@ -1145,12 +1145,11 @@ func (w *World) Snapshot() protocol.TurnEvent {
 // itemViewsLocked builds the wire item list for one entity: an ItemView per
 // owned item instance — equipped gear first, in canonicalSlotOrder (so the
 // list order is deterministic despite e.equipped being a map), then backpack
-// entries in index order. Type carries the def's itemType (the taxonomy
-// string); Tags/TwoHanded carry a weapon's tag set and two-handedness (see
-// protocol.ItemView's doc comments). Always a non-nil slice — empty (not
-// null) for a monster (which owns nothing) or a player who owns nothing, so
-// the wire shape matches the generated TS type's non-optional ItemView[].
-// Callers hold w.mu.
+// entries in index order. Tags/TwoHanded carry a weapon's tag set and
+// two-handedness (see protocol.ItemView's doc comments). Always a non-nil
+// slice — empty (not null) for a monster (which owns nothing) or a player who
+// owns nothing, so the wire shape matches the generated TS type's
+// non-optional ItemView[]. Callers hold w.mu.
 func itemViewsLocked(e *entity) []protocol.ItemView {
 	views := make([]protocol.ItemView, 0, len(e.equipped)+len(e.backpack))
 
@@ -1160,7 +1159,7 @@ func itemViewsLocked(e *entity) []protocol.ItemView {
 			continue
 		}
 
-		views = append(views, itemViewOf(inst, true, 1))
+		views = append(views, itemViewOf(inst, slot, 1))
 	}
 
 	for _, be := range e.backpack {
@@ -1168,19 +1167,34 @@ func itemViewsLocked(e *entity) []protocol.ItemView {
 			continue
 		}
 
-		views = append(views, itemViewOf(be.inst, false, be.count))
+		views = append(views, itemViewOf(be.inst, "", be.count))
 	}
 
 	return views
 }
 
-// itemViewOf renders one owned item instance for the wire. count is the
-// stack size (1 for gear and equipped items).
-func itemViewOf(inst itemInstance, equipped bool, count int) protocol.ItemView {
+// itemViewOf renders one owned item instance for the wire. slot is the equip
+// slot this instance currently occupies, or "" for a backpack entry. count is
+// the stack size (1 for gear and equipped items). Type carries slot for an
+// equipped item — for armor/jewelry that equals def.itemType already (a slot
+// name IS the type), but for a weapon it is the occupied hand (SlotMainHand/
+// SlotOffHand) rather than the generic "weapon" taxonomy string, so the wire
+// (and the client's slot-keyed equipped map) can tell the two hands apart —
+// the gear keystone's dual-wield model (protocol.ItemView's doc comment).
+// An unequipped weapon (backpack) has no hand yet (weaponTargetSlot decides
+// one at equip time), so it falls back to def.itemType like every other
+// backpack entry.
+func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 	def := itemDefByID[inst.defID]
+	equipped := slot != ""
+	viewType := def.itemType
+
+	if equipped {
+		viewType = slot
+	}
 
 	return protocol.ItemView{
-		ID: inst.id, DefID: inst.defID, Name: def.name, Type: def.itemType,
+		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
 		Tags: def.tags, TwoHanded: def.twoHanded,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
 		Flavor:   def.flavor,

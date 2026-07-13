@@ -2,17 +2,9 @@ import { createSignal, For, Index, Show } from "solid-js";
 import type { Accessor, JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
-import {
-  ItemTypeAmulet,
-  ItemTypeBoots,
-  ItemTypeChest,
-  ItemTypeConsumable,
-  ItemTypeGloves,
-  ItemTypeHelmet,
-  ItemTypeRing,
-} from "../protocol.gen";
+import { ItemTypeConsumable, SlotOffHand } from "../protocol.gen";
 import type { BackpackEntry, ItemStats, SlotItem } from "./store";
-import { backpack, equipped, panelOpen, pending, slotLabel, weaponSlots } from "./store";
+import { backpack, equipped, offHandLocked, panelOpen, pending, SLOT_LABELS, SLOT_ORDER, targetSlotFor } from "./store";
 
 /** Callbacks the panel needs — each posts the matching inventory intent. */
 export interface CharacterActions {
@@ -24,18 +16,16 @@ export interface CharacterActions {
   close: () => void;
 }
 
-// The six universal armor/jewelry slots, positioned on the Vitruvian
-// paper-doll per the approved mockup. The two hand slots (weap1/weap2) are
-// added around the body from weaponSlots() — main-hand/off-hand since the
-// gear keystone (#55/#56), no longer class-shaped.
-const BODY_SLOTS: { type: string; cls: string }[] = [
-  { type: ItemTypeHelmet, cls: "head" },
-  { type: ItemTypeGloves, cls: "hands" },
-  { type: ItemTypeRing, cls: "ring" },
-  { type: ItemTypeAmulet, cls: "amulet" },
-  { type: ItemTypeChest, cls: "body" },
-  { type: ItemTypeBoots, cls: "feet" },
-];
+// positionClass is a slot's CSS position class on the paper-doll (the
+// approved ARPG mockup's geometry — index.html's .hex.helmet, .hex.mainhand,
+// …): the slot name with its hyphen stripped (main-hand -> mainhand, the
+// mockup's class names), all other slots unchanged. Derived from the slot
+// name rather than kept as a parallel table, so SLOT_ORDER (store.ts) stays
+// the single source of slot names; only index.html's position rules pair
+// with it.
+function positionClass(slot: string): string {
+  return slot.replace("-", "");
+}
 
 // isPending mirrors an item's in-flight action mark.
 function isPending(id: number): boolean {
@@ -78,10 +68,14 @@ function StatTooltip(): JSXElement {
     <Show when={hover()}>
       {(h) => {
         const item = (): HoverItem => h().item;
-        // The item in this item's slot, unless that IS the hovered item
-        // (hovering the equipped hex itself → nothing to compare against).
+        // The item in the slot this item occupies OR WOULD occupy — a
+        // backpack weapon compares against the hand targetSlotFor picks
+        // (main if free/two-handed, else off if free, else main), mirroring
+        // the server's weaponTargetSlot placement — unless that IS the
+        // hovered item (hovering the equipped hex itself → nothing to
+        // compare against).
         const current = (): SlotItem | undefined => {
-          const c = equipped()[item().type];
+          const c = equipped()[targetSlotFor(item())];
           return c !== undefined && c.id !== item().id ? c : undefined;
         };
         const delta = (pick: (s: ItemStats) => number): number | undefined => {
@@ -125,16 +119,23 @@ function StatTooltip(): JSXElement {
   );
 }
 
-function HexSlot(props: { type: string; cls: string; actions: CharacterActions }): JSXElement {
-  const item = (): SlotItem | undefined => equipped()[props.type];
+// HexSlot renders one of the eight paper-doll slots. The off-hand hex greys
+// out and shows "two-handed grip" (the approved mockup) while offHandLocked()
+// — a two-handed main-hand weapon locks it, so it's never clickable then (the
+// item is always undefined in that state too — toggleEquip clears off-hand
+// before a 2H equip — but `locked` is checked explicitly so the disabled/grey
+// state doesn't depend on that implementation detail holding).
+function HexSlot(props: { slot: string; cls: string; actions: CharacterActions }): JSXElement {
+  const item = (): SlotItem | undefined => equipped()[props.slot];
+  const locked = (): boolean => props.slot === SlotOffHand && offHandLocked();
 
   return (
     <button
       type="button"
       class={`hex ${props.cls}`}
-      classList={{ filled: item() !== undefined }}
-      data-slot={props.type}
-      disabled={item() === undefined || isPending(item()!.id)}
+      classList={{ filled: item() !== undefined, greyed: locked() }}
+      data-slot={props.slot}
+      disabled={locked() || item() === undefined || isPending(item()!.id)}
       onClick={() => {
         const it = item();
         if (it !== undefined) props.actions.unequip(it.id);
@@ -145,9 +146,14 @@ function HexSlot(props: { type: string; cls: string; actions: CharacterActions }
       }}
       onMouseLeave={() => setHover(null)}
     >
-      <span class="slotname">{slotLabel(props.type)}</span>
-      <Show when={item() !== undefined} fallback={<span class="empty">—</span>}>
-        <span class="itemname">{isPending(item()!.id) ? "…" : item()!.name}</span>
+      <span class="slotname">{SLOT_LABELS[props.slot]}</span>
+      <Show
+        when={!locked()}
+        fallback={<span class="ghost">two-handed grip</span>}
+      >
+        <Show when={item() !== undefined} fallback={<span class="empty">—</span>}>
+          <span class="itemname">{isPending(item()!.id) ? "…" : item()!.name}</span>
+        </Show>
       </Show>
     </button>
   );
@@ -209,24 +215,20 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
 }
 
 function CharacterPanel(props: { actions: CharacterActions }): JSXElement {
-  // The two class-shaped weapon slots flank the body: index 0 (close-ish) on
-  // the left, index 1 (ranged-ish) on the right, labels per class.
-  const weap1 = (): string => weaponSlots()[0];
-  const weap2 = (): string => weaponSlots()[1];
-
   return (
     <Show when={panelOpen()}>
       <div id="character-panel">
         <div class="title panel-head">
           <span>Character</span>
+          <span class="keyhint">C / I toggles · Esc closes</span>
           <button type="button" class="panel-close" title="close (i)" onClick={() => props.actions.close()}>
             ×
           </button>
         </div>
         <div class="doll">
-          <HexSlot type={weap1()} cls="weap1" actions={props.actions} />
-          <HexSlot type={weap2()} cls="weap2" actions={props.actions} />
-          <For each={BODY_SLOTS}>{(s) => <HexSlot type={s.type} cls={s.cls} actions={props.actions} />}</For>
+          <For each={SLOT_ORDER}>
+            {(slot) => <HexSlot slot={slot} cls={positionClass(slot)} actions={props.actions} />}
+          </For>
         </div>
         <div class="title" style="margin-top:1.1rem">
           Backpack

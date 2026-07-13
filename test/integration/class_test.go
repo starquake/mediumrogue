@@ -28,11 +28,12 @@ func equippedRangedStats(bundle protocol.TurnEvent, id int64) (int, int, bool) {
 		return 0, 0, false
 	}
 
-	// Every weapon shares ItemTypeWeapon since the gear keystone (#55/#56);
-	// Tags names which attacks fire it — a ranged or magic tag means this
-	// held weapon fires the ranged/AoE attack path.
+	// An equipped weapon's Type is the hand it occupies (main-hand/off-hand),
+	// not the generic "weapon" taxonomy string (the gear keystone's
+	// dual-wield model) — Tags names which attacks fire it regardless of
+	// which hand, so filter on Equipped + tag alone.
 	for _, it := range e.Items {
-		if !it.Equipped || it.Type != protocol.ItemTypeWeapon {
+		if !it.Equipped {
 			continue
 		}
 

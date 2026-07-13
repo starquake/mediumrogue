@@ -580,6 +580,58 @@ func TestHeldWeaponsMainThenOff(t *testing.T) {
 	}
 }
 
+// TestItemViewOfWeaponSlotDistinguishesHands pins the wire fix behind the
+// gear keystone's client re-key (K1 review finding): itemViewOf must set an
+// EQUIPPED weapon's ItemView.Type to the hand it occupies (SlotMainHand/
+// SlotOffHand), not the generic ItemTypeWeapon taxonomy string every weapon
+// def shares — otherwise two dual-wielded weapons collide under one wire
+// "type" and a client keying its equipped map by Type can only ever show one
+// of them. A backpack (unequipped) weapon keeps the generic type, since it
+// has no hand yet (weaponTargetSlot decides one at equip time).
+func TestItemViewOfWeaponSlotDistinguishesHands(t *testing.T) {
+	t.Parallel()
+
+	dagger := itemInstance{id: 1, defID: idDagger}
+	bow := itemInstance{id: 2, defID: idShortbow}
+	spareSword := itemInstance{id: 3, defID: idIronSword}
+
+	e := &entity{
+		kind: protocol.EntityPlayer, class: protocol.ClassRogue,
+		equipped: map[string]itemInstance{
+			protocol.SlotMainHand: dagger,
+			protocol.SlotOffHand:  bow,
+		},
+	}
+	e.backpack[0] = backpackEntry{inst: spareSword, count: 1}
+
+	views := itemViewsLocked(e)
+	if got, want := len(views), 3; got != want {
+		t.Fatalf("len(itemViewsLocked) = %d, want %d", got, want)
+	}
+
+	byID := make(map[int64]protocol.ItemView, len(views))
+	for _, v := range views {
+		byID[v.ID] = v
+	}
+
+	if got, want := byID[dagger.id].Type, protocol.SlotMainHand; got != want {
+		t.Errorf("main-hand dagger Type = %q, want %q", got, want)
+	}
+
+	if got, want := byID[bow.id].Type, protocol.SlotOffHand; got != want {
+		t.Errorf("off-hand shortbow Type = %q, want %q", got, want)
+	}
+
+	if got, want := byID[spareSword.id].Type, protocol.ItemTypeWeapon; got != want {
+		t.Errorf("backpack spare sword Type = %q, want the generic %q (no hand assigned yet)", got, want)
+	}
+
+	if !byID[dagger.id].Equipped || !byID[bow.id].Equipped || byID[spareSword.id].Equipped {
+		t.Errorf("Equipped flags = dagger:%v bow:%v spareSword:%v, want true/true/false",
+			byID[dagger.id].Equipped, byID[bow.id].Equipped, byID[spareSword.id].Equipped)
+	}
+}
+
 // TestToggleEquipFromBackpackSwapsThroughEntry: equipping from a backpack
 // entry moves the item into its slot and the displaced occupant back into
 // that same entry — the spec's swap rule. An equip into an EMPTY slot frees

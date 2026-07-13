@@ -557,6 +557,14 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 0.8rem;
+      }
+      .keyhint {
+        color: var(--dim);
+        font-size: 0.62rem;
+        letter-spacing: 0.05em;
+        text-transform: none;
+        white-space: nowrap;
       }
       .panel-close {
         font-family: inherit;
@@ -642,11 +650,28 @@
         color: #3d523f;
         font-size: 1.1rem;
       }
-      .hex.head {
+      /* Two-handed grip: the off-hand hex greys out and shows ghost text
+         instead of an item name while offHandLocked() (a two-handed
+         main-hand weapon) — the approved ARPG mockup. */
+      .hex.greyed {
+        background: #26302a;
+        cursor: default;
+      }
+      .hex.greyed::before {
+        background: #0d120e;
+      }
+      .hex .ghost {
+        color: #5a6b60;
+        font-size: 0.62rem;
+        font-style: italic;
+        text-align: center;
+        line-height: 1.25;
+      }
+      .hex.helmet {
         left: 7.8rem;
         top: 0;
       }
-      .hex.hands {
+      .hex.gloves {
         left: 0.6rem;
         top: 5rem;
       }
@@ -658,19 +683,19 @@
         left: 7.8rem;
         top: 6.6rem;
       }
-      .hex.weap1 {
+      .hex.mainhand {
         left: 0.6rem;
         top: 12rem;
       }
-      .hex.body {
+      .hex.chest {
         left: 7.8rem;
         top: 13.2rem;
       }
-      .hex.weap2 {
+      .hex.offhand {
         right: 0.6rem;
         top: 12rem;
       }
-      .hex.feet {
+      .hex.boots {
         left: 7.8rem;
         top: 19.8rem;
       }

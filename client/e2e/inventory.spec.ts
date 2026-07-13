@@ -10,21 +10,30 @@ declare global {
   }
 }
 
-// Inventory-slots milestone (task 5): the paper-doll character panel + the
-// per-hex pickup modal, driven from a real browser against the real binary.
+// Inventory-slots milestone (task 5), re-slotted for the gear keystone's
+// approved ARPG panel (task 3, docs/superpowers/specs/
+// 2026-07-13-arpg-character-inventory-design.md): eight named slots —
+// helmet, amulet, gloves, ring, main-hand, chest, off-hand, boots — two of
+// them hands (no longer class-shaped: any class can dual-wield). Driven from
+// a real browser against the real binary.
 //
 // Scope note (inherited from the old gear.spec, still true): the e2e server
 // is monster-free with no spawn/grant hook, so a fresh join only ever has its
-// class-default items (a rogue: dagger + shortbow, both equipped, empty
-// backpack). That is enough to drive the toggle, the paper-doll's equipped
-// render, unequip -> backpack -> re-equip, and — via DROP, which lands an
-// owned item on the player's own hex — the full pickup MODAL (open on
-// walk-over, per-row take, close-leaves-the-rest, and — via the
+// class-default items (a rogue: dagger in main-hand + shortbow in off-hand,
+// empty backpack). That is enough to drive the toggle, the paper-doll's
+// equipped render, unequip -> backpack -> re-equip, and — via DROP, which
+// lands an owned item on the player's own hex — the full pickup MODAL (open
+// on walk-over, per-row take, close-leaves-the-rest, and — via the
 // window.game.rejectPickupRow hook — the backpack-full feedback render). The
 // flows a monster-free server cannot reach from class defaults — the SERVER
 // backpack-full rejection (needs 4+ owned items), a consumable STACK on the
-// ground/backpack, and DRINK (both need a potion, monster-only) — are covered
-// at the integration layer over real HTTP (test/integration/inventory_test.go).
+// ground/backpack, DRINK (both need a potion, monster-only), AND the greyed
+// "two-handed grip" off-hand (needs a two-handed weapon — no drop/spawn hook
+// can hand a fresh join one either) — are covered elsewhere: the first three
+// at the integration layer over real HTTP (test/integration/inventory_test.go),
+// the two-handed lock at the store level (client/src/gear/store.test.ts,
+// `npx vitest run`) per the task-3 plan's explicit redirect — do not invent a
+// spawn hook.
 //
 // CI de-race: every slot/backpack/modal interaction opens+confirms the panel
 // first, waits for actionability, and polls window.game (turn-gated by the
@@ -47,10 +56,12 @@ async function seedRogue(page: Page): Promise<void> {
   await page.goto("/");
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected), TURN_GATED).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.class), TURN_GATED).toBe(ClassRogue);
-  // Both class defaults equipped into their class-shaped weapon slots.
+  // Both class defaults equipped into the two hands (dagger -> main-hand
+  // since it's placed first; shortbow -> off-hand since main is then taken —
+  // weaponTargetSlot's placement rule, no longer class-shaped).
   await expect
     .poll(() => page.evaluate(() => Object.keys(window.game.equipped).sort().join(",")), TURN_GATED)
-    .toBe("melee-weapon,ranged-weapon");
+    .toBe("main-hand,off-hand");
 }
 
 // openPanel opens the character panel via the HUD button (a direct, always-
@@ -87,18 +98,41 @@ test("paper-doll renders equipped slots; the panel toggles via the i-key, HUD bu
   await expect(page.locator("#character-panel")).toBeVisible();
   await expect(page.locator("#toggle-inventory")).toHaveClass(/open/);
 
-  // The two class-shaped weapon slots carry per-class labels + their items;
-  // the six body slots render empty.
-  const melee = page.locator('.hex[data-slot="melee-weapon"]');
-  const ranged = page.locator('.hex[data-slot="ranged-weapon"]');
-  await expect(melee).toHaveClass(/filled/);
-  await expect(melee.locator(".slotname")).toHaveText("Melee");
-  await expect(melee.locator(".itemname")).toHaveText("Dagger");
-  await expect(ranged).toHaveClass(/filled/);
-  await expect(ranged.locator(".slotname")).toHaveText("Ranged");
-  await expect(ranged.locator(".itemname")).toHaveText("Shortbow");
-  await expect(page.locator('.hex[data-slot="head"] .empty')).toBeVisible();
-  await expect(page.locator('.hex[data-slot="body"] .empty')).toBeVisible();
+  // All eight slot labels render, per the approved mockup (helmet, amulet,
+  // gloves, ring, main-hand, chest, off-hand, boots).
+  const slotLabels: [string, string][] = [
+    ["helmet", "Helmet"],
+    ["amulet", "Amulet"],
+    ["gloves", "Gloves"],
+    ["ring", "Ring"],
+    ["main-hand", "Main Hand"],
+    ["chest", "Chest"],
+    ["off-hand", "Off-Hand"],
+    ["boots", "Boots"],
+  ];
+  for (const [slot, label] of slotLabels) {
+    await expect(page.locator(`.hex[data-slot="${slot}"] .slotname`)).toHaveText(label);
+  }
+
+  // The two hands carry the rogue's class defaults; the six armor/jewelry
+  // slots render empty.
+  const mainHand = page.locator('.hex[data-slot="main-hand"]');
+  const offHand = page.locator('.hex[data-slot="off-hand"]');
+  await expect(mainHand).toHaveClass(/filled/);
+  await expect(mainHand.locator(".itemname")).toHaveText("Dagger");
+  await expect(offHand).toHaveClass(/filled/);
+  await expect(offHand.locator(".itemname")).toHaveText("Shortbow");
+  await expect(page.locator('.hex[data-slot="helmet"] .empty')).toBeVisible();
+  await expect(page.locator('.hex[data-slot="chest"] .empty')).toBeVisible();
+
+  // The class-default weapon's name is exposed on window.game.equipped,
+  // slot-keyed (task-3 interface).
+  await expect
+    .poll(() => page.evaluate(() => window.game.equipped["main-hand"]?.name), TURN_GATED)
+    .toBe("Dagger");
+
+  // The header keyhint (approved mockup).
+  await expect(page.locator("#character-panel .keyhint")).toHaveText("C / I toggles · Esc closes");
 
   // `i` closes it again.
   await page.keyboard.press("i");
@@ -126,24 +160,24 @@ test("unequip moves an item into the backpack; equipping from the backpack retur
   await seedRogue(page);
   await openPanel(page);
 
-  // Click the filled melee slot -> unequip. The dagger leaves the slot and
-  // lands in the backpack (never nowhere).
-  const melee = page.locator('.hex[data-slot="melee-weapon"]');
-  await expect(melee).toHaveClass(/filled/);
-  await melee.click();
+  // Click the filled main-hand slot -> unequip. The dagger leaves the slot
+  // and lands in the backpack (never nowhere).
+  const mainHand = page.locator('.hex[data-slot="main-hand"]');
+  await expect(mainHand).toHaveClass(/filled/);
+  await mainHand.click();
   await expect
     .poll(() => page.evaluate(() => window.game.backpack.filter((e) => e !== null && e.defId === "dagger").length), TURN_GATED)
     .toBe(1);
-  expect(await page.evaluate(() => "melee-weapon" in window.game.equipped)).toBe(false);
-  await expect(page.locator('.hex[data-slot="melee-weapon"] .empty')).toBeVisible();
+  expect(await page.evaluate(() => "main-hand" in window.game.equipped)).toBe(false);
+  await expect(page.locator('.hex[data-slot="main-hand"] .empty')).toBeVisible();
 
   // Click the backpack cell -> equip it back into its slot.
   const daggerCell = page.locator('.cell-use[data-def="dagger"]');
   await expect(daggerCell).toBeVisible();
   await daggerCell.click();
-  await expect.poll(() => page.evaluate(() => "melee-weapon" in window.game.equipped), TURN_GATED).toBe(true);
+  await expect.poll(() => page.evaluate(() => "main-hand" in window.game.equipped), TURN_GATED).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.backpack.every((e) => e === null)), TURN_GATED).toBe(true);
-  await expect(page.locator('.hex[data-slot="melee-weapon"] .itemname')).toHaveText("Dagger");
+  await expect(page.locator('.hex[data-slot="main-hand"] .itemname')).toHaveText("Dagger");
 });
 
 test("dropping a backpack item opens the pickup modal; taking a row returns the item", async ({ page }) => {
@@ -154,9 +188,9 @@ test("dropping a backpack item opens the pickup modal; taking a row returns the 
 
   // Unequip the shortbow into the backpack, then drop it — it lands on my own
   // hex, so the pickup modal opens over it (walk-over, standing still).
-  const ranged = page.locator('.hex[data-slot="ranged-weapon"]');
-  await expect(ranged).toHaveClass(/filled/);
-  await ranged.click();
+  const offHand = page.locator('.hex[data-slot="off-hand"]');
+  await expect(offHand).toHaveClass(/filled/);
+  await offHand.click();
   await expect
     .poll(() => page.evaluate(() => window.game.backpack.some((e) => e !== null && e.defId === "shortbow")), TURN_GATED)
     .toBe(true);
@@ -177,7 +211,10 @@ test("dropping a backpack item opens the pickup modal; taking a row returns the 
   const myRow = page.locator(`#pickup-modal .grow[data-ground="${shortbowId}"]`);
   await expect(myRow).toBeVisible();
   await expect(myRow.locator(".itemline")).toHaveText("Shortbow");
-  await expect(myRow.locator(".typeline")).toContainText("ranged weapon");
+  // The five weapon types collapsed into one "weapon" taxonomy string (the
+  // gear keystone, #55/#56) — a ground weapon's type is just "weapon" now,
+  // not "ranged weapon"/"melee weapon".
+  await expect(myRow.locator(".typeline")).toContainText("weapon");
   // A single gear item is count 1 — no ×N suffix.
   await expect(myRow.locator(".itemline")).not.toContainText("×");
   expect(await page.evaluate((id) => window.game.pickupModal.rows.find((r) => r.id === id)?.count, shortbowId)).toBe(1);
@@ -207,9 +244,9 @@ test("a rejected pickup row shows inline backpack-full feedback and disables its
   await seedRogue(page);
   await openPanel(page);
 
-  const ranged = page.locator('.hex[data-slot="ranged-weapon"]');
-  await expect(ranged).toHaveClass(/filled/);
-  await ranged.click();
+  const offHand = page.locator('.hex[data-slot="off-hand"]');
+  await expect(offHand).toHaveClass(/filled/);
+  await offHand.click();
   await expect
     .poll(() => page.evaluate(() => window.game.backpack.some((e) => e !== null && e.defId === "shortbow")), TURN_GATED)
     .toBe(true);
@@ -242,12 +279,12 @@ test("closing the modal leaves the remaining items on the ground", async ({ page
 
   // Unequip BOTH weapons and drop both — two ground stacks on my hex, so the
   // modal lists both my rows.
-  const melee = page.locator('.hex[data-slot="melee-weapon"]');
-  const ranged = page.locator('.hex[data-slot="ranged-weapon"]');
-  await expect(melee).toHaveClass(/filled/);
-  await melee.click();
-  await expect(ranged).toHaveClass(/filled/);
-  await ranged.click();
+  const mainHand = page.locator('.hex[data-slot="main-hand"]');
+  const offHand = page.locator('.hex[data-slot="off-hand"]');
+  await expect(mainHand).toHaveClass(/filled/);
+  await mainHand.click();
+  await expect(offHand).toHaveClass(/filled/);
+  await offHand.click();
   await expect
     .poll(() => page.evaluate(() => window.game.backpack.filter((e) => e !== null).length), TURN_GATED)
     .toBe(2);
