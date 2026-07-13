@@ -1,6 +1,7 @@
 package game_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -124,9 +125,8 @@ func TestSnapshotRoundTrip(t *testing.T) {
 }
 
 // checkRestoredAlice asserts the restored player's identity, progression,
-// HP/MaxHP (exactly the marshaled value, not recomputed), equipped slots,
-// and owned items — split out of TestSnapshotRoundTrip to keep it under the
-// complexity linter's threshold.
+// HP/MaxHP, equipped slots, and owned items — split out of
+// TestSnapshotRoundTrip to keep it under the complexity linter's threshold.
 func checkRestoredAlice(
 	t *testing.T, w2 *game.World, alice protocol.JoinResponse, beforeAlice protocol.Entity,
 	extraItem, wantClose, wantRanged int64,
@@ -158,12 +158,18 @@ func checkRestoredAlice(
 		t.Errorf("restored alice XP = %d, want %d", got, want)
 	}
 
+	// HP is exactly the marshaled value (never healed by a restore) — alice
+	// never took damage, so it's still her join-time full bar.
 	if got, want := restored.HP, beforeAlice.HP; got != want {
 		t.Errorf("restored alice HP = %d, want %d (exactly the marshaled value)", got, want)
 	}
 
-	if got, want := restored.MaxHP, beforeAlice.MaxHP; got != want {
-		t.Errorf("restored alice MaxHP = %d, want %d", got, want)
+	// MaxHP is RECOMPUTED at restore (fast-lane T2), not the marshaled value:
+	// alice's XP (2*XPCurveBase+15) was set directly via SetXPForTest, which
+	// bypasses the earn-xp sync, so her pre-marshal MaxHP is still the stale
+	// level-1 bar — restore must resolve it to her actual level (2).
+	if got, want := restored.MaxHP, game.MaxHPForTest(protocol.ClassRogue, 2); got != want {
+		t.Errorf("restored alice MaxHP = %d, want %d (recomputed from class+XP)", got, want)
 	}
 
 	gotClose, gotRanged := w2.EquippedSlotsForTest(alice.EntityID)
@@ -564,5 +570,85 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 		if fresh == taken {
 			t.Errorf("fresh instance id %d collides with a restored one", fresh)
 		}
+	}
+}
+
+// TestRestoreRecomputesDerivedHP: a stored entity whose maxHP/hp were written
+// under a stale/older curve must come back recalibrated on load — maxHP is
+// recomputed from (class, levelFor(xp)) and hp is clamped to it, so a curve
+// change (XP1/XP2) reaches existing characters without a snapshot-version
+// bump (fast-lane T2). The stored 66/66 pair is deliberately stale — neither
+// the new curve's answer (45) nor a value a live game state would ever
+// produce — so the test can't pass by accident if recompute silently no-ops.
+func TestRestoreRecomputesDerivedHP(t *testing.T) {
+	t.Parallel()
+
+	w, _ := newSnapshotWorld(t)
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.SetXPForTest(me.EntityID, 400) // level 3 under the quadratic curve (T1)
+
+	data, err := w.MarshalState()
+	if err != nil {
+		t.Fatalf("MarshalState: %v", err)
+	}
+
+	// Craft: rewrite the marshaled entity's hp/maxHp to stale values (as if
+	// written by an older curve) directly in the JSON, since no ForTest
+	// helper sets maxHP independent of the sync path.
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal snapshot for craft: %v", err)
+	}
+
+	entities, ok := raw["entities"].([]any)
+	if !ok {
+		t.Fatalf("snapshot entities: got %T, want []any", raw["entities"])
+	}
+
+	found := false
+
+	for _, ent := range entities {
+		m, ok := ent.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if id, _ := m["id"].(float64); int64(id) == me.EntityID {
+			m["hp"] = 66
+			m["maxHp"] = 66
+			found = true
+		}
+	}
+
+	if !found {
+		t.Fatalf("crafted entity %d not found in snapshot", me.EntityID)
+	}
+
+	crafted, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal crafted snapshot: %v", err)
+	}
+
+	w2, _ := newSnapshotWorld(t)
+	if err := w2.RestoreState(crafted); err != nil {
+		t.Fatalf("RestoreState: %v", err)
+	}
+
+	e, ok := entityOfSnap(w2.Snapshot(), me.EntityID)
+	if !ok {
+		t.Fatalf("restored entity %d missing from snapshot", me.EntityID)
+	}
+
+	if got, want := e.MaxHP, 45; got != want { // fighter base 30 + levelHPBonus(3)=15 (8+7)
+		t.Errorf("restored MaxHP = %d, want %d (recomputed from class+XP, not the stale stored 66)", got, want)
+	}
+
+	if got, want := e.HP, 45; got != want {
+		t.Errorf("restored HP = %d, want %d (clamped down from the stale stored 66)", got, want)
 	}
 }

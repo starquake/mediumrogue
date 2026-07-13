@@ -106,7 +106,8 @@ func TestFighterIsTankierThanRogueAndMage(t *testing.T) {
 }
 
 // TestMaxHPForScalesWithLevel: MaxHP grows monotonically with level for every
-// class, adding HPPerLevel per level above 1.
+// class, adding the front-loaded curve's cumulative bonus (levelHPBonus) per
+// level above 1.
 func TestMaxHPForScalesWithLevel(t *testing.T) {
 	t.Parallel()
 
@@ -119,7 +120,7 @@ func TestMaxHPForScalesWithLevel(t *testing.T) {
 			for level := 1; level <= 5; level++ {
 				got := game.MaxHPForTest(class, level)
 
-				if want := game.MaxHPForTest(class, 1) + protocol.HPPerLevel*(level-1); got != want {
+				if want := game.MaxHPForTest(class, 1) + game.LevelHPBonusForTest(level); got != want {
 					t.Errorf("MaxHPForTest(%q, %d) = %d, want %d", class, level, got, want)
 				}
 
@@ -130,6 +131,40 @@ func TestMaxHPForScalesWithLevel(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestLevelHPBonusFrontLoaded pins the front-loaded HP curve's cumulative
+// bonus directly against the spec table: gains fall 8,7,6,...,1 then floor at
+// +1 per level forever (#60, roadmap XP2).
+func TestLevelHPBonusFrontLoaded(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		level int
+		want  int
+	}{
+		{1, 0}, {2, 8}, {3, 15}, {5, 26}, {9, 36}, {10, 37}, {12, 39},
+	}
+	for _, c := range cases {
+		if got, want := game.LevelHPBonusForTest(c.level), c.want; got != want {
+			t.Errorf("levelHPBonus(%d) = %d, want %d", c.level, got, want)
+		}
+	}
+}
+
+// TestMaxHPForUsesCurve pins maxHPFor's use of the front-loaded curve against
+// the spec table's fighter row (base 30).
+func TestMaxHPForUsesCurve(t *testing.T) {
+	t.Parallel()
+
+	// Fighter base 30: spec table pins L5 = 56, L10 = 67.
+	if got, want := game.MaxHPForTest(protocol.ClassFighter, 5), 56; got != want {
+		t.Errorf("maxHPFor(fighter, 5) = %d, want %d", got, want)
+	}
+
+	if got, want := game.MaxHPForTest(protocol.ClassFighter, 10), 67; got != want {
+		t.Errorf("maxHPFor(fighter, 10) = %d, want %d", got, want)
 	}
 }
 

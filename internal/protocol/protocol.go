@@ -213,7 +213,8 @@ const (
 	QuestKillRewardPerTarget = 20
 )
 
-// Per-class base stats (level 1). Level scaling: MaxHP += HPPerLevel * (level - 1).
+// Per-class base stats (level 1). Level scaling: MaxHP += the front-loaded
+// curve's cumulative bonus (see HPGainBase/HPGainMin below).
 // Weapon damage/range/AoE are content data now (internal/game's item
 // registry, milestone 6b.4) — see itemDamage there; DamagePerLevel is the
 // shared per-level scaling knob both class HP and item damage read.
@@ -229,8 +230,11 @@ const (
 	// close-slot fallback; see internal/game's fistsDef).
 	FistsDamage = 1
 
-	// HPPerLevel is the additional max HP gained per level above 1.
-	HPPerLevel = 4
+	// HPGainBase/HPGainMin shape the front-loaded HP curve (#60, roadmap
+	// XP2): the max-HP gain when advancing FROM level n is
+	// max(HPGainMin, HPGainBase-(n-1)) — 8,7,6,...,1 then +1 forever.
+	HPGainBase = 8
+	HPGainMin  = 1
 	// DamagePerLevel is the additional damage gained per level above 1.
 	DamagePerLevel = 1
 )

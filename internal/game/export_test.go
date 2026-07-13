@@ -452,6 +452,10 @@ func (w *World) DisconnectedAtForTest(token string) (time.Time, bool) {
 // scaling curve directly, independent of a live entity.
 func MaxHPForTest(class string, level int) int { return maxHPFor(class, level) }
 
+// LevelHPBonusForTest exposes the front-loaded HP curve's cumulative bonus so
+// a test can assert it directly, independent of any class base.
+func LevelHPBonusForTest(level int) int { return levelHPBonus(level) }
+
 // ItemDamageForTest exposes a registry item's level-scaled damage by id, so a
 // black-box test can assert exact combat numbers without duplicating the
 // registry (content.go) inline.

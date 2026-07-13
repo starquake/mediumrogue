@@ -19,11 +19,25 @@ func baseMaxHP(class string) int {
 	}
 }
 
-// maxHPFor is the single source of truth for a class's max HP at a given level:
-// the class base plus HPPerLevel for each level above 1. Used for spawn/respawn
-// HP, level-up scaling, and the wire.
+// maxHPFor is the single source of truth for a class's max HP at a given
+// level: the class base plus the front-loaded curve bonus (levelHPBonus).
+// Used for spawn/respawn HP, level-up scaling, and the wire.
 func maxHPFor(class string, level int) int {
-	return baseMaxHP(class) + protocol.HPPerLevel*(level-1)
+	return baseMaxHP(class) + levelHPBonus(level)
+}
+
+// levelHPBonus is the cumulative max HP gained above level 1 under the
+// front-loaded curve: the gain when advancing from level n is
+// max(HPGainMin, HPGainBase-(n-1)). Loop, not closed form — levels are
+// small and the loop reads as the rule.
+func levelHPBonus(level int) int {
+	bonus := 0
+
+	for n := 1; n < level; n++ {
+		bonus += max(protocol.HPGainBase-(n-1), protocol.HPGainMin)
+	}
+
+	return bonus
 }
 
 // validClass reports whether class is one of the three playable classes.
