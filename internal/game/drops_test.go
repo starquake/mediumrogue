@@ -55,7 +55,7 @@ func oneHitKillBubble(t *testing.T, w *game.World, seed int64) (protocol.JoinRes
 	w.SetHexForTest(playerID, center)
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1))
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 
 	step(t, w) // idle turn: forms the bubble around the player and monster
 

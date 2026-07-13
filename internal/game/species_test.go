@@ -45,7 +45,7 @@ func TestHumanKillXPBonus(t *testing.T) {
 	w.SetSpeciesForTest(dwarf, protocol.SpeciesDwarf)
 
 	monsterID := w.PlaceMonsterForTest(center)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword", 1)) // dies to a single hit
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // dies to a single hit
 
 	// One world resolution forms the bubble around the two idle players and the
 	// monster; the kill then lands inside the bubble (kill XP is only earned in a
@@ -107,7 +107,7 @@ func elfBumpDamage(t *testing.T, seed int64) int {
 func TestElfCritMelee(t *testing.T) {
 	t.Parallel()
 
-	swordDamage := game.ItemDamageForTest("iron-sword", 1)
+	swordDamage := game.ItemDamageForTest("iron-sword")
 
 	t.Run("crit", func(t *testing.T) {
 		t.Parallel()
@@ -166,7 +166,7 @@ func elfBowDamage(t *testing.T, seed int64) int {
 func TestElfCritBow(t *testing.T) {
 	t.Parallel()
 
-	bowDamage := game.ItemDamageForTest("shortbow", 1)
+	bowDamage := game.ItemDamageForTest("shortbow")
 
 	t.Run("crit", func(t *testing.T) {
 		t.Parallel()
@@ -256,7 +256,7 @@ func TestDwarfDamageReductionRanged(t *testing.T) {
 		t.Fatalf("dwarf monster %d missing after a bow shot", monsterID)
 	}
 
-	if got, want := 100-monster.HP, game.ItemDamageForTest("shortbow", 1)-protocol.DwarfDamageReduction; got != want {
+	if got, want := 100-monster.HP, game.ItemDamageForTest("shortbow")-protocol.DwarfDamageReduction; got != want {
 		t.Errorf("dwarf ranged hit = %d, want %d (bow reduced by %d)",
 			got, want, protocol.DwarfDamageReduction)
 	}
@@ -330,13 +330,13 @@ func TestElfCritThenDwarfDR(t *testing.T) {
 		t.Fatalf("dwarf monster %d missing after an elf crit bump", monsterID)
 	}
 
-	wantDealt := protocol.ElfCritMultiplier*game.ItemDamageForTest("iron-sword", 1) - protocol.DwarfDamageReduction
+	wantDealt := protocol.ElfCritMultiplier*game.ItemDamageForTest("iron-sword") - protocol.DwarfDamageReduction
 	if got := protocol.MonsterMaxHP - monster.HP; got != wantDealt {
 		t.Errorf("elf-crits-dwarf dealt = %d, want %d (crit THEN DR)", got, wantDealt)
 	}
 
 	// Guard against the reversed order producing the same number by accident.
-	reversed := (game.ItemDamageForTest("iron-sword", 1) - protocol.DwarfDamageReduction) * protocol.ElfCritMultiplier
+	reversed := (game.ItemDamageForTest("iron-sword") - protocol.DwarfDamageReduction) * protocol.ElfCritMultiplier
 	if reversed == wantDealt {
 		t.Fatalf("test cannot distinguish ordering: crit-then-DR (%d) == DR-then-crit (%d)", wantDealt, reversed)
 	}
@@ -385,7 +385,7 @@ func TestNonElfNeverCrits(t *testing.T) {
 					t.Fatalf("monster %d missing (seed %d, %s)", monsterID, seed, sp.name)
 				}
 
-				if got, want := protocol.MonsterMaxHP-monster.HP, game.ItemDamageForTest("iron-sword", 1); got != want {
+				if got, want := protocol.MonsterMaxHP-monster.HP, game.ItemDamageForTest("iron-sword"); got != want {
 					t.Fatalf("%s bump at seed %d = %d, want %d (no crit for non-elf)",
 						sp.name, seed, got, want)
 				}

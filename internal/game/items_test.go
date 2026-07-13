@@ -165,21 +165,15 @@ func TestCanEquipWearability(t *testing.T) {
 	}
 }
 
-// TestItemDamageScalesWithLevel: an item's damage grows by DamagePerLevel per
-// level above 1 — the single source both melee and ranged read.
-func TestItemDamageScalesWithLevel(t *testing.T) {
+// TestItemDamageIsLevelFree: an item's damage is exactly its def's base —
+// levels do not scale damage (#60, roadmap XP3: DamagePerLevel cut).
+func TestItemDamageIsLevelFree(t *testing.T) {
 	t.Parallel()
 
-	const level = 3
+	def := itemDefByID[idIronSword]
 
-	def := itemDefByID[idDagger]
-
-	if got, want := itemDamage(def, level), def.damage+protocol.DamagePerLevel*(level-1); got != want {
-		t.Errorf("itemDamage(dagger, %d) = %d, want %d", level, got, want)
-	}
-
-	if got, floor := itemDamage(def, level), def.damage; got <= floor {
-		t.Errorf("itemDamage(dagger, %d) = %d, want > level-1 base %d", level, got, floor)
+	if got, want := itemDamage(def), def.damage; got != want {
+		t.Errorf("itemDamage = %d, want base %d", got, want)
 	}
 }
 

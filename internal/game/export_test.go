@@ -456,11 +456,11 @@ func MaxHPForTest(class string, level int) int { return maxHPFor(class, level) }
 // a test can assert it directly, independent of any class base.
 func LevelHPBonusForTest(level int) int { return levelHPBonus(level) }
 
-// ItemDamageForTest exposes a registry item's level-scaled damage by id, so a
-// black-box test can assert exact combat numbers without duplicating the
-// registry (content.go) inline.
-func ItemDamageForTest(id string, level int) int {
-	return itemDamage(itemDefByID[id], level)
+// ItemDamageForTest exposes a registry item's damage by id, so a black-box
+// test can assert exact combat numbers without duplicating the registry
+// (content.go) inline. Levels do not scale damage (#60, roadmap XP3).
+func ItemDamageForTest(id string) int {
+	return itemDamage(itemDefByID[id])
 }
 
 // ItemRangeForTest exposes a registry item's rangeHex by id.
@@ -470,15 +470,15 @@ func ItemRangeForTest(id string) int { return itemDefByID[id].rangeHex }
 func ItemAoERadiusForTest(id string) int { return itemDefByID[id].aoeRadius }
 
 // RangedWeaponForTest exposes a class's default ranged item. It returns, in
-// order, the level-scaled damage, range in hexes, AoE radius, and whether the
-// class has a ranged default at all (false for Fighter and any classless
-// entity).
-func RangedWeaponForTest(class string, level int) (int, int, int, bool) {
+// order, the damage, range in hexes, AoE radius, and whether the class has a
+// ranged default at all (false for Fighter and any classless entity). Levels
+// do not scale damage (#60, roadmap XP3).
+func RangedWeaponForTest(class string) (int, int, int, bool) {
 	rangedSlot := weaponSlotsFor(class)[1]
 
 	for _, id := range classDefaultIDs(class) {
 		if def := itemDefByID[id]; def.itemType == rangedSlot {
-			return itemDamage(def, level), def.rangeHex, def.aoeRadius, true
+			return itemDamage(def), def.rangeHex, def.aoeRadius, true
 		}
 	}
 

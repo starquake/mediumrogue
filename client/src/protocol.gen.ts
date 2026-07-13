@@ -418,14 +418,11 @@ export const HPGainBase = 8;
  * Per-class base stats (level 1). Level scaling: MaxHP += the front-loaded
  * curve's cumulative bonus (see HPGainBase/HPGainMin below).
  * Weapon damage/range/AoE are content data now (internal/game's item
- * registry, milestone 6b.4) — see itemDamage there; DamagePerLevel is the
- * shared per-level scaling knob both class HP and item damage read.
+ * registry, milestone 6b.4) — see itemDamage there; levels do not scale
+ * damage (#60, roadmap XP3: no raw-stat scaling — levels give HP and,
+ * later, skill points).
  */
 export const HPGainMin = 1;
-/**
- * DamagePerLevel is the additional damage gained per level above 1.
- */
-export const DamagePerLevel = 1;
 /**
  * HumanXPBonusPercent is the XP gain multiplier for Human species (e.g. +50%).
  */

@@ -1619,14 +1619,14 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		victim := victims[rng.IntN(len(victims))]
 
 		// Melee/bump damage: the attacker's equipped close-slot item (or the
-		// fists/claws fallback — closeDefFor), level-scaled via itemDamage. A
-		// monster's closeDefFor is its KIND's own claws profile (6c —
-		// monsterDef.claws, e.g. a rat's 1 vs a dragon's 9); levelFor(0) == 1
-		// keeps the level-scaling term 0 for monsters. Resolved once here
-		// (mirroring resolveRangedLocked's def := rangedDefFor(e) below) so
-		// the def is looked up exactly once per hit.
+		// fists/claws fallback — closeDefFor) via itemDamage; levels do not
+		// scale damage (#60, roadmap XP3). A monster's closeDefFor is its
+		// KIND's own claws profile (6c — monsterDef.claws, e.g. a rat's 1 vs
+		// a dragon's 9). Resolved once here (mirroring resolveRangedLocked's
+		// def := rangedDefFor(e) below) so the def is looked up exactly once
+		// per hit.
 		weapon := closeDefFor(a.attacker)
-		base := itemDamage(weapon, levelFor(a.attacker.xp))
+		base := itemDamage(weapon)
 		dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
 		damage[victim.id] += dealt
 
@@ -1703,7 +1703,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 			continue
 		}
 
-		dmg := itemDamage(def, levelFor(e.xp))
+		dmg := itemDamage(def)
 
 		if def.aoeRadius == 0 {
 			w.resolveBowLocked(rng, byHex, e, def, target, dmg, damage)
@@ -1749,7 +1749,7 @@ func (w *World) resolveEntityTargetedLocked(
 		return
 	}
 
-	dmg := itemDamage(weapon, levelFor(attacker.xp))
+	dmg := itemDamage(weapon)
 	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
 	damage[victim.id] += dealt
 

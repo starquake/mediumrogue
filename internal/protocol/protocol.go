@@ -216,8 +216,9 @@ const (
 // Per-class base stats (level 1). Level scaling: MaxHP += the front-loaded
 // curve's cumulative bonus (see HPGainBase/HPGainMin below).
 // Weapon damage/range/AoE are content data now (internal/game's item
-// registry, milestone 6b.4) — see itemDamage there; DamagePerLevel is the
-// shared per-level scaling knob both class HP and item damage read.
+// registry, milestone 6b.4) — see itemDamage there; levels do not scale
+// damage (#60, roadmap XP3: no raw-stat scaling — levels give HP and,
+// later, skill points).
 const (
 	// FighterMaxHP is the level-1 max HP for Fighter class (tanky melee).
 	FighterMaxHP = 30
@@ -235,8 +236,6 @@ const (
 	// max(HPGainMin, HPGainBase-(n-1)) — 8,7,6,...,1 then +1 forever.
 	HPGainBase = 8
 	HPGainMin  = 1
-	// DamagePerLevel is the additional damage gained per level above 1.
-	DamagePerLevel = 1
 )
 
 // Per-species passive bonuses (tunable, applied per-species in 6b.3+).

@@ -425,11 +425,12 @@ func rangedDefFor(e *entity) *itemDef {
 	return e.equippedDefIn(slots[1])
 }
 
-// itemDamage is the single source of truth for an item's damage at a given
-// level: the def's base plus DamagePerLevel for each level above 1. Used by
-// both the melee and ranged combat paths.
-func itemDamage(def *itemDef, level int) int {
-	return def.damage + protocol.DamagePerLevel*(level-1)
+// itemDamage is the single source of truth for an item's damage: the def's
+// base — levels do not scale damage (#60, roadmap XP3: no raw-stat scaling;
+// levels give HP and, later, skill points). Used by both the melee and
+// ranged combat paths.
+func itemDamage(def *itemDef) int {
+	return def.damage
 }
 
 // Class-default item ids: shared between the registry (content.go), the
