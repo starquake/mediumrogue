@@ -242,6 +242,68 @@ func TestRangedFiresAllInRange(t *testing.T) {
 	})
 }
 
+// TestDualRangedSharesOneStackVictim: dual single-target ranged weapons (both
+// with aoeRadius 0) share ONE stack-victim pick when fired at the same hex,
+// mirroring the melee stack rule (attackLocked). Attacker holds Shortbow (main)
+// and Pack Bow (off); fires once at a stacked hex with two monsters. Both hits
+// land on the SAME victim — one monster takes the summed damage (shortbow 4 +
+// pack bow 3 = 7), the other is untouched — not split by independent RNG picks.
+func TestDualRangedSharesOneStackVictim(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	attackerHex := protocol.Hex{Q: 0, R: 0}
+	targetHex := protocol.Hex{Q: 3, R: 0} // distance 3 <= both shortbow and pack-bow range (4)
+
+	attackerID, token := w.PlaceEntityForTest(attackerHex)
+	w.SetClassForTest(attackerID, "") // clear defaults: both hands start empty
+
+	// Equip Shortbow (main) and Pack Bow (off).
+	shortbowID := w.GrantItemForTest(attackerID, "shortbow")
+	if err := w.SubmitIntent(equipIntent(attackerID, token, shortbowID)); err != nil {
+		t.Fatalf("SubmitIntent(equip shortbow): %v", err)
+	}
+
+	packBowID := w.GrantItemForTest(attackerID, "pack-bow")
+	if err := w.SubmitIntent(equipIntent(attackerID, token, packBowID)); err != nil {
+		t.Fatalf("SubmitIntent(equip pack-bow): %v", err)
+	}
+
+	// Place two monsters stacked on the target hex.
+	monsterA := w.PlaceMonsterForTest(targetHex)
+	monsterB := w.PlaceMonsterForTest(targetHex)
+
+	if err := w.SubmitIntent(attackIntent(attackerID, token, targetHex)); err != nil {
+		t.Fatalf("SubmitIntent(attack): %v", err)
+	}
+
+	w.ResolveCombatOnlyForTest()
+
+	snap := w.Snapshot()
+
+	shortbowDamage := game.ItemDamageForTest("shortbow")
+	packBowDamage := game.ItemDamageForTest("pack-bow")
+	totalDamage := shortbowDamage + packBowDamage
+
+	hpA := entityHP(t, snap, monsterA)
+	hpB := entityHP(t, snap, monsterB)
+
+	// One monster should have taken full damage, the other untouched.
+	victimHP := protocol.MonsterMaxHP - totalDamage
+	untouchedHP := protocol.MonsterMaxHP
+
+	// Both single-target hits land on the SAME victim (shared stack pick).
+	aIsVictim := hpA == victimHP && hpB == untouchedHP
+
+	bIsVictim := hpA == untouchedHP && hpB == victimHP
+	if !aIsVictim && !bIsVictim {
+		t.Errorf("monster HPs = %d, %d; want one at %d (victim) and one at %d (untouched)",
+			hpA, hpB, victimHP, untouchedHP)
+	}
+}
+
 // TestRangedIntentIsLockIn: inside a bubble, an attack intent counts as the
 // player's lock-in — the frozen bubble stays put until the submission, then
 // resolves immediately. The rogue's bow lands on the monster and the monster

@@ -124,6 +124,7 @@ func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 // draw overall — the first is the attack phase's victim pick
 // (rng.IntN(len(victims)), always 1 candidate here, but IntN still advances
 // the generator).
+// re-derived: dual-wield per-hit resolution
 const (
 	saberCritSeed = 1 // Duelist's Saber procs (double damage) at this seed
 	saberMissSeed = 0 // Duelist's Saber does not proc (base damage) at this seed
