@@ -236,15 +236,15 @@ Headband of Learning: *when* earning XP, *then* ×1.05).
 
 More examples of the range of what cards can express:
 
-> **Longspear** (fighter) — damage 4, range 1 hex (attack without being
-> adjacent). No rules. Intent: reach as a trade-off; poke from behind a
-> dwarf friend.
+> **Longspear** (weapon — melee) — damage 4, range 1 hex (attack without
+> being adjacent). No rules. Intent: reach as a trade-off; poke from behind
+> a dwarf friend.
 
-> **Hunting Bow of the Pack** (rogue, ranged) — damage 3, range 4.
+> **Hunting Bow of the Pack** (weapon — ranged) — damage 3, range 4.
 > Rule: *when* dealing damage, *if* at least one ally shares the bubble,
 > *then* +2 damage. Intent: a party-play bow — weaker solo.
 
-> **Ember Staff** (mage, ranged) — damage 3, range 4, area radius 1.
+> **Ember Staff** (weapon — magic) — damage 3, range 4, area radius 1.
 > Rule: *when* dealing damage, *if* the target is adjacent to you, *then*
 > double damage. Intent: a risky brawler-mage staff; rewards standing
 > dangerously close.
@@ -256,15 +256,16 @@ More examples of the range of what cards can express:
 Classes are the most protected part of the design. The three launch classes
 and their identities are **decided** (plan §0):
 
-| | Weapons | Damage | Toughness | Role |
+| | Starting kit | Damage | Toughness | Role |
 |---|---|---|---|---|
-| **Fighter** | melee only | medium | tanky | holds the front |
-| **Rogue** | dagger + bow, auto-picked by distance | high single-target | squishy | flexible mid-line |
-| **Mage** | magic only (area hits) | area damage | squishy | back line vs. groups |
+| **Fighter** | Iron Sword | medium | tanky | holds the front |
+| **Rogue** | Dagger + Shortbow | high single-target | squishy | flexible mid-line |
+| **Mage** | Oak Staff + Ember Focus | area damage | squishy | back line vs. groups |
 
-In rule terms, a class is: **allowed weapon lanes + base max HP + default
-starting weapons + (later) class ability rules**. Per-level growth (+HP,
-+damage) currently applies evenly to everyone.
+In rule terms, a class is: **base max HP + a starting kit + (future) its
+Class skill tree (#61/Q10) — gear is NOT class-gated anymore (#56): anyone
+can equip anything, and class identity comes from skills, not gear locks.**
+Per-level growth (+HP, +damage) currently applies evenly to everyone.
 
 What you can design here:
 
@@ -358,9 +359,9 @@ registry, which every gear card and species passive feeds today.
 ```
 ### <Name>
 Type:       gear / consumable / species / class tweak / mechanic
-Item type:  (gear: one of the 12 item types from §4 — the slot follows;
-             else: n/a)
-Wearable by: (gear: class list or "any" — see §4; else: n/a)
+Item type:  weapon (+ tags: melee / ranged / magic; two-handed: yes/no)
+            or: helmet / chest / gloves / boots / ring / amulet / consumable
+            (the slot follows from the type; weapons go to a hand)
 Base stats: (weapons: damage / range / area; consumables: heal N;
              armor/jewelry, species & mechanics: usually n/a)
 Rules:
