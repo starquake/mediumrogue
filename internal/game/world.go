@@ -2499,23 +2499,26 @@ func nearestPlayer(from protocol.Hex, players []*entity) *entity {
 const spawnPointStream uint64 = 0x50A5
 
 // spawnHexLocked picks a hex for a player join or respawn: a random
-// walkable, capacity-available hex in the origin's forced clearing
-// (worldgen.go's clearingRadius) that is not occupied by, or within
-// CombatRadius of, a living monster (tooCloseToMonsterLocked) — so a spawn
-// can never land a player ON a monster or form an instant combat bubble the
-// moment they appear (both observed live, #36). Random, not the old
-// spiral-nearest-to-origin search: players (and respawns) no longer pile
-// deterministically onto the same hex.
+// walkable, capacity-available hex anywhere in the sanctuary
+// (protocol.SanctuaryRadius of the origin) that is not occupied by, or
+// within CombatRadius of, a living monster (tooCloseToMonsterLocked) — so a
+// spawn can never land a player ON a monster or form an instant combat
+// bubble the moment they appear (both observed live, #36). Random, not the
+// old spiral-nearest-to-origin search: players (and respawns) no longer pile
+// deterministically onto the same hex. Per Q9, the sanctuary is every join's
+// and respawn's shared "home" until beds land as a per-player anchor —
+// scattering across the whole sanctuary rather than just the small origin
+// clearing is intentional.
 //
 // Four tiers, each engaged only if the one above yields nothing, so a small
 // or crowded map never fails a join outright — but "not literally on top of a
 // monster" is relaxed dead last, since that specific case can silently stall
 // combat forever (occupiedByMonsterLocked's doc comment), not just risk an
 // instant bubble:
-//  1. clearing hexes clear of monsters entirely (the common case)
-//  2. clearing hexes not occupied by one, ignoring the CombatRadius
-//     preference (a monster-dense clearing may leave nothing outside it)
-//  3. clearing hexes at all, ignoring both monster checks (the clearing
+//  1. sanctuary hexes clear of monsters entirely (the common case)
+//  2. sanctuary hexes not occupied by one, ignoring the CombatRadius
+//     preference (a monster-dense sanctuary may leave nothing outside it)
+//  3. sanctuary hexes at all, ignoring both monster checks (the sanctuary
 //     itself is saturated — every hex in it has a monster standing on it)
 //  4. spawnHexSpiralLocked over the WHOLE reachable region, ignoring every
 //     guard — the pre-#36 search, kept verbatim as the last resort so "a
@@ -2525,33 +2528,33 @@ const spawnPointStream uint64 = 0x50A5
 func (w *World) spawnHexLocked() (protocol.Hex, error) {
 	origin := protocol.Hex{Q: 0, R: 0}
 
-	var clearingSafe, clearingUnoccupied, clearingAny []protocol.Hex
+	var sanctuarySafe, sanctuaryUnoccupied, sanctuaryAny []protocol.Hex
 
 	for h := range w.spawnable {
-		if HexDistance(origin, h) > clearingRadius || w.occupancyLocked(h) >= protocol.StackCap {
+		if HexDistance(origin, h) > protocol.SanctuaryRadius || w.occupancyLocked(h) >= protocol.StackCap {
 			continue
 		}
 
-		clearingAny = append(clearingAny, h)
+		sanctuaryAny = append(sanctuaryAny, h)
 
 		if w.occupiedByMonsterLocked(h) {
 			continue
 		}
 
-		clearingUnoccupied = append(clearingUnoccupied, h)
+		sanctuaryUnoccupied = append(sanctuaryUnoccupied, h)
 
 		if !w.tooCloseToMonsterLocked(h) {
-			clearingSafe = append(clearingSafe, h)
+			sanctuarySafe = append(sanctuarySafe, h)
 		}
 	}
 
-	candidates := clearingSafe
+	candidates := sanctuarySafe
 	if len(candidates) == 0 {
-		candidates = clearingUnoccupied
+		candidates = sanctuaryUnoccupied
 	}
 
 	if len(candidates) == 0 {
-		candidates = clearingAny
+		candidates = sanctuaryAny
 	}
 
 	if len(candidates) == 0 {

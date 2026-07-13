@@ -275,9 +275,9 @@ func spawnRingCandidates(origin protocol.Hex, maxRing int) []protocol.Hex {
 // coin flip against the deadline (see dropFarmMonsterCount's doc comment). A
 // player that dies mid-farm just respawns at full HP (resolveDeathsLocked)
 // and the loop keeps going; nothing here depends on the player surviving any
-// one fight. Since #36, spawnHexLocked picks randomly among the origin
-// clearing rather than always the origin itself (and never lands on top of a
-// living monster when avoidable, though a heavily monster-saturated clearing
+// one fight. Since #36, spawnHexLocked picks randomly across the sanctuary
+// rather than always the origin itself (and never lands on top of a
+// living monster when avoidable, though a heavily monster-saturated area
 // like this ring can still force that as a last resort) — occasionally
 // co-locating the player with the very monster that goes on to drop the
 // loot, so the player can already be standing on the drop's hex the instant
@@ -286,7 +286,7 @@ func spawnRingCandidates(origin protocol.Hex, maxRing int) []protocol.Hex {
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestDropPickupLoop(t *testing.T) {
-	origin := protocol.Hex{Q: 0, R: 0} // the ring is seeded around the origin clearing
+	origin := protocol.Hex{Q: 0, R: 0} // the ring is seeded around the origin spawn area
 
 	ts := startGearServerWithMonsterRing(t, 15*time.Millisecond, dropFarmMonsterCount, spawnRingCandidates(origin, 4))
 

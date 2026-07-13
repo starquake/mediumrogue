@@ -113,8 +113,11 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   toolbox-progression decision says these go much flatter).
 - **Death**: XP falls to the start of the current level (levels never lost),
   respawn at full HP with the **same identity and all gear** (gear always
-  survives death — decided). Respawn location randomized with guards; the
-  camera **cuts** to the respawn instead of panning.
+  survives death — decided). Respawn location scattered across the
+  **sanctuary** (any walkable, capacity-available hex within
+  `SanctuaryRadius`, guarded against landing on/adjacent to a living
+  monster — same `spawnHexLocked` tiers as a fresh join, Q9); the camera
+  **cuts** to the respawn instead of panning.
 - **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
 - **HUD stats line** (item 9, playtest batch 2): `Lv L · xp/XPPerLevel XP ·
@@ -465,21 +468,19 @@ point; First Aid & Make Camp seed the Survival/Adventure trees), the
 **decoupled `evasion%`/`crit%` combat chances** (#69 — crit is pure content
 via the elf-crit pattern; evasion needs the new pre-damage `evasion-check`
 event; AoE always hits), the **additive percentage fold** (#61 principle
-14), **sanctuary-scatter first spawn** then bed spawns, downed state &
-revive, further recovery layers (rests, the sanctuary **trade hub** — the
-6c sanctuary zone is only the monster-free ground, not the hub itself;
-healing potions + the backpack-cap layer now ship with the inventory
-system), thrown-weapon content (the fighter's thrown slot ships empty) &
-wand↔staff interactions, item destruction/durability, backpack upgrades,
-trading, continuous spawning with density-tracks-players, monster-kind
-passives (the `rules` seam on `monsterDef` ships empty), ring UI
-indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
-(model decided — see design-roadmap Q9: sanctuary-scatter first spawn, then
-last-visited bed with Home fallback; reconnect/respawn still uses a guarded
-random spawn today — milestone 10a persisted characters and the world, but
-the bed slice stays future), admin
-console & analytics log, SQLite-for-state (the milestone 10a JSON snapshot
-is the decided interim store).
+14), downed state & revive, further recovery layers (rests, the sanctuary
+**trade hub** — the 6c sanctuary zone is only the monster-free ground, not
+the hub itself; healing potions + the backpack-cap layer now ship with the
+inventory system), thrown-weapon content (the fighter's thrown slot ships
+empty) & wand↔staff interactions, item destruction/durability, backpack
+upgrades, trading, continuous spawning with density-tracks-players,
+monster-kind passives (the `rules` seam on `monsterDef` ships empty), ring
+UI indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
+(model decided — see design-roadmap Q9: sanctuary-scatter first spawn and
+respawn shipped; the future step is last-visited bed with Home fallback —
+milestone 10a persisted characters and the world, but the bed slice stays
+future), admin console & analytics log, SQLite-for-state (the milestone 10a
+JSON snapshot is the decided interim store).
 
 ## Deployment
 

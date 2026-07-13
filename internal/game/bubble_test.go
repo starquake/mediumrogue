@@ -245,6 +245,8 @@ func TestOutOfRangeStaysWorldDomain(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
+	pinToOrigin(w, &me)
+
 	// (0,9) is dist 9 from the origin spawn; one chase step leaves it at 8 > 6.
 	monsterID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: 0, R: 9}))
 
@@ -276,6 +278,8 @@ func TestBubblesMergeWhenClustersOverlap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
+
+	pinToOrigin(w, &me)
 
 	m1ID := w.PlaceMonsterForTest(walkableNeighbor(t, w, me.Hex))
 
@@ -321,6 +325,8 @@ func TestMonstersDoNotExtendBubbleReach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
+
+	pinToOrigin(w, &me)
 
 	// Keep the anchor well-fed so a chip hit never respawns (and relocates) it.
 	w.SetHPForTest(me.EntityID, 100000)
@@ -391,6 +397,8 @@ func TestPlayersExtendBubbleReach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
+
+	pinToOrigin(w, &p1)
 
 	w.SetHPForTest(p1.EntityID, 100000)
 
@@ -475,6 +483,8 @@ func TestBubbleMemberEscapesWhenLeavingRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
+
+	pinToOrigin(w, &me)
 
 	spots := walkableNeighborsN(t, w, me.Hex, 2)
 	monsterID := w.PlaceMonsterForTest(spots[0])

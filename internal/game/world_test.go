@@ -35,6 +35,18 @@ func newWorld() *game.World {
 	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 12, hub.New())
 }
 
+// pinToOrigin moves a freshly joined player to the origin hex and syncs the
+// local JoinResponse to match. spawnHexLocked scatters joins across the whole
+// sanctuary (re-derived: sanctuary scatter (fast-lane T5, Q9)), so a join is
+// no longer guaranteed to land at {0,0} — but many tests build their board
+// geometry against real generated terrain at fixed map coordinates and need
+// the player exactly at the origin.
+func pinToOrigin(w *game.World, resp *protocol.JoinResponse) {
+	origin := protocol.Hex{Q: 0, R: 0}
+	w.SetHexForTest(resp.EntityID, origin)
+	resp.Hex = origin
+}
+
 // step drives one turn without running the ticker goroutine.
 func step(t *testing.T, w *game.World) protocol.TurnEvent {
 	t.Helper()

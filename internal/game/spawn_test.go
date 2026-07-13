@@ -31,9 +31,10 @@ func hexesWithinDistance(origin protocol.Hex, maxDist int) []protocol.Hex {
 
 // TestSpawnHexLockedNeverOccupiesALivingMonster (#36a): a player join must
 // never land on a hex a living monster already occupies, even when the
-// origin clearing is otherwise crowded with monsters — only one clearing hex
-// (the origin itself) is left unoccupied, and every join must land there,
-// never on one of the monster hexes.
+// area around the origin is crowded with monsters — every hex within the old
+// radius-2 clearing except the origin itself holds one, and every join must
+// avoid all of them (landing at the origin or on the sanctuary's outer,
+// monster-free hexes).
 func TestSpawnHexLockedNeverOccupiesALivingMonster(t *testing.T) {
 	t.Parallel()
 
@@ -65,18 +66,18 @@ func TestSpawnHexLockedNeverOccupiesALivingMonster(t *testing.T) {
 }
 
 // TestSpawnHexLockedPrefersOutsideMonsterCombatRadiusWhenPossible (#36a): a
-// monster placed just outside the origin clearing leaves PART of the
-// clearing within its CombatRadius and part outside it — every join must
-// land on the safe side when a safe hex exists at all.
+// monster near the sanctuary's edge leaves PART of the spawn area within its
+// CombatRadius and part outside it — every join must land on the safe side
+// when a safe hex exists at all.
 func TestSpawnHexLockedPrefersOutsideMonsterCombatRadiusWhenPossible(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
 
-	// Five hexes out along one axis: outside the radius-2 clearing itself,
-	// but close enough that the NEAR side of the clearing (distance <=5+2=7...
-	// concretely, hexes on the monster's side) falls within CombatRadius (6)
-	// while the FAR side (opposite the monster) does not.
+	// Five hexes out along one axis, at the sanctuary's boundary: the NEAR
+	// side of the spawn area (hexes on the monster's side) falls within
+	// CombatRadius (6) while the FAR side (opposite the monster, e.g.
+	// distance 7+ hexes like {-2,0}) does not.
 	monsterHex := protocol.Hex{Q: 5, R: 0}
 	if !isWalkable(w, monsterHex) {
 		t.Skip("fixture hex is not walkable on this map")
@@ -97,18 +98,21 @@ func TestSpawnHexLockedPrefersOutsideMonsterCombatRadiusWhenPossible(t *testing.
 	}
 }
 
-// TestSpawnHexLockedFallsBackWhenClearingFull (#36a): if every hex in the
-// origin clearing is at StackCap, spawnHexLocked must fall back beyond the
-// clearing (spawnHexSpiralLocked) rather than erroring — a join must still
-// succeed.
-func TestSpawnHexLockedFallsBackWhenClearingFull(t *testing.T) {
+// TestSpawnHexLockedFallsBackWhenSanctuaryFull (#36a): if every hex in the
+// sanctuary is at StackCap, spawnHexLocked must fall back beyond it
+// (spawnHexSpiralLocked) rather than erroring — a join must still succeed.
+// Saturates the full protocol.SanctuaryRadius (re-derived: sanctuary scatter
+// (fast-lane T5, Q9)) — capping only the old radius-2 clearing would leave
+// unoccupied tier candidates at distance 3-5 and never reach the spiral
+// fallback this test exists to exercise.
+func TestSpawnHexLockedFallsBackWhenSanctuaryFull(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
 
 	origin := protocol.Hex{Q: 0, R: 0}
 
-	for _, h := range hexesWithinDistance(origin, 2) {
+	for _, h := range hexesWithinDistance(origin, protocol.SanctuaryRadius) {
 		if !isWalkable(w, h) {
 			continue
 		}
@@ -120,11 +124,11 @@ func TestSpawnHexLockedFallsBackWhenClearingFull(t *testing.T) {
 
 	resp, err := w.Join("", "overflow", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
-		t.Fatalf("join with a full clearing: %v, want a successful fallback spawn", err)
+		t.Fatalf("join with a full sanctuary: %v, want a successful fallback spawn", err)
 	}
 
-	if got, want := game.HexDistance(resp.Hex, origin), 2; got <= want {
-		t.Errorf("fallback spawn landed at %v (distance %d from origin), want it to have escaped the full clearing",
+	if got, want := game.HexDistance(resp.Hex, origin), protocol.SanctuaryRadius; got <= want {
+		t.Errorf("fallback spawn landed at %v (distance %d from origin), want it to have escaped the full sanctuary",
 			resp.Hex, got)
 	}
 }
@@ -150,6 +154,72 @@ func TestSpawnHexLockedRandomDistribution(t *testing.T) {
 
 	if got := b.Hex; got == a.Hex {
 		t.Errorf("two joins on a fresh world both landed at %v, want the random clearing pick to differ for seed 42", got)
+	}
+}
+
+// TestSpawnScattersAcrossSanctuary (Q9, fast-lane #36 follow-up): a
+// default-gen world with no monsters near the origin must (a) keep every
+// spawn within protocol.SanctuaryRadius of the origin, and (b) actually use
+// the widened area — across a dozen joins on a fixed seed, at least one must
+// land beyond the old clearingRadius (2). Determinism: replaying the same
+// seed on a fresh world reproduces the exact same spawn sequence.
+func TestSpawnScattersAcrossSanctuary(t *testing.T) {
+	t.Parallel()
+
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	const joinCount = 12
+
+	spawnSequence := func(seed int64) []protocol.Hex {
+		t.Helper()
+
+		w := newWorld()
+		w.SetSeedForTest(seed)
+
+		hexes := make([]protocol.Hex, 0, joinCount)
+
+		for i := range joinCount {
+			resp, err := w.Join("", fmt.Sprintf("p%d", i), protocol.ClassFighter, protocol.SpeciesHuman)
+			if err != nil {
+				t.Fatalf("join %d: %v", i, err)
+			}
+
+			hexes = append(hexes, resp.Hex)
+		}
+
+		return hexes
+	}
+
+	const seed = 7
+
+	first := spawnSequence(seed)
+
+	sawBeyondClearing := false
+
+	for i, h := range first {
+		if got, want := game.HexDistance(origin, h), protocol.SanctuaryRadius; got > want {
+			t.Errorf("spawn %d at distance %d, want <= %d (SanctuaryRadius)", i, got, want)
+		}
+
+		if game.HexDistance(origin, h) > 2 {
+			sawBeyondClearing = true
+		}
+	}
+
+	if !sawBeyondClearing {
+		t.Error("no spawn landed beyond the old clearingRadius (2) — scatter not widened to the sanctuary")
+	}
+
+	second := spawnSequence(seed)
+
+	if got, want := len(second), len(first); got != want {
+		t.Fatalf("replay produced %d spawns, want %d", got, want)
+	}
+
+	for i, h := range second {
+		if got, want := h, first[i]; got != want {
+			t.Errorf("replay spawn %d = %v, want %v (same seed must reproduce the same sequence)", i, got, want)
+		}
 	}
 }
 

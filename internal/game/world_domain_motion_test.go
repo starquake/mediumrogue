@@ -68,6 +68,11 @@ func TestWorldMonstersKeepMovingWhileAllPlayersAreBubbled(t *testing.T) {
 	w := newPartyWorld(t)
 	alice := joinNamed(t, w, "alice")
 
+	// A scattered spawn near the map edge can force the far monster's
+	// approach to detour around generated terrain instead of closing
+	// distance in a single step below.
+	pinToOrigin(w, &alice)
+
 	// A monster adjacent to alice forms her bubble.
 	nearHex := walkableNeighborsN(t, w, alice.Hex, 1)[0]
 	w.PlaceMonsterForTest(nearHex)

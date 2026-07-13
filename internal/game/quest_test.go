@@ -484,6 +484,15 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 	w := newPartyWorld(t)
 	alice := joinNamed(t, w, "alice")
 	bob := joinNamed(t, w, "bob")
+
+	// Pin bob onto alice's hex: spawnHexLocked scatters across the whole
+	// sanctuary (re-derived: sanctuary scatter (fast-lane T5, Q9)), so two
+	// independent joins can land far enough apart that bob never shares
+	// alice's combat bubble — this test is about party-wide XP sharing
+	// within one bubble, not spawn placement.
+	w.SetHexForTest(bob.EntityID, alice.Hex)
+	bob.Hex = alice.Hex
+
 	mustInviteAccept(t, w, alice, bob, "bob")
 
 	qID, targetN := killQuest(t, w, 2)

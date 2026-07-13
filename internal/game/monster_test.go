@@ -359,6 +359,11 @@ func TestMonsterWithinAggroRangeHunts(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
+	// A scattered spawn near the map edge can force the monster's single
+	// approach step from exactly MonsterAggroRadius to detour around
+	// generated terrain instead of strictly closing distance.
+	pinToOrigin(w, &me)
+
 	atRadius := walkableHexAtDistance(t, w, me.Hex, protocol.MonsterAggroRadius, protocol.MonsterAggroRadius)
 	monsterID := w.PlaceMonsterForTest(atRadius)
 
