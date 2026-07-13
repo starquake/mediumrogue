@@ -1,8 +1,30 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-12 (later session) — **deployment is live and the
-inventory system is merged**; the project's next frontier is a **design
-backlog**, not code in flight.*
+*Last updated: 2026-07-13 — **the design backlog is decided**; the next
+frontier is green-lighting build slices.*
+
+*__Design sprint (2026-07-12 → 13) — the ARPG pivot & eleven decisions.__
+The combat-resolution talk had drifted TTRPG (d20, baseline hit chance,
+accuracy-vs-Armor-Rating); decision: **fully ARPG** — decoupled `evasion%`
+(defender) / `crit%` (attacker) folded by the pipeline, never a coupled
+roll (#69, `docs/combat-model-notes.md`). Then every open design question
+was worked through and recorded — `docs/design-roadmap.md` Q1–Q11 are all
+✅/⏸: AoE always hits (evasion is for targeted attacks); no monster
+levels/party-scaling; percentages **add** within an event fold (#61
+principle 14, engine-endorsed — the additive-fold change is a small pending
+code slice); first spawn = sanctuary scatter, bed thereafter; the 3-tree
+skill model (Class/Adventure/Survival) governs — plan §0 amended; level-up
+= one bankable skill point; hybrids via capstone-gated subclasses
+(principle-5 scoping awaits NGB's nod — Q11). Realtime was asked and
+answered: **WeGo stays** (`docs/game-identity.md`, the new one-page
+identity anchor). A three-way contradiction sweep (docs vs code vs issues,
+~95 claims) fixed the factual drift (same-origin check was claimed but
+never built — now honestly marked open; README said 5s turns; stale STATUS
+placeholders struck). Every decision has an AI-attributed comment on its
+ticket and the affected issue descriptions were synced. **It all rides
+draft PR #71** — review + `ready to merge` is the gate to landing the
+record. A standing rule landed in CLAUDE.md: TTRPG-idiom proposals never
+land as-is (translate to ARPG or push back, always explaining why).*
 
 *__Deployment (plan §10 launch infra) — LIVE.__ Three environments run from one
 image on the VPS (`zoot`, behind SWAG) via a GitHub Actions pipeline
@@ -39,14 +61,17 @@ feedback is posted on every thread. The build-order dependency map is
 **`docs/design-roadmap.md`** — start there when picking up the design work.
 Separately, three cleanup issues remain: #27 (flaky reconnect e2e), #31, #36.*
 
-*__Next (nothing is on fire).__ Options, rough priority: (a) start the first
-design slice — the gear type-properties refactor (#55/#56) is the keystone —
-via spec -> plan -> review; (b) land the cheap wins that don't need the whole
-arc (XP curve + front-loaded HP are formulas; cut `DamagePerLevel`; stacking
-throwables); (c) cut a production release (tag `v0.1.0`) to put the inventory
-system in front of the group; (d) plan §8/§11-12 tooling (admin console,
-analytics). Small open PR **#63** records the AI-comment attribution convention
-— awaiting the `ready to merge` label.*
+*__Next (nothing is on fire).__ (0) review + land **draft PR #71** (the whole
+design record). Then, rough priority per `docs/design-recommendations.md` §3:
+(a) fast-lane wins — XP curve + front-loaded HP (formulas), cut
+`DamagePerLevel`, `crit%` weapons (pure content today — elf-crit pattern),
+the Q8 additive-fold change, sanctuary-scatter spawn (small `spawnHexLocked`
+tweak); (b) the gear keystone (#55/#56 → G1/G2/G3) via spec -> plan ->
+review; (c) the `evasion-check` engine slice (DF2 — the one new event; a
+0-damage dodge can't be a plain card, landed hits floor at 1); (d) cut a
+production release (tag `v0.1.0`) to put the inventory system in front of
+the group. Waiting on NGB: the Q11 principle-5 scoping nod; reactions to
+Q6/Q7.*
 
 *Last updated: 2026-07-12, after the **inventory system** (slots, backpack,
 drop & pickup) on branch `feat/inventory-slots` (PR open, not yet merged;

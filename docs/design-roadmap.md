@@ -118,8 +118,8 @@ mixing TTRPG and ARPG?" / "What if we moved to TTRPG?").
 active skills (SK5) are all one system deep — build the action economy once and
 they all become reachable. It's the highest-leverage unlock in this cluster.
 
-Two combat-resolution questions raised on #69 (magic / AoE) are captured as
-**Q6** and **Q7** below.
+The two combat-resolution questions raised on #69 (magic / AoE) are decided —
+see **Q6** and **Q7** below.
 
 ## Open design questions (decide the *how*, not *whether*)
 

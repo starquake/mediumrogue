@@ -458,8 +458,14 @@ values are unchanged (20 / 3 / 30%).*
 
 ## 5. Decided but not yet built
 
-Recorded in `roguelike-mp-plan.md` §0/§8/§9 and issue #36: flat-curve
-retune, skills as level-up perks (First Aid, Make Camp), downed state &
+Recorded in `roguelike-mp-plan.md` §0/§8/§9, `design-roadmap.md` (Q1–Q11
+all decided 2026-07-13), and issue #36: flat-curve retune, the **3-tree
+skill system** (Class/Adventure/Survival; level-up = one bankable skill
+point; First Aid & Make Camp seed the Survival/Adventure trees), the
+**decoupled `evasion%`/`crit%` combat chances** (#69 — crit is pure content
+via the elf-crit pattern; evasion needs the new pre-damage `evasion-check`
+event; AoE always hits), the **additive percentage fold** (#61 principle
+14), **sanctuary-scatter first spawn** then bed spawns, downed state &
 revive, further recovery layers (rests, the sanctuary **trade hub** — the
 6c sanctuary zone is only the monster-free ground, not the hub itself;
 healing potions + the backpack-cap layer now ship with the inventory
@@ -468,8 +474,10 @@ wand↔staff interactions, item destruction/durability, backpack upgrades,
 trading, continuous spawning with density-tracks-players, monster-kind
 passives (the `rules` seam on `monsterDef` ships empty), ring UI
 indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
-(reconnect/respawn still uses a guarded random spawn, not a bed — milestone
-10a persisted characters and the world, but bed spawns stay future), admin
+(model decided — see design-roadmap Q9: sanctuary-scatter first spawn, then
+last-visited bed with Home fallback; reconnect/respawn still uses a guarded
+random spawn today — milestone 10a persisted characters and the world, but
+the bed slice stays future), admin
 console & analytics log, SQLite-for-state (the milestone 10a JSON snapshot
 is the decided interim store).
 

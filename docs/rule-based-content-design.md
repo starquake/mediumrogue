@@ -93,7 +93,7 @@ These are the moments the engine will expose. Every rule must name one:
 | **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
 | **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards; no card uses this yet — future sneaky/loud gear |
 | **crit-check** | not yet | …an attacker's chance to land a **critical hit** is computed | `crit%` weapon stats, elf precision (today a `deal-damage` chance card — see note) |
-| **evasion-check** | not yet | …a defender's chance to **avoid an incoming hit** is computed | `evasion%` light armour, "hard to hit" species — an evaded hit deals 0 (see note) |
+| **evasion-check** | not yet | …a defender's chance to **avoid an incoming *targeted* hit** is computed (AoE is undodgeable — you dodge attacks, not explosions; #69) | `evasion%` light armour, "hard to hit" species — an evaded hit deals 0 (see note) |
 | **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
 
 `crit-check`, `evasion-check`, and `on-kill` are documented here so designs

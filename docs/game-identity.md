@@ -80,8 +80,9 @@ above, so it's a deliberate design decision, not a routine feature.
 
 - **Persistent per-player return** — reconnect drops you back *as your
   character, where you left off* (milestone 10a laid the foundation:
-  character-link token, disconnect archive, snapshot). Confirm whether the
-  *bed / home-spawn* piece still needs building — it's what makes the
+  character-link token, disconnect archive, snapshot). The *bed / home-spawn*
+  model is decided (roadmap Q9: sanctuary-scatter first spawn, then
+  last-visited bed) but the bed slice is not yet built — it's what makes the
   "persistent world" promise feel real per player.
 - **Snappy solo/async tempo** — a lone player's combat should resolve as fast
   as they click (the bubble's action-gating mostly delivers this); it keeps
