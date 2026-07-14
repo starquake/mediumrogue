@@ -74,7 +74,7 @@ Not every unanswered comment needs one. Reply when the comment is one of:
 - **A design proposal or technical claim** where engine-grounded feedback is
   useful — e.g. a proposal in TTRPG idiom that should be translated to the
   ARPG equivalent or pushed back on (see `docs/game-identity.md`,
-  `docs/combat-model-notes.md`, and the CLAUDE.md "TTRPG ideas gate"). You
+  `docs/design.md`, and the CLAUDE.md "TTRPG ideas gate"). You
   give the engineering read; you do **not** make the gameplay decision.
 
 Do **not** reply to: acknowledgements ("thanks", "👍", "sounds good"), comments

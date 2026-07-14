@@ -4,7 +4,7 @@
 (the "rule-based" or modifier-pipeline design), and what that means for
 someone who wants to invent gear, classes, species, and combat mechanics
 without writing code. Game-design background lives in
-`roguelike-mp-plan.md`; the engineering note behind this is the
+`design.md`; the engineering note behind this is the
 `combat-modifier-pipeline` decision (plan §8, milestone 6b).*
 
 > **Status:** the pipeline is **live** (milestone 6b.4). Events implemented:

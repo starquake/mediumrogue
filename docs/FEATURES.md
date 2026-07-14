@@ -9,8 +9,8 @@ replace class-shaped weapon types, hand slots replace per-class weapon
 slots, class equip gates are dropped, weapons are rebalanced, the game's
 first two-handed weapon ships, and combat resolves every fitting held
 weapon as its own hit).
-Design rationale lives in `roguelike-mp-plan.md`; the content-design
-vocabulary in `rule-based-content-design.md`.
+Design rationale lives in `design.md`; the content-design
+vocabulary in `content-authoring.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*
 
 ---
@@ -572,7 +572,7 @@ values are unchanged (20 / 3 / 30%).*
 
 ## 5. Decided but not yet built
 
-Recorded in `roguelike-mp-plan.md` §0/§8/§9, `design-decisions.md` (Q1–Q11
+Recorded in `design.md` §0/§8/§9, `design-decisions.md` (Q1–Q11
 all decided 2026-07-13), and issue #36: the **3-tree
 skill system** (Class/Adventure/Survival; level-up = one bankable skill
 point; First Aid & Make Camp seed the Survival/Adventure trees), the

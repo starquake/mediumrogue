@@ -8,7 +8,7 @@ issues don't spell it out.
 Retired the old `design-roadmap.md` decision-menu on **2026-07-14** once every
 row was decided; GitHub is the single tracker now. Combat identity guardrails
 live in [`game-identity.md`](game-identity.md); the ARPG-vs-TTRPG reasoning in
-[`combat-model-notes.md`](combat-model-notes.md).
+[`design.md`](design.md).
 
 ## Where the work lives now (GitHub)
 

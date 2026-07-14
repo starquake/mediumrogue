@@ -3,7 +3,7 @@
 A multiplayer roguelike for a ~15-friend group: shared hex world, simultaneous
 4-second turns (WeGo), local combat time bubbles, browser client. The full
 design — every decided rule and open question — lives in
-**`docs/roguelike-mp-plan.md`**; read it before making design-level choices.
+**`docs/design.md`**; read it before making design-level choices.
 
 **Resuming work?** `docs/FEATURES.md` is the source of truth for what's built;
 `docs/design-decisions.md` records the design direction, the cuts, and the open
@@ -80,7 +80,7 @@ drift between calls; use absolute paths or `cd` to the repo root before
   crit-on-die-face → `crit%`; save-vs-level AoE → AoE-always-hits) or push
   back — in both cases explaining *why* it's TTRPG and what breaks. Check
   against `docs/game-identity.md` (guardrails) and
-  `docs/combat-model-notes.md` (the reasoning) before it reaches an issue
+  `docs/design.md` (the reasoning) before it reaches an issue
   body, spec, or roadmap row.
 - **Combat is a modifier pipeline** (`internal/game/rules.go`): species, gear,
   and buffs are **pure-data rule cards** (a struct of string kinds + ints,

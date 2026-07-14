@@ -5,7 +5,7 @@ simultaneous 4-second turns — until you meet a monster, and time freezes
 locally into a proper turn-based fight your friends can walk into. Runs in
 the browser; distribution is a URL.
 
-The design lives in [docs/roguelike-mp-plan.md](docs/roguelike-mp-plan.md).
+The design lives in [docs/design.md](docs/design.md).
 
 ## Stack
 

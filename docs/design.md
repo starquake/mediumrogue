@@ -1,4 +1,4 @@
-# Multiplayer Roguelike — Project Plan
+# mediumrogue — game design & rationale
 
 **Genre target:** Shared-world roguelike with **simultaneous turns** (WeGo) — procgen, tile-based; death stings (XP setback) but is not permanent
 **Simulation model:** One world turn every **4 seconds** (2 s input → instant resolution → ~2 s playback); near hostiles the clock **stops locally** and turns become action-gated (combat time bubbles)
@@ -9,36 +9,6 @@
 
 ---
 
-## How the Game Plays — a plain-language summary
-
-*For someone who knows games but doesn't care about the tech. The gist of every decision in this document, described as the game you'd actually experience.*
-
-**Getting in.** There's nothing to install. You get a link in the group chat, open it in your browser, claim your character — picking one of three classes (**rogue, fighter, or mage**) and one of three species (**human** learns faster, **elf** lands critical hits more often, **dwarf** shrugs off part of every hit) — and you're standing in the world. When the game gets updated, you just refresh — everyone is always on the same version.
-
-**The world.** A shared fantasy world built on hexagon tiles, with deliberately simple, chunky retro graphics under a CRT-style filter — think old-school roguelike charm rather than modern polish. All ~15 of us are in the same world at the same time, each with our own character.
-
-**How time works — the heartbeat.** The world moves in shared beats: every 4 seconds, one "turn" happens for everyone at once. During the first 2 seconds you can choose an action; then everything everyone chose plays out together in a short animation. In practice you barely notice the rhythm while exploring: you click somewhere on the map and your character walks there on their own, beat by beat, while you chat. You never have to be quick — if you do nothing, you simply stand still. Nobody has an advantage for having fast reflexes or a better internet connection; the game is closer to a board game where everyone moves their piece simultaneously than to an action game.
-
-**When danger appears — time stops (for you).** The moment you and a monster spot each other within 6 tiles, the clock freezes *locally* — for you, the monster, and anyone standing nearby. The fight now plays like a proper turn-based tactics game: you can stare at the battlefield and think as long as you like. The turn advances when everyone in the fight has locked in their choice (with a patience limit of 30 seconds, so one distracted player can't stall the fight forever).
-
-Here's the fun part: **the rest of the world keeps running at normal speed.** Your friends elsewhere on the map see your fight frozen mid-swing, marked as "in combat" — and they can walk over and *step into it*. Entering the fight area means joining the fight; there's no invite screen or loading transition. Yelling "help, three ghouls, north bridge!" in chat and watching the cavalry arrive is an intended core experience. Escaping works the same way in reverse: break line of sight or get far enough away, and you slip back into normal time.
-
-**Fighting.** Combat is classic roguelike at heart: walk into an enemy to hit them. The three classes fight differently: a **fighter** deals steady melee damage and is tough enough to hold the front; a **mage** is fragile but casts area magic from the back, hitting groups of enemies at once; a **rogue** hits hardest against single targets but can't take a beating, and switches weapons by distance on their own — dagger against something adjacent, bow against something far away. Within each class there's variety to find: weapon types that trade speed against damage against reach, and different kinds of magic. Within a turn, all movement happens first, then all attacks land. Two consequences you'll feel immediately: stepping *away* from an enemy genuinely dodges the swing aimed at you (so retreating is a real tactic, not just delaying death), and two combatants who go for each other can absolutely take each other down on the same turn — those mutual-kill moments are meant to be dramatic, not glitchy.
-
-**Traveling together.** Up to 5 players can stand on the same tile, so a party moves as one stack — one blob on the map heading somewhere with a shared destination. When something attacks the stack, it hits a random member, so a group soaks danger together. And 15 players *can't* all fit on one tile, which quietly encourages the group to split into a few parties instead of one unstoppable death ball.
-
-**Quests.** Two flavors. **Player quests** are yours: you pick them, you pursue them. **Party quests** are shared: someone takes one, pitches it in chat ("who's coming?"), and invites others in. Groups aren't assigned — they form around whoever proposes something interesting, and dissolve just as naturally.
-
-**Progression and death.** Your character earns **XP levels and gear** through play. XP comes from slain enemies, and it's shared generously: the moment an enemy falls, everyone standing in that fight gets the same, full amount — nobody competes for last hits, and running over to help a friend's fight always pays off, kill by kill, from the moment you arrive. Dying is not the end — no roguelike permadeath here — but it has a real sting: **you fall back to the start of the XP level you were in**, losing the progress inside that level. Levels themselves are never taken away, so an evening's real progress survives a bad fight, but "I'm 80% to level 6" is exactly the thing you're gambling when you pick one more battle. Death makes fights tense without ever deleting your character.
-
-**Why it's built this way, in one line each:**
-- *Slow shared turns* → fair for everyone, chat-friendly, and lag simply doesn't matter.
-- *Frozen local fights* → real tactical thinking without holding up the rest of the world.
-- *Walk-in reinforcements* → fights become social events, not private instances.
-- *Browser-only* → zero setup for fifteen people with fifteen different computers.
-- *Simple hex graphics + filter* → charm over polish, and every hour goes into the game instead of art.
-
----
 
 ## 0. Context & Game Concept (why this project exists)
 
@@ -55,7 +25,7 @@ The real goal: a fun game for our own group of **~15 people** — a kind of **mi
   - Depth comes from **variety within each lane**: different weapon types for rogue/fighter (speed vs damage vs reach), different magic types for mage (damage, control, support) — that's what gear drops and progression feed into.
   - **Decided FUTURE direction (playtest feedback batch 2, 2026-07-11) — per-class weapon-slot semantics, own slice, not this batch:** fighter's melee lane gains a **THROWN** option alongside pure melee (thrown range strictly **< rogue's bow range**; designed so it can hit future **flying** enemies melee can't reach). Mage's two slots become **WAND + STAFF** (both ranged-casting — the staff may *also* melee-bonk in a pinch, the wand never; **no dual staff/wand**) — designed for a future wand↔staff interplay (e.g. a staff's sustained cast vs a wand's quick snap). Rogue's dagger/bow-by-distance identity is **unchanged**. Not implemented this batch — recorded here so item 7's entity-targeted ranged work and any future weapon-slot rework build toward the same target shape.
   - **LANDED (inventory system, 2026-07-12): the class-shaped weapon slots above are now the real storage model, and gear became a full 12-type taxonomy.** Every item has a `type` — `melee-weapon, thrown-weapon, ranged-weapon, staff, wand, consumable, head, body, hands, ring, amulet, feet` — and the equip **slot is derived from the type** (consumables have none; they stack in the backpack). A character has **8 equip slots** (six universal body slots + the two class-shaped weapon slots — fighter melee+thrown, rogue melee+ranged, mage staff+wand, exactly as decided above; the fighter's thrown slot ships **empty** pending thrown content, so a fighter still has no ranged attack) plus a **4-entry backpack** (gear or a consumable stack ≤5). **Wearability moved to the ITEM** (a weapon names its classes; armor/jewelry default to "any", may list several — Leather Armor is fighter-or-rogue) while **characters stay strictly single-class**. Actions: equip/unequip/drop/**pickup** (auto-pickup replaced by an explicit intent + a per-hex client modal; server gates merge→free-entry→reject) /**drink** — all free outside a bubble, your whole turn inside. Snapshot bumped to **v3**. See `docs/superpowers/specs/2026-07-11-inventory-slots-design.md` and `docs/FEATURES.md`.
-  - **SUPERSEDED (gear keystone #55/#56, 2026-07-13; throwables scrapped 2026-07-14):** the class-shaped weapon slots above are gone. A weapon now carries a *set* of **tags** (`melee`/`ranged`/`magic`) + a `twoHanded` flag and equips into **generic `main-hand`/`off-hand` slots** — any class equips any weapon (the `wearableBy`/class gates are deleted; class identity moves to future skills). The `thrown-weapon`, `staff`, and `wand` item-types were collapsed into one `weapon` type. The fighter's **THROWN** future-direction (the bullet above) is **scrapped** — throwing isn't a staple ARPG mechanic and no thrown content will ship (Q1 in `docs/design-decisions.md`, which takes G4/G5 with it). Snapshot bumped to **v4**. See `docs/FEATURES.md` (Gear & inventory) and `docs/rule-based-content-design.md` §4.
+  - **SUPERSEDED (gear keystone #55/#56, 2026-07-13; throwables scrapped 2026-07-14):** the class-shaped weapon slots above are gone. A weapon now carries a *set* of **tags** (`melee`/`ranged`/`magic`) + a `twoHanded` flag and equips into **generic `main-hand`/`off-hand` slots** — any class equips any weapon (the `wearableBy`/class gates are deleted; class identity moves to future skills). The `thrown-weapon`, `staff`, and `wand` item-types were collapsed into one `weapon` type. The fighter's **THROWN** future-direction (the bullet above) is **scrapped** — throwing isn't a staple ARPG mechanic and no thrown content will ship (Q1 in `docs/design-decisions.md`, which takes G4/G5 with it). Snapshot bumped to **v4**. See `docs/FEATURES.md` (Gear & inventory) and `docs/content-authoring.md` §4.
 - **Three species: human, elf, dwarf** — one passive bonus each, freely combinable with class (9 combos):
   - **Human** — +% XP gain (levels faster)
   - **Elf** — +% critical-hit chance
@@ -234,7 +204,7 @@ The core of the design. Every 4 seconds, one world turn:
 - Since you're on Silverblue day-to-day, a `toolbox`/`distrobox` container with Go + Node covers the toolchain without polluting the immutable base image.
 - **Persistence** starts as "in memory + periodic JSON snapshot to disk" — 15 players don't need a database on day one. **Implemented (milestone 10a, 2026-07-11):** `World.MarshalState`/`RestoreState` persist every entity (players and monsters), ground items, the quest board, the disconnect archive, and the turn/id counters, behind `SNAPSHOT_PATH` (default `""` = disabled) with a periodic saver (`SNAPSHOT_INTERVAL`, default 60s) and a final write on graceful shutdown; a version/seed/radius mismatch logs and starts fresh rather than migrating. The disconnect sweep now **archives** a player's identity/XP/gear instead of deleting it, and a rejoin with the same token restores it. See `docs/superpowers/specs/2026-07-11-m10a-persistence-identity-design.md` and `docs/FEATURES.md`. **Upgrade path (decided 2026-07-10): SQLite for runtime *state*; the repo for *content*.**
   - **State → SQLite, later.** When persistence needs outgrow the JSON snapshot — character persistence across reconnects (the `character-persistence-reconnect` note), gear inventories once the gear slice lands, bed/home spawns, milestone-11 tuning overrides surviving restarts — move runtime state to SQLite: single file, no server process, transactional; borrow the sqlc/goose patterns from topbanana that §3 deliberately set aside for later. The milestone-12 analytics log may also land in SQLite *if* it needs ad-hoc querying; otherwise JSONL stays fine (and stays LLM-readable).
-  - **Content → the repo, never the DB.** Gear/species/rule definitions (the "cards" of `rule-based-content-design.md`) stay version-controlled with the code — Go data literals or an embedded JSON/YAML file. Two reasons: cards reference the engine's rule *vocabulary* (event names, effect verbs) and must version-lock with the binary (same philosophy as the version-locked client), and PR review of a card **is** the content-review workflow (diffs, history, atomic versioning). A definitions table in SQLite would add migrations and a DB↔binary sync problem while giving up all of that.
+  - **Content → the repo, never the DB.** Gear/species/rule definitions (the "cards" of `content-authoring.md`) stay version-controlled with the code — Go data literals or an embedded JSON/YAML file. Two reasons: cards reference the engine's rule *vocabulary* (event names, effect verbs) and must version-lock with the binary (same philosophy as the version-locked client), and PR review of a card **is** the content-review workflow (diffs, history, atomic versioning). A definitions table in SQLite would add migrations and a DB↔binary sync problem while giving up all of that.
   - **Design prerequisite (build into the modifier pipeline from day one):** rule cards are **pure serializable data** — a kind plus parameters (e.g. `{event: take-damage, effect: subtract, amount: 2, floor: 1}`), turned into modifier functions by a small factory, never Go closures. Then definitions are data-addressable (persisted characters reference equipped gear by item ID) and the storage choice stays permanently open: literals, embedded files, or SQLite rows all feed the same factory.
 
 ## 8. Suggested Milestones
@@ -304,3 +274,115 @@ The core of the design. Every 4 seconds, one world turn:
 ---
 
 *This plan is a starting scaffold — expect it to evolve once the turn loop is running and you can feel where the real design friction is.*
+
+## Appendix — combat model: why ARPG, not TTRPG
+
+
+*Two short design notes that settled the combat-resolution model. They were
+written during the #55 / #56 / #69 design discussion (July 2026) and are the
+reasoning behind the "combat resolution is ARPG stat-checks, not TTRPG rolls"
+decision recorded in issue #69 and `design-decisions.md`. Presentation
+copies (PDF) were shared in that discussion; this is the canonical text.*
+
+---
+
+### Note 1 — Were we mixing TTRPG and ARPG?
+
+**Short answer: yes — and it's worth being precise about *where*, because it
+clears the path.**
+
+**The engine is already ARPG.** The modifier pipeline (gear as pure-data rule
+cards folding %/flat modifiers), "defence is a *rule*, not an Armor-Rating
+stat," damage-reduction, deterministic resolution — that is Diablo/PoE
+lineage. The first-gear review even *rejected* an "Armor Rating 9" stat
+precisely because it is a TTRPG stat with nothing behind it.
+
+**The combat-*resolution* discussion drifted TTRPG.** That entered with a
+`d20` proposal — pure D&D — and got carried forward rather than flagged. The
+bits that crept in, and their native-ARPG equivalents:
+
+| TTRPG thing we picked up | ARPG equivalent |
+|---|---|
+| `d20 + accuracy vs Armor Rating` — one *coupled* roll | *Decoupled* stats: `evasion%` (defence) + `crit%` (offence) |
+| "percent hit = 80% + attacker bonus − defender penalty" | …is *still* the coupled attack-roll, just in % clothing |
+| Crit on a *die face* (nat-20, elf 19–20) | Crit *chance %* (elf = +crit%) |
+| "Armor Rating / AC" = harder to *hit* | `evasion%` (avoid) *or* damage-reduction (mitigate) |
+| "meets it beats it," clamp-as-nat-1 / nat-20 | just a % floor / ceiling |
+
+**The tell is coupling.** TTRPG folds attacker accuracy *and* defender armour
+into a **single** to-hit roll. ARPG keeps them as **separate** gear stats —
+the weapon rolls its own `crit%`, the armour its own `evasion%`,
+independently. Everything decided before the pivot (baseline hit chance,
+"−%to-hit" defence, accuracy modifiers) was the *coupled* model wearing
+percentages.
+
+**So ARPG is the coherent choice — not just taste.** It matches the engine
+already built. A `d20`/AC path would graft a TTRPG resolution layer onto an
+ARPG stat system, and they would keep fighting — the *armor-rating-as-AC vs
+armour-as-a-rule-card* seam is exactly where it grinds. Pulling it back to
+`evasion%` / `crit%` gear stats removes the friction: offence lives on
+weapons, defence on armour, each an independent percentage the engine already
+knows how to fold.
+
+---
+
+### Note 2 — What if we moved to TTRPG?
+
+**Two separable questions hide inside "move to TTRPG" — and they have
+opposite answers.** "TTRPG" is really two things: the resolution *math*
+(`d20 + bonus vs AC`, a coupled roll) and the turn *structure* (initiative,
+sequential turns, an action economy, reactions). **The math is portable. The
+structure is not.**
+
+### Would the pipeline be replaced? — No.
+
+The modifier pipeline is a *stat-stacking engine* — it sits *below* the
+TTRPG/ARPG line. In D&D, "attack bonus" and "AC" are literally stacks of
+modifiers (proficiency + ability + item) — exactly what the pipeline folds.
+TTRPG would lean on it *more*, not less. What changes is only what sits on
+top: a couple of new folded values and an attack-roll event that reads them.
+Same shape as the ARPG extension (`evasion%` / `crit%`). Either way the
+pipeline is **extended, never replaced.**
+
+### Would it work with our time-based turns? — Split.
+
+- **The math — yes.** A `d20`-vs-AC comparison resolves fine inside a
+  4-second WeGo turn or a combat bubble; a roll is just a value comparison at
+  resolution time. But adopting *only* the math is precisely the TTRPG/ARPG
+  mix diagnosed in Note 1 — it buys nothing and reintroduces the coupling
+  grind.
+- **The structure — no.** Real TTRPG wants *initiative-based, sequential*
+  turns, an action economy (action / bonus / move), reactions and opportunity
+  attacks. Those assume "it's my turn, now yours" — fundamentally at odds with
+  WeGo's *simultaneous* 4-second window where everyone acts at once.
+
+**The killer is the co-op.** WeGo exists *because* of the ~15-player group —
+everyone submits in the same window, nobody waits. TTRPG initiative makes 15
+players + monsters wait through each other's turns each round — the exact
+thing WeGo was built to avoid. The turn structure doesn't just clash with the
+clock; it clashes with the *reason the clock works that way.*
+
+### What a real move would change
+
+| System | Under full TTRPG |
+|---|---|
+| Turn model | WeGo-simultaneous → *initiative-sequential* — the core pillar changes |
+| Action economy | New: action / bonus-action / movement per turn (today it's one intent per turn) |
+| Resolution | `d20 + attackBonus vs AC` — pipeline-fed, plus crit on a die face |
+| Reactions | Opportunity attacks, readied actions, saves — all need sequential turns |
+| Multiplayer | 15 players waiting per round — undermines the very premise WeGo serves |
+
+There is a hybrid — keep WeGo on the overworld, and drop combat into a
+TTRPG-style initiative mini-battle inside the combat bubble — but it is a
+whole second combat mode, a jarring real-time→turn-based mode switch, and the
+15-player wait reappears inside the bubble.
+
+### Verdict
+
+The pipeline is safe either way — the real incompatibility was never the
+pipeline, it's **WeGo vs initiative**. ARPG stat-checks (`evasion%` /
+`crit%`) fit WeGo *natively*: simultaneous, no turn order, one seeded draw at
+resolution. TTRPG's genuine value — tactical initiative, reactions — needs
+the sequential structure the game deliberately doesn't have. Cherry-pick its
+math without its structure and you get the grind from Note 1; adopt its
+structure and it's a different game.
