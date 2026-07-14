@@ -677,6 +677,46 @@
         text-align: center;
         line-height: 1.25;
       }
+      /* Pending item action (equip/unequip/drink/drop): the panel half of the
+         clock-gated-action feedback — an amber rim + a pulsing "⇄ queued" tag,
+         shown from the click until the turn bundle reflects the change (same in
+         AND out of combat: the pending set drives it, not the clock). Pairs with
+         the on-map ⇄ swap glyph (FeedbackLayer.setItemAction). */
+      @keyframes pending-pulse {
+        0%,
+        100% {
+          opacity: 0.5;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      .hex.pending {
+        background: #d9a441;
+      }
+      .hex.pending::before {
+        background: #1c1a10;
+      }
+      .cell.pending {
+        border-color: #d9a441;
+        background: #1c1a10;
+      }
+      .pending-badge {
+        color: #d9a441;
+        font-size: 0.5rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-top: 0.1rem;
+        animation: pending-pulse 1.2s ease-in-out infinite;
+      }
+      .cell .pending-badge {
+        position: absolute;
+        top: 0.1rem;
+        left: 0;
+        right: 0;
+        text-align: center;
+        margin-top: 0;
+      }
       .hex.helmet {
         left: 7.8rem;
         top: 0;

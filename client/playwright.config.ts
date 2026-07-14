@@ -35,6 +35,7 @@ const specs: { name: string; monsters?: number }[] = [
   { name: "parties" },
   { name: "quests" },
   { name: "inventory" },
+  { name: "equip-feedback" },
   { name: "panelkeys" },
   { name: "identity" },
   { name: "identity-multitab" },

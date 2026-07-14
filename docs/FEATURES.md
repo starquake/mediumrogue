@@ -83,8 +83,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   **blasts even adjacent** targets (staff bonk exists but its ranged magic is
   its real weapon); fighters are melee-only.
 - **Feedback**: instant destination ring on walk clicks, one-shot flash on
-  attack clicks, pending "…" on equip buttons, Diablo-style **floating damage
-  numbers** (white over hostiles, red over players; killing blows shown as
+  attack clicks, **pending item-action feedback** (equip/unequip/drink/drop) — an
+  on-map ⇄ **swap glyph** on my own hex (drawn above the entity layer, with a dark
+  rim) plus an amber "⇄ queued" **panel badge** (the item stays named, not a bare
+  "…"), shown from the click until the turn bundle applies the change and cleared
+  then; **combat-agnostic** — the pending set drives it, not the clock (out of
+  combat it clears on the next tick, in a bubble it persists until the bubble turn
+  resolves; same mechanism either way; `window.game.pendingItems`,
+  `FeedbackLayer.setItemAction`), Diablo-style **floating damage numbers** (white over hostiles, red over players; killing blows shown as
   remaining HP — derived client-side by diffing bundles), **committed-action
   indicator** (item 6, playtest batch 2 — a solid step marker for a queued
   move, a persistent crosshair for a queued attack, a small hourglass on my
