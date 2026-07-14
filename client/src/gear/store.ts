@@ -113,6 +113,10 @@ const [panelOpen, setPanelOpenSig] = createSignal(false);
 // regardless of panelOpen).
 const [pickupRows, setPickupRowsSig] = createSignal<PickupRow[]>([]);
 const [modalOpen, setModalOpenSig] = createSignal(false);
+// Ground item ids with a take in flight — the modal shows a spinner on that
+// row's "take" button until the pickup resolves (the row vanishes as the item
+// leaves the ground) or is rejected (backpack full).
+const [taking, setTakingSig] = createSignal<Set<number>>(new Set());
 // Item instance ids with an in-flight action (equip/unequip/drop/drink) whose
 // result has not yet ridden a turn bundle — shown as a brief pending mark, so
 // a click in a combat bubble (where the action waits for the turn) still
@@ -123,7 +127,24 @@ const [modalOpen, setModalOpenSig] = createSignal(false);
 // state actually changed, not on any arriving bundle.
 const [pending, setPendingSig] = createSignal<Map<number, string>>(new Map());
 
-export { equipped, backpack, panelOpen, pickupRows, modalOpen, pending };
+export { equipped, backpack, panelOpen, pickupRows, modalOpen, pending, taking };
+
+/** Marks a ground item's take as in flight (spinner on its "take" button). */
+export function markTaking(groundItemId: number): void {
+  const next = new Set(taking());
+  next.add(groundItemId);
+  setTakingSig(next);
+}
+
+/** Drops a taking mark (the take resolved or was rejected). */
+export function clearTaking(groundItemId: number): void {
+  if (!taking().has(groundItemId)) {
+    return;
+  }
+  const next = new Set(taking());
+  next.delete(groundItemId);
+  setTakingSig(next);
+}
 
 // lastItems is the most recent ItemView list — markPending reads it to
 // snapshot an item's signature at click time.
@@ -288,6 +309,9 @@ export function refreshPickup(rows: { id: number; name: string; type: string; co
   if (rows.length === 0) {
     setModalOpenSig(false);
     setPickupRowsSig([]);
+    if (taking().size > 0) {
+      setTakingSig(new Set<number>());
+    }
 
     return;
   }
@@ -297,6 +321,14 @@ export function refreshPickup(rows: { id: number; name: string; type: string; co
   const rejectedIds = new Set(pickupRows().filter((r) => r.rejected).map((r) => r.id));
   setPickupRowsSig(rows.map((r) => ({ ...r, rejected: rejectedIds.has(r.id) })));
   setModalOpenSig(!dismissed);
+
+  // Drop taking marks for items no longer on the ground — their take resolved
+  // and the row is gone, so the spinner should stop.
+  const present = new Set(rows.map((r) => r.id));
+  const cur = taking();
+  if ([...cur].some((id) => !present.has(id))) {
+    setTakingSig(new Set([...cur].filter((id) => present.has(id))));
+  }
 }
 
 // dismissed tracks whether the player closed the modal while still standing on
@@ -312,4 +344,5 @@ export function dismissPickup(): void {
 /** Marks a pickup row as rejected (backpack full) — inline feedback shows, row stays. */
 export function markPickupRejected(groundItemId: number): void {
   setPickupRowsSig(pickupRows().map((r) => (r.id === groundItemId ? { ...r, rejected: true } : r)));
+  clearTaking(groundItemId); // stop the spinner; the rejected message shows instead
 }

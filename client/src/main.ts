@@ -14,6 +14,7 @@ import {
   equipped as equippedSignal,
   markPending,
   markPickupRejected,
+  markTaking,
   modalOpen,
   panelOpen,
   pending,
@@ -896,8 +897,10 @@ async function start(): Promise<void> {
       supersedeCommitted();
       // Pickup is clock-gated too (applies on a turn bundle), so give it its own
       // on-map indicator — a down-into-backpack glyph on my hex (distinct from
-      // the ⇄ swap; a pickup isn't a gear swap). Cleared on the next bundle (its
-      // resolution) or right away if the take is rejected (backpack full).
+      // the ⇄ swap; a pickup isn't a gear swap) — plus a spinner on this row's
+      // "take" button. Cleared on the next bundle (its resolution) or right away
+      // if the take is rejected (backpack full).
+      markTaking(groundItemId);
       feedbackLayer.setPickup(window.game.me?.hex ?? null);
       window.game.pickupPending = true;
       void submitPickup(identity, groundItemId).then((ok) => {
