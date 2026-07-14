@@ -198,7 +198,7 @@ feedback is posted on every thread. The build-order dependency map is
 Separately, three cleanup issues remain: #27 (flaky reconnect e2e), #31, #36.*
 
 *__Next (nothing is on fire).__ (0) review + land **draft PR #71** (the whole
-design record). Then, rough priority per `docs/design-recommendations.md` §3:
+design record). Then, rough priority (build order):
 (a) fast-lane wins — XP curve + front-loaded HP (formulas), cut
 `DamagePerLevel`, `crit%` weapons (pure content today — elf-crit pattern),
 the Q8 additive-fold change, sanctuary-scatter spawn (small `spawnHexLocked`

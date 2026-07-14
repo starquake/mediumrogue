@@ -86,3 +86,24 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
 - **Anti-rubberband gear** (XP5) — high-level gear trades raw stats for
   modifiers / set bonuses / specialisation, never flat power. A content rule to
   apply as gear is authored, not a slice to build.
+
+## Engineering notes
+
+- **`crit%` is free content; `evasion%` is the one engine slice.** `crit%`
+  ships as the elf-crit pattern — a `deal-damage` card with a `chance`
+  condition and `mulPct 200`, authored on a weapon — so it needed no engine
+  work (Misericorde / Duelist's Saber already do it). `evasion%` (#91) is the
+  real work: a fully-evaded hit deals **0**, which today's pipeline can't
+  express (the `take-damage` fold floors every landed hit at 1, and `mulPct 0`
+  still clamps to 1), so it needs a **new pre-damage `evasion-check` event**
+  wired through the three agreeing sites (`rules.go` const + `conditionHolds`/
+  `applyRules`; `items.go` `validateRuleCards`). That split is why crit shipped
+  as content while evasion is the committed combat-depth slice.
+
+## Open flags (doc vs implementation)
+
+- **Bubble trigger — LOS vs distance.** `roguelike-mp-plan.md` §5 reads as if
+  combat bubbles trigger on *mutual line-of-sight* ("awareness, not raw
+  distance"), but the implementation is **distance-only** — terrain-blocked LOS
+  was deferred (STATUS/FEATURES acknowledge it). Either build LOS or soften the
+  plan's wording; a design call, left open.
