@@ -23,7 +23,7 @@ import (
 
 // combatLogKey is the slog attribute key every combat-resolution log line
 // carries (slog.Info("combat", "event", ...)) — the seed of the milestone-12
-// analytics log (docs/roguelike-mp-plan.md §12). Filter on this key (msg ==
+// analytics log (docs/design.md §12). Filter on this key (msg ==
 // "combat") to isolate the sim's structured event stream from ordinary
 // server logs. combatEvent* names the "event" attribute's fixed vocabulary.
 const combatLogMsg = "combat"

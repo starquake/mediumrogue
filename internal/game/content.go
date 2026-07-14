@@ -119,7 +119,7 @@ var itemDefs = []*itemDef{
 		},
 	},
 
-	// First designer batch (docs/rule-based-content-design.md's card format;
+	// First designer batch (docs/content-authoring.md's card format;
 	// review in the first-gear correspondence). Authored by the group's
 	// content designer — ids/names/numbers are his cards, transcribed.
 	{

@@ -8,7 +8,7 @@ issues don't spell it out.
 Retired the old `design-roadmap.md` decision-menu on **2026-07-14** once every
 row was decided; GitHub is the single tracker now. Combat identity guardrails
 live in [`game-identity.md`](game-identity.md); the ARPG-vs-TTRPG reasoning in
-[`combat-model-notes.md`](combat-model-notes.md).
+[`design.md`](design.md).
 
 ## Where the work lives now (GitHub)
 
@@ -102,8 +102,8 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
 
 ## Open flags (doc vs implementation)
 
-- **Bubble trigger — LOS vs distance.** `roguelike-mp-plan.md` §5 reads as if
-  combat bubbles trigger on *mutual line-of-sight* ("awareness, not raw
-  distance"), but the implementation is **distance-only** — terrain-blocked LOS
-  was deferred (STATUS/FEATURES acknowledge it). Either build LOS or soften the
-  plan's wording; a design call, left open.
+- **Bubble trigger — LOS vs distance** *(decided 2026-07-14)*. Bubbles trigger
+  on **pure distance** (`≤ CombatRadius`) today; the plan keeps **mutual
+  line-of-sight** as the design target (terrain blocks spotting), now tracked as
+  a planned future addition in **#95**. Not a contradiction — distance-only is
+  shipped, LOS is future.
