@@ -134,6 +134,19 @@ Go may not be on PATH; the Makefile falls back to `/usr/local/go/bin/go`.
   the implementation plan (`docs/superpowers/specs|plans/`), commit them, and
   **pause for review** before writing code — do not auto-proceed plan →
   implementation.
+- **Issues track; specs design — match the tool to the ticket.** A GitHub issue
+  is the coordination layer (status, discussion, labels, milestones); the
+  `docs/superpowers/` spec+plan are the design layer. They compose — don't
+  duplicate. The deciding question for an issue is *"is there a design decision
+  with unexamined assumptions?"*:
+  - **A new mechanic/feature** → run brainstorming → writing-plans, commit the
+    spec+plan, and cross-link (issue body points at the spec path; the spec
+    references `#NN`). Keep the issue body a short pointer, not a third copy of
+    the design — three copies drift.
+  - **A bug** → systematic-debugging, no spec.
+  - **A tweak** (a tuning number, a config default, copy) → straight to a PR
+    that references the issue. The brainstorming "every project needs a design"
+    gate is calibrated for new mechanics; running it on a one-liner is friction.
 - **Visual/looks-driven work gets a mockup first**: build an HTML mockup,
   screenshot it, and get approval **before** implementing the real UI (a CRT
   filter was built and rejected post-hoc; a paper-doll inventory was approved
