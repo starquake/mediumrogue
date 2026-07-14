@@ -287,9 +287,15 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   | Dragon | 2 (capped at 1 per world) | 60 | 9 | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
 
   Wolf carries forward the pre-6c flat numbers exactly. Each kind renders
-  with a distinct on-map dot color and one-letter glyph (`entities.ts`'s
-  `KIND_STYLE`); an unrecognized kind falls back to the old flat monster
-  red with no glyph. A kill announces the kind by name (see Combat above).
+  with a distinct on-map dot color (`entities.ts`'s `KIND_STYLE`) plus a
+  **game-icons.net glyph** drawn dark on the dot (rat, wolf-head,
+  shambling-zombie, troll, dragon-head — `GLYPH_ICON_SVG`, keyed by kind id);
+  an unrecognized kind falls back to the flat monster red with no glyph.
+  Players carry the same treatment — a class glyph (crossed-swords/hood/
+  pointy-hat) on their relationship-colored dot. Icons are vendored inline SVG
+  (Pixi v8 `Graphics.svg()`, no asset pipeline), licensed **CC BY 3.0**
+  (credited on the start screen). A kill announces the kind by name (see
+  Combat above).
 - **Enemy hover tooltip** (item 13, playtest batch 2): hovering a monster's
   hex shows a small DOM tooltip near the cursor — kind display name + "HP
   cur/max". Client-side only (positions/hp/maxHp already ride every turn

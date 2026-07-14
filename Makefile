@@ -22,7 +22,7 @@ TYGO_BIN := $(BIN_DIR)/tygo
 
 # Developer gate before committing. Mirrors the CI jobs.
 .PHONY: check
-check: lint protocol-check client-check test test-integration build
+check: lint protocol-check icons-check client-check test test-integration build
 
 ## ---- Go server ----
 
@@ -81,6 +81,21 @@ protocol: $(TYGO_BIN)
 protocol-check: protocol
 	@git diff --exit-code -- client/src/protocol.gen.ts \
 	    || { echo "protocol.gen.ts is stale: commit the regenerated file"; exit 1; }
+
+## ---- Glyph icons (vendored game-icons.net SVGs -> glyphIcons.ts) ----
+
+# Regenerate client/src/render/glyphIcons.ts from the source SVGs in
+# client/tools/glyph-icons/svg. Run after swapping a source icon.
+.PHONY: icons
+icons:
+	node client/tools/glyph-icons/gen-glyph-icons.mjs
+
+# Fail when glyphIcons.ts is out of sync with its source SVGs — the same
+# generate-and-check-in drift gate as protocol-check.
+.PHONY: icons-check
+icons-check: icons
+	@git diff --exit-code -- client/src/render/glyphIcons.ts \
+	    || { echo "glyphIcons.ts is stale: run 'make icons' and commit"; exit 1; }
 
 ## ---- Client (Vite + TypeScript + PixiJS) ----
 

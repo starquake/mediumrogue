@@ -1,6 +1,7 @@
 import { Container, Graphics, Text, type Ticker } from "pixi.js";
 
 import { ClassFighter, ClassMage, ClassRogue, EntityPlayer, type Entity, type Hex } from "../protocol.gen";
+import { GLYPH_ICON_SVG, GLYPH_ICON_VIEWBOX } from "./glyphIcons";
 import { hexDistance, hexToPixel, HEX_SIZE, type Point } from "./hex";
 
 // A new hex farther than this from a dot's previous one is a respawn (or any
@@ -44,40 +45,37 @@ const NAME_LABEL_STYLE = { fontFamily: "Courier New", fontSize: 11, fill: 0xe8f0
 const NAME_LABEL_MINE_COLOR = 0xd6efff;
 const NAME_LABEL_OTHER_COLOR = 0xe8f0e8;
 
-// A one-letter glyph per class, drawn centered on a player's dot so classes
-// are distinguishable at a glance.
-const CLASS_GLYPH: Record<string, string> = {
-  [ClassFighter]: "F",
-  [ClassRogue]: "R",
-  [ClassMage]: "M",
+// A game-icons.net glyph per class (keys into GLYPH_ICON_SVG), drawn dark and
+// centered on a player's dot so classes are distinguishable at a glance — the
+// icon successor to the old one-letter class label.
+const CLASS_ICON: Record<string, string> = {
+  [ClassFighter]: "fighter",
+  [ClassRogue]: "rogue",
+  [ClassMage]: "mage",
 };
-const CLASS_LABEL_STYLE = {
-  fontFamily: "Courier New",
-  fontSize: 11,
-  fontWeight: "bold",
-  fill: 0x0b0f0b,
-} as const;
 
-// Per-kind monster look (milestone 6c): a distinct dot color plus the
-// registry's own one-letter glyph (content.go's monsterDef.glyph), so
-// danger is legible at a glance — a troll reads differently from a rat
-// well before either is close enough to matter. Keyed by
-// Entity.monsterKind (the registry id); wolf keeps the pre-6c flat
-// MONSTER_COLOR so its look doesn't change out from under existing
-// players. An unrecognized kind (KIND_STYLE has no entry) falls back to
-// MONSTER_COLOR with no glyph, mirroring CLASS_GLYPH's unknown-class
+// Per-kind monster look (milestone 6c): a distinct dot color. The kind id
+// (Entity.monsterKind) doubles as the glyph-icon key (GLYPH_ICON_SVG), so a
+// troll reads differently from a rat well before either is close enough to
+// matter. wolf keeps the pre-6c flat MONSTER_COLOR so its look doesn't change
+// out from under existing players. An unrecognized kind (no KIND_STYLE entry)
+// falls back to MONSTER_COLOR with no icon, mirroring CLASS_ICON's unknown-class
 // fallback.
-const KIND_STYLE: Record<string, { color: number; glyph: string }> = {
-  rat: { color: 0x9a8a6a, glyph: "r" },
-  wolf: { color: MONSTER_COLOR, glyph: "w" },
-  ghoul: { color: 0x7cbf6a, glyph: "g" },
-  troll: { color: 0xd68a3f, glyph: "T" },
-  dragon: { color: 0xd63fc9, glyph: "D" },
+const KIND_STYLE: Record<string, { color: number }> = {
+  rat: { color: 0x9a8a6a },
+  wolf: { color: MONSTER_COLOR },
+  ghoul: { color: 0x7cbf6a },
+  troll: { color: 0xd68a3f },
+  dragon: { color: 0xd63fc9 },
 };
 
 interface Dot {
   gfx: Graphics;
-  label: Text;
+  // glyph is the class/kind icon drawn dark on the dot (treatment A), or null
+  // for an entity whose class/kind the client hasn't been taught. glyphKey is
+  // the icon key it was built from, so it's only rebuilt when that changes.
+  glyph: Graphics | null;
+  glyphKey: string | null;
   // nameLabel is the always-on name tag above a PLAYER dot (item 8) — null
   // for a monster (monsters get hover info instead, item 13).
   nameLabel: Text | null;
@@ -96,15 +94,40 @@ interface Dot {
   monsterKind: string;
 }
 
-// glyphFor is the one-letter label a dot draws: the class glyph for a
-// player, or the kind's own glyph for a monster (KIND_STYLE — "" for an
-// unrecognized kind, mirroring CLASS_GLYPH's unknown-class fallback).
-function glyphFor(e: Entity): string {
+// glyphIconKeyFor is the glyph-icon key a dot draws: the class icon for a
+// player, or the kind icon for a monster (both key into GLYPH_ICON_SVG) — null
+// for an entity whose class/kind the client hasn't been taught (no icon, just
+// the dot), mirroring the old letter glyph's unknown-class fallback.
+function glyphIconKeyFor(e: Entity): string | null {
   if (e.kind === EntityPlayer) {
-    return CLASS_GLYPH[e.class] ?? "";
+    return CLASS_ICON[e.class] ?? null;
   }
 
-  return KIND_STYLE[e.monsterKind]?.glyph ?? "";
+  return GLYPH_ICON_SVG[e.monsterKind] !== undefined ? e.monsterKind : null;
+}
+
+// The glyph icon's on-screen footprint — a bit smaller than the dot's diameter
+// (HEX_SIZE * 0.9) so it sits inside with a margin.
+const GLYPH_ICON_PX = HEX_SIZE * 0.62;
+
+// buildGlyphIcon renders a glyph key's vendored path (glyphIcons.ts) as a dark
+// Graphics, pivoted at its center and scaled into the dot — drawn once per dot
+// (and only when its key changes), then just repositioned each frame like the
+// old label. Every path gets a dark fill so it reads as a silhouette on the
+// dot's kind/relationship color (treatment A).
+function buildGlyphIcon(key: string): Graphics {
+  const g = new Graphics();
+  const inner = GLYPH_ICON_SVG[key];
+  if (inner === undefined) {
+    return g; // unknown key — an empty glyph (callers only pass known keys)
+  }
+
+  const filled = inner.replace(/<path/g, '<path fill="#0b0f0b"');
+  g.svg(`<svg viewBox="0 0 ${GLYPH_ICON_VIEWBOX} ${GLYPH_ICON_VIEWBOX}">${filled}</svg>`);
+  g.pivot.set(GLYPH_ICON_VIEWBOX / 2, GLYPH_ICON_VIEWBOX / 2);
+  g.scale.set(GLYPH_ICON_PX / GLYPH_ICON_VIEWBOX);
+
+  return g;
 }
 
 /**
@@ -144,9 +167,11 @@ export class EntityLayer {
         // First sighting: appear in place, no tween.
         const gfx = new Graphics();
         this.container.addChild(gfx);
-        const label = new Text({ text: glyphFor(e), style: CLASS_LABEL_STYLE });
-        label.anchor.set(0.5);
-        this.container.addChild(label);
+        const glyphKey = glyphIconKeyFor(e);
+        const glyph = glyphKey !== null ? buildGlyphIcon(glyphKey) : null;
+        if (glyph !== null) {
+          this.container.addChild(glyph);
+        }
 
         // Name label (item 8): PLAYERS only — monsters get hover info
         // instead (item 13). Created once per dot, moves with its tween.
@@ -159,7 +184,8 @@ export class EntityLayer {
 
         dot = {
           gfx,
-          label,
+          glyph,
+          glyphKey,
           nameLabel,
           hex: e.hex,
           from: to,
@@ -197,7 +223,17 @@ export class EntityLayer {
         dot.maxHp = e.maxHp;
         dot.inCombat = e.inCombat;
         dot.monsterKind = e.monsterKind;
-        dot.label.text = glyphFor(e);
+        // Rebuild the glyph icon only if the class/kind actually changed
+        // (effectively never for a persistent id) — otherwise reuse it.
+        const glyphKey = glyphIconKeyFor(e);
+        if (glyphKey !== dot.glyphKey) {
+          dot.glyph?.destroy();
+          dot.glyph = glyphKey !== null ? buildGlyphIcon(glyphKey) : null;
+          if (dot.glyph !== null) {
+            this.container.addChild(dot.glyph);
+          }
+          dot.glyphKey = glyphKey;
+        }
         if (dot.nameLabel !== null) {
           dot.nameLabel.text = e.name;
         }
@@ -210,7 +246,7 @@ export class EntityLayer {
     for (const [id, dot] of this.dots) {
       if (!present.has(id)) {
         dot.gfx.destroy();
-        dot.label.destroy();
+        dot.glyph?.destroy();
         dot.nameLabel?.destroy();
         this.dots.delete(id);
       }
@@ -304,7 +340,7 @@ export class EntityLayer {
       .circle(x, y, HEX_SIZE * 0.45)
       .fill(color)
       .stroke({ width: 2, color: 0x0b0f0b });
-    dot.label.position.set(x, y);
+    dot.glyph?.position.set(x, y);
 
     // Player name label (item 8): always on, above the dot (a fixed offset
     // regardless of whether the HP bar happens to be showing this frame, so

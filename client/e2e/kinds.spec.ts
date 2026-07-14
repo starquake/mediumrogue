@@ -31,8 +31,9 @@ test("distinct monster kinds reach the client and render differently", async ({ 
   }
 
   // The actual per-kind-rendering proof: more than one distinct kind
-  // present among the spawned monsters (color/glyph in entities.ts's
-  // KIND_STYLE are keyed on exactly this field).
+  // present among the spawned monsters (the dot color in entities.ts's
+  // KIND_STYLE and the glyph icon in GLYPH_ICON_SVG are both keyed on
+  // exactly this field).
   const distinctKinds = new Set(monsterKinds);
   expect(distinctKinds.size).toBeGreaterThanOrEqual(2);
 
