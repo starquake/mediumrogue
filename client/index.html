@@ -326,6 +326,16 @@
         font-size: 0.7rem;
         margin-top: 0.7rem;
       }
+      #start-panel .credit {
+        text-align: center;
+        color: var(--dim);
+        font-size: 0.6rem;
+        margin-top: 0.9rem;
+        opacity: 0.75;
+      }
+      #start-panel .credit a {
+        color: var(--dim);
+      }
       /* Chat overlay: #chat-root spans a corner of the viewport but is itself
          click-through (pointer-events: none) so a map click landing on empty
          overlay space still reaches the Pixi canvas underneath — only
@@ -993,6 +1003,7 @@
 
         <button id="start-enter" type="button">Enter the world</button>
         <div class="hint">returning players skip this screen — your character remembers you</div>
+        <div class="credit">glyph icons — <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0</div>
       </div>
     </div>
     <div id="chat-root"></div>
