@@ -6,8 +6,12 @@
 // sole authority on whether an attack actually lands.
 import type { Hex } from "../protocol.gen";
 
-/** Distance from a hex's center to any of its six corners, in pixels. */
-export const HEX_SIZE = 22;
+/** Distance from a hex's center to any of its six corners, in pixels. Sized so
+ *  entity dots and their glyph icons read clearly; the whole world scales with
+ *  it (dots, icons, HP bars, spacing) and input/camera derive from it, so this
+ *  is the single zoom lever. NOTE: client/e2e/monsters.spec.ts hardcodes this
+ *  value (it re-derives hexToPixel inside page.evaluate) — keep them in sync. */
+export const HEX_SIZE = 32;
 
 export interface Point {
   x: number;
