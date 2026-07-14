@@ -37,7 +37,7 @@ internal/server/            ← http.Handler factory (server.go New(Deps)) + rou
                               api.go = JSON handlers, events.go = SSE stream, json.go = decode/respond helpers,
                               middleware.go = security headers etc.
 internal/game/              ← authoritative simulation: World (world.go), hex math (hex.go),
-                              pathfinding (pathfind.go), the static map (worldmap.go)
+                              pathfinding (pathfind.go), procedural map gen (worldgen.go, GenerateMap)
 internal/hub/               ← coalescing pub/sub: a tick means "fetch the latest state", never a delta
 internal/protocol/          ← wire types + game-rule constants; the single source of truth for both sides
 internal/web/               ← go:embed of the built client (dist/)
@@ -132,8 +132,8 @@ buffer).
 
 `internal/game` defines its own sentinel errors (`ErrUnauthorized`,
 `ErrNotWalkable`, `ErrNoPath`, `ErrWorldFull`, and the gear/inventory set —
-`ErrItemNotOwned`, `ErrWrongClass`, and more). **Grep the package for
-`errors.New(` for the current set** (it grows with features), and
+`ErrItemNotOwned`, `ErrNotEquippable`, `ErrBackpackFull`, and more). **Grep the
+package for `errors.New(` for the current set** (it grows with features), and
 `internal/server/api.go` for the HTTP-status mapping. Always match with
 `errors.Is`, never string comparison.
 
@@ -158,8 +158,9 @@ them; don't invent parallel mechanisms.
   `content.go`, indexed into `…ByID` maps and checked by `mustValidateContent()`
   at package `init()` — a bad card (unknown kind, dangling drop reference,
   aggro ≤ CombatRadius, …) **panics at process start**, never mid-fight. New
-  content is a table entry. An item's class restriction may list several
-  classes (item *wearability*); **characters are always single-class**.
+  content is a table entry. There are **no class gates on gear** (removed in the
+  gear keystone, #55/#56): any character can equip any item — don't reintroduce
+  a per-class wearability restriction.
 - **Determinism is a hard requirement.** All randomness is a per-scope seeded
   PCG (`math/rand/v2`, e.g. `NewPCG(seed, turn)` per resolution; separate
   fixed streams for spawn placement). **Sort any map-derived slice before
