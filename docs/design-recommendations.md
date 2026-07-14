@@ -62,7 +62,7 @@ assumed for v1). Both are pure tuning knobs; naming them unblocks the slice.
 ## 3. Recommended build order
 
 My engineering read of the dependency graph (the *what-first*, not the
-*whether* — Decision columns in `design-roadmap.md` are yours to set):
+*whether* — the decisions now live in `docs/design-decisions.md` and GitHub issues):
 
 | Order | Work | Roadmap rows | Why here |
 |:--:|---|---|---|
@@ -113,9 +113,9 @@ Doc-sync so the repo stops teaching the retired coupled-roll model:
   cleanup note.
 - **`docs/FEATURES.md`** — header date/scope 2026-07-11/M10a →
   2026-07-12/inventory + deployment.
-- **`docs/design-roadmap.md`** — combat section already carried the ARPG
-  correction (this branch); fixed its pointer to reference the new in-repo
-  notes.
+- **`docs/design-decisions.md`** (then `design-roadmap.md`) — combat section
+  already carried the ARPG correction (this branch); fixed its pointer to
+  reference the new in-repo notes.
 - **`docs/combat-model-notes.md`** (new) — the two combat-model design notes
   (ARPG-vs-TTRPG / what-if-TTRPG), previously only on issue #69, now canonical
   in-repo so the roadmap pointer resolves.

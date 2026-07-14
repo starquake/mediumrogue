@@ -572,7 +572,7 @@ values are unchanged (20 / 3 / 30%).*
 
 ## 5. Decided but not yet built
 
-Recorded in `roguelike-mp-plan.md` §0/§8/§9, `design-roadmap.md` (Q1–Q11
+Recorded in `roguelike-mp-plan.md` §0/§8/§9, `design-decisions.md` (Q1–Q11
 all decided 2026-07-13), and issue #36: the **3-tree
 skill system** (Class/Adventure/Survival; level-up = one bankable skill
 point; First Aid & Make Camp seed the Survival/Adventure trees), the
@@ -587,7 +587,7 @@ inventory system), wand↔staff interactions, item destruction/durability, backp
 upgrades, trading, continuous spawning with density-tracks-players,
 monster-kind passives (the `rules` seam on `monsterDef` ships empty), ring
 UI indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
-(model decided — see design-roadmap Q9: sanctuary-scatter first spawn and
+(model decided — see `design-decisions.md` (Q9): sanctuary-scatter first spawn and
 respawn shipped; the future step is last-visited bed with Home fallback —
 milestone 10a persisted characters and the world, but the bed slice stays
 future), admin console & analytics log, SQLite-for-state (the milestone 10a

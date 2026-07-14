@@ -3,7 +3,7 @@
 *Two short design notes that settled the combat-resolution model. They were
 written during the #55 / #56 / #69 design discussion (July 2026) and are the
 reasoning behind the "combat resolution is ARPG stat-checks, not TTRPG rolls"
-decision recorded in `design-roadmap.md` §8 and issue #69. Presentation
+decision recorded in issue #69 and `design-decisions.md`. Presentation
 copies (PDF) were shared in that discussion; this is the canonical text.*
 
 ---

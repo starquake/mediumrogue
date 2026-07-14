@@ -4,7 +4,7 @@
 `feat/arpg-inventory`, PR open against `main` (not yet merged, docs-sync task
 still to commit).*
 
-*__The gear keystone — #55/#56, G1+G2+G3 (design-roadmap.md §1) — spec → plan
+*__The gear keystone — #55/#56, G1+G2+G3 (design-decisions.md) — spec → plan
 → 5-task build on `feat/arpg-inventory`.__ Weapon type-properties (G1): the
 five class-shaped weapon item types (`melee-weapon/thrown-weapon/
 ranged-weapon/staff/wand`) collapsed into one `protocol.ItemTypeWeapon`
@@ -53,8 +53,8 @@ pre-keystone snapshot fails the version check and is rejected/renamed aside,
 never migrated (per the project's disk-as-wire, no-backward-compat rule).
 `docs/FEATURES.md` (Gear & inventory section, snapshot version-history note)
 and `docs/rule-based-content-design.md` §4 (gear card template, wearability
-prose) are the up-to-date references; `docs/design-roadmap.md`'s
-G1/G2/G3 are marked done.*
+prose) are the up-to-date references; `docs/design-decisions.md`
+records G1/G2/G3 as shipped.*
 
 **⚠️ DEPLOY NOTE — read before the next deploy**: snapshot version 4 rejects
 every snapshot written by the pre-keystone server (dev/staging worlds
@@ -65,7 +65,7 @@ environments is lost. **Announce this in the group chat before deploying**
 so nobody reads a wiped dev/staging character as a bug.
 
 *__Fast-lane batch 1 — six slices landed, one commit each + review
-fixes.__ The `design-roadmap.md` fast-lane list (XP1/XP2/XP3, Q8, Q9's
+fixes.__ The fast-lane list (XP1/XP2/XP3, Q8, Q9's
 scatter half, DF2's `crit%` half) shipped as spec → plan → TDD-per-task,
 mirroring the inventory-slots milestone's process:
 **(T1) quadratic XP curve** (`9c0d4c4`) — `protocol.XPCurveBase=100`
@@ -144,7 +144,7 @@ The combat-resolution talk had drifted TTRPG (d20, baseline hit chance,
 accuracy-vs-Armor-Rating); decision: **fully ARPG** — decoupled `evasion%`
 (defender) / `crit%` (attacker) folded by the pipeline, never a coupled
 roll (#69, `docs/combat-model-notes.md`). Then every open design question
-was worked through and recorded — `docs/design-roadmap.md` Q1–Q11 are all
+was worked through and recorded — the Q1–Q11 design questions (now in `docs/design-decisions.md`) are all
 ✅/⏸: AoE always hits (evasion is for targeted attacks); no monster
 levels/party-scaling; percentages **add** within an event fold (#61
 principle 14, engine-endorsed — the additive-fold change is a small pending
@@ -194,7 +194,7 @@ interlinked arc: gear evolution (#55 weapon type-properties, #56 drop class
 restrictions) -> skills (#57, #61 three-tree principles + skill-card format) ->
 XP & progression (#60) -> subclasses (#58) -> skill UI (#62). Engine-grounded
 feedback is posted on every thread. The build-order dependency map is
-**`docs/design-roadmap.md`** — start there when picking up the design work.
+**GitHub issues + milestones** (with `docs/design-decisions.md` for the decided direction) — start there when picking up the design work.
 Separately, three cleanup issues remain: #27 (flaky reconnect e2e), #31, #36.*
 
 *__Next (nothing is on fire).__ (0) review + land **draft PR #71** (the whole
