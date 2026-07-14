@@ -264,6 +264,12 @@ export interface GameDebug {
    * Combat-agnostic; exposed for e2e. Empty when nothing is pending.
    */
   pendingItems: number[];
+  /**
+   * Whether a ground-item pickup is in flight (from the take click until the
+   * next turn bundle resolves it) — drives the on-map pickup glyph
+   * (FeedbackLayer.setPickup). Distinct from pendingItems (owned-item actions).
+   */
+  pickupPending: boolean;
 }
 
 declare global {
@@ -476,6 +482,7 @@ window.game = {
   combatRanged: [],
   committedAction: null,
   pendingItems: [],
+  pickupPending: false,
 };
 
 // How many hexes an entity can cover in one action-gated combat turn. 1 is
@@ -887,8 +894,18 @@ async function start(): Promise<void> {
   mountPickup(mustGet("pickup-root"), {
     take: (groundItemId: number): void => {
       supersedeCommitted();
+      // Pickup is clock-gated too (applies on a turn bundle), so give it its own
+      // on-map indicator — a down-into-backpack glyph on my hex (distinct from
+      // the ⇄ swap; a pickup isn't a gear swap). Cleared on the next bundle (its
+      // resolution) or right away if the take is rejected (backpack full).
+      feedbackLayer.setPickup(window.game.me?.hex ?? null);
+      window.game.pickupPending = true;
       void submitPickup(identity, groundItemId).then((ok) => {
-        if (!ok) markPickupRejected(groundItemId);
+        if (!ok) {
+          markPickupRejected(groundItemId);
+          feedbackLayer.setPickup(null);
+          window.game.pickupPending = false;
+        }
       });
     },
   });
@@ -1222,6 +1239,13 @@ async function start(): Promise<void> {
       // Combat-agnostic — the pending set, not the clock, drives it.
       feedbackLayer.setItemAction(pending().size > 0 ? myHex : null);
       window.game.pendingItems = [...pending().keys()];
+
+      // A pending pickup clears on the next bundle — the very bundle that
+      // carries the picked-up item into the backpack (or the world tick after
+      // an out-of-combat take). Cleared unconditionally: the take set it since
+      // the previous bundle, and this bundle is its resolution.
+      feedbackLayer.setPickup(null);
+      window.game.pickupPending = false;
       const rowsHere =
         myHex === null
           ? []

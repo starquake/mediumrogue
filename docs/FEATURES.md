@@ -90,7 +90,10 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   then; **combat-agnostic** — the pending set drives it, not the clock (out of
   combat it clears on the next tick, in a bubble it persists until the bubble turn
   resolves; same mechanism either way; `window.game.pendingItems`,
-  `FeedbackLayer.setItemAction`), Diablo-style **floating damage numbers** (white over hostiles, red over players; killing blows shown as
+  `FeedbackLayer.setItemAction`); a separate **pickup glyph** (a down-into-backpack
+  arrow, not the ⇄ — a pickup isn't a gear swap; drawn above the entity layer on my
+  hex) shows from a ground-item take until the next bundle resolves it
+  (`window.game.pickupPending`, `FeedbackLayer.setPickup`), Diablo-style **floating damage numbers** (white over hostiles, red over players; killing blows shown as
   remaining HP — derived client-side by diffing bundles), **committed-action
   indicator** (item 6, playtest batch 2 — a solid step marker for a queued
   move, a persistent crosshair for a queued attack, a small hourglass on my

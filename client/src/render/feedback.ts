@@ -46,6 +46,7 @@ export class FeedbackLayer {
   private readonly flashGfx = new Graphics();
   private readonly committedGfx = new Graphics();
   private readonly itemActionGfx = new Graphics();
+  private readonly pickupGfx = new Graphics();
   private dest: Hex | null = null;
   private pulseMs = 0;
   private flashHex: Hex | null = null;
@@ -59,6 +60,7 @@ export class FeedbackLayer {
     // (above entities) or the enemy's dot would hide it.
     this.overlay.addChild(this.committedGfx);
     this.overlay.addChild(this.itemActionGfx);
+    this.overlay.addChild(this.pickupGfx);
     ticker.add(this.tick);
   }
 
@@ -177,6 +179,43 @@ export class FeedbackLayer {
     };
     arrows(SWAP_OUTLINE, 5.5);
     arrows(SWAP_COLOR, 2.6);
+  }
+
+  /**
+   * Plant (or clear) the pickup glyph: a downward "into the backpack" arrow on
+   * my own hex, shown from the moment I take a ground item until the pickup
+   * resolves on the next turn bundle (cleared by main.ts). A pickup isn't a gear
+   * swap, so it gets its own glyph rather than the ⇄ — but shares the amber
+   * pending look + dark rim. Sits in the overlay (above entities) since it lands
+   * on my own dot.
+   */
+  setPickup(hex: Hex | null): void {
+    this.pickupGfx.clear();
+
+    if (hex === null) {
+      return;
+    }
+
+    const { x, y } = hexToPixel(hex);
+    const r = HEX_SIZE * 0.4;
+    const head = HEX_SIZE * 0.15;
+    const w = HEX_SIZE * 0.3;
+    const tip = y + r * 0.25; // arrow tip (bottom of the stem)
+    // A down-arrow over a tray ("into the backpack"). Drawn twice — a wide dark
+    // rim first, the amber glyph on top — so it has an outline.
+    const glyph = (color: number, width: number): void => {
+      this.pickupGfx
+        .moveTo(x, y - r)
+        .lineTo(x, tip)
+        .moveTo(x - head, tip - head)
+        .lineTo(x, tip)
+        .lineTo(x + head, tip - head)
+        .moveTo(x - w, y + r * 0.7)
+        .lineTo(x + w, y + r * 0.7)
+        .stroke({ width, color, cap: "round", join: "round" });
+    };
+    glyph(SWAP_OUTLINE, 5.5);
+    glyph(SWAP_COLOR, 2.6);
   }
 
   private tick = (ticker: Ticker): void => {
