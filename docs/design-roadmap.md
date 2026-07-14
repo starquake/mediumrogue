@@ -48,16 +48,17 @@ weapons were rebalanced to a "1H ≈ ½ 2H" pass and the Wyrmslayer Greatsword
 became the game's first two-handed weapon; combat now resolves every fitting
 held weapon as its own hit (dual-wield). Snapshot version bumped 3→4 (old
 worlds reject and reset). `docs/FEATURES.md`'s Gear & inventory section and
-`docs/rule-based-content-design.md` §4 are the up-to-date reference; G4
-(stacking throwables) is the one item on this list still unbuilt.
+`docs/rule-based-content-design.md` §4 are the up-to-date reference. G4/G5
+(throwables) are **scrapped** (2026-07-14) — throwing isn't a staple ARPG
+mechanic, so no thrown content will ship (see the G4/G5 rows and Q1).
 
 | # | Work item | What it is | Size | Notes / deps | Decision |
 |---|-----------|-----------|:----:|--------------|:--------:|
 | G1 | Weapon type-properties | Weapons carry a *set* of tags (melee/ranged/magic) instead of one `itemType` | M | **Keystone** — unblocks property-skills. `1h` = absence of `2h` | ✅ done (2026-07-13) |
 | G2 | Generic hand slots | Drop per-class weapon slots; any weapon fits a hand slot (two-handed greys the other) | M | Pairs with G1 | ✅ done (2026-07-13) |
 | G3 | Drop class gear restrictions | Anyone equips anything; class identity comes from skills, not gates (#56) | M | Philosophy shift; designer endorsed | ✅ done (2026-07-13) |
-| G4 | Stacking throwables | Javelins/axes stack like consumables; a throw spends one | S | **Cheap**; reuses backpack stacks | ❓ |
-| G5 | Multi-mode weapons | One weapon, melee + thrown modes with per-mode damage (the "Kangaroo axe") | L | Optional flavor; needs a mode choice + per-mode damage | ❓ |
+| G4 | Stacking throwables | Javelins/axes stack like consumables; a throw spends one | S | Needs thrown content, which won't ship | ❌ scrapped (2026-07-14) |
+| G5 | Multi-mode weapons | One weapon, melee + thrown modes with per-mode damage (the "Kangaroo axe") | L | Built on throwing — **scrapped with G4** | ❌ scrapped (2026-07-14) |
 
 ## 2. Damage types
 
@@ -144,7 +145,7 @@ see **Q6** and **Q7** below.
 
 | Q | Question | My input | Decision |
 |---|----------|----------|:--------:|
-| Q1 | Thrown weapons: lost when thrown, or retrievable? | Stack them; expend + optional ground drop; "returns to hand" = per-item enchant | ⏸ parked 2026-07-12 (dropped from #55 scope; revisit with thrown content) |
+| Q1 | Thrown weapons: lost when thrown, or retrievable? | Moot — thrown weapons scrapped | ❌ scrapped 2026-07-14 (throwing isn't a staple ARPG mechanic; no thrown content will ship — takes G4/G5 with it). Was ⏸ parked 2026-07-12. |
 | Q2 | Subclasses or new classes? | **Decided (2026-07-13): subclasses.** A hybrid (spellsword, arcane knight, ranger) = an unlock granting a *subset* of another class's tree; the character keeps its single class. The trio stays protected; no 4th-class costs. Gate per Q11. | ✅ |
 | Q3 | One-handed: an explicit tag or the default? | **Decided (#55 walkthrough):** the default — 1H = absence of the `two-handed` tag | ✅ |
 | Q4 | What does a level-up give? | **Decided (2026-07-13): one bankable skill point** — spent anytime outside combat (like equip), never a modal pick that could interrupt a bubble; allows banking and >1-cost capstones later | ✅ |
@@ -159,13 +160,14 @@ see **Q6** and **Q7** below.
 ## Fast lane (independent of the big arc)
 
 If you want momentum without committing to the whole skill arc, these ship on
-their own: **G4** (stacking throwables), **XP1/XP2** (curve + HP formulas),
-**XP3** (cut `DamagePerLevel`). Small, satisfying, no dependencies.
+their own: **XP1/XP2** (curve + HP formulas) and **XP3** (cut
+`DamagePerLevel`). Small, satisfying, no dependencies.
 
 **Batch 1 shipped 2026-07-13**: XP1, XP2, XP3, Q8 (additive fold), Q9's
 scatter half (sanctuary-scatter spawn/respawn), and DF2's `crit%` half
 (Misericorde/Duelist's Saber) — six independent slices, one commit each.
-**G4** (stacking throwables) is the one item on this list still unbuilt.
+Every fast-lane item is now shipped or scrapped (G4 throwables — scrapped
+2026-07-14).
 
 ## Next: turn decisions into issues
 

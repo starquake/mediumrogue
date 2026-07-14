@@ -66,7 +66,7 @@ My engineering read of the dependency graph (the *what-first*, not the
 
 | Order | Work | Roadmap rows | Why here |
 |:--:|---|---|---|
-| 1 | **Fast-lane wins** — quadratic XP curve, front-loaded HP, cut `DamagePerLevel`, stacking throwables, **`crit%` weapons** | XP1, XP2, XP3, G4, (DF-crit) | Independent, cheap, satisfying; `crit%` is free content (§2). Momentum with zero architectural commitment. |
+| 1 | **Fast-lane wins** — quadratic XP curve, front-loaded HP, cut `DamagePerLevel`, **`crit%` weapons** | XP1, XP2, XP3, (DF-crit) | Independent, cheap, satisfying; `crit%` is free content (§2). Momentum with zero architectural commitment. (G4 stacking throwables was here — scrapped 2026-07-14.) |
 | 2 | **Gear foundation** — weapon type-tags, generic hand slots, drop class gates | G1, G2, G3 (#55/#56) | **The keystone.** Unblocks property-skills, shields, and gives `crit%`/`evasion%` a natural home. |
 | 3 | **Evasion** — the `evasion-check` event + light-armour cards | DF2, DF1 (#69) | The one combat-engine addition; adds the light-armour playstyle. Best after gear has stat homes. |
 | 4 | **Damage types** | DT1 | Unblocks fire gear/skills and the parked Infernal Chain Mail / War Mage Robes cards. |

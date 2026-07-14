@@ -583,8 +583,7 @@ crit%-weapons, fast-lane batch task 6), downed state & revive, further
 recovery layers (rests, the sanctuary
 **trade hub** — the 6c sanctuary zone is only the monster-free ground, not
 the hub itself; healing potions + the backpack-cap layer now ship with the
-inventory system), thrown-weapon content (the fighter's thrown slot ships
-empty) & wand↔staff interactions, item destruction/durability, backpack
+inventory system), wand↔staff interactions, item destruction/durability, backpack
 upgrades, trading, continuous spawning with density-tracks-players,
 monster-kind passives (the `rules` seam on `monsterDef` ships empty), ring
 UI indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
