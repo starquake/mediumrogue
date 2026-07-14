@@ -16,6 +16,7 @@ import {
   markPickupRejected,
   modalOpen,
   panelOpen,
+  pending,
   pickupRows,
   refreshPickup,
   setInventory,
@@ -256,6 +257,13 @@ export interface GameDebug {
    * committed-action indicator (FeedbackLayer.setCommitted); exposed for e2e.
    */
   committedAction: CommittedAction | null;
+  /**
+   * Item ids with an in-flight panel action (equip/unequip/drink/drop) whose
+   * result hasn't ridden a turn bundle yet — the same pending set that drives
+   * the panel badge and the on-map ⇄ swap glyph (FeedbackLayer.setItemAction).
+   * Combat-agnostic; exposed for e2e. Empty when nothing is pending.
+   */
+  pendingItems: number[];
 }
 
 declare global {
@@ -467,6 +475,7 @@ window.game = {
   combatMoves: [],
   combatRanged: [],
   committedAction: null,
+  pendingItems: [],
 };
 
 // How many hexes an entity can cover in one action-gated combat turn. 1 is
@@ -659,6 +668,10 @@ async function start(): Promise<void> {
   const entityLayer = new EntityLayer(app.ticker);
   world.addChild(entityLayer.container);
 
+  // The pending-item swap glyph rides my own dot, so it renders ABOVE the entity
+  // layer (the rest of the feedback layer stays under — see above).
+  world.addChild(feedbackLayer.overlay);
+
   // Floating damage numbers render above everything on the map.
   const damageLayer = new DamageNumberLayer(app.ticker);
   world.addChild(damageLayer.container);
@@ -791,6 +804,24 @@ async function start(): Promise<void> {
     feedbackLayer.setCommitted(null);
   };
 
+  // A pending panel action (equip/unequip/drink/drop) gets the SAME feedback in
+  // and out of combat — the pending state drives it, not the clock: the item's
+  // panel badge (markPending) plus a ⇄ swap glyph on my hex. beginItemAction
+  // plants both; the turn-bundle handler clears them once the action resolves
+  // (re-derived from the pending set), and a superseding map click clears them
+  // immediately via clearItemPending.
+  const beginItemAction = (itemId: number): void => {
+    supersedeCommitted();
+    markPending(itemId);
+    feedbackLayer.setItemAction(window.game.me?.hex ?? null);
+    window.game.pendingItems = [...pending().keys()];
+  };
+  const clearItemPending = (): void => {
+    clearPending();
+    feedbackLayer.setItemAction(null);
+    window.game.pendingItems = [];
+  };
+
   // Inventory panel toggle: the HUD button, the `i`/`c` keys, Escape, and the
   // panel's own close button all route through applyPanelOpen, which keeps
   // the store signal, the HUD button's open-state class, and
@@ -806,23 +837,19 @@ async function start(): Promise<void> {
 
   const characterActions = {
     equip: (itemId: number): void => {
-      supersedeCommitted();
-      markPending(itemId);
+      beginItemAction(itemId);
       void submitEquip(identity, itemId);
     },
     unequip: (itemId: number): void => {
-      supersedeCommitted();
-      markPending(itemId);
+      beginItemAction(itemId);
       void submitUnequip(identity, itemId);
     },
     drop: (itemId: number): void => {
-      supersedeCommitted();
-      markPending(itemId);
+      beginItemAction(itemId);
       void submitDrop(identity, itemId);
     },
     drink: (itemId: number): void => {
-      supersedeCommitted();
-      markPending(itemId);
+      beginItemAction(itemId);
       void submitDrink(identity, itemId);
     },
     close: (): void => applyPanelOpen(false),
@@ -990,12 +1017,12 @@ async function start(): Promise<void> {
         window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
 
       if (self || inList(lastReach.moves, target)) {
-        clearPending(); // a real intent replaces a queued in-bubble action
+        clearItemPending(); // a real intent replaces a queued in-bubble action
         return walkTo(target);
       }
 
       if (inList(lastReach.bumps, target)) {
-        clearPending();
+        clearItemPending();
         if (aoeReaches(target)) {
           return attackAt(target); // mage: blast the adjacent hostile
         }
@@ -1003,16 +1030,16 @@ async function start(): Promise<void> {
       }
 
       if (isRangedAttackClick(target)) {
-        clearPending();
+        clearItemPending();
         return attackAt(target);
       }
 
       return Promise.resolve(); // out of this turn's reach: not a valid selection
     }
 
-    // A map click replaces a queued in-bubble equip server-side (latest
-    // intent wins) — release its button's pending "…" to match.
-    clearPending();
+    // A map click replaces a queued in-bubble equip server-side (latest intent
+    // wins) — release its pending panel badge + swap glyph to match.
+    clearItemPending();
 
     return walkTo(target);
   };
@@ -1160,6 +1187,13 @@ async function start(): Promise<void> {
       const myHex = mine?.hex ?? null;
       const moved = myHex !== null && (lastPickupHex === null || myHex.q !== lastPickupHex.q || myHex.r !== lastPickupHex.r);
       lastPickupHex = myHex;
+
+      // Pending item-action feedback, re-derived from the (setInventory-resolved)
+      // pending set: the ⇄ swap glyph rides my hex while any equip/unequip/drink/
+      // drop is still in flight, cleared once this bundle reflects the change.
+      // Combat-agnostic — the pending set, not the clock, drives it.
+      feedbackLayer.setItemAction(pending().size > 0 ? myHex : null);
+      window.game.pendingItems = [...pending().keys()];
       const rowsHere =
         myHex === null
           ? []

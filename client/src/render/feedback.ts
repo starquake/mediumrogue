@@ -6,6 +6,8 @@ import { hexToPixel, HEX_SIZE } from "./hex";
 const DESTINATION_COLOR = 0x8fd0ff; // matches my entity dot
 const ATTACK_COLOR = 0xd6544f; // matches the monster/hostile red
 const WAIT_COLOR = 0xe8e4d0; // neutral parchment, distinct from either faction color
+const SWAP_COLOR = 0xd9a441; // amber — a pending item action, distinct from move/attack/wait
+const SWAP_OUTLINE = 0x07090a; // near-black rim so the swap glyph reads on any dot color
 const PULSE_PERIOD_MS = 900;
 const FLASH_DURATION_MS = 450;
 
@@ -34,9 +36,15 @@ export interface CommittedAction {
  */
 export class FeedbackLayer {
   readonly container = new Container();
+  // overlay is added ABOVE the entity layer by main.ts. The pending swap glyph
+  // sits on my OWN dot, so — unlike the destination ring / attack flash, which
+  // stay under entities (acknowledgement, not occlusion) — it must draw on top,
+  // or my dot would hide it.
+  readonly overlay = new Container();
   private readonly destGfx = new Graphics();
   private readonly flashGfx = new Graphics();
   private readonly committedGfx = new Graphics();
+  private readonly itemActionGfx = new Graphics();
   private dest: Hex | null = null;
   private pulseMs = 0;
   private flashHex: Hex | null = null;
@@ -46,6 +54,7 @@ export class FeedbackLayer {
     this.container.addChild(this.destGfx);
     this.container.addChild(this.flashGfx);
     this.container.addChild(this.committedGfx);
+    this.overlay.addChild(this.itemActionGfx);
     ticker.add(this.tick);
   }
 
@@ -118,6 +127,46 @@ export class FeedbackLayer {
         break;
       }
     }
+  }
+
+  /**
+   * Plant (or clear) the pending-item-action glyph: a ⇄ swap icon on my own hex,
+   * shown from the moment I equip / unequip / drink / drop until the action
+   * resolves on a turn bundle. Deliberately combat-agnostic — the PENDING state
+   * drives it, not the clock: out of combat it clears on the next world tick, in
+   * a bubble it persists until the bubble turn resolves, but it's the same
+   * indicator either way. Drawn with a dark rim so it reads on any dot color;
+   * static (no animation), like the committed-action markers.
+   */
+  setItemAction(hex: Hex | null): void {
+    this.itemActionGfx.clear();
+
+    if (hex === null) {
+      return;
+    }
+
+    const { x, y } = hexToPixel(hex);
+    const r = HEX_SIZE * 0.4;
+    const o = HEX_SIZE * 0.17;
+    const head = HEX_SIZE * 0.13;
+    // Two opposed arrows (⇄): top points right, bottom points left. Drawn twice
+    // — a wide dark rim first, the amber glyph on top — so it has an outline.
+    const arrows = (color: number, width: number): void => {
+      this.itemActionGfx
+        .moveTo(x - r, y - o)
+        .lineTo(x + r, y - o)
+        .moveTo(x + r - head, y - o - head)
+        .lineTo(x + r, y - o)
+        .lineTo(x + r - head, y - o + head)
+        .moveTo(x + r, y + o)
+        .lineTo(x - r, y + o)
+        .moveTo(x - r + head, y + o - head)
+        .lineTo(x - r, y + o)
+        .lineTo(x - r + head, y + o + head)
+        .stroke({ width, color, cap: "round", join: "round" });
+    };
+    arrows(SWAP_OUTLINE, 5.5);
+    arrows(SWAP_COLOR, 2.6);
   }
 
   private tick = (ticker: Ticker): void => {

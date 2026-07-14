@@ -133,7 +133,7 @@ function HexSlot(props: { slot: string; cls: string; actions: CharacterActions }
     <button
       type="button"
       class={`hex ${props.cls}`}
-      classList={{ filled: item() !== undefined, greyed: locked() }}
+      classList={{ filled: item() !== undefined, greyed: locked(), pending: item() !== undefined && isPending(item()!.id) }}
       data-slot={props.slot}
       disabled={locked() || item() === undefined || isPending(item()!.id)}
       onClick={() => {
@@ -152,7 +152,10 @@ function HexSlot(props: { slot: string; cls: string; actions: CharacterActions }
         fallback={<span class="ghost">two-handed grip</span>}
       >
         <Show when={item() !== undefined} fallback={<span class="empty">—</span>}>
-          <span class="itemname">{isPending(item()!.id) ? "…" : item()!.name}</span>
+          <span class="itemname">{item()!.name}</span>
+          <Show when={isPending(item()!.id)}>
+            <span class="pending-badge">⇄ queued</span>
+          </Show>
         </Show>
       </Show>
     </button>
@@ -180,7 +183,7 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
   return (
     <div
       class="cell"
-      classList={{ filled: entry() !== null }}
+      classList={{ filled: entry() !== null, pending: entry() !== null && isPending(entry()!.id) }}
       onMouseEnter={(e) => {
         const en = entry();
         if (en !== null) showHover(en, e.currentTarget);
@@ -196,8 +199,11 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
           title={isConsumable() ? "drink" : "equip"}
           onClick={cellClick}
         >
-          {isPending(entry()!.id) ? "…" : entry()!.name}
+          {entry()!.name}
         </button>
+        <Show when={isPending(entry()!.id)}>
+          <span class="pending-badge">⇄ queued</span>
+        </Show>
         <Show when={entry()!.count > 1}>
           <span class="count">×{entry()!.count}</span>
         </Show>
