@@ -36,10 +36,11 @@ export interface CommittedAction {
  */
 export class FeedbackLayer {
   readonly container = new Container();
-  // overlay is added ABOVE the entity layer by main.ts. The pending swap glyph
-  // sits on my OWN dot, so — unlike the destination ring / attack flash, which
-  // stay under entities (acknowledgement, not occlusion) — it must draw on top,
-  // or my dot would hide it.
+  // overlay is added ABOVE the entity layer by main.ts. Its glyphs sit ON a dot
+  // — the pending swap glyph on my own, the committed attack crosshair on the
+  // enemy I targeted — so they must draw on top or the dot would hide them.
+  // (The destination ring / attack flash stay under entities in `container`:
+  // acknowledgement of where I clicked, not occlusion of who's there.)
   readonly overlay = new Container();
   private readonly destGfx = new Graphics();
   private readonly flashGfx = new Graphics();
@@ -53,7 +54,10 @@ export class FeedbackLayer {
   constructor(ticker: Ticker) {
     this.container.addChild(this.destGfx);
     this.container.addChild(this.flashGfx);
-    this.container.addChild(this.committedGfx);
+    // committedGfx draws the committed move/attack/wait markers ON their target
+    // hex — the attack crosshair lands on the enemy, so it goes in the overlay
+    // (above entities) or the enemy's dot would hide it.
+    this.overlay.addChild(this.committedGfx);
     this.overlay.addChild(this.itemActionGfx);
     ticker.add(this.tick);
   }
@@ -102,14 +106,20 @@ export class FeedbackLayer {
         break;
       case "attack": {
         const r = HEX_SIZE * 0.4;
-        this.committedGfx
-          .circle(x, y, r)
-          .stroke({ width: 2.5, color: ATTACK_COLOR, alpha: 0.9 })
-          .moveTo(x - r * 1.3, y)
-          .lineTo(x + r * 1.3, y)
-          .moveTo(x, y - r * 1.3)
-          .lineTo(x, y + r * 1.3)
-          .stroke({ width: 2, color: ATTACK_COLOR, alpha: 0.9 });
+        // Drawn twice — a wide dark rim first, the red crosshair on top — so it
+        // stays legible sitting on the enemy's (often reddish) dot.
+        const crosshair = (color: number, ring: number, line: number): void => {
+          this.committedGfx
+            .circle(x, y, r)
+            .stroke({ width: ring, color, alpha: 0.95 })
+            .moveTo(x - r * 1.3, y)
+            .lineTo(x + r * 1.3, y)
+            .moveTo(x, y - r * 1.3)
+            .lineTo(x, y + r * 1.3)
+            .stroke({ width: line, color, alpha: 0.95 });
+        };
+        crosshair(0x07090a, 5, 4.5);
+        crosshair(ATTACK_COLOR, 2.5, 2);
         break;
       }
       case "wait": {
