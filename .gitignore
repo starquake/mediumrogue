@@ -12,6 +12,7 @@ internal/web/dist/*
 
 # Local environment
 .env
+distrobox.ini
 
 # Editors
 .idea/
