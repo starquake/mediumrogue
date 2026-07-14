@@ -572,8 +572,36 @@ async function start(): Promise<void> {
   mountQuests(mustGet("quest-root"));
 
   const app = new Application();
-  await app.init({ background: "#0b0f0b", resizeTo: window, antialias: true });
+  await app.init({
+    background: "#0b0f0b",
+    resizeTo: window,
+    antialias: true,
+    // HiDPI: render the backing store at the display's true pixel density so
+    // hexes, dots, glyph icons, and text stay crisp on retina/4K screens.
+    // autoDensity keeps the canvas's CSS size unchanged — the pointer→world→hex
+    // math (getBoundingClientRect / clientX / world.position, all logical
+    // pixels) is unaffected, so click hit-testing needs no change.
+    resolution: window.devicePixelRatio || 1,
+    autoDensity: true,
+  });
   document.body.appendChild(app.canvas);
+
+  // devicePixelRatio can change while the app runs — dragging the window from a
+  // non-retina monitor onto a retina one (or vice versa). app.init captured it
+  // once, so without this the backing store would keep the old density and go
+  // blurry on the new screen. A DPR change is a human dragging a window (rare,
+  // never latency-sensitive), so a 1 s poll catches it imperceptibly with no
+  // per-frame work — a single numeric compare, the resize only running on a
+  // real change. (Chosen over a `matchMedia("(resolution: …)")` watcher: that's
+  // event-driven but some browser/OS display-switch combos don't fire it.)
+  // resizeTo:window still owns plain window resizes — its resize preserves the
+  // current resolution.
+  window.setInterval(() => {
+    const dpr = window.devicePixelRatio || 1;
+    if (app.renderer.resolution !== dpr) {
+      app.renderer.resize(window.innerWidth, window.innerHeight, dpr);
+    }
+  }, 1000);
 
   const world = new Container();
   app.stage.addChild(world);
