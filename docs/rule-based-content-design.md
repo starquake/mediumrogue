@@ -244,7 +244,7 @@ More examples of the range of what cards can express:
 > Rule: *when* dealing damage, *if* at least one ally shares the bubble,
 > *then* +2 damage. Intent: a party-play bow — weaker solo.
 
-> **Ember Staff** (weapon — magic) — damage 3, range 4, area radius 1.
+> **Ember Staff** (weapon — magic) — damage 6, range 4, area radius 1, two-handed.
 > Rule: *when* dealing damage, *if* the target is adjacent to you, *then*
 > double damage. Intent: a risky brawler-mage staff; rewards standing
 > dangerously close.

@@ -9,8 +9,8 @@ replace class-shaped weapon types, hand slots replace per-class weapon
 slots, class equip gates are dropped, weapons are rebalanced, the game's
 first two-handed weapon ships, and combat resolves every fitting held
 weapon as its own hit).
-Design rationale lives in `roguelike-mp-plan.md`; current-session state in
-`STATUS.md`; the content-design vocabulary in `rule-based-content-design.md`.
+Design rationale lives in `roguelike-mp-plan.md`; the content-design
+vocabulary in `rule-based-content-design.md`.
 This file is the what-is-real summary: mechanics, systems, knobs.*
 
 ---
@@ -176,8 +176,8 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 - **Two-handed weapons**: `TwoHanded=true` occupies main-hand **and** locks
   off-hand — equipping one evicts whatever the off-hand held back to the
   backpack (rejected if full); the off-hand hex greys out while it's locked.
-  The Wyrmslayer Greatsword is the game's first (and so far only) two-handed
-  weapon.
+  The Wyrmslayer Greatsword was the game's first two-handed weapon; the two
+  magic staves are also two-handed since the keystone amendment.
 - **Dual-wield / per-hit combat (#55 task 2)** — every fitting **held**
   weapon fires as its own hit, not just one "best" weapon: a bump resolves
   every melee-tagged held weapon against the same picked victim; a ranged

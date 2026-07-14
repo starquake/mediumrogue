@@ -24,7 +24,8 @@ Built for a ~15-friend group who hop on together for an evening.
 - **A persistent shared world** for a small trusted roster (~15 friends),
   server-authoritative, with chat / parties / quests.
 - **ARPG in its stat grammar.** Gear = pure-data modifier cards; defence is a
-  rule, not a stat; damage-reduction and decoupled `evasion%` / `crit%`.
+  rule, not a stat; damage-reduction and decoupled `crit%` (shipped) /
+  `evasion%` (the intended identity; not yet built — #91).
 - **Spatially a hex-grid tactics game** — discrete movement, hex range, ring
   AoE, positioning that matters.
 

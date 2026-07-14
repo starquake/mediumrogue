@@ -5,9 +5,9 @@ A multiplayer roguelike for a ~15-friend group: shared hex world, simultaneous
 design — every decided rule and open question — lives in
 **`docs/roguelike-mp-plan.md`**; read it before making design-level choices.
 
-**Resuming work? Start with `docs/STATUS.md`** — current milestone state,
-next step, known placeholders, and environment gotchas. Keep it updated at
-the end of every session.
+**Resuming work?** `docs/FEATURES.md` is the source of truth for what's built;
+`docs/design-decisions.md` records the design direction, the cuts, and the open
+questions. Live work is tracked in **GitHub issues + milestones**.
 
 **`docs/FEATURES.md` is the implemented-features reference** (mechanics,
 systems, env vars, protocol constants — doubles as the player manual).
@@ -43,6 +43,12 @@ never from memory.
 - `make smoke` — config + wiring check without serving
 
 Go may not be on PATH; the Makefile falls back to `/usr/local/go/bin/go`.
+
+A piped command (`make check | tail`, etc.) reports the **pipe's** exit code, so
+a failing `make` can look green — run `set -o pipefail` first when piping a
+command whose success you're checking. The shell working directory can also
+drift between calls; use absolute paths or `cd` to the repo root before
+`make`/`git`.
 
 ## Conventions
 
