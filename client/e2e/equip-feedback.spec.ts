@@ -40,13 +40,13 @@ test("out-of-combat item action shows pending feedback, then clears", async ({ p
     return {
       pending: window.game.pendingItems.length,
       hexPending: hex.classList.contains("pending"),
-      badge: !!hex.querySelector(".pending-badge"),
+      spinner: !!hex.querySelector(".spinner"),
       name: hex.querySelector(".itemname")?.textContent ?? null,
     };
   });
   expect(snap.pending, "pendingItems lists the in-flight item").toBeGreaterThan(0);
   expect(snap.hexPending, "the hex shows the pending state").toBe(true);
-  expect(snap.badge, "the pending badge is shown").toBe(true);
+  expect(snap.spinner, "the pending spinner is shown").toBe(true);
   expect(snap.name, "the item stays named, not a bare ellipsis").toBe("Iron Sword");
 
   // It resolves on a turn bundle: the sword moves to the backpack and the
