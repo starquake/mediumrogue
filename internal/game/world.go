@@ -102,9 +102,6 @@ var (
 	// ErrItemNotOwned rejects an equip intent naming an item instance id the
 	// entity does not own.
 	ErrItemNotOwned = errors.New("item not owned")
-	// ErrWrongClass rejects an equip intent naming an item whose class does not
-	// match the entity's class.
-	ErrWrongClass = errors.New("item is for a different class")
 	// ErrInvalidClass rejects a Join for a new entity whose Class is not one of
 	// ClassFighter, ClassRogue, ClassMage.
 	ErrInvalidClass = errors.New("invalid class")
@@ -127,8 +124,9 @@ var (
 	// ErrNotDrinkable rejects a drink intent naming a non-consumable item.
 	ErrNotDrinkable = errors.New("item is not drinkable")
 	// ErrNotEquippable rejects an equip intent naming an item whose type has
-	// no equip slot at all (a consumable) — distinct from ErrWrongClass,
-	// which means a slotted item the class can't wear.
+	// no equip slot at all (a consumable — drink, not equip, is its action).
+	// Class gates are gone (gear keystone, #56): anyone may equip anything
+	// that HAS a slot.
 	ErrNotEquippable = errors.New("that item can't be equipped")
 	// ErrNoSuchGroundItem rejects a pickup intent naming a ground item that
 	// is not lying on the player's own hex (stale id, or an item elsewhere).
@@ -219,14 +217,16 @@ type entity struct {
 	// time, before its first stream opens): the start of its removal-grace clock.
 	// Only consulted while streams == 0. Players only.
 	disconnectedAt time.Time
-	// equipped is the entity's worn/wielded gear, keyed by slot (the 8 typed
-	// slots of the inventory-slots milestone: the six universal body slots
-	// plus the class's two class-shaped weapon slots — slot keys are itemType
-	// strings, see slotForType/weaponSlotsFor in items.go). Players only;
-	// monsters own no items and fight with their kind's own claws profile
-	// (monsterDef.claws). Granted at Join by grantDefaultsLocked; gear
-	// survives death (never cleared by respawn). May be nil on a
-	// monster/zero-value fixture — equippedDefIn treats nil as all-empty.
+	// equipped is the entity's worn/wielded gear, keyed by slot (the gear
+	// keystone's 8 slots: main-hand + off-hand — a weapon's slot is a hand
+	// chosen at equip time, weaponTargetSlot — plus the six universal
+	// armor/jewelry slots, whose keys equal their itemType; see slotForType
+	// in items.go). Class gates are gone: any class may equip any item that
+	// has a slot. Players only; monsters own no items and fight with their
+	// kind's own claws profile (monsterDef.claws). Granted at Join by
+	// grantDefaultsLocked; gear survives death (never cleared by respawn).
+	// May be nil on a monster/zero-value fixture — equippedDefIn treats nil
+	// as all-empty.
 	equipped map[string]itemInstance
 	// backpack is the entity's protocol.BackpackSize carry entries: one gear
 	// instance or one consumable stack per entry (backpackEntry, items.go).
@@ -901,19 +901,26 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 }
 
 // queueAttackLocked validates a ranged attack intent and queues it: the
-// entity must have a ranged weapon equipped (else ErrNoRangedWeapon). A
-// single-target weapon (aoeRadius 0, a bow) with a non-zero targetEntityID
-// (item 7, playtest batch 2) is ENTITY-targeted: the named entity must exist
-// and be alive (else ErrAttackTargetNotFound), be a hostile — opposing faction
-// (else ErrAttackTargetNotHostile), and be within the weapon's reach from e's
-// current hex at submit time (else ErrOutOfRange); resolution re-aims at
-// the victim's post-move hex (resolveEntityTargetedLocked) rather than
-// trusting this submit-time position, so a sidestep or retreat is tracked.
-// Anything else (an AoE cast, or targetEntityID 0 — e.g. a defensive/legacy
-// hex-only bow shot) is GROUND-targeted at target, checked the same way
-// against e's current hex. On success it records the target and clears the
-// route and any queued equip — a ranged attack replaces the move AND the
-// swap for this turn (the latest intent in the window wins).
+// entity must have SOME ranged/magic weapon held (else ErrNoRangedWeapon,
+// checked via rangedDefFor — any-reach existence only, independent of this
+// shot's distance). A non-zero targetEntityID (item 7, playtest batch 2) is
+// ENTITY-targeted: the named entity must exist and be alive (else
+// ErrAttackTargetNotFound), be a hostile — opposing faction (else
+// ErrAttackTargetNotHostile) — and be within reach of AT LEAST ONE held
+// ranged/magic weapon from e's current hex at submit time (else
+// ErrOutOfRange); resolution re-aims at the victim's post-move hex
+// (resolveEntityTargetedLocked) rather than trusting this submit-time
+// position, so a sidestep or retreat is tracked. This routing no longer keys
+// off any single "best" weapon's aoeRadius (task 2, dual-wield): a shooter
+// dual-wielding a bow and a magic weapon still gets the bow's entity-targeted
+// post-move re-aim AND the magic weapon's AoE around the victim's hex, both
+// from one entity-targeted intent — resolution (resolveEntityTargetedLocked)
+// already fires every reaching def this way regardless of which one happens
+// to have the longest range. Anything else (targetEntityID 0 — e.g. a
+// defensive/legacy hex-only shot) is GROUND-targeted at target, checked the
+// same way against e's current hex. On success it records the target and
+// clears the route and any queued equip — a ranged attack replaces the move
+// AND the swap for this turn (the latest intent in the window wins).
 //
 // INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
 // CombatRadius (validateMaxReach, run at content load by mustValidateContent),
@@ -923,12 +930,11 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // kill-XP) — add an in-bubble/target-in-member-set guard here then. Callers
 // hold w.mu.
 func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID int64) error {
-	def := rangedDefFor(e)
-	if def == nil {
+	if rangedDefFor(e) == nil {
 		return ErrNoRangedWeapon
 	}
 
-	if targetEntityID != 0 && def.aoeRadius == 0 {
+	if targetEntityID != 0 {
 		victim, ok := w.entities[targetEntityID]
 		if !ok || victim.hp <= 0 {
 			return ErrAttackTargetNotFound
@@ -938,7 +944,10 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 			return ErrAttackTargetNotHostile
 		}
 
-		if HexDistance(e.hex, victim.hex) > def.rangeHex {
+		// "is anything in range?" — any held ranged/magic weapon that reaches,
+		// not just best (task 2, dual-wield): a bow out of reach must not block
+		// a shorter-range weapon's own fizzle-free shot, and vice versa.
+		if len(rangedDefsFor(e, HexDistance(e.hex, victim.hex))) == 0 {
 			return ErrOutOfRange
 		}
 
@@ -950,7 +959,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 		return nil
 	}
 
-	if HexDistance(e.hex, target) > def.rangeHex {
+	if len(rangedDefsFor(e, HexDistance(e.hex, target))) == 0 {
 		return ErrOutOfRange
 	}
 
@@ -978,7 +987,7 @@ func (w *World) queueEquipLocked(e *entity, itemID int64) error {
 		return ErrItemNotOwned
 	}
 
-	if err := equipValidate(e.class, itemDefByID[inst.defID]); err != nil {
+	if err := equipValidate(itemDefByID[inst.defID]); err != nil {
 		return err
 	}
 
@@ -996,7 +1005,7 @@ func (w *World) queueUnequipLocked(e *entity, itemID int64) error {
 		return err
 	}
 
-	if cur, ok := e.equipped[slotForType(def.itemType)]; !ok || cur.id != inst.id {
+	if currentSlotOf(e, inst, def) == "" {
 		return ErrItemNotEquipped
 	}
 
@@ -1136,10 +1145,10 @@ func (w *World) Snapshot() protocol.TurnEvent {
 // itemViewsLocked builds the wire item list for one entity: an ItemView per
 // owned item instance — equipped gear first, in canonicalSlotOrder (so the
 // list order is deterministic despite e.equipped being a map), then backpack
-// entries in index order. Slot carries the def's itemType (the taxonomy
-// string; see protocol.ItemView.Slot's doc comment). Always a non-nil
-// slice — empty (not null) for a monster (which owns nothing) or a player
-// who owns nothing, so the wire shape matches the generated TS type's
+// entries in index order. Tags/TwoHanded carry a weapon's tag set and
+// two-handedness (see protocol.ItemView's doc comments). Always a non-nil
+// slice — empty (not null) for a monster (which owns nothing) or a player who
+// owns nothing, so the wire shape matches the generated TS type's
 // non-optional ItemView[]. Callers hold w.mu.
 func itemViewsLocked(e *entity) []protocol.ItemView {
 	views := make([]protocol.ItemView, 0, len(e.equipped)+len(e.backpack))
@@ -1150,7 +1159,7 @@ func itemViewsLocked(e *entity) []protocol.ItemView {
 			continue
 		}
 
-		views = append(views, itemViewOf(inst, true, 1))
+		views = append(views, itemViewOf(inst, slot, 1))
 	}
 
 	for _, be := range e.backpack {
@@ -1158,19 +1167,35 @@ func itemViewsLocked(e *entity) []protocol.ItemView {
 			continue
 		}
 
-		views = append(views, itemViewOf(be.inst, false, be.count))
+		views = append(views, itemViewOf(be.inst, "", be.count))
 	}
 
 	return views
 }
 
-// itemViewOf renders one owned item instance for the wire. count is the
-// stack size (1 for gear and equipped items).
-func itemViewOf(inst itemInstance, equipped bool, count int) protocol.ItemView {
+// itemViewOf renders one owned item instance for the wire. slot is the equip
+// slot this instance currently occupies, or "" for a backpack entry. count is
+// the stack size (1 for gear and equipped items). Type carries slot for an
+// equipped item — for armor/jewelry that equals def.itemType already (a slot
+// name IS the type), but for a weapon it is the occupied hand (SlotMainHand/
+// SlotOffHand) rather than the generic "weapon" taxonomy string, so the wire
+// (and the client's slot-keyed equipped map) can tell the two hands apart —
+// the gear keystone's dual-wield model (protocol.ItemView's doc comment).
+// An unequipped weapon (backpack) has no hand yet (weaponTargetSlot decides
+// one at equip time), so it falls back to def.itemType like every other
+// backpack entry.
+func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 	def := itemDefByID[inst.defID]
+	equipped := slot != ""
+	viewType := def.itemType
+
+	if equipped {
+		viewType = slot
+	}
 
 	return protocol.ItemView{
-		ID: inst.id, DefID: inst.defID, Name: def.name, Type: def.itemType,
+		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
+		Tags: def.tags, TwoHanded: def.twoHanded,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
@@ -1403,12 +1428,14 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 // equipped, folded in canonicalSlotOrder — a hit lands on the whole entity,
 // not just the slot that happens to be attacking; this is how armor's
 // take-damage cards apply). A monster victim folds its kind's claws rules
-// instead (it never equips). weapon is the attacker's acting weapon def
-// (closeDefFor for a bump, rangedDefFor for a shot); it is never nil — every
-// combat site resolves a def (fists/claws fallback for close, a real
-// equipped item for ranged, since a nil ranged def never reaches here — see
-// queueAttackLocked/resolveRangedLocked). Every damage number in the game
-// flows through here. Callers hold w.mu.
+// instead (it never equips). weapon is the ONE hit currently resolving's
+// acting weapon def — a single entry of meleeDefsFor for a bump or
+// rangedDefsFor for a shot (task 2: every fitting held weapon fires its own
+// hit, each folding through here separately); it is never nil — every combat
+// site resolves a real def per hit (fists/claws fallback for an unarmed
+// close attacker, a real equipped item for ranged, since an empty ranged def
+// list never reaches here — see queueAttackLocked/resolveRangedLocked). Every
+// damage number in the game flows through here. Callers hold w.mu.
 func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weapon *itemDef, base int) int {
 	ctx := ruleCtx{attacker: attacker, victim: victim, allyInBubble: w.allyInBubbleLocked(attacker), rng: rng}
 
@@ -1618,20 +1645,21 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 
 		victim := victims[rng.IntN(len(victims))]
 
-		// Melee/bump damage: the attacker's equipped close-slot item (or the
-		// fists/claws fallback — closeDefFor) via itemDamage; levels do not
-		// scale damage (#60, roadmap XP3). A monster's closeDefFor is its
-		// KIND's own claws profile (6c — monsterDef.claws, e.g. a rat's 1 vs
-		// a dragon's 9). Resolved once here (mirroring resolveRangedLocked's
-		// def := rangedDefFor(e) below) so the def is looked up exactly once
-		// per hit.
-		weapon := closeDefFor(a.attacker)
-		base := itemDamage(weapon)
-		dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
-		damage[victim.id] += dealt
+		// Melee/bump damage: EVERY melee-tagged weapon the attacker holds
+		// lands its own hit on the same victim (task 2, dual-wield) — the
+		// fists/claws fallback (meleeDefsFor) for an unarmed player or a
+		// monster's KIND claws profile (6c — monsterDef.claws, e.g. a rat's 1
+		// vs a dragon's 9) is a single-entry slice, so a single-weapon
+		// attacker still lands exactly one hit. hand order (heldWeapons) keeps
+		// rng consumption deterministic.
+		for _, weapon := range meleeDefsFor(a.attacker) {
+			base := itemDamage(weapon)
+			dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
+			damage[victim.id] += dealt
 
-		w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", a.attacker.id, "victim", victim.id,
-			"weapon", weapon.id, "base", base, "dealt", dealt)
+			w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", a.attacker.id, "victim", victim.id,
+				"weapon", weapon.id, "base", base, "dealt", dealt)
+		}
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
@@ -1645,21 +1673,24 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 // map (against pre-attack HP, so a bow shot lands simultaneously with bumps).
 // Shooters are processed in id order so the seeded single-target victim pick is
 // reproducible regardless of map iteration order. An ENTITY-targeted attack
-// (item 7, playtest batch 2 — attackTargetEntity != 0, a single-target bow
-// shot aimed at a specific victim rather than a hex) delegates to
-// resolveEntityTargetedLocked, which re-aims at the victim's post-move hex.
-// Everything else is GROUND-targeted at attackTarget's hex, re-checked
-// against post-move positions in byHex: a shot that is now out of range
-// fizzles. A bow (aoeRadius 0) shot this way damages one opposing occupant at
-// the target hex — a stack picks one hostile with rng, mirroring the bump
-// victim pick (this is the legacy/defensive hex-only bow path — kept for the
-// SetAttackTargetForTest bridge and any future hex-only ranged use; a real
-// client always sends an entity id for a single-target weapon). Magic
-// (aoeRadius > 0) damages every opposing-faction entity within aoeRadius of
-// the target hex — no friendly fire, ground-targeted by nature. Every
-// shooter's pending target is cleared, hit or fizzle. byHex holds exactly the
-// resolving member set, so targets outside the domain are naturally
-// unreachable. Callers hold w.mu.
+// (item 7, playtest batch 2 — attackTargetEntity != 0, aimed at a specific
+// victim rather than a hex) delegates to resolveEntityTargetedLocked, which
+// re-aims at the victim's post-move hex. Everything else is GROUND-targeted at
+// attackTarget's hex, re-checked against post-move positions in byHex: a shot
+// that is now out of every held weapon's range fizzles. Every ranged/magic
+// weapon that still reaches the target (rangedDefsFor, task 2 dual-wield)
+// fires as its own hit, in hand order: a bow (aoeRadius 0) damages one
+// opposing occupant at the target hex — a stack picks one hostile with rng,
+// mirroring the bump victim pick (this is the legacy/defensive hex-only bow
+// path — kept for the SetAttackTargetForTest bridge and any future hex-only
+// ranged use; a real client always sends an entity id for a single-target
+// weapon) — while magic (aoeRadius > 0) damages every opposing-faction entity
+// within its own aoeRadius of the target hex — no friendly fire,
+// ground-targeted by nature. A single-weapon shooter still fires exactly one
+// hit, so this is unchanged for every pre-dual-wield board. Every shooter's
+// pending target is cleared, hit or fizzle. byHex holds exactly the resolving
+// member set, so targets outside the domain are naturally unreachable.
+// Callers hold w.mu.
 func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int) {
 	var shooters []*entity
 
@@ -1679,8 +1710,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		e.attackTarget = nil // resolved, whether it hits or fizzles
 		e.attackTargetEntity = 0
 
-		def := rangedDefFor(e)
-		if def == nil {
+		if rangedDefFor(e) == nil {
 			// unequipped mid-turn (equip intent, Task 4) → fizzle
 			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped", "attacker", e.id)
 
@@ -1688,25 +1718,58 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		}
 
 		if targetEntityID != 0 {
-			w.resolveEntityTargetedLocked(rng, e, def, targetEntityID, damage)
+			w.resolveEntityTargetedLocked(rng, byHex, e, targetEntityID, damage)
 
 			continue
 		}
 
-		target := *hexTarget
+		w.resolveGroundTargetedLocked(rng, byHex, e, *hexTarget, damage)
+	}
+}
 
-		if HexDistance(e.hex, target) > def.rangeHex {
-			// moved out of range this turn → fizzle
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range", "attacker", e.id,
-				"weapon", def.id, "target_hex", target)
+// resolveGroundTargetedLocked resolves one ground-targeted ranged attack (the
+// legacy/defensive hex-only path — kept for the SetAttackTargetForTest bridge
+// and any future hex-only ranged use; a real client always sends an entity id
+// for a single-target weapon), re-checked against post-move positions in
+// byHex: fizzles (reason out_of_range) if the target hex is now out of every
+// held weapon's range. Every ranged/magic weapon that still reaches
+// (rangedDefsFor, task 2 dual-wield) fires as its own hit, in hand order.
+// Single-target (aoeRadius 0) defs share ONE stack-victim pick, drawn lazily
+// on the first such def, mirroring attackLocked's bump victim pick — a
+// dual-wielded pair of single-target weapons both land on the SAME stack
+// member instead of splitting a stack across weapons via independent rng
+// picks. Magic (aoeRadius > 0) defs are unaffected — each already damages
+// every opposing-faction entity within its own aoeRadius of the target hex,
+// no friendly fire, not a single pick. A single-weapon shooter still fires
+// exactly one hit, so this is unchanged for every pre-dual-wield board.
+// Callers hold w.mu.
+func (w *World) resolveGroundTargetedLocked(
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, e *entity, target protocol.Hex, damage map[int64]int,
+) {
+	defs := rangedDefsFor(e, HexDistance(e.hex, target))
+	if len(defs) == 0 {
+		// moved out of range this turn → fizzle
+		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range", "attacker", e.id,
+			"target_hex", target)
 
-			continue
-		}
+		return
+	}
 
+	var (
+		victim *entity
+		picked bool
+	)
+
+	for _, def := range defs {
 		dmg := itemDamage(def)
 
 		if def.aoeRadius == 0 {
-			w.resolveBowLocked(rng, byHex, e, def, target, dmg, damage)
+			if !picked {
+				victim = w.stackVictimLocked(rng, byHex, e, target)
+				picked = true
+			}
+
+			w.resolveBowLocked(rng, e, def, victim, dmg, damage)
 
 			continue
 		}
@@ -1715,25 +1778,30 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 	}
 }
 
-// resolveEntityTargetedLocked resolves one entity-targeted single-target
-// ranged attack (item 7, playtest batch 2): re-aims at the victim's CURRENT
-// (post-move) hex rather than trusting the hex it happened to occupy at
-// submit time, so a sidestepping or retreating target is tracked the way a
-// hex-pinned shot never could — hits if the victim is still within the
-// weapon's range from the shooter's own post-move hex, else fizzles
-// (reason out_of_range, same as the ground-targeted path). A victim that
-// died or vanished this same turn — a simultaneous kill by another attacker,
-// resolved earlier in this same damage-accumulation pass — also fizzles
-// (reason target_gone) rather than panicking on a missing entity; damage
-// application happens all-at-once after every attack accumulates
-// (attackLocked), so "vanished" here really means removed by a PRIOR
-// resolution this turn (deaths, not this pass — resolveDeathsLocked runs
-// after this), i.e. any entity that already left w.entities entirely, which
-// resolveCombatLocked never does mid-attack-phase; this guard is therefore
-// mostly defensive, matching resolveBowLocked's own empty-hex no-op. Callers
-// hold w.mu.
+// resolveEntityTargetedLocked resolves one entity-targeted ranged attack
+// (item 7, playtest batch 2): re-aims at the victim's CURRENT (post-move) hex
+// rather than trusting the hex it happened to occupy at submit time, so a
+// sidestepping or retreating target is tracked the way a hex-pinned shot
+// never could. Every ranged/magic weapon the attacker holds that still
+// reaches the victim's post-move hex (rangedDefsFor, task 2 dual-wield) fires
+// as its own hit, in hand order: a bow (aoeRadius 0) damages exactly the named
+// victim; a magic weapon (aoeRadius > 0) AoEs around the victim's hex
+// (resolveAoELocked — no friendly fire, may also catch other hostiles nearby).
+// A single ranged weapon still fires exactly one hit at exactly the named
+// victim, so this is unchanged for every pre-dual-wield board. Fizzles
+// (reason out_of_range) if NO held weapon reaches — same reason the
+// ground-targeted path logs. A victim that died or vanished this same turn —
+// a simultaneous kill by another attacker, resolved earlier in this same
+// damage-accumulation pass — also fizzles (reason target_gone) rather than
+// panicking on a missing entity; damage application happens all-at-once after
+// every attack accumulates (attackLocked), so "vanished" here really means
+// removed by a PRIOR resolution this turn (deaths, not this pass —
+// resolveDeathsLocked runs after this), i.e. any entity that already left
+// w.entities entirely, which resolveCombatLocked never does mid-attack-phase;
+// this guard is therefore mostly defensive, matching resolveBowLocked's own
+// empty-hex no-op. Callers hold w.mu.
 func (w *World) resolveEntityTargetedLocked(
-	rng *mrand.Rand, attacker *entity, weapon *itemDef, targetEntityID int64, damage map[int64]int,
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacker *entity, targetEntityID int64, damage map[int64]int,
 ) {
 	victim, ok := w.entities[targetEntityID]
 	if !ok || victim.hp <= 0 {
@@ -1742,36 +1810,62 @@ func (w *World) resolveEntityTargetedLocked(
 		return
 	}
 
-	if HexDistance(attacker.hex, victim.hex) > weapon.rangeHex {
+	defs := rangedDefsFor(attacker, HexDistance(attacker.hex, victim.hex))
+	if len(defs) == 0 {
 		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range",
-			"attacker", attacker.id, "weapon", weapon.id, "victim", victim.id)
+			"attacker", attacker.id, "victim", victim.id)
 
 		return
 	}
 
-	dmg := itemDamage(weapon)
-	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
-	damage[victim.id] += dealt
+	for _, weapon := range defs {
+		dmg := itemDamage(weapon)
 
-	w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
-		"weapon", weapon.id, "base", dmg, "dealt", dealt)
+		if weapon.aoeRadius == 0 {
+			dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+			damage[victim.id] += dealt
+
+			w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
+				"weapon", weapon.id, "base", dmg, "dealt", dealt)
+
+			continue
+		}
+
+		w.resolveAoELocked(rng, byHex, attacker, weapon, victim.hex, weapon.aoeRadius, dmg, damage)
+	}
 }
 
-// resolveBowLocked accumulates single-target ranged damage: the opposing-faction
-// occupant at the target hex, or one seeded-random hostile if the hex holds a
-// stack. An empty or friendly-only target hex deals nothing. Callers hold w.mu.
-func (w *World) resolveBowLocked(
-	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
-	attacker *entity, weapon *itemDef, target protocol.Hex, dmg int, damage map[int64]int,
-) {
+// stackVictimLocked picks the single-target ranged victim at target hex: the
+// sole opposing-faction occupant, or one seeded-random hostile if the hex
+// holds a stack — nil for an empty or friendly-only hex. Shared by
+// resolveGroundTargetedLocked's per-def loop, drawn ONCE per shooter even
+// when several single-target (aoeRadius 0) held weapons fire this same
+// target, so a dual-wielded pair concentrates on one victim (mirroring
+// attackLocked's bump victim pick) instead of splitting a stack across
+// weapons via independent picks. Callers hold w.mu.
+func (w *World) stackVictimLocked(
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacker *entity, target protocol.Hex,
+) *entity {
 	victims := opposingOccupants(byHex[target], attacker)
 	if len(victims) == 0 {
-		return
+		return nil
 	}
 
 	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
 
-	victim := victims[rng.IntN(len(victims))]
+	return victims[rng.IntN(len(victims))]
+}
+
+// resolveBowLocked accumulates single-target ranged damage from weapon
+// against victim (already picked — stackVictimLocked); a nil victim (empty or
+// friendly-only target hex) is a no-op. Callers hold w.mu.
+func (w *World) resolveBowLocked(
+	rng *mrand.Rand, attacker *entity, weapon *itemDef, victim *entity, dmg int, damage map[int64]int,
+) {
+	if victim == nil {
+		return
+	}
+
 	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
 	damage[victim.id] += dealt
 

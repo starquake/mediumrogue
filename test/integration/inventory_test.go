@@ -3,11 +3,13 @@ package integration_test
 // inventory_test.go: inventory-slots task 4 — the full inventory loop over
 // real HTTP (drop, walk-free pickup accept, the exact backpack-full
 // rejection, drink) and the restart round-trip with equipped + stacked
-// state. The starting state is a HAND-CRAFTED v2 snapshot JSON restored into
-// the server before it starts — which both engineers an exact inventory
-// (equipped sword, a 3-potion stack, a full backpack, a ground item) without
-// any package-internal test bridge, and pins the v2 disk format from outside
-// internal/game: if a DTO json tag drifts, this file fails.
+// state. The starting state is a HAND-CRAFTED v4 snapshot JSON (bumped from
+// v3 by the gear keystone, #55/#56 — main-hand replaces melee-weapon as the
+// equipped-map key) restored into the server before it starts — which both
+// engineers an exact inventory (equipped sword, a 3-potion stack, a full
+// backpack, a ground item) without any package-internal test bridge, and
+// pins the disk format from outside internal/game: if a DTO json tag
+// drifts, this file fails.
 
 import (
 	"bufio"
@@ -57,7 +59,7 @@ func craftInventorySnapshot() []byte {
 	}
 
 	snapshot := map[string]any{
-		"version":      3,
+		"version":      4,
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,
@@ -70,7 +72,7 @@ func craftInventorySnapshot() []byte {
 			"class": protocol.ClassFighter, "species": protocol.SpeciesDwarf,
 			"hp": invFighterMaxHP - 10, "maxHp": invFighterMaxHP, "xp": 0,
 			"equipped": map[string]inst{
-				protocol.ItemTypeMeleeWeapon: {ID: invSwordID, DefID: "iron-sword"},
+				protocol.SlotMainHand: {ID: invSwordID, DefID: "iron-sword"},
 			},
 			"backpack": []entry{
 				{Item: inst{ID: invPotionID, DefID: invHealingPotionDef}, Count: 3},
@@ -170,9 +172,11 @@ func TestInventoryLoopOverHTTP(t *testing.T) {
 
 	reader := bufio.NewReader(get(t, tsA, "/api/events").Body)
 
-	// The crafted inventory rides the wire: equipped sword (type
-	// melee-weapon), a count-3 potion stack (type consumable), and the
-	// ground venom-fang with its type.
+	// The crafted inventory rides the wire: equipped sword (type main-hand —
+	// an equipped weapon's Type is the hand it occupies, not the generic
+	// "weapon" taxonomy string, since the gear keystone's dual-wield model),
+	// a count-3 potion stack (type consumable), and the ground venom-fang
+	// with its type.
 	first := waitForBundle(t, reader, "restored inventory visible", func(b protocol.TurnEvent) bool {
 		_, ok := itemOf(b, invSwordID)
 
@@ -180,8 +184,8 @@ func TestInventoryLoopOverHTTP(t *testing.T) {
 	})
 
 	sword, _ := itemOf(first, invSwordID)
-	if !sword.Equipped || sword.Type != protocol.ItemTypeMeleeWeapon {
-		t.Errorf("sword view = %+v, want equipped melee-weapon", sword)
+	if !sword.Equipped || sword.Type != protocol.SlotMainHand {
+		t.Errorf("sword view = %+v, want equipped in main-hand", sword)
 	}
 
 	potion, ok := itemOf(first, invPotionID)
@@ -193,7 +197,7 @@ func TestInventoryLoopOverHTTP(t *testing.T) {
 		t.Fatalf("len(GroundItems) = %d, want %d", got, want)
 	}
 
-	if got, want := first.GroundItems[0].Type, protocol.ItemTypeMeleeWeapon; got != want {
+	if got, want := first.GroundItems[0].Type, protocol.ItemTypeWeapon; got != want {
 		t.Errorf("ground venom-fang Type = %q, want %q", got, want)
 	}
 
@@ -295,8 +299,8 @@ func assertRestartRoundTrip(t *testing.T, pwA *persistWorld, preRestart protocol
 	})
 
 	if sword, ok := itemOf(postSnap, invSwordID); !ok || !sword.Equipped ||
-		sword.Type != protocol.ItemTypeMeleeWeapon {
-		t.Errorf("server B sword view = %+v (ok=%v), want equipped melee-weapon", sword, ok)
+		sword.Type != protocol.SlotMainHand {
+		t.Errorf("server B sword view = %+v (ok=%v), want equipped in main-hand", sword, ok)
 	}
 
 	if potion, ok := itemOf(postSnap, invPotionID); !ok || potion.Count != 2 {

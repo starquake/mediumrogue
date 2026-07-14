@@ -35,75 +35,85 @@ func speciesCards(species string) []ruleCard {
 	}
 }
 
-// itemDefs is the item content registry (milestone 6b.4): class defaults
-// first (the "live balance" numbers carried forward from the old protocol
-// weapon constants), then the starter drop set (each a situational spike
-// over its class's default, balanced per the design doc's table). Loot
-// authority moved monster-side in 6c — an item no longer carries its own
-// drop weight; monsterDefs' own tables (below) name these ids and weights
-// instead. Every number here is authored content data (the design doc's
-// table), not a tunable knob, hence the blanket mnd suppression — unlike
-// speciesCards above, which reads protocol constants because those
-// percentages ARE tuning knobs shared with other content.
+// itemDefs is the item content registry: class defaults first, then the
+// starter drop set (each a situational spike over its class's default),
+// then the designer batches. Loot authority is monster-side (6c) — an item
+// no longer carries its own drop weight; monsterDefs' own tables (below)
+// name these ids and weights instead. Every weapon carries tags (which
+// attacks fire it) and twoHanded — the gear keystone's taxonomy (#55/#56);
+// class gates are gone, so wearableBy no longer exists at all. Every number
+// here is authored content data (the design doc's table, rebalanced per the
+// keystone spec §4's "1H ≈ ½ 2H" pass), not a tunable knob, hence the
+// blanket mnd suppression — unlike speciesCards above, which reads protocol
+// constants because those percentages ARE tuning knobs shared with other
+// content.
 //
 //nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init (mustValidateContent).
 var itemDefs = []*itemDef{
 	// Class defaults.
 	{
-		id: idIronSword, name: "Iron Sword", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassFighter}, damage: 4,
+		id: idIronSword, name: "Iron Sword", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 4,
 	},
 	{
-		id: idDagger, name: "Dagger", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassRogue}, damage: 7,
+		// re-derived: gear keystone rebalance (damage 7 -> 4, §4's "1H ≈ ½ 2H"
+		// pass — the dagger no longer out-damages the fighter's sword).
+		id: idDagger, name: "Dagger", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 4,
 	},
 	{
-		id: idShortbow, name: "Shortbow", itemType: protocol.ItemTypeRangedWeapon,
-		wearableBy: []string{protocol.ClassRogue}, damage: 6, rangeHex: 4,
+		// re-derived: gear keystone rebalance (damage 6 -> 4).
+		id: idShortbow, name: "Shortbow", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagRanged}, damage: 4, rangeHex: 4,
 	},
 	{
-		id: idOakStaff, name: "Oak Staff", itemType: protocol.ItemTypeStaff,
-		wearableBy: []string{protocol.ClassMage}, damage: 2,
+		id: idOakWand, name: "Oak Wand", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 2,
 	},
 	{
-		id: idEmberFocus, name: "Ember Focus", itemType: protocol.ItemTypeWand,
-		wearableBy: []string{protocol.ClassMage}, damage: 4, rangeHex: 4, aoeRadius: 1,
+		// re-derived: gear keystone rebalance (damage 4 -> 3).
+		id: idEmberFocus, name: "Ember Focus", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMagic}, damage: 3, rangeHex: 4, aoeRadius: 1,
 	},
 
 	// Starter drop set.
 	{
-		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassFighter},
-		damage:     3, desc: "+3 damage vs targets below half HP",
+		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeWeapon,
+		tags:   []string{protocol.WeaponTagMelee},
+		damage: 3, desc: "+3 damage vs targets below half HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowPct, n: 50}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idIronWarhammer, name: "Iron Warhammer", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassFighter},
-		damage:     6, desc: "a flat upgrade over the iron sword — rare",
+		// re-derived: gear keystone rebalance (damage 6 -> 5).
+		id: idIronWarhammer, name: "Iron Warhammer", itemType: protocol.ItemTypeWeapon,
+		tags:   []string{protocol.WeaponTagMelee},
+		damage: 5, desc: "a flat upgrade over the iron sword — rare",
 	},
 	{
-		id: idVenomFang, name: "Venom Fang", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassRogue},
-		damage:     5, desc: "+4 damage vs targets at full HP",
+		// re-derived: gear keystone rebalance (damage 5 -> 3).
+		id: idVenomFang, name: "Venom Fang", itemType: protocol.ItemTypeWeapon,
+		tags:   []string{protocol.WeaponTagMelee},
+		damage: 3, desc: "+4 damage vs targets at full HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}}, then: effect{kind: effAdd, n: 4}},
 		},
 	},
 	{
-		id: idPackBow, name: "Pack Bow", itemType: protocol.ItemTypeRangedWeapon,
-		wearableBy: []string{protocol.ClassRogue},
-		damage:     5, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
+		// re-derived: gear keystone rebalance (damage 5 -> 3).
+		id: idPackBow, name: "Pack Bow", itemType: protocol.ItemTypeWeapon,
+		tags:   []string{protocol.WeaponTagRanged},
+		damage: 3, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAllyInBubble}}, then: effect{kind: effAdd, n: 3}},
 		},
 	},
 	{
-		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWand,
-		wearableBy: []string{protocol.ClassMage},
-		damage:     3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
+		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
+		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
+		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
@@ -113,9 +123,9 @@ var itemDefs = []*itemDef{
 	// review in the first-gear correspondence). Authored by the group's
 	// content designer — ids/names/numbers are his cards, transcribed.
 	{
-		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassFighter},
-		damage:     4, desc: "+3 damage in a dwarf's hands",
+		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeWeapon,
+		tags:   []string{protocol.WeaponTagMelee},
+		damage: 4, desc: "+3 damage in a dwarf's hands",
 		flavor: "This ancient mattock still holds a razor-sharp edge.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
@@ -123,9 +133,10 @@ var itemDefs = []*itemDef{
 		},
 	},
 	{
-		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWand,
-		wearableBy: []string{protocol.ClassMage},
-		damage:     3, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
+		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
+		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
 		flavor: "Tuned to eliminate the weakest enemies.",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
@@ -135,14 +146,17 @@ var itemDefs = []*itemDef{
 		},
 	},
 
-	// Wyrmslayer Greatsword (milestone 6c): the first designer card's full
-	// intent, previously blocked on monster kinds existing to gate a
-	// per-species-style condition against. Dragon-only drop (dragon's own
-	// table, below).
+	// Wyrmslayer Greatsword (milestone 6c, retagged/rebalanced as the gear
+	// keystone's first two-handed weapon, #55/#56 §4): the first designer
+	// card's full intent, previously blocked on monster kinds existing to
+	// gate a per-species-style condition against. Dragon-only drop (dragon's
+	// own table, below).
 	{
-		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassFighter},
-		damage:     4, desc: "×1.5 damage vs dragons",
+		// re-derived: gear keystone rebalance (damage 4 -> 9, twoHanded — the
+		// keystone spec's "1H ≈ ½ 2H" anchor: a 2H roughly doubles a 1H).
+		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, twoHanded: true,
+		damage: 9, desc: "×1.5 damage vs dragons",
 		flavor: "Forged by a legendary hero to slay the evil dragon Werdmullerix.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
@@ -161,15 +175,12 @@ var itemDefs = []*itemDef{
 	},
 
 	// Inventory-slots starter armor (task 3, the designer's cards): the first
-	// non-weapon gear — leather-armor is the first multi-class WEARABILITY
-	// card (fighter OR rogue; characters stay single-class), and
-	// headband-of-learning defaults to "any" (empty wearableBy, the
-	// armor/jewelry rule).
+	// non-weapon gear. Class gates are gone (gear keystone, #55/#56) — every
+	// class may equip both.
 	{
-		id: idLeatherArmor, name: "Leather Armor", itemType: protocol.ItemTypeBody,
-		wearableBy: []string{protocol.ClassFighter, protocol.ClassRogue},
-		desc:       "take a little less from every hit",
-		flavor:     "Supple leather that lets you dodge out of harm's way.",
+		id: idLeatherArmor, name: "Leather Armor", itemType: protocol.ItemTypeChest,
+		desc:   "take a little less from every hit",
+		flavor: "Supple leather that lets you dodge out of harm's way.",
 		rules: []ruleCard{
 			// take-damage −1; applyRules' event-level clamp keeps every landed
 			// hit ≥1 (the card's "floor 1").
@@ -177,7 +188,7 @@ var itemDefs = []*itemDef{
 		},
 	},
 	{
-		id: idHeadbandOfLearning, name: "Headband of Learning", itemType: protocol.ItemTypeHead,
+		id: idHeadbandOfLearning, name: "Headband of Learning", itemType: protocol.ItemTypeHelmet,
 		desc:   "earn 5% more XP",
 		flavor: "Stimulates your tiny little brain, for faster learning.",
 		rules: []ruleCard{
@@ -189,9 +200,10 @@ var itemDefs = []*itemDef{
 	// carrying a per-hit crit-chance card — the elf-crit card pattern
 	// (elfCards, above) applied to an ITEM instead of a species passive.
 	{
-		id: idMisericorde, name: "Misericorde", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassRogue},
-		damage:     6, desc: "15% chance to strike true for double damage",
+		// re-derived: gear keystone rebalance (damage 6 -> 4).
+		id: idMisericorde, name: "Misericorde", itemType: protocol.ItemTypeWeapon,
+		tags:   []string{protocol.WeaponTagMelee},
+		damage: 4, desc: "15% chance to strike true for double damage",
 		flavor: "A blade thin enough to find the gap between any two plates.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 15}},
@@ -199,9 +211,10 @@ var itemDefs = []*itemDef{
 		},
 	},
 	{
-		id: idDuelistsSaber, name: "Duelist's Saber", itemType: protocol.ItemTypeMeleeWeapon,
-		wearableBy: []string{protocol.ClassFighter},
-		damage:     5, desc: "10% chance to land a perfect riposte for double",
+		// re-derived: gear keystone rebalance (damage 5 -> 4).
+		id: idDuelistsSaber, name: "Duelist's Saber", itemType: protocol.ItemTypeWeapon,
+		tags:   []string{protocol.WeaponTagMelee},
+		damage: 4, desc: "10% chance to land a perfect riposte for double",
 		flavor: "Its balance rewards patience; its edge rewards timing.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},

@@ -399,10 +399,11 @@ func TestNonElfNeverCrits(t *testing.T) {
 // same way meleeCritSeed/meleeMissSeed were: scanning seeds 0-39 with a
 // human Rogue (no species crit in play) wielding the Misericorde against a
 // fat-HP monster and printing dealt damage per seed — seed 0 misses (dealt
-// base 6), seed 1 procs (dealt 12, the x2). They happen to equal
-// meleeCritSeed/meleeMissSeed because both scenarios are a single first bump
-// on a fresh RNG stream, drawing the same one chance roll at the same
-// pipeline position — a coincidence of this test's setup, not a rule.
+// base 4, gear keystone rebalance), seed 1 procs (dealt 8, the x2). They
+// happen to equal meleeCritSeed/meleeMissSeed because both scenarios are a
+// single first bump on a fresh RNG stream, drawing the same one chance roll
+// at the same pipeline position — a coincidence of this test's setup, not a
+// rule.
 const (
 	misericordeCritSeed = 1 // Misericorde procs (double damage) at this seed
 	misericordeMissSeed = 0 // Misericorde does not proc (base damage) at this seed
@@ -426,7 +427,7 @@ func misericordeBumpDamage(t *testing.T, seed int64) int {
 	monsterHex := walkableNeighbor(t, w, center)
 
 	pid, tok := w.PlaceEntityForTest(center)
-	w.SetClassForTest(pid, protocol.ClassRogue) // wearableBy the Misericorde
+	w.SetClassForTest(pid, protocol.ClassRogue) // class is irrelevant now (gates dropped, #56)
 	w.SetSpeciesForTest(pid, protocol.SpeciesHuman)
 
 	instID := w.GrantItemForTest(pid, "misericorde")
@@ -451,13 +452,12 @@ func misericordeBumpDamage(t *testing.T, seed int64) int {
 }
 
 // TestMisericordeCritProcsSeeded: the Misericorde's 15% crit card deals
-// exactly double its 6 base damage (12) on a proc and exactly its base (6)
-// on a miss — the binding numbers for the fast-lane batch's first crit%
-// weapon.
+// exactly double its 4 base damage (8) on a proc and exactly its base (4)
+// on a miss — re-derived: gear keystone rebalance (base 6 -> 4).
 func TestMisericordeCritProcsSeeded(t *testing.T) {
 	t.Parallel()
 
-	const misericordeDamage = 6
+	const misericordeDamage = 4
 
 	t.Run("proc", func(t *testing.T) {
 		t.Parallel()

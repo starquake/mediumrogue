@@ -16,6 +16,8 @@ const KEY_TO_DIRECTION: Record<string, Direction> = {
 
 const WAIT_KEY = "Space";
 const INVENTORY_KEY = "KeyI";
+const CHARACTER_KEY = "KeyC";
+const ESCAPE_KEY = "Escape";
 
 export interface KeyCallbacks {
   onStep: (dir: Direction) => void;
@@ -26,11 +28,23 @@ export interface KeyCallbacks {
    */
   onWait: () => void;
   /**
-   * `i`: toggle the character/inventory panel (inventory-slots milestone) —
-   * subject to the same typing-target and isBlocked guards as movement, so
-   * typing "i" into chat never opens it.
+   * `i` or `c` (two mnemonics, "inventory" / "character", same action):
+   * toggle the character/inventory panel (inventory-slots milestone, gear
+   * keystone task 4) — subject to the same typing-target and isBlocked
+   * guards as movement, so typing "i" or "c" into chat never opens it.
    */
   onToggleInventory?: () => void;
+  /**
+   * Escape: close the character/inventory panel (gear keystone task 4) —
+   * only invoked while isPanelOpen() reports true, so Escape is a no-op
+   * (and never steals the key) while the panel is already closed.
+   */
+  onClosePanel?: () => void;
+  /**
+   * Reports whether the character/inventory panel is currently open —
+   * gates onClosePanel above (Escape closes it only when open).
+   */
+  isPanelOpen?: () => boolean;
   /**
    * Reports whether movement keys should be ignored right now, beyond the
    * typing-target guard below — the start screen being visible (item 10,
@@ -70,8 +84,14 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
       return;
     }
 
-    if (ev.code === INVENTORY_KEY && callbacks.onToggleInventory !== undefined) {
+    if ((ev.code === INVENTORY_KEY || ev.code === CHARACTER_KEY) && callbacks.onToggleInventory !== undefined) {
       callbacks.onToggleInventory();
+
+      return;
+    }
+
+    if (ev.code === ESCAPE_KEY && callbacks.onClosePanel !== undefined && (callbacks.isPanelOpen?.() ?? false)) {
+      callbacks.onClosePanel();
 
       return;
     }

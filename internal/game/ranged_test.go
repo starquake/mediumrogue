@@ -172,6 +172,138 @@ func TestMageAoENoFriendlyFire(t *testing.T) {
 	}
 }
 
+// TestRangedFiresAllInRange: a player dual-wielding the Shortbow (main, range
+// 4) and the Ember Focus (off, magic, range 4, aoe 1) fires BOTH at a ground
+// target within both weapons' range — the shortbow's single-target hit and
+// the ember focus's AoE (whose ring covers the target hex itself) both land
+// on the monster standing there, for their summed damage. Beyond both
+// weapons' range, the intent is rejected exactly as a single ranged weapon's
+// would be (ErrOutOfRange at submit) — no partial-reach carve-out.
+func TestRangedFiresAllInRange(t *testing.T) {
+	t.Parallel()
+
+	equipDualRanged := func(t *testing.T, w *game.World, id int64, token string) {
+		t.Helper()
+
+		shortbowID := w.GrantItemForTest(id, "shortbow")
+		if err := w.SubmitIntent(equipIntent(id, token, shortbowID)); err != nil {
+			t.Fatalf("SubmitIntent(equip shortbow): %v", err)
+		}
+
+		emberFocusID := w.GrantItemForTest(id, "ember-focus")
+		if err := w.SubmitIntent(equipIntent(id, token, emberFocusID)); err != nil {
+			t.Fatalf("SubmitIntent(equip ember focus): %v", err)
+		}
+	}
+
+	t.Run("both weapons fire", func(t *testing.T) {
+		t.Parallel()
+
+		w := newWorld()
+		w.SetSeedForTest(1)
+
+		rogueHex := protocol.Hex{Q: 0, R: 0}
+		target := protocol.Hex{Q: 3, R: 0} // distance 3 <= both shortbow and ember-focus range (4)
+
+		rogueID, token := w.PlaceEntityForTest(rogueHex)
+		w.SetClassForTest(rogueID, "") // clear defaults: both hands start empty
+		equipDualRanged(t, w, rogueID, token)
+
+		monsterID := w.PlaceMonsterForTest(target)
+
+		if err := w.SubmitIntent(attackIntent(rogueID, token, target)); err != nil {
+			t.Fatalf("SubmitIntent(attack): %v", err)
+		}
+
+		w.ResolveCombatOnlyForTest()
+
+		snap := w.Snapshot()
+
+		wantHP := protocol.MonsterMaxHP - game.ItemDamageForTest("shortbow") - game.ItemDamageForTest("ember-focus")
+		if got := entityHP(t, snap, monsterID); got != wantHP {
+			t.Errorf("monster HP = %d, want %d (bow single-target hit + focus AoE, both landing)", got, wantHP)
+		}
+	})
+
+	t.Run("out of range for both rejected", func(t *testing.T) {
+		t.Parallel()
+
+		w := newWorld()
+
+		rogueID, token := w.PlaceEntityForTest(protocol.Hex{Q: 0, R: 0})
+		w.SetClassForTest(rogueID, "")
+		equipDualRanged(t, w, rogueID, token)
+
+		// Distance 5 > both shortbow and ember-focus range (4).
+		err := w.SubmitIntent(attackIntent(rogueID, token, protocol.Hex{Q: 5, R: 0}))
+		if got, want := err, game.ErrOutOfRange; !errors.Is(got, want) {
+			t.Errorf("err = %v, want %v", got, want)
+		}
+	})
+}
+
+// TestDualRangedSharesOneStackVictim: dual single-target ranged weapons (both
+// with aoeRadius 0) share ONE stack-victim pick when fired at the same hex,
+// mirroring the melee stack rule (attackLocked). Attacker holds Shortbow (main)
+// and Pack Bow (off); fires once at a stacked hex with two monsters. Both hits
+// land on the SAME victim — one monster takes the summed damage (shortbow 4 +
+// pack bow 3 = 7), the other is untouched — not split by independent RNG picks.
+func TestDualRangedSharesOneStackVictim(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	attackerHex := protocol.Hex{Q: 0, R: 0}
+	targetHex := protocol.Hex{Q: 3, R: 0} // distance 3 <= both shortbow and pack-bow range (4)
+
+	attackerID, token := w.PlaceEntityForTest(attackerHex)
+	w.SetClassForTest(attackerID, "") // clear defaults: both hands start empty
+
+	// Equip Shortbow (main) and Pack Bow (off).
+	shortbowID := w.GrantItemForTest(attackerID, "shortbow")
+	if err := w.SubmitIntent(equipIntent(attackerID, token, shortbowID)); err != nil {
+		t.Fatalf("SubmitIntent(equip shortbow): %v", err)
+	}
+
+	packBowID := w.GrantItemForTest(attackerID, "pack-bow")
+	if err := w.SubmitIntent(equipIntent(attackerID, token, packBowID)); err != nil {
+		t.Fatalf("SubmitIntent(equip pack-bow): %v", err)
+	}
+
+	// Place two monsters stacked on the target hex.
+	monsterA := w.PlaceMonsterForTest(targetHex)
+	monsterB := w.PlaceMonsterForTest(targetHex)
+
+	if err := w.SubmitIntent(attackIntent(attackerID, token, targetHex)); err != nil {
+		t.Fatalf("SubmitIntent(attack): %v", err)
+	}
+
+	w.ResolveCombatOnlyForTest()
+
+	snap := w.Snapshot()
+
+	shortbowDamage := game.ItemDamageForTest("shortbow")
+	packBowDamage := game.ItemDamageForTest("pack-bow")
+	totalDamage := shortbowDamage + packBowDamage
+
+	hpA := entityHP(t, snap, monsterA)
+	hpB := entityHP(t, snap, monsterB)
+
+	// One monster should have taken full damage, the other untouched.
+	victimHP := protocol.MonsterMaxHP - totalDamage
+	untouchedHP := protocol.MonsterMaxHP
+
+	// Both single-target hits land on the SAME victim (shared stack pick).
+	aIsVictim := hpA == victimHP && hpB == untouchedHP
+
+	bIsVictim := hpA == untouchedHP && hpB == victimHP
+	if !aIsVictim && !bIsVictim {
+		t.Errorf("monster HPs = %d, %d; want one at %d (victim) and one at %d (untouched)",
+			hpA, hpB, victimHP, untouchedHP)
+	}
+}
+
 // TestRangedIntentIsLockIn: inside a bubble, an attack intent counts as the
 // player's lock-in — the frozen bubble stays put until the submission, then
 // resolves immediately. The rogue's bow lands on the monster and the monster

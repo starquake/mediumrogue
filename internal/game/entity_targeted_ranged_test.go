@@ -168,3 +168,53 @@ func TestEntityTargetedAttackOutOfRangeAtSubmitRejected(t *testing.T) {
 		t.Errorf("err = %v, want %v", got, want)
 	}
 }
+
+// TestEntityTargetedFiresEveryReachingHeldWeapon: entity-targeted routing
+// (queueAttackLocked) no longer keys off any single "best" (longest-range)
+// held weapon's aoeRadius to decide whether targetEntityID applies (task 2,
+// dual-wield) — a player wielding an AoE weapon in the MAIN hand (so it would
+// have been "best" under the old single-weapon gate) and a bow in the off
+// hand still gets a proper entity-targeted shot: both weapons fire at the
+// named victim (the bow directly, the ember focus's AoE around the victim's
+// hex), not a bogus ground-targeted shot at the zero-value hex the intent
+// never set.
+func TestEntityTargetedFiresEveryReachingHeldWeapon(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	mageHex := protocol.Hex{Q: 0, R: 0}
+	monsterHex := protocol.Hex{Q: 3, R: 0} // distance 3 <= both weapons' range (4)
+
+	mageID, token := w.PlaceEntityForTest(mageHex)
+	w.SetClassForTest(mageID, "") // clear defaults: both hands start empty
+
+	// Ember Focus into main (equipped first, main is free), Shortbow into off
+	// (main now taken) — the AoE weapon deliberately sits in the hand
+	// rangedDefFor's longest-range tie-break would have picked as "best".
+	emberFocusID := w.GrantItemForTest(mageID, "ember-focus")
+	if err := w.SubmitIntent(equipIntent(mageID, token, emberFocusID)); err != nil {
+		t.Fatalf("SubmitIntent(equip ember focus): %v", err)
+	}
+
+	shortbowID := w.GrantItemForTest(mageID, "shortbow")
+	if err := w.SubmitIntent(equipIntent(mageID, token, shortbowID)); err != nil {
+		t.Fatalf("SubmitIntent(equip shortbow): %v", err)
+	}
+
+	monsterID := w.PlaceMonsterForTest(monsterHex)
+
+	if err := w.SubmitIntent(entityAttackIntent(mageID, token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(entity-targeted attack): %v", err)
+	}
+
+	w.ResolveCombatOnlyForTest()
+
+	snap := w.Snapshot()
+
+	wantHP := protocol.MonsterMaxHP - game.ItemDamageForTest("shortbow") - game.ItemDamageForTest("ember-focus")
+	if got := entityHP(t, snap, monsterID); got != wantHP {
+		t.Errorf("monster HP = %d, want %d (bow hit + focus AoE both land on the named victim)", got, wantHP)
+	}
+}

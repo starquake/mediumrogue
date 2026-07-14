@@ -16,37 +16,45 @@ import (
 // machinery, content.go holds the data.
 
 // itemDef is one entry in the content registry: an item's fixed stats, its
-// type (which determines its slot — slotForType), its wearability
-// restriction, and the rule cards it feeds into the pipeline when equipped.
-// Pure data (the design doc's §7 SQLite prerequisite) — mirrors ruleCard.
+// type (which determines its slot — slotForType/weaponTargetSlot), and the
+// rule cards it feeds into the pipeline when equipped. Pure data (the design
+// doc's §7 SQLite prerequisite) — mirrors ruleCard.
 type itemDef struct {
 	id, name, desc string
 	// flavor is the card's authored lore ("Fantasy") line, shown as flavor
 	// text in the inventory tooltip — separate from desc's mechanical effect
 	// line, and never gameplay-affecting. Empty for items without lore.
 	flavor string
-	// itemType is one of the protocol.ItemType* consts — the taxonomy's 12
-	// types. It determines the item's slot (slotForType(itemType)): each type
-	// fits exactly one slot, except consumable, which has no slot (backpack
-	// stack only).
+	// itemType is one of the protocol.ItemType* consts — the taxonomy's 8
+	// types (one weapon type plus consumable plus the six armor/jewelry
+	// types). It determines the item's slot (slotForType/weaponTargetSlot):
+	// each armor/jewelry type fits exactly one slot, a weapon fits a hand
+	// chosen at equip time, and a consumable has no slot (backpack stack
+	// only).
 	itemType string
-	// wearableBy is the set of classes that may equip/wear this item. Empty
-	// means "any class" — the spec's default for armor/jewelry (the six
-	// gearSlotTypes). A weapon-type item (one of the five weaponSlotTypes)
-	// MUST declare an explicit, non-empty wearableBy (validateItemDefs
-	// enforces this) — "any" would be meaningless for a weapon, since a
-	// class's weapon slots are shape-restricted anyway (weaponSlotsFor).
-	// Ignored for a consumable (no wearability gate — drink is not an equip).
-	wearableBy []string
-	damage     int
-	rangeHex   int // 0 = melee/adjacent (weapon-type items only)
-	aoeRadius  int // 0 = single target
+	// tags (weapon-type items only) name which attacks fire this weapon:
+	// protocol.WeaponTagMelee/Ranged/Magic. ≥1 tag required for a weapon,
+	// none allowed on anything else (validateItemDefs).
+	tags []string
+	// twoHanded (weapons only): occupies main-hand AND locks off-hand.
+	twoHanded bool
+	damage    int
+	rangeHex  int // 0 = melee/adjacent (weapon-type items only)
+	aoeRadius int // 0 = single target
 	// heal is a consumable's HP restore on drink (clamped to maxHP);
 	// validateItemDefs requires heal > 0 for a consumable and 0 for any gear
 	// def — drinking is an action (task 2), not a combat pipeline event.
 	heal  int
 	rules []ruleCard
 }
+
+// hasTag reports whether this def's weapon tags include tag (always false
+// for a non-weapon def, whose tags are always empty).
+func (d *itemDef) hasTag(tag string) bool { return slices.Contains(d.tags, tag) }
+
+// isWeapon reports whether this def is the one weapon item type — anyone may
+// equip it (gates dropped, #56); its tags determine which attacks fire it.
+func (d *itemDef) isWeapon() bool { return d.itemType == protocol.ItemTypeWeapon }
 
 // itemInstance is one entity-owned copy of a def: a stable id (minted from
 // the world's shared entity-id sequence — instance ids are unique across the
@@ -79,160 +87,113 @@ type groundStack struct {
 	count int
 }
 
-// fistsDef is the built-in close-slot fallback for an empty-handed player:
-// not in the registry (no instance id, never owned, equipped, or dropped),
-// just the profile closeDefFor returns when a player's melee-ish weapon slot
-// (melee-weapon for fighter/rogue, staff for mage) is empty. A monster's
-// equivalent is per-kind (monsterDef.claws, monsters.go) — built from that
-// kind's own damage/rules, not a single shared fallback.
+// fistsDef is the built-in main-hand fallback for an empty-handed player: not
+// in the registry (no instance id, never owned, equipped, or dropped), just
+// the profile closeDefFor returns when an entity holds no melee-tagged
+// weapon. A monster's equivalent is per-kind (monsterDef.claws, monsters.go)
+// — built from that kind's own damage/rules, not a single shared fallback.
 //
 //nolint:gochecknoglobals // built-in fallback def, effectively const (never mutated).
 var fistsDef = &itemDef{
-	id: "fists", name: "Fists", itemType: protocol.ItemTypeMeleeWeapon, damage: protocol.FistsDamage,
+	id: "fists", name: "Fists", itemType: protocol.ItemTypeWeapon,
+	tags: []string{protocol.WeaponTagMelee}, damage: protocol.FistsDamage,
 }
 
-// weaponSlotTypes is every item type that fills one of the five weapon-type
-// slots (a class-shaped slot, per weaponSlotsFor) — used by isWeaponType and
-// validateItemDefs.
-//
-//nolint:gochecknoglobals // fixed taxonomy table, effectively const.
-var weaponSlotTypes = map[string]bool{
-	protocol.ItemTypeMeleeWeapon:  true,
-	protocol.ItemTypeThrownWeapon: true,
-	protocol.ItemTypeRangedWeapon: true,
-	protocol.ItemTypeStaff:        true,
-	protocol.ItemTypeWand:         true,
-}
-
-// gearSlotTypes is every item type that fills one of the six universal
-// (non-class-shaped) body slots.
-//
-//nolint:gochecknoglobals // fixed taxonomy table, effectively const.
-var gearSlotTypes = map[string]bool{
-	protocol.ItemTypeHead:   true,
-	protocol.ItemTypeBody:   true,
-	protocol.ItemTypeHands:  true,
-	protocol.ItemTypeRing:   true,
-	protocol.ItemTypeAmulet: true,
-	protocol.ItemTypeFeet:   true,
-}
-
-// isWeaponType reports whether t is one of the five class-shaped weapon
-// types.
-func isWeaponType(t string) bool { return weaponSlotTypes[t] }
-
-// isGearType reports whether t is one of the six universal body-slot types.
-func isGearType(t string) bool { return gearSlotTypes[t] }
-
-// validItemType reports whether t is one of the taxonomy's 12 known types.
+// validItemType reports whether t is one of the taxonomy's 8 known types.
 func validItemType(t string) bool {
-	return weaponSlotTypes[t] || gearSlotTypes[t] || t == protocol.ItemTypeConsumable
-}
-
-// slotForType returns the equip-slot key for item type t: t itself for
-// every type except consumable, which has no slot (a consumable never
-// equips — it lives in the backpack as a stack; empty string is never a
-// valid map key produced by any equip path, so it also safely means "no
-// slot" wherever slotForType's result is used as an equipped-map key).
-func slotForType(t string) string {
-	if t == protocol.ItemTypeConsumable {
-		return ""
-	}
-
-	return t
-}
-
-// weaponSlotsFor returns the two item types that fill class's weapon slots:
-// index 0 is the "close" analog (the type closeDefFor reads), index 1 is
-// the "ranged" analog (the type rangedDefFor reads) — fighter = melee-weapon
-// + thrown-weapon (thrown ships empty — no thrown content exists yet, so a
-// fighter has no ranged attack), rogue = melee-weapon + ranged-weapon,
-// mage = staff + wand (a staff can melee-bonk; a wand never melees). An
-// unknown/empty class (a monster or malformed fixture) returns a zero pair,
-// matching the old classDefaultIDs fallback comment.
-func weaponSlotsFor(class string) [2]string {
-	switch class {
-	case protocol.ClassFighter:
-		return [2]string{protocol.ItemTypeMeleeWeapon, protocol.ItemTypeThrownWeapon}
-	case protocol.ClassRogue:
-		return [2]string{protocol.ItemTypeMeleeWeapon, protocol.ItemTypeRangedWeapon}
-	case protocol.ClassMage:
-		return [2]string{protocol.ItemTypeStaff, protocol.ItemTypeWand}
-	default:
-		return [2]string{}
-	}
-}
-
-// classHasWeaponSlot reports whether itemType is one of class's two
-// class-shaped weapon slots (weaponSlotsFor).
-func classHasWeaponSlot(class, itemType string) bool {
-	slots := weaponSlotsFor(class)
-
-	return itemType == slots[0] || itemType == slots[1]
-}
-
-// wearableByClass reports whether class may wear/wield def per its
-// wearableBy set: empty means any class (the spec's armor/jewelry default).
-func wearableByClass(def *itemDef, class string) bool {
-	if len(def.wearableBy) == 0 {
+	switch t {
+	case protocol.ItemTypeWeapon, protocol.ItemTypeConsumable,
+		protocol.ItemTypeHelmet, protocol.ItemTypeChest, protocol.ItemTypeGloves,
+		protocol.ItemTypeBoots, protocol.ItemTypeRing, protocol.ItemTypeAmulet:
 		return true
+	default:
+		return false
 	}
-
-	return slices.Contains(def.wearableBy, class)
 }
 
-// canEquip reports whether class may equip def at all: wearability
-// (wearableByClass) plus, for a weapon-type item, the class's own weapon-slot
-// shape (classHasWeaponSlot) — a fighter can never equip a wand even if some
-// future card marked it wearableBy-any, because "wand" is not one of the
-// fighter's two weapon-slot types. A consumable is never equippable (it has
-// no slot; drink, not equip, task 2, is its action) — canEquip always false
-// for one, matching slotForType's "no slot" contract.
-func canEquip(class string, def *itemDef) bool {
-	return equipValidate(class, def) == nil
+// slotForType returns the equip slot for a NON-WEAPON item type (armor
+// slots equal their type), "" for consumable (no slot), and "" for weapon —
+// a weapon's slot is a hand chosen at equip time (weaponTargetSlot).
+func slotForType(t string) string {
+	switch t {
+	case protocol.ItemTypeConsumable, protocol.ItemTypeWeapon:
+		return ""
+	default:
+		return t
+	}
 }
 
-// equipValidate is canEquip with a REASON: nil if class may equip def, else
-// ErrNotEquippable when def's type has no slot at all (a consumable — drink,
-// not equip, is its action), or ErrWrongClass when it's a slotted item this
-// class can't wear (wearability or weapon-slot shape). The two are distinct
-// so the intent surface can tell "wrong class" from "can't be equipped at
-// all". Callers that only need the boolean use canEquip.
-func equipValidate(class string, def *itemDef) error {
-	if slotForType(def.itemType) == "" {
-		return ErrNotEquippable // no equip slot (consumable)
+// weaponTargetSlot picks the hand an equipped weapon lands in: main if
+// free, else off if free, else main (swap). A two-handed weapon always
+// targets main (the equip path clears/locks off before calling this).
+func weaponTargetSlot(e *entity, def *itemDef) string {
+	if def.twoHanded {
+		return protocol.SlotMainHand
 	}
 
-	if !wearableByClass(def, class) {
-		return ErrWrongClass
+	if e.equippedDefIn(protocol.SlotMainHand) == nil {
+		return protocol.SlotMainHand
 	}
 
-	if isWeaponType(def.itemType) {
-		if !classHasWeaponSlot(class, def.itemType) {
-			return ErrWrongClass
+	if e.equippedDefIn(protocol.SlotOffHand) == nil {
+		return protocol.SlotOffHand
+	}
+
+	return protocol.SlotMainHand
+}
+
+// heldSlotOf returns the hand slot (main or off) currently holding the item
+// instance instID, or "" if it is not held in either hand.
+func heldSlotOf(e *entity, instID int64) string {
+	for _, slot := range [2]string{protocol.SlotMainHand, protocol.SlotOffHand} {
+		if cur, ok := e.equipped[slot]; ok && cur.id == instID {
+			return slot
 		}
-
-		return nil
 	}
 
-	if !isGearType(def.itemType) {
+	return ""
+}
+
+// currentSlotOf returns the slot inst currently occupies, or "" if it is not
+// currently equipped at all (e.g. a backpack-resident item): heldSlotOf for a
+// weapon (either hand), or the fixed type-derived slot for armor/jewelry,
+// checked against actual occupancy (slotForType alone can't tell "equipped"
+// from "sitting in the backpack while a DIFFERENT instance fills the slot").
+func currentSlotOf(e *entity, inst itemInstance, def *itemDef) string {
+	if def.isWeapon() {
+		return heldSlotOf(e, inst.id)
+	}
+
+	slot := slotForType(def.itemType)
+	if cur, ok := e.equipped[slot]; ok && cur.id == inst.id {
+		return slot
+	}
+
+	return ""
+}
+
+// equipValidate: nil if def can be equipped at all — the only failure left
+// is a consumable (no slot; drink is its action). Class gates dropped
+// (gear keystone, #56): anyone equips anything.
+func equipValidate(def *itemDef) error {
+	if def.itemType == protocol.ItemTypeConsumable {
 		return ErrNotEquippable
 	}
 
 	return nil
 }
 
-// canonicalSlotOrder is every non-consumable item type in a fixed order —
-// used wherever equipped items must fold deterministically (equippedRuleCards
-// below), since e.equipped is a map and Go map iteration order is
-// unspecified.
+// canonicalSlotOrder is every equip slot in a fixed order — used wherever
+// equipped items must fold deterministically (equippedRuleCards below),
+// since e.equipped is a map and Go map iteration order is unspecified. The
+// two hands come first (heldWeapons relies on this same main-then-off
+// order), followed by the six armor/jewelry slots.
 //
 //nolint:gochecknoglobals // fixed enumeration order, effectively const.
 var canonicalSlotOrder = []string{
-	protocol.ItemTypeMeleeWeapon, protocol.ItemTypeThrownWeapon, protocol.ItemTypeRangedWeapon,
-	protocol.ItemTypeStaff, protocol.ItemTypeWand,
-	protocol.ItemTypeHead, protocol.ItemTypeBody, protocol.ItemTypeHands,
-	protocol.ItemTypeRing, protocol.ItemTypeAmulet, protocol.ItemTypeFeet,
+	protocol.SlotMainHand, protocol.SlotOffHand,
+	protocol.SlotHelmet, protocol.SlotChest, protocol.SlotGloves, protocol.SlotBoots,
+	protocol.SlotRing, protocol.SlotAmulet,
 }
 
 // itemByID looks up an entity's owned item instance by id — across both its
@@ -334,9 +295,11 @@ func equippedRuleCards(e *entity) []ruleCard {
 
 // toggleEquip is the shared swap primitive for both the free (outside-bubble)
 // equip path and the queued (inside-bubble) pending-equip path
-// (applyPendingEquip). inst is the item instance to equip, already known to
-// be owned and class/wearability-valid (queueEquipLocked's job); slot is its
-// itemType-derived slot key.
+// (applyPendingEquip), and for kit granting (grantDefaultsLocked) — one
+// placement path for every caller. inst is the item instance to equip,
+// already known to be owned and equippable (queueEquipLocked's job); slot is
+// its target slot (slotForType for armor/jewelry, weaponTargetSlot for a
+// weapon).
 //
 // If inst is ALREADY the slot's occupant, this is really an unequip: it
 // moves inst back into a free backpack entry, clearing the slot — unless the
@@ -385,44 +348,147 @@ func (e *entity) toggleEquip(inst itemInstance, slot string) {
 	}
 }
 
-// closeDefFor is the def an entity bumps with: its equipped melee-ish
-// weapon-slot item (weaponSlotsFor(e.class)[0] — melee-weapon for
-// fighter/rogue, staff for mage), or fists for an empty slot (a bare/unarmed
-// player), or its kind's claws profile for a monster (which owns no items
-// and never equips — checked first, so a monster never falls through to the
-// fists case). Panics if a monster entity's monsterKind names no registered
-// kind — every production spawn path sets a real one; this only guards a
-// malformed fixture.
+// equipWeaponLocked applies a weapon equip toggle (the weapon-aware
+// counterpart of a bare toggleEquip call, since a weapon's slot is a hand
+// chosen at equip time, not fixed by itemType): naming an already-held
+// weapon (in either hand) unequips it; otherwise inst is placed by
+// weaponTargetSlot. A two-handed weapon can never share hands with anything
+// else: equipping one evicts a current off-hand occupant first; equipping
+// ANY weapon while a two-handed weapon sits in main evicts it first (a
+// non-two-handed equip never otherwise touches the other hand). Both
+// evictions land in the backpack via the same toggleEquip swap-to-backpack
+// path unequip already uses — and are checked for room BEFORE any state
+// changes, so a doomed equip fails politely with the entity untouched, never
+// half-applied. Callers hold w.mu.
+func (e *entity) equipWeaponLocked(inst itemInstance, def *itemDef) error {
+	if slot := heldSlotOf(e, inst.id); slot != "" {
+		if e.freeBackpackIndex() < 0 {
+			return ErrBackpackFull
+		}
+
+		e.toggleEquip(inst, slot)
+
+		return nil
+	}
+
+	var evictSlot string
+
+	switch {
+	case def.twoHanded && e.equippedDefIn(protocol.SlotOffHand) != nil:
+		evictSlot = protocol.SlotOffHand
+	case !def.twoHanded:
+		if main := e.equippedDefIn(protocol.SlotMainHand); main != nil && main.twoHanded {
+			evictSlot = protocol.SlotMainHand
+		}
+	}
+
+	if evictSlot != "" {
+		if e.freeBackpackIndex() < 0 {
+			return ErrBackpackFull // politely fail before any state change
+		}
+
+		e.toggleEquip(e.equipped[evictSlot], evictSlot)
+	}
+
+	e.toggleEquip(inst, weaponTargetSlot(e, def))
+
+	return nil
+}
+
+// closeDefFor is the def an entity's bump would highlight (the client's range
+// hint) or falls back to when only one hit matters (unequipped-mid-turn
+// guards): meleeDefsFor(e)'s first entry — its kind's claws for a monster, its
+// first melee-tagged held weapon in hand order, or fists for a bare/unarmed
+// player. A real bump resolves EVERY entry of meleeDefsFor, not just this one
+// (attackLocked) — this shim is for non-combat callers only.
 func closeDefFor(e *entity) *itemDef {
+	return meleeDefsFor(e)[0]
+}
+
+// meleeDefsFor returns every melee hit an entity's bump delivers this turn, in
+// hand order (heldWeapons — main before off): a monster's kind claws profile
+// (single — monsters own no items and never equip; checked first, so a
+// monster never falls through to the fists case), else every melee-tagged
+// held weapon, else fists for a bare/unarmed player. Never empty. Panics if a
+// monster entity's monsterKind names no registered kind — every production
+// spawn path sets a real one; this only guards a malformed fixture.
+func meleeDefsFor(e *entity) []*itemDef {
 	if e.kind == protocol.EntityMonster {
 		k := kindOf(e)
 		if k == nil {
-			panic("game: closeDefFor monster entity has no registered kind")
+			panic("game: meleeDefsFor monster entity has no registered kind")
 		}
 
-		return k.claws
+		return []*itemDef{k.claws}
 	}
 
-	slots := weaponSlotsFor(e.class)
-	if def := e.equippedDefIn(slots[0]); def != nil {
-		return def
+	var out []*itemDef
+
+	for _, def := range e.heldWeapons() {
+		if def.hasTag(protocol.WeaponTagMelee) {
+			out = append(out, def)
+		}
 	}
 
-	return fistsDef
+	if len(out) == 0 {
+		return []*itemDef{fistsDef}
+	}
+
+	return out
 }
 
-// rangedDefFor is the def an entity shoots with: its equipped ranged-ish
-// weapon-slot item (weaponSlotsFor(e.class)[1] — thrown-weapon for fighter,
-// ranged-weapon for rogue, wand for mage), or nil if that slot is empty — no
-// ranged weapon at all. A fighter's thrown-weapon slot has no registered
-// content yet (the spec's "fighter thrown slot ships empty"), so this always
-// returns nil for a fighter today — exactly the pre-inventory-slots
-// contract (a fighter has no ranged attack), reproduced via an always-empty
-// slot instead of a hardcoded class check.
+// rangedDefFor is the LONGEST-range ranged/magic-tagged held weapon
+// (rangedDefsFor(e, 0) — every rangeHex is >= 0, so dist 0 never filters any
+// held ranged/magic weapon out, only feeds them all to the reduction below),
+// or nil if none held at all — used only to gate "does this entity have any
+// ranged attack whatsoever" (ErrNoRangedWeapon, the mid-turn-unequip fizzle
+// check), independent of any particular shot's distance. A real shot resolves
+// EVERY def rangedDefsFor(e, dist) returns, not just this one.
 func rangedDefFor(e *entity) *itemDef {
-	slots := weaponSlotsFor(e.class)
+	var best *itemDef
 
-	return e.equippedDefIn(slots[1])
+	for _, def := range rangedDefsFor(e, 0) {
+		if best == nil || def.rangeHex > best.rangeHex {
+			best = def
+		}
+	}
+
+	return best
+}
+
+// rangedDefsFor returns every ranged/magic-tagged held weapon that reaches
+// dist hexes, in hand order (heldWeapons — main before off): each fires as
+// its own hit this turn (a bow's single-target shot, a magic weapon's own
+// AoE). Empty if the entity holds no such weapon, or none reaches dist.
+func rangedDefsFor(e *entity, dist int) []*itemDef {
+	var out []*itemDef
+
+	for _, def := range e.heldWeapons() {
+		if !def.hasTag(protocol.WeaponTagRanged) && !def.hasTag(protocol.WeaponTagMagic) {
+			continue
+		}
+
+		if def.rangeHex >= dist {
+			out = append(out, def)
+		}
+	}
+
+	return out
+}
+
+// heldWeapons returns e's equipped hand weapons, main then off (fixed
+// order — deterministic fold, and "main hits first" once dual-wield damage
+// resolution lands, task 2). Skips an empty hand.
+func (e *entity) heldWeapons() []*itemDef {
+	var out []*itemDef
+
+	for _, slot := range [2]string{protocol.SlotMainHand, protocol.SlotOffHand} {
+		if def := e.equippedDefIn(slot); def != nil {
+			out = append(out, def)
+		}
+	}
+
+	return out
 }
 
 // itemDamage is the single source of truth for an item's damage: the def's
@@ -441,7 +507,7 @@ const (
 	idIronSword  = "iron-sword"
 	idDagger     = "dagger"
 	idShortbow   = "shortbow"
-	idOakStaff   = "oak-staff"
+	idOakWand    = "oak-wand"
 	idEmberFocus = "ember-focus"
 )
 
@@ -483,11 +549,11 @@ const (
 )
 
 // classDefaultIDs returns the item def ids a class starts with at Join: one
-// close-ish weapon, plus a ranged-ish weapon for Rogue and Mage (Fighter has
-// none — its thrown-weapon slot ships empty). An empty or unknown class
-// returns nil — Join's validClass check means this only guards non-player
-// entities and test fixtures, mirroring class.go's baseMaxHP fallback
-// comment.
+// melee-tagged weapon, plus a ranged/magic-tagged weapon for Rogue and Mage
+// (Fighter has none — no ranged/magic-tagged default, so its off-hand starts
+// empty). An empty or unknown class returns nil — Join's validClass check
+// means this only guards non-player entities and test fixtures, mirroring
+// class.go's baseMaxHP fallback comment.
 func classDefaultIDs(class string) []string {
 	switch class {
 	case protocol.ClassFighter:
@@ -495,7 +561,7 @@ func classDefaultIDs(class string) []string {
 	case protocol.ClassRogue:
 		return []string{idDagger, idShortbow}
 	case protocol.ClassMage:
-		return []string{idOakStaff, idEmberFocus}
+		return []string{idOakWand, idEmberFocus}
 	default:
 		return nil
 	}
@@ -503,8 +569,11 @@ func classDefaultIDs(class string) []string {
 
 // grantDefaultsLocked creates, owns, and equips a fresh player's class-default
 // items: one itemInstance per classDefaultIDs id, instance ids minted from
-// the world's shared id sequence, equipped straight into the def's
-// itemType-derived slot (no bare "owned but unequipped" starting state — the
+// the world's shared id sequence, placed through the SAME toggleEquip
+// primitive a player's own equip intent uses (weaponTargetSlot picks the
+// hand — fighter's iron sword lands main; rogue's dagger lands main, then
+// its shortbow lands off since main is now taken; mage's oak wand/ember
+// focus the same way) — no bare "owned but unequipped" starting state (the
 // backpack starts with all protocol.BackpackSize entries free). Callers hold
 // w.mu and must call this after the entity is stored in w.entities —
 // instance ids share nextID with entity ids, so ordering only matters for id
@@ -531,15 +600,20 @@ func (w *World) grantDefaultsLocked(e *entity) {
 		w.nextID++
 
 		inst := itemInstance{id: w.nextID, defID: defID}
-		e.equipped[def.itemType] = inst
+
+		slot := slotForType(def.itemType)
+		if def.isWeapon() {
+			slot = weaponTargetSlot(e, def)
+		}
+
+		e.toggleEquip(inst, slot)
 	}
 }
 
 // validateItemDefs panics on a content bug in defs: a duplicate id, an
-// unknown item type, an unknown wearableBy class, a weapon-type item with no
-// (or an impossible) wearableBy, a heal value on the wrong kind of def, or a
-// rule card referencing an unknown event/condition/effect kind — so bad
-// content data fails at load, not mid-combat. Split out from
+// unknown item type, an invalid weapon tag shape, a heal value on the wrong
+// kind of def, or a rule card referencing an unknown event/condition/effect
+// kind — so bad content data fails at load, not mid-combat. Split out from
 // mustValidateContent so tests can exercise the failure paths on a small
 // synthetic def set instead of only the real registry.
 func validateItemDefs(defs []*itemDef) {
@@ -558,35 +632,58 @@ func validateItemDefs(defs []*itemDef) {
 	}
 }
 
-// validateItemType panics if def's itemType is unknown, or if a weapon-type
-// def's wearableBy is empty or names a class with no matching weapon slot
-// (classHasWeaponSlot) — a weapon no class could ever equip is a
-// content-authoring mistake, not a runtime condition. Split out of
-// validateItemDefs to keep its cognitive complexity under the linter's
-// threshold.
+// validateItemType panics if def's itemType is unknown, if tags/twoHanded
+// are set on a non-weapon, or if a weapon's tag shape is invalid
+// (validateWeaponTags) — content-authoring mistakes, not runtime conditions.
+// Split out of validateItemDefs to keep its cognitive complexity under the
+// linter's threshold.
 func validateItemType(def *itemDef) {
 	if !validItemType(def.itemType) {
 		panic("game: item " + def.id + " has unknown item type " + def.itemType)
 	}
 
-	for _, c := range def.wearableBy {
-		if !validClass(c) {
-			panic("game: item " + def.id + " wearableBy names unknown class " + c)
+	if !def.isWeapon() {
+		if len(def.tags) != 0 {
+			panic("game: non-weapon item " + def.id + " must not set tags")
 		}
-	}
 
-	if !isWeaponType(def.itemType) {
+		if def.twoHanded {
+			panic("game: non-weapon item " + def.id + " must not set twoHanded")
+		}
+
 		return
 	}
 
-	if len(def.wearableBy) == 0 {
-		panic("game: weapon " + def.id + " must declare an explicit wearableBy (a weapon is never wearableBy-any)")
+	validateWeaponTags(def)
+}
+
+// validateWeaponTags panics if a weapon def declares no tags, an unknown or
+// duplicate tag, or a magic-tagged weapon with no range (a magic attack is
+// always ranged — rangeHex 0 would make it unreachable by the ranged combat
+// path). Split out of validateItemType for the same reason.
+func validateWeaponTags(def *itemDef) {
+	if len(def.tags) == 0 {
+		panic("game: weapon " + def.id + " must declare at least one tag")
 	}
 
-	for _, c := range def.wearableBy {
-		if !classHasWeaponSlot(c, def.itemType) {
-			panic("game: weapon " + def.id + " wearableBy " + c + " has no " + def.itemType + " weapon slot")
+	seen := make(map[string]bool, len(def.tags))
+
+	for _, tag := range def.tags {
+		switch tag {
+		case protocol.WeaponTagMelee, protocol.WeaponTagRanged, protocol.WeaponTagMagic:
+		default:
+			panic("game: weapon " + def.id + " has unknown tag " + tag)
 		}
+
+		if seen[tag] {
+			panic("game: weapon " + def.id + " has duplicate tag " + tag)
+		}
+
+		seen[tag] = true
+	}
+
+	if def.hasTag(protocol.WeaponTagMagic) && def.rangeHex <= 0 {
+		panic("game: magic weapon " + def.id + " must have rangeHex > 0")
 	}
 }
 
@@ -688,7 +785,8 @@ func validateMaxReach(defs []*itemDef) {
 
 // mustValidateContent validates the whole live registry: every def
 // (validateItemDefs, validateMaxReach) plus every class default id
-// (classDefaultIDs) actually naming a registered item that class can equip.
+// (classDefaultIDs) actually naming a registered, equippable item — class
+// gates are gone (#56), so equippability no longer depends on the class.
 // Called once from content.go's init, so a content bug fails at process
 // start.
 func mustValidateContent() {
@@ -703,8 +801,8 @@ func mustValidateContent() {
 				panic("game: class default " + id + " for " + class + " is not a registered item")
 			}
 
-			if !canEquip(class, def) {
-				panic("game: class default " + id + " for " + class + " is not equippable by that class")
+			if equipValidate(def) != nil {
+				panic("game: class default " + id + " for " + class + " is not equippable")
 			}
 		}
 	}

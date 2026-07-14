@@ -195,149 +195,97 @@ export const IntentPickup = "pickup";
  */
 export const IntentDrink = "drink";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
-export const ItemTypeMeleeWeapon = "melee-weapon";
+export const ItemTypeWeapon = "weapon";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
- */
-export const ItemTypeThrownWeapon = "thrown-weapon";
-/**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
- */
-export const ItemTypeRangedWeapon = "ranged-weapon";
-/**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
- */
-export const ItemTypeStaff = "staff";
-/**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
- */
-export const ItemTypeWand = "wand";
-/**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
 export const ItemTypeConsumable = "consumable";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
-export const ItemTypeHead = "head";
+export const ItemTypeHelmet = "helmet";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
-export const ItemTypeBody = "body";
+export const ItemTypeChest = "chest";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
-export const ItemTypeHands = "hands";
+export const ItemTypeGloves = "gloves";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
+ */
+export const ItemTypeBoots = "boots";
+/**
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
 export const ItemTypeRing = "ring";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+ * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
 export const ItemTypeAmulet = "amulet";
 /**
- * Item types (the inventory-slots milestone's taxonomy): every item
- * definition's itemType determines exactly which equip slot it fits
- * (internal/game's slotForType — the slot key equals the type string itself
- * for every type except consumable, which has no slot and lives only in the
- * backpack as a stack). The five weapon types are the class-shaped weapon
- * slots: fighter wears melee-weapon + thrown-weapon, rogue wears
- * melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
- * weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
- * feet) are universal gear slots, not class-shaped.
+ * Weapon tags: which attacks fire the weapon (§3 of the keystone spec).
  */
-export const ItemTypeFeet = "feet";
+export const WeaponTagMelee = "melee";
+/**
+ * Weapon tags: which attacks fire the weapon (§3 of the keystone spec).
+ */
+export const WeaponTagRanged = "ranged";
+/**
+ * Weapon tags: which attacks fire the weapon (§3 of the keystone spec).
+ */
+export const WeaponTagMagic = "magic";
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotMainHand = "main-hand";
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotOffHand = "off-hand";
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotHelmet = ItemTypeHelmet;
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotChest = ItemTypeChest;
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotGloves = ItemTypeGloves;
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotBoots = ItemTypeBoots;
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotRing = ItemTypeRing;
+/**
+ * Equip-slot names. Armor slots equal their item type; weapons go to a
+ * hand (main first, then off; two-handed locks both).
+ */
+export const SlotAmulet = ItemTypeAmulet;
 /**
  * BackpackSize is the fixed number of backpack entries every entity has (the
  * inventory-slots milestone). An entry holds one gear instance, or one
@@ -592,12 +540,21 @@ export interface ItemView {
   defId: string;
   name: string;
   /**
-   * Type is the item's itemType (the ItemType* consts above); the equip
-   * slot is derived from it (the slot key equals the type for gear;
-   * consumables have no slot). Replaces the pre-inventory two-value Slot
-   * field.
+   * Type is the item's itemType (the ItemType* consts above) — the equip
+   * slot this item occupies or would occupy (hand name for weapons; the
+   * slot key equals the type for armor/jewelry; consumables have no slot).
    */
   type: string;
+  /**
+   * Tags names which attacks fire a weapon (WeaponTagMelee/Ranged/Magic);
+   * empty for a non-weapon item.
+   */
+  tags: string[];
+  /**
+   * TwoHanded is true for a weapon that occupies main-hand AND locks
+   * off-hand; always false for a non-weapon item.
+   */
+  twoHanded: boolean;
   damage: number /* int */;
   rangeHex: number /* int */;
   aoeRadius: number /* int */;

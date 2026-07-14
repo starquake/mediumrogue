@@ -292,8 +292,9 @@ func TestKillSoloSummaryNamesKiller(t *testing.T) {
 
 // TestWyrmslayerDamageMultiplierVsDragon: the Wyrmslayer Greatsword's
 // condTargetKind rule spikes damage ×1.5 vs a dragon specifically — a
-// fighter wielding it deals its flat 4 damage to a wolf, but 6 (4*150/100)
-// to a dragon.
+// fighter wielding it deals its flat 9 damage (gear keystone rebalance, the
+// §4 "1H ≈ ½ 2H" anchor) to a wolf, but 13 (9*150/100, truncated) to a
+// dragon.
 func TestWyrmslayerDamageMultiplierVsDragon(t *testing.T) {
 	t.Parallel()
 
@@ -331,12 +332,14 @@ func TestWyrmslayerDamageMultiplierVsDragon(t *testing.T) {
 		return game.MonsterMaxHPForTest(kind) - monster.HP
 	}
 
-	if got, want := dealtTo(t, kindWolf), 4; got != want {
+	// re-derived: gear keystone rebalance (damage 4 -> 9).
+	if got, want := dealtTo(t, kindWolf), 9; got != want {
 		t.Errorf("wyrmslayer dealt %d to a wolf, want %d (no multiplier)", got, want)
 	}
 
-	if got, want := dealtTo(t, kindDragon), 6; got != want {
-		t.Errorf("wyrmslayer dealt %d to a dragon, want %d (4 * 150%%)", got, want)
+	// re-derived: gear keystone rebalance (9 * 150 / 100 = 13, truncated).
+	if got, want := dealtTo(t, kindDragon), 13; got != want {
+		t.Errorf("wyrmslayer dealt %d to a dragon, want %d (9 * 150%%)", got, want)
 	}
 }
 

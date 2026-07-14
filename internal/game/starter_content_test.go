@@ -38,7 +38,7 @@ func bumpDamageTaken(t *testing.T, kind string, wearArmor bool) int {
 			t.Fatalf("SubmitIntent equip leather-armor: %v", err)
 		}
 
-		if got, want := w.EquippedInSlotForTest(id, protocol.ItemTypeBody), instID; got != want {
+		if got, want := w.EquippedInSlotForTest(id, protocol.ItemTypeChest), instID; got != want {
 			t.Fatalf("body slot = %d, want %d (armor equipped)", got, want)
 		}
 	}
@@ -142,41 +142,26 @@ func TestHeadbandBoostsXPThroughLivePipeline(t *testing.T) {
 	}
 }
 
-// TestLeatherArmorWearableByFighterAndRogueOnly: the first multi-class
-// wearability card equips on both listed classes and rejects the third —
-// through the real intent path, not just canEquip.
-func TestLeatherArmorWearableByFighterAndRogueOnly(t *testing.T) {
+// TestLeatherArmorEquipsForEveryClass: class gates are gone (gear keystone,
+// #55/#56) — leather-armor, once a fighter/rogue-only wearability card, now
+// equips through the real intent path for every class, including mage.
+func TestLeatherArmorEquipsForEveryClass(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		class string
-		ok    bool
-	}{
-		{protocol.ClassFighter, true},
-		{protocol.ClassRogue, true},
-		{protocol.ClassMage, false},
-	}
-
-	for _, tc := range cases {
+	for _, class := range []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage} {
 		w := newWorld()
 
-		me, err := w.Join("", "tester", tc.class, protocol.SpeciesHuman)
+		me, err := w.Join("", "tester", class, protocol.SpeciesHuman)
 		if err != nil {
-			t.Fatalf("Join %s: %v", tc.class, err)
+			t.Fatalf("Join %s: %v", class, err)
 		}
 
 		instID := w.GrantItemForTest(me.EntityID, "leather-armor")
 
-		err = w.SubmitIntent(protocol.IntentRequest{
+		if err := w.SubmitIntent(protocol.IntentRequest{
 			EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentEquip, ItemID: instID,
-		})
-
-		if tc.ok && err != nil {
-			t.Errorf("%s equip leather-armor = %v, want nil", tc.class, err)
-		}
-
-		if !tc.ok && err == nil {
-			t.Errorf("%s equip leather-armor succeeded, want ErrWrongClass", tc.class)
+		}); err != nil {
+			t.Errorf("%s equip leather-armor = %v, want nil (gates dropped, #56)", class, err)
 		}
 	}
 }

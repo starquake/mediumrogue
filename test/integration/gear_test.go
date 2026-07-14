@@ -124,11 +124,11 @@ func equippedFlag(t *testing.T, bundle protocol.TurnEvent, entityID, itemID int6
 	return false
 }
 
-// TestEquipValidation proves the two equip-intent rejections that don't need
-// a drop to reach: an itemId the player doesn't own (ErrItemNotOwned), and an
-// intent Kind the server doesn't recognize at all (ErrInvalidIntentKind — a
-// fighter equipping a wrong-class item is unreachable without a drop, since
-// every class-default item already matches its owner's class).
+// TestEquipValidation proves the two equip-intent rejections left reachable
+// without a drop: an itemId the player doesn't own (ErrItemNotOwned), and an
+// intent Kind the server doesn't recognize at all (ErrInvalidIntentKind) —
+// class gates are gone entirely (gear keystone, #56), so there is no
+// wrong-class rejection to prove here anymore.
 func TestEquipValidation(t *testing.T) {
 	t.Parallel()
 

@@ -34,7 +34,12 @@ import (
 // consumable stacks. Bumped past main's v2 (WorldID): the DTO change is an
 // additional, independent breaking change. A v1/v2 snapshot is preserved-aside
 // + fresh on upgrade (app-level contract, unchanged).
-const snapshotVersion = 3
+// v4 (gear keystone, #55/#56): the equipped map's keys change shape — weapons
+// now key by hand (main-hand/off-hand) instead of by class-shaped weapon
+// itemType, and every item's itemType values change (one weapon type plus
+// renamed armor/jewelry types). A v3 snapshot's equipped keys and item types
+// no longer mean what this build expects, so it is preserved-aside + fresh.
+const snapshotVersion = 4
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or

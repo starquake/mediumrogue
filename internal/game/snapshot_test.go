@@ -522,7 +522,7 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 	}
 
 	// The live player's equipped map: same instance ids in the same slots.
-	if got, want := w2.EquippedInSlotForTest(me.EntityID, protocol.ItemTypeBody), armorID; got != want {
+	if got, want := w2.EquippedInSlotForTest(me.EntityID, protocol.ItemTypeChest), armorID; got != want {
 		t.Errorf("restored body slot = %d, want %d", got, want)
 	}
 

@@ -30,7 +30,9 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 						ID:        7,
 						DefID:     "sword",
 						Name:      "Sword",
-						Type:      protocol.ItemTypeMeleeWeapon,
+						Type:      protocol.ItemTypeWeapon,
+						Tags:      []string{protocol.WeaponTagMelee},
+						TwoHanded: false,
 						Damage:    4,
 						RangeHex:  1,
 						AoERadius: 0,
@@ -47,7 +49,7 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 				Hex:   protocol.Hex{Q: 2, R: -1},
 				DefID: "bow",
 				Name:  "Bow",
-				Type:  protocol.ItemTypeRangedWeapon,
+				Type:  protocol.ItemTypeWeapon,
 			},
 		},
 	}
@@ -86,6 +88,18 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 
 	if got, want := gotItem.Type, wantItem.Type; got != want {
 		t.Errorf("ItemView.Type = %q, want %q", got, want)
+	}
+
+	if got, want := len(gotItem.Tags), len(wantItem.Tags); got != want {
+		t.Fatalf("len(ItemView.Tags) = %d, want %d", got, want)
+	}
+
+	if got, want := gotItem.Tags[0], wantItem.Tags[0]; got != want {
+		t.Errorf("ItemView.Tags[0] = %q, want %q", got, want)
+	}
+
+	if got, want := gotItem.TwoHanded, wantItem.TwoHanded; got != want {
+		t.Errorf("ItemView.TwoHanded = %v, want %v", got, want)
 	}
 
 	if got, want := gotItem.Count, wantItem.Count; got != want {

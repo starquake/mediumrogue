@@ -1,6 +1,7 @@
 package game //nolint:testpackage // white-box: needs unexported item-registry internals; see rules_test.go's file doc.
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -8,10 +9,9 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// TestClassDefaultDamageMatchesLiveBalance pins the exact numbers the spec
-// carries forward from the old protocol weapon constants (content.go's
-// registry is now the single source): iron-sword 4, dagger 7, shortbow 6
-// rng4, oak-staff 2, ember-focus 4 rng4 aoe1.
+// TestClassDefaultDamageMatchesLiveBalance pins the exact numbers the gear
+// keystone rebalance (§4, "1H ≈ ½ 2H") leaves class defaults at: iron-sword
+// 4, dagger 4, shortbow 4 rng4, oak-wand 2, ember-focus 3 rng4 aoe1.
 func TestClassDefaultDamageMatchesLiveBalance(t *testing.T) {
 	t.Parallel()
 
@@ -20,10 +20,10 @@ func TestClassDefaultDamageMatchesLiveBalance(t *testing.T) {
 		damage, rangeHex, aoeRadius int
 	}{
 		{idIronSword, 4, 0, 0},
-		{idDagger, 7, 0, 0},
-		{idShortbow, 6, 4, 0},
-		{idOakStaff, 2, 0, 0},
-		{idEmberFocus, 4, 4, 1},
+		{idDagger, 4, 0, 0},   // re-derived: gear keystone rebalance (7 -> 4)
+		{idShortbow, 4, 4, 0}, // re-derived: gear keystone rebalance (6 -> 4)
+		{idOakWand, 2, 0, 0},
+		{idEmberFocus, 3, 4, 1}, // re-derived: gear keystone rebalance (4 -> 3)
 	}
 
 	for _, tc := range cases {
@@ -46,20 +46,21 @@ func TestClassDefaultDamageMatchesLiveBalance(t *testing.T) {
 	}
 }
 
-// TestClassDefaultTypesMatchTaxonomy pins the spec's re-typing of the class
-// defaults: sword/dagger → melee-weapon, shortbow → ranged-weapon, oak-staff
-// → staff, ember-focus → wand.
-func TestClassDefaultTypesMatchTaxonomy(t *testing.T) {
+// TestClassDefaultTypesAndTags pins the gear keystone's re-typing of the
+// class defaults: every one is the single ItemTypeWeapon, distinguished by
+// tag — sword/dagger/oak-wand melee, shortbow ranged, ember-focus magic.
+func TestClassDefaultTypesAndTags(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		id, itemType string
+		id  string
+		tag string
 	}{
-		{idIronSword, protocol.ItemTypeMeleeWeapon},
-		{idDagger, protocol.ItemTypeMeleeWeapon},
-		{idShortbow, protocol.ItemTypeRangedWeapon},
-		{idOakStaff, protocol.ItemTypeStaff},
-		{idEmberFocus, protocol.ItemTypeWand},
+		{idIronSword, protocol.WeaponTagMelee},
+		{idDagger, protocol.WeaponTagMelee},
+		{idShortbow, protocol.WeaponTagRanged},
+		{idOakWand, protocol.WeaponTagMelee},
+		{idEmberFocus, protocol.WeaponTagMagic},
 	}
 
 	for _, tc := range cases {
@@ -68,18 +69,28 @@ func TestClassDefaultTypesMatchTaxonomy(t *testing.T) {
 			t.Fatalf("registry missing default item %q", tc.id)
 		}
 
-		if got, want := def.itemType, tc.itemType; got != want {
+		if got, want := def.itemType, protocol.ItemTypeWeapon; got != want {
 			t.Errorf("%s itemType = %q, want %q", tc.id, got, want)
+		}
+
+		if !def.hasTag(tc.tag) {
+			t.Errorf("%s tags = %v, want to include %q", tc.id, def.tags, tc.tag)
 		}
 	}
 }
 
-// TestSlotForType: the slot is derived from the type — the slot key IS the
-// type string for every gear type; a consumable has no slot at all.
+// TestSlotForType: an armor/jewelry type's slot key IS the type string
+// itself; a consumable and a weapon both have no slotForType result — a
+// weapon's slot is a hand chosen at equip time (weaponTargetSlot).
 func TestSlotForType(t *testing.T) {
 	t.Parallel()
 
-	for _, typ := range canonicalSlotOrder {
+	armorTypes := []string{
+		protocol.ItemTypeHelmet, protocol.ItemTypeChest, protocol.ItemTypeGloves,
+		protocol.ItemTypeBoots, protocol.ItemTypeRing, protocol.ItemTypeAmulet,
+	}
+
+	for _, typ := range armorTypes {
 		if got, want := slotForType(typ), typ; got != want {
 			t.Errorf("slotForType(%q) = %q, want %q", typ, got, want)
 		}
@@ -88,80 +99,280 @@ func TestSlotForType(t *testing.T) {
 	if got, want := slotForType(protocol.ItemTypeConsumable), ""; got != want {
 		t.Errorf("slotForType(consumable) = %q, want %q (no slot)", got, want)
 	}
-}
 
-// TestWeaponSlotsForClassShape pins the recorded weapon-slot direction:
-// fighter = melee + thrown, rogue = melee + ranged, mage = staff + wand;
-// index 0 is the melee-ish (bump) slot, index 1 the ranged-ish one.
-func TestWeaponSlotsForClassShape(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		class          string
-		closeIsh, rIsh string
-	}{
-		{protocol.ClassFighter, protocol.ItemTypeMeleeWeapon, protocol.ItemTypeThrownWeapon},
-		{protocol.ClassRogue, protocol.ItemTypeMeleeWeapon, protocol.ItemTypeRangedWeapon},
-		{protocol.ClassMage, protocol.ItemTypeStaff, protocol.ItemTypeWand},
-	}
-
-	for _, tc := range cases {
-		slots := weaponSlotsFor(tc.class)
-		if got, want := slots[0], tc.closeIsh; got != want {
-			t.Errorf("weaponSlotsFor(%s)[0] = %q, want %q", tc.class, got, want)
-		}
-
-		if got, want := slots[1], tc.rIsh; got != want {
-			t.Errorf("weaponSlotsFor(%s)[1] = %q, want %q", tc.class, got, want)
-		}
-	}
-
-	if got, want := weaponSlotsFor(""), [2]string{}; got != want {
-		t.Errorf("weaponSlotsFor(\"\") = %v, want a zero pair", got)
+	if got, want := slotForType(protocol.ItemTypeWeapon), ""; got != want {
+		t.Errorf("slotForType(weapon) = %q, want %q (hand chosen at equip time)", got, want)
 	}
 }
 
-// TestCanEquipWearability: characters stay single-class; the ITEM side may
-// list several wearers. A multi-class card (leather-armor style) equips on
-// each listed class and rejects the rest; an empty wearableBy means any
-// class; a weapon additionally needs the class to have that weapon slot; a
-// consumable is never equippable.
-func TestCanEquipWearability(t *testing.T) {
+// TestWeaponTargetSlot exercises the placement matrix directly: main if
+// free, else off if free, else main (swap fallback) — and a two-handed
+// weapon always targets main regardless of current occupancy.
+func TestWeaponTargetSlot(t *testing.T) {
 	t.Parallel()
 
-	armor := &itemDef{
-		id: "test-armor", itemType: protocol.ItemTypeBody,
-		wearableBy: []string{protocol.ClassFighter, protocol.ClassRogue},
-	}
+	oneH := itemDefByID[idIronSword]
+	twoH := itemDefByID[idWyrmslayerGreatsword]
 
-	if !canEquip(protocol.ClassFighter, armor) || !canEquip(protocol.ClassRogue, armor) {
-		t.Error("fighter+rogue armor must be equippable by both listed classes")
-	}
+	t.Run("empty hands: main", func(t *testing.T) {
+		t.Parallel()
 
-	if canEquip(protocol.ClassMage, armor) {
-		t.Error("fighter+rogue armor must not be equippable by a mage")
-	}
+		e := &entity{kind: protocol.EntityPlayer, class: protocol.ClassFighter}
 
-	anyRing := &itemDef{id: "test-ring", itemType: protocol.ItemTypeRing}
-	for _, class := range []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage} {
-		if !canEquip(class, anyRing) {
-			t.Errorf("empty wearableBy (any) ring must be equippable by %s", class)
+		if got, want := weaponTargetSlot(e, oneH), protocol.SlotMainHand; got != want {
+			t.Errorf("weaponTargetSlot(empty) = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("main full: off", func(t *testing.T) {
+		t.Parallel()
+
+		e := &entity{
+			kind: protocol.EntityPlayer, class: protocol.ClassFighter,
+			equipped: map[string]itemInstance{protocol.SlotMainHand: {id: 1, defID: idIronSword}},
+		}
+
+		if got, want := weaponTargetSlot(e, oneH), protocol.SlotOffHand; got != want {
+			t.Errorf("weaponTargetSlot(main full) = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("both full: main (swap)", func(t *testing.T) {
+		t.Parallel()
+
+		e := &entity{
+			kind: protocol.EntityPlayer, class: protocol.ClassFighter,
+			equipped: map[string]itemInstance{
+				protocol.SlotMainHand: {id: 1, defID: idIronSword},
+				protocol.SlotOffHand:  {id: 2, defID: idDagger},
+			},
+		}
+
+		if got, want := weaponTargetSlot(e, oneH), protocol.SlotMainHand; got != want {
+			t.Errorf("weaponTargetSlot(both full) = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("two-handed always targets main", func(t *testing.T) {
+		t.Parallel()
+
+		e := &entity{
+			kind: protocol.EntityPlayer, class: protocol.ClassFighter,
+			equipped: map[string]itemInstance{protocol.SlotOffHand: {id: 2, defID: idDagger}},
+		}
+
+		if got, want := weaponTargetSlot(e, twoH), protocol.SlotMainHand; got != want {
+			t.Errorf("weaponTargetSlot(2H) = %q, want %q", got, want)
+		}
+	})
+}
+
+// inBackpackForTest reports whether instID sits in e's backpack (a small
+// local helper — several tests below check where a displaced weapon landed).
+func inBackpackForTest(e *entity, instID int64) bool {
+	for _, be := range e.backpack {
+		if !be.empty() && be.inst.id == instID {
+			return true
 		}
 	}
 
-	// A dagger stays rogue-only; and even a hypothetical any-class wand is
-	// shape-blocked for classes without a wand slot.
-	if canEquip(protocol.ClassFighter, itemDefByID[idDagger]) {
-		t.Error("a rogue-only dagger must not be equippable by a fighter")
+	return false
+}
+
+// TestWeaponPlacementMatrix: equip A -> main (empty hands); equip B -> off
+// (main taken); equip C -> main, swapping A out to the backpack (both hands
+// taken) — the full auto-placement matrix, exercised through
+// equipWeaponLocked (the primitive toggleEquip's weapon-aware counterpart).
+func TestWeaponPlacementMatrix(t *testing.T) {
+	t.Parallel()
+
+	aDef, bDef, cDef := itemDefByID[idIronSword], itemDefByID[idDagger], itemDefByID[idButchersCleaver]
+	a := itemInstance{id: 1, defID: aDef.id}
+	b := itemInstance{id: 2, defID: bDef.id}
+	c := itemInstance{id: 3, defID: cDef.id}
+
+	e := &entity{kind: protocol.EntityPlayer, class: protocol.ClassFighter}
+	e.backpack[0] = backpackEntry{inst: a, count: 1}
+	e.backpack[1] = backpackEntry{inst: b, count: 1}
+	e.backpack[2] = backpackEntry{inst: c, count: 1}
+
+	if err := e.equipWeaponLocked(a, aDef); err != nil {
+		t.Fatalf("equip A: %v", err)
 	}
 
-	if !canEquip(protocol.ClassRogue, itemDefByID[idDagger]) {
-		t.Error("a dagger must be equippable by a rogue")
+	if got, want := e.equipped[protocol.SlotMainHand].id, a.id; got != want {
+		t.Errorf("after A: main = %d, want %d", got, want)
 	}
 
-	potion := &itemDef{id: "test-potion", itemType: protocol.ItemTypeConsumable, heal: 5}
-	if canEquip(protocol.ClassFighter, potion) {
-		t.Error("a consumable must never be equippable")
+	if err := e.equipWeaponLocked(b, bDef); err != nil {
+		t.Fatalf("equip B: %v", err)
+	}
+
+	if got, want := e.equipped[protocol.SlotOffHand].id, b.id; got != want {
+		t.Errorf("after B: off = %d, want %d", got, want)
+	}
+
+	if err := e.equipWeaponLocked(c, cDef); err != nil {
+		t.Fatalf("equip C: %v", err)
+	}
+
+	if got, want := e.equipped[protocol.SlotMainHand].id, c.id; got != want {
+		t.Errorf("after C: main = %d, want %d (swap fallback)", got, want)
+	}
+
+	if got, want := e.equipped[protocol.SlotOffHand].id, b.id; got != want {
+		t.Errorf("after C: off = %d, want unchanged %d", got, want)
+	}
+
+	if !inBackpackForTest(e, a.id) {
+		t.Error("A not found in the backpack after being swapped out by C")
+	}
+}
+
+// TestTwoHandedLocksOffHand covers the two-handed eviction rules: equipping
+// a 2H evicts the off-hand; equipping ANY weapon while a 2H sits in main
+// evicts it first; either eviction politely fails (state untouched) if the
+// backpack has nowhere for the displaced item to land.
+func TestTwoHandedLocksOffHand(t *testing.T) {
+	t.Parallel()
+
+	aDef, bDef, wDef := itemDefByID[idIronSword], itemDefByID[idDagger], itemDefByID[idWyrmslayerGreatsword]
+	a := itemInstance{id: 1, defID: aDef.id}
+	b := itemInstance{id: 2, defID: bDef.id}
+	w := itemInstance{id: 3, defID: wDef.id}
+
+	// newFixture returns a fresh entity with A equipped main, B equipped
+	// off, and W sitting in the backpack — every subtest starts here.
+	newFixture := func(t *testing.T) *entity {
+		t.Helper()
+
+		e := &entity{kind: protocol.EntityPlayer, class: protocol.ClassFighter}
+		e.backpack[0] = backpackEntry{inst: a, count: 1}
+		e.backpack[1] = backpackEntry{inst: b, count: 1}
+		e.backpack[2] = backpackEntry{inst: w, count: 1}
+
+		if err := e.equipWeaponLocked(a, aDef); err != nil {
+			t.Fatalf("fixture equip A: %v", err)
+		}
+
+		if err := e.equipWeaponLocked(b, bDef); err != nil {
+			t.Fatalf("fixture equip B: %v", err)
+		}
+
+		return e
+	}
+
+	t.Run("2H evicts off-hand", func(t *testing.T) {
+		t.Parallel()
+
+		e := newFixture(t)
+
+		if err := e.equipWeaponLocked(w, wDef); err != nil {
+			t.Fatalf("equip W: %v", err)
+		}
+
+		if got, want := e.equipped[protocol.SlotMainHand].id, w.id; got != want {
+			t.Errorf("main = %d, want the 2H %d", got, want)
+		}
+
+		if _, ok := e.equipped[protocol.SlotOffHand]; ok {
+			t.Error("off-hand still occupied, want empty (2H locks it)")
+		}
+
+		if !inBackpackForTest(e, a.id) || !inBackpackForTest(e, b.id) {
+			t.Errorf("A/B in backpack = (%v, %v), want (true, true)",
+				inBackpackForTest(e, a.id), inBackpackForTest(e, b.id))
+		}
+	})
+
+	t.Run("politely fails when the eviction has nowhere to land", func(t *testing.T) {
+		t.Parallel()
+
+		e := newFixture(t) // main=A, off=B, W in backpack[2]; 0,1,3 free -> fill them
+
+		for i := range e.backpack {
+			if e.backpack[i].empty() {
+				e.backpack[i] = backpackEntry{inst: itemInstance{id: int64(100 + i), defID: idIronWarhammer}, count: 1}
+			}
+		}
+
+		preMain, preOff, prePack := e.equipped[protocol.SlotMainHand], e.equipped[protocol.SlotOffHand], e.backpack
+
+		if got, want := e.equipWeaponLocked(w, wDef), ErrBackpackFull; !errors.Is(got, want) {
+			t.Errorf("err = %v, want %v", got, want)
+		}
+
+		if e.equipped[protocol.SlotMainHand] != preMain || e.equipped[protocol.SlotOffHand] != preOff {
+			t.Error("equipped state changed despite the polite failure")
+		}
+
+		if e.backpack != prePack {
+			t.Error("backpack changed despite the polite failure")
+		}
+	})
+
+	t.Run("equipping any weapon while a 2H is held evicts it, off stays empty", func(t *testing.T) {
+		t.Parallel()
+
+		e := newFixture(t)
+
+		if err := e.equipWeaponLocked(w, wDef); err != nil {
+			t.Fatalf("equip W: %v", err)
+		}
+
+		if err := e.equipWeaponLocked(a, aDef); err != nil {
+			t.Fatalf("equip A while W held: %v", err)
+		}
+
+		if got, want := e.equipped[protocol.SlotMainHand].id, a.id; got != want {
+			t.Errorf("main = %d, want A %d", got, want)
+		}
+
+		if _, ok := e.equipped[protocol.SlotOffHand]; ok {
+			t.Error("off-hand occupied, want empty")
+		}
+
+		if !inBackpackForTest(e, w.id) {
+			t.Error("W not found in the backpack after being evicted by A")
+		}
+	})
+}
+
+// TestGatesGone: equipValidate no longer takes (or needs) a class at all —
+// every item is equippable by every class. A mage equips the iron sword (a
+// melee weapon) and leather armor over the real intent path; a rogue
+// equipping a magic weapon (the mage's own default) also succeeds.
+func TestGatesGone(t *testing.T) {
+	t.Parallel()
+
+	w := testItemsWorld()
+
+	mage, err := w.Join("", "tester", protocol.ClassMage, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	swordInst := w.GrantItemForTest(mage.EntityID, idIronSword)
+	armorInst := w.GrantItemForTest(mage.EntityID, idLeatherArmor)
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: mage.EntityID, Token: mage.Token, Kind: protocol.IntentEquip, ItemID: swordInst,
+	}); err != nil {
+		t.Errorf("mage equip iron sword (melee weapon) = %v, want nil (gates dropped, #56)", err)
+	}
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: mage.EntityID, Token: mage.Token, Kind: protocol.IntentEquip, ItemID: armorInst,
+	}); err != nil {
+		t.Errorf("mage equip leather armor = %v, want nil", err)
+	}
+
+	// equipValidate itself carries no class parameter anymore — ErrWrongClass
+	// is unreachable from it for any (class, item) pair; assert directly that
+	// a magic weapon (the mage's own default) is equipValidate-nil too, the
+	// same as it would be for a rogue.
+	if err := equipValidate(itemDefByID[idEmberFocus]); err != nil {
+		t.Errorf("equipValidate(ember-focus, a magic weapon) = %v, want nil", err)
 	}
 }
 
@@ -185,12 +396,12 @@ func TestEquippedDefInEmptySlotIsNil(t *testing.T) {
 
 	e := &entity{kind: protocol.EntityPlayer, class: protocol.ClassRogue}
 
-	if got := e.equippedDefIn(protocol.ItemTypeMeleeWeapon); got != nil {
-		t.Errorf("equippedDefIn(melee-weapon) on an empty slot = %v, want nil", got)
+	if got := e.equippedDefIn(protocol.SlotMainHand); got != nil {
+		t.Errorf("equippedDefIn(main-hand) on an empty slot = %v, want nil", got)
 	}
 
-	if got := e.equippedDefIn(protocol.ItemTypeRangedWeapon); got != nil {
-		t.Errorf("equippedDefIn(ranged-weapon) on an empty slot = %v, want nil", got)
+	if got := e.equippedDefIn(protocol.SlotOffHand); got != nil {
+		t.Errorf("equippedDefIn(off-hand) on an empty slot = %v, want nil", got)
 	}
 }
 
@@ -201,18 +412,17 @@ func TestEquippedDefInReturnsOwnedInstance(t *testing.T) {
 
 	e := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassRogue,
-		equipped: map[string]itemInstance{protocol.ItemTypeMeleeWeapon: {id: 7, defID: idDagger}},
+		equipped: map[string]itemInstance{protocol.SlotMainHand: {id: 7, defID: idDagger}},
 	}
 
-	got := e.equippedDefIn(protocol.ItemTypeMeleeWeapon)
+	got := e.equippedDefIn(protocol.SlotMainHand)
 	if got == nil || got.id != idDagger {
-		t.Errorf("equippedDefIn(melee-weapon) = %v, want the dagger def", got)
+		t.Errorf("equippedDefIn(main-hand) = %v, want the dagger def", got)
 	}
 }
 
-// TestCloseDefForFallsBackToFists: a bare player (empty melee-ish slot) bumps
-// with fists, not a zero-value weapon — for every class (a mage's melee-ish
-// slot is staff; empty staff slot = fists bonk fallback).
+// TestCloseDefForFallsBackToFists: a bare player (both hands empty) bumps
+// with fists, not a zero-value weapon — for every class.
 func TestCloseDefForFallsBackToFists(t *testing.T) {
 	t.Parallel()
 
@@ -244,52 +454,53 @@ func TestCloseDefForMonsterIsClaws(t *testing.T) {
 	}
 }
 
-// TestCloseDefForEquippedWeapon: an equipped melee-ish item wins over the
-// fists fallback — and a mage's melee-ish slot is its STAFF (staff bonk).
+// TestCloseDefForEquippedWeapon: a held melee-tagged weapon wins over the
+// fists fallback, in either hand.
 func TestCloseDefForEquippedWeapon(t *testing.T) {
 	t.Parallel()
 
 	rogue := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassRogue,
-		equipped: map[string]itemInstance{protocol.ItemTypeMeleeWeapon: {id: 1, defID: idDagger}},
+		equipped: map[string]itemInstance{protocol.SlotMainHand: {id: 1, defID: idDagger}},
 	}
 
 	if got := closeDefFor(rogue); got == nil || got.id != idDagger {
 		t.Errorf("closeDefFor(equipped dagger) = %v, want the dagger def", got)
 	}
 
+	// oak-wand is melee-tagged (a "wand bonk") even in the off-hand.
 	mage := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassMage,
-		equipped: map[string]itemInstance{protocol.ItemTypeStaff: {id: 2, defID: idOakStaff}},
+		equipped: map[string]itemInstance{protocol.SlotOffHand: {id: 2, defID: idOakWand}},
 	}
 
-	if got := closeDefFor(mage); got == nil || got.id != idOakStaff {
-		t.Errorf("closeDefFor(mage with staff) = %v, want the oak-staff def (staff bonk)", got)
+	if got := closeDefFor(mage); got == nil || got.id != idOakWand {
+		t.Errorf("closeDefFor(mage with wand) = %v, want the oak-wand def (wand bonk)", got)
 	}
 }
 
-// TestWandNeverMelees: a mage with only its wand equipped (staff slot empty)
-// bumps with FISTS — the wand fills the ranged-ish slot and never
-// contributes to melee (the spec: "wand never melees").
-func TestWandNeverMelees(t *testing.T) {
+// TestMagicOnlyWeaponNeverMelees: a mage holding only a magic-tagged weapon
+// (no melee-tagged item in either hand) bumps with FISTS — a magic weapon
+// never melees — but still has a ranged attack via rangedDefFor.
+func TestMagicOnlyWeaponNeverMelees(t *testing.T) {
 	t.Parallel()
 
 	mage := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassMage,
-		equipped: map[string]itemInstance{protocol.ItemTypeWand: {id: 3, defID: idEmberFocus}},
+		equipped: map[string]itemInstance{protocol.SlotMainHand: {id: 3, defID: idEmberFocus}},
 	}
 
 	if got := closeDefFor(mage); got != fistsDef {
-		t.Errorf("closeDefFor(mage with wand only) = %v, want fistsDef (a wand never melees)", got)
+		t.Errorf("closeDefFor(mage with magic weapon only) = %v, want fistsDef (magic never melees)", got)
 	}
 
 	if got := rangedDefFor(mage); got == nil || got.id != idEmberFocus {
-		t.Errorf("rangedDefFor(mage with wand) = %v, want the ember-focus def", got)
+		t.Errorf("rangedDefFor(mage with ember-focus) = %v, want the ember-focus def", got)
 	}
 }
 
-// TestRangedDefForEmptyIsNil: an empty ranged-ish slot reports nil — the "no
-// ranged weapon" signal queueAttackLocked/resolveRangedLocked read, with no
+// TestRangedDefForEmptyIsNil: empty hands report nil — the "no ranged
+// weapon" signal queueAttackLocked/resolveRangedLocked read, with no
 // fallback (unlike close).
 func TestRangedDefForEmptyIsNil(t *testing.T) {
 	t.Parallel()
@@ -297,47 +508,127 @@ func TestRangedDefForEmptyIsNil(t *testing.T) {
 	e := &entity{kind: protocol.EntityPlayer, class: protocol.ClassRogue}
 
 	if got := rangedDefFor(e); got != nil {
-		t.Errorf("rangedDefFor(no ranged slot) = %v, want nil", got)
+		t.Errorf("rangedDefFor(empty hands) = %v, want nil", got)
 	}
 }
 
-// TestFighterThrownSlotShipsEmpty: a fighter's ranged-ish slot is
-// thrown-weapon, and no thrown content exists — so a fully-equipped fighter
-// (melee slot filled) still has NO ranged weapon, preserving the pre-slots
-// "fighter has no ranged attack" combat contract via an empty slot instead
-// of a class check. Also pins that the registry really has no thrown content
-// yet (the day one lands, the fighter gains ranged and this test is updated
-// deliberately).
-func TestFighterThrownSlotShipsEmpty(t *testing.T) {
+// TestFighterHasNoRangedAttack: a fighter's class default (iron sword) is
+// melee-tagged only, so a fully-equipped fighter still has NO ranged
+// weapon — preserving the pre-keystone "fighter has no ranged attack"
+// combat contract via tags instead of a class-shaped empty slot.
+func TestFighterHasNoRangedAttack(t *testing.T) {
 	t.Parallel()
 
 	fighter := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassFighter,
-		equipped: map[string]itemInstance{protocol.ItemTypeMeleeWeapon: {id: 1, defID: idIronSword}},
+		equipped: map[string]itemInstance{protocol.SlotMainHand: {id: 1, defID: idIronSword}},
 	}
 
 	if got := rangedDefFor(fighter); got != nil {
-		t.Errorf("rangedDefFor(fighter) = %v, want nil (thrown slot ships empty)", got)
+		t.Errorf("rangedDefFor(fighter) = %v, want nil (iron sword is melee-only)", got)
 	}
 
-	for _, def := range itemDefs {
-		if got, notWant := def.itemType, protocol.ItemTypeThrownWeapon; got == notWant {
-			t.Errorf("registry item %s is thrown-weapon; no thrown content should exist this slice", def.id)
-		}
+	sword := itemDefByID[idIronSword]
+	if sword.hasTag(protocol.WeaponTagRanged) || sword.hasTag(protocol.WeaponTagMagic) {
+		t.Errorf("iron-sword tags = %v, must not carry a ranged/magic tag this slice", sword.tags)
 	}
 }
 
-// TestRangedDefForEquippedWeapon: an equipped ranged-ish item resolves by id.
+// TestRangedDefForEquippedWeapon: a held ranged-tagged item resolves by id.
 func TestRangedDefForEquippedWeapon(t *testing.T) {
 	t.Parallel()
 
 	e := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassRogue,
-		equipped: map[string]itemInstance{protocol.ItemTypeRangedWeapon: {id: 2, defID: idShortbow}},
+		equipped: map[string]itemInstance{protocol.SlotOffHand: {id: 2, defID: idShortbow}},
 	}
 
 	if got := rangedDefFor(e); got == nil || got.id != idShortbow {
 		t.Errorf("rangedDefFor(equipped shortbow) = %v, want the shortbow def", got)
+	}
+}
+
+// TestHeldWeaponsMainThenOff: heldWeapons returns occupied hands in fixed
+// main-then-off order, skipping an empty hand.
+func TestHeldWeaponsMainThenOff(t *testing.T) {
+	t.Parallel()
+
+	e := &entity{
+		kind: protocol.EntityPlayer, class: protocol.ClassRogue,
+		equipped: map[string]itemInstance{
+			protocol.SlotMainHand: {id: 1, defID: idDagger},
+			protocol.SlotOffHand:  {id: 2, defID: idShortbow},
+		},
+	}
+
+	held := e.heldWeapons()
+	if got, want := len(held), 2; got != want {
+		t.Fatalf("heldWeapons() len = %d, want %d", got, want)
+	}
+
+	if got, want := held[0].id, idDagger; got != want {
+		t.Errorf("heldWeapons()[0] = %q, want main-hand's %q", got, want)
+	}
+
+	if got, want := held[1].id, idShortbow; got != want {
+		t.Errorf("heldWeapons()[1] = %q, want off-hand's %q", got, want)
+	}
+
+	bare := &entity{kind: protocol.EntityPlayer, class: protocol.ClassFighter}
+	if got := bare.heldWeapons(); len(got) != 0 {
+		t.Errorf("heldWeapons(bare) = %v, want empty", got)
+	}
+}
+
+// TestItemViewOfWeaponSlotDistinguishesHands pins the wire fix behind the
+// gear keystone's client re-key (K1 review finding): itemViewOf must set an
+// EQUIPPED weapon's ItemView.Type to the hand it occupies (SlotMainHand/
+// SlotOffHand), not the generic ItemTypeWeapon taxonomy string every weapon
+// def shares — otherwise two dual-wielded weapons collide under one wire
+// "type" and a client keying its equipped map by Type can only ever show one
+// of them. A backpack (unequipped) weapon keeps the generic type, since it
+// has no hand yet (weaponTargetSlot decides one at equip time).
+func TestItemViewOfWeaponSlotDistinguishesHands(t *testing.T) {
+	t.Parallel()
+
+	dagger := itemInstance{id: 1, defID: idDagger}
+	bow := itemInstance{id: 2, defID: idShortbow}
+	spareSword := itemInstance{id: 3, defID: idIronSword}
+
+	e := &entity{
+		kind: protocol.EntityPlayer, class: protocol.ClassRogue,
+		equipped: map[string]itemInstance{
+			protocol.SlotMainHand: dagger,
+			protocol.SlotOffHand:  bow,
+		},
+	}
+	e.backpack[0] = backpackEntry{inst: spareSword, count: 1}
+
+	views := itemViewsLocked(e)
+	if got, want := len(views), 3; got != want {
+		t.Fatalf("len(itemViewsLocked) = %d, want %d", got, want)
+	}
+
+	byID := make(map[int64]protocol.ItemView, len(views))
+	for _, v := range views {
+		byID[v.ID] = v
+	}
+
+	if got, want := byID[dagger.id].Type, protocol.SlotMainHand; got != want {
+		t.Errorf("main-hand dagger Type = %q, want %q", got, want)
+	}
+
+	if got, want := byID[bow.id].Type, protocol.SlotOffHand; got != want {
+		t.Errorf("off-hand shortbow Type = %q, want %q", got, want)
+	}
+
+	if got, want := byID[spareSword.id].Type, protocol.ItemTypeWeapon; got != want {
+		t.Errorf("backpack spare sword Type = %q, want the generic %q (no hand assigned yet)", got, want)
+	}
+
+	if !byID[dagger.id].Equipped || !byID[bow.id].Equipped || byID[spareSword.id].Equipped {
+		t.Errorf("Equipped flags = dagger:%v bow:%v spareSword:%v, want true/true/false",
+			byID[dagger.id].Equipped, byID[bow.id].Equipped, byID[spareSword.id].Equipped)
 	}
 }
 
@@ -353,14 +644,14 @@ func TestToggleEquipFromBackpackSwapsThroughEntry(t *testing.T) {
 
 	e := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassFighter,
-		equipped: map[string]itemInstance{protocol.ItemTypeMeleeWeapon: sword},
+		equipped: map[string]itemInstance{protocol.SlotMainHand: sword},
 	}
 	e.backpack[2] = backpackEntry{inst: hammer, count: 1}
 
-	e.toggleEquip(hammer, protocol.ItemTypeMeleeWeapon)
+	e.toggleEquip(hammer, protocol.SlotMainHand)
 
-	if got, want := e.equipped[protocol.ItemTypeMeleeWeapon].id, hammer.id; got != want {
-		t.Errorf("melee slot = instance %d, want the warhammer %d", got, want)
+	if got, want := e.equipped[protocol.SlotMainHand].id, hammer.id; got != want {
+		t.Errorf("main-hand slot = instance %d, want the warhammer %d", got, want)
 	}
 
 	if got, want := e.backpack[2].inst.id, sword.id; got != want {
@@ -369,10 +660,10 @@ func TestToggleEquipFromBackpackSwapsThroughEntry(t *testing.T) {
 
 	// Now unequip the hammer (toggle on the already-equipped instance): it
 	// needs a free entry, and 0/1/3 are free — it lands in the first one.
-	e.toggleEquip(hammer, protocol.ItemTypeMeleeWeapon)
+	e.toggleEquip(hammer, protocol.SlotMainHand)
 
-	if got := e.equipped[protocol.ItemTypeMeleeWeapon].id; got != 0 {
-		t.Errorf("melee slot after unequip = instance %d, want empty", got)
+	if got := e.equipped[protocol.SlotMainHand].id; got != 0 {
+		t.Errorf("main-hand slot after unequip = instance %d, want empty", got)
 	}
 
 	if got, want := e.backpack[0].inst.id, hammer.id; got != want {
@@ -390,17 +681,17 @@ func TestToggleEquipUnequipNeedsFreeEntry(t *testing.T) {
 
 	e := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassFighter,
-		equipped: map[string]itemInstance{protocol.ItemTypeMeleeWeapon: sword},
+		equipped: map[string]itemInstance{protocol.SlotMainHand: sword},
 	}
 
 	for i := range e.backpack {
 		e.backpack[i] = backpackEntry{inst: itemInstance{id: int64(10 + i), defID: idIronWarhammer}, count: 1}
 	}
 
-	e.toggleEquip(sword, protocol.ItemTypeMeleeWeapon)
+	e.toggleEquip(sword, protocol.SlotMainHand)
 
-	if got, want := e.equipped[protocol.ItemTypeMeleeWeapon].id, sword.id; got != want {
-		t.Errorf("melee slot = instance %d, want the sword %d still equipped (backpack full)", got, want)
+	if got, want := e.equipped[protocol.SlotMainHand].id, sword.id; got != want {
+		t.Errorf("main-hand slot = instance %d, want the sword %d still equipped (backpack full)", got, want)
 	}
 }
 
@@ -447,9 +738,9 @@ func testItemsWorld() *World {
 }
 
 // TestJoinRogueOwnsDaggerAndShortbowEquipped: Join grants and equips a fresh
-// player's class defaults into the class-shaped weapon slots — a Rogue ends
-// up with dagger in melee-weapon and shortbow in ranged-weapon, backpack
-// fully free.
+// player's class defaults through the same placement path a player equip
+// uses (weaponTargetSlot/toggleEquip) — a Rogue ends up with dagger in
+// main-hand and shortbow in off-hand, backpack fully free.
 func TestJoinRogueOwnsDaggerAndShortbowEquipped(t *testing.T) {
 	t.Parallel()
 
@@ -468,14 +759,14 @@ func TestJoinRogueOwnsDaggerAndShortbowEquipped(t *testing.T) {
 		t.Fatalf("joined rogue has %d equipped items, want %d (dagger + shortbow)", got, want)
 	}
 
-	closeDef := e.equippedDefIn(protocol.ItemTypeMeleeWeapon)
-	if closeDef == nil || closeDef.id != idDagger {
-		t.Errorf("rogue melee-weapon slot = %v, want the dagger def", closeDef)
+	mainDef := e.equippedDefIn(protocol.SlotMainHand)
+	if mainDef == nil || mainDef.id != idDagger {
+		t.Errorf("rogue main-hand slot = %v, want the dagger def", mainDef)
 	}
 
-	rangedDef := e.equippedDefIn(protocol.ItemTypeRangedWeapon)
-	if rangedDef == nil || rangedDef.id != idShortbow {
-		t.Errorf("rogue ranged-weapon slot = %v, want the shortbow def", rangedDef)
+	offDef := e.equippedDefIn(protocol.SlotOffHand)
+	if offDef == nil || offDef.id != idShortbow {
+		t.Errorf("rogue off-hand slot = %v, want the shortbow def", offDef)
 	}
 
 	for slot, inst := range e.equipped {
@@ -490,7 +781,7 @@ func TestJoinRogueOwnsDaggerAndShortbowEquipped(t *testing.T) {
 }
 
 // TestJoinFighterOwnsOnlyIronSword: a Fighter has no ranged default — its
-// thrown-weapon slot stays empty.
+// off-hand stays empty.
 func TestJoinFighterOwnsOnlyIronSword(t *testing.T) {
 	t.Parallel()
 
@@ -509,12 +800,12 @@ func TestJoinFighterOwnsOnlyIronSword(t *testing.T) {
 		t.Fatalf("joined fighter has %d equipped items, want %d (iron-sword only)", got, want)
 	}
 
-	if got := e.equippedDefIn(protocol.ItemTypeMeleeWeapon); got == nil || got.id != idIronSword {
-		t.Errorf("fighter melee-weapon slot = %v, want the iron-sword def", got)
+	if got := e.equippedDefIn(protocol.SlotMainHand); got == nil || got.id != idIronSword {
+		t.Errorf("fighter main-hand slot = %v, want the iron-sword def", got)
 	}
 
-	if got := e.equippedDefIn(protocol.ItemTypeThrownWeapon); got != nil {
-		t.Errorf("fighter thrown-weapon slot = %v, want nil (no thrown content)", got)
+	if got := e.equippedDefIn(protocol.SlotOffHand); got != nil {
+		t.Errorf("fighter off-hand slot = %v, want nil (no ranged default)", got)
 	}
 }
 
@@ -530,13 +821,13 @@ func TestValidateItemDefsPanicsOnDuplicateID(t *testing.T) {
 	}()
 
 	validateItemDefs([]*itemDef{
-		{id: "dup", itemType: protocol.ItemTypeMeleeWeapon, wearableBy: []string{protocol.ClassFighter}},
-		{id: "dup", itemType: protocol.ItemTypeMeleeWeapon, wearableBy: []string{protocol.ClassFighter}},
+		{id: "dup", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee}},
+		{id: "dup", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee}},
 	})
 }
 
 // TestValidateItemDefsPanicsOnUnknownType: an itemType outside the taxonomy's
-// 12 must fail at load.
+// 8 must fail at load.
 func TestValidateItemDefsPanicsOnUnknownType(t *testing.T) {
 	t.Parallel()
 
@@ -549,47 +840,92 @@ func TestValidateItemDefsPanicsOnUnknownType(t *testing.T) {
 	validateItemDefs([]*itemDef{{id: "x", itemType: "waist"}})
 }
 
-// TestValidateItemDefsPanicsOnUnknownWearableByClass.
-func TestValidateItemDefsPanicsOnUnknownWearableByClass(t *testing.T) {
+// TestValidateItemDefsPanicsOnWeaponTagShape covers every invalid weapon tag
+// shape validateWeaponTags rejects: no tags at all, an unknown tag, a
+// duplicate tag, and a magic-tagged weapon with no range.
+func TestValidateItemDefsPanicsOnWeaponTagShape(t *testing.T) {
 	t.Parallel()
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("validateItemDefs did not panic on an unknown wearableBy class")
-		}
-	}()
-
-	validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeBody, wearableBy: []string{"necromancer"}}})
-}
-
-// TestValidateItemDefsPanicsOnWearableByAnyWeapon: a weapon must declare an
-// explicit wearableBy — and each listed class must actually have that weapon
-// slot in its class shape.
-func TestValidateItemDefsPanicsOnWearableByAnyWeapon(t *testing.T) {
-	t.Parallel()
-
-	t.Run("empty wearableBy", func(t *testing.T) {
+	t.Run("no tags", func(t *testing.T) {
 		t.Parallel()
 
 		defer func() {
 			if r := recover(); r == nil {
-				t.Error("validateItemDefs did not panic on a weapon with no wearableBy")
+				t.Error("validateItemDefs did not panic on a weapon with no tags")
 			}
 		}()
 
-		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeMeleeWeapon}})
+		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeWeapon}})
 	})
 
-	t.Run("class without the slot", func(t *testing.T) {
+	t.Run("unknown tag", func(t *testing.T) {
 		t.Parallel()
 
 		defer func() {
 			if r := recover(); r == nil {
-				t.Error("validateItemDefs did not panic on a wand wearable by a fighter")
+				t.Error("validateItemDefs did not panic on a weapon with an unknown tag")
 			}
 		}()
 
-		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeWand, wearableBy: []string{protocol.ClassFighter}}})
+		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeWeapon, tags: []string{"poison"}}})
+	})
+
+	t.Run("duplicate tag", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs did not panic on a weapon with a duplicate tag")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeWeapon,
+			tags: []string{protocol.WeaponTagMelee, protocol.WeaponTagMelee},
+		}})
+	})
+
+	t.Run("magic weapon with no range", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs did not panic on a magic weapon with rangeHex 0")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMagic}}})
+	})
+}
+
+// TestValidateItemDefsPanicsOnNonWeaponTagsOrTwoHanded: tags and twoHanded
+// are weapon-only fields — a content bug setting either on armor/jewelry
+// must fail at load.
+func TestValidateItemDefsPanicsOnNonWeaponTagsOrTwoHanded(t *testing.T) {
+	t.Parallel()
+
+	t.Run("tags on armor", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs did not panic on a non-weapon item with tags set")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeChest, tags: []string{protocol.WeaponTagMelee}}})
+	})
+
+	t.Run("twoHanded on armor", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs did not panic on a non-weapon item with twoHanded set")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeChest, twoHanded: true}})
 	})
 }
 
@@ -619,7 +955,7 @@ func TestValidateItemDefsHealRules(t *testing.T) {
 			}
 		}()
 
-		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeHead, heal: 3}})
+		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeHelmet, heal: 3}})
 	})
 
 	t.Run("valid consumable", func(t *testing.T) {
@@ -656,7 +992,7 @@ func TestValidateItemDefsPanicsOnUnknownRuleKinds(t *testing.T) {
 			}()
 
 			validateItemDefs([]*itemDef{{
-				id: "x", itemType: protocol.ItemTypeMeleeWeapon, wearableBy: []string{protocol.ClassFighter},
+				id: "x", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee},
 				rules: []ruleCard{tc.card},
 			}})
 		})
@@ -671,7 +1007,7 @@ func TestValidateItemDefsAcceptsAggroRangeEvent(t *testing.T) {
 	t.Parallel()
 
 	validateItemDefs([]*itemDef{{
-		id: "cloak-of-shadows", itemType: protocol.ItemTypeBody,
+		id: "cloak-of-shadows", itemType: protocol.ItemTypeChest,
 		rules: []ruleCard{
 			{event: evAggroRange, then: effect{kind: effAdd, n: -3}},
 		},
@@ -714,7 +1050,7 @@ func TestValidateMaxReachPanicsBeyondCombatRadius(t *testing.T) {
 	}()
 
 	validateMaxReach([]*itemDef{{
-		id: "long-bow", itemType: protocol.ItemTypeRangedWeapon, wearableBy: []string{protocol.ClassRogue},
+		id: "long-bow", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagRanged},
 		rangeHex: protocol.CombatRadius + 1,
 	}})
 }
@@ -769,7 +1105,8 @@ func TestFirstGearCardsPinned(t *testing.T) {
 		t.Fatal("war-mage-staff not registered")
 	}
 
-	if got, want := staff.damage, 3; got != want {
+	// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
+	if got, want := staff.damage, 6; got != want {
 		t.Errorf("staff damage = %d, want %d", got, want)
 	}
 
@@ -789,11 +1126,14 @@ func TestFirstGearCardsPinned(t *testing.T) {
 		t.Errorf("staff effect = x%d pct, want %d", got, want)
 	}
 
-	// Re-typed by the inventory-slots milestone: the war-mage staff is a
-	// WAND (it is the mage's ranged-ish AoE caster, and a mage's staff slot
-	// is the melee-bonk slot) — the spec's re-typing table.
-	if got, want := staff.itemType, protocol.ItemTypeWand; got != want {
+	// Gear keystone re-typing: the war-mage staff is ItemTypeWeapon tagged
+	// magic (it is the mage's ranged-ish AoE caster) — the spec's §4 table.
+	if got, want := staff.itemType, protocol.ItemTypeWeapon; got != want {
 		t.Errorf("war-mage-staff itemType = %q, want %q", got, want)
+	}
+
+	if !staff.hasTag(protocol.WeaponTagMagic) {
+		t.Errorf("war-mage-staff tags = %v, want to include %q", staff.tags, protocol.WeaponTagMagic)
 	}
 }
 
@@ -810,7 +1150,7 @@ func TestValidateItemDefsPanicsOnBadAttackerSpecies(t *testing.T) {
 	}()
 
 	validateItemDefs([]*itemDef{{
-		id: "bad", name: "Bad", itemType: protocol.ItemTypeMeleeWeapon, wearableBy: []string{protocol.ClassFighter},
+		id: "bad", name: "Bad", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee},
 		rules: []ruleCard{{
 			event: evDealDamage,
 			when:  []condition{{kind: condAttackerSpecies, s: "gnome"}},
@@ -831,7 +1171,7 @@ func TestValidateItemDefsPanicsOnUnknownTargetKind(t *testing.T) {
 	}()
 
 	validateItemDefs([]*itemDef{{
-		id: "bad", name: "Bad", itemType: protocol.ItemTypeMeleeWeapon, wearableBy: []string{protocol.ClassFighter},
+		id: "bad", name: "Bad", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee},
 		rules: []ruleCard{{
 			event: evDealDamage,
 			when:  []condition{{kind: condTargetKind, s: "griffin"}},
@@ -841,10 +1181,10 @@ func TestValidateItemDefsPanicsOnUnknownTargetKind(t *testing.T) {
 }
 
 // TestWyrmslayerGreatswordPinned pins the first designer card's full intent
-// (milestone 6c, previously blocked on monster kinds existing): fighter-only
-// melee-weapon, damage 4, ×1.5 vs dragons via condTargetKind, and a
-// dragon-only drop (present in dragon's table, absent from every other
-// kind's).
+// (milestone 6c), retagged/rebalanced as the gear keystone's first
+// two-handed weapon (#55/#56 §4): melee-tagged, two-handed, damage 9, ×1.5
+// vs dragons via condTargetKind, and a dragon-only drop (present in
+// dragon's table, absent from every other kind's).
 func TestWyrmslayerGreatswordPinned(t *testing.T) {
 	t.Parallel()
 
@@ -853,15 +1193,17 @@ func TestWyrmslayerGreatswordPinned(t *testing.T) {
 		t.Fatal("wyrmslayer-greatsword not registered")
 	}
 
-	if got, want := len(sword.wearableBy), 1; got != want {
-		t.Fatalf("sword wearableBy lists %d classes, want %d", got, want)
+	if !sword.hasTag(protocol.WeaponTagMelee) {
+		t.Errorf("sword tags = %v, want to include %q", sword.tags, protocol.WeaponTagMelee)
 	}
 
-	if got, want := sword.wearableBy[0], protocol.ClassFighter; got != want {
-		t.Errorf("sword wearableBy = %q, want %q", got, want)
+	if got, want := sword.twoHanded, true; got != want {
+		t.Errorf("sword twoHanded = %v, want %v (the keystone's first 2H weapon)", got, want)
 	}
 
-	if got, want := sword.damage, 4; got != want {
+	// re-derived: gear keystone rebalance (damage 4 -> 9, the §4 "1H ≈ ½ 2H"
+	// anchor — a 2H roughly doubles a 1H's damage).
+	if got, want := sword.damage, 9; got != want {
 		t.Errorf("sword damage = %d, want %d", got, want)
 	}
 
@@ -902,11 +1244,12 @@ func TestWyrmslayerGreatswordPinned(t *testing.T) {
 }
 
 // TestStarterInventoryContentPinned pins the inventory-slots starter
-// content's cards (task 3): leather-armor (body, fighter OR rogue — the
-// first multi-class wearability card — take-damage −1), headband-of-learning
-// (head, any class, earn-XP ×1.05), and healing-potion (consumable, heal 5,
-// no rules), plus the potion's low-weight presence in the rat and wolf drop
-// tables (recovery layer 2).
+// content's cards (task 3, re-typed by the gear keystone): leather-armor
+// (chest, take-damage −1), headband-of-learning (helmet, earn-XP ×1.05),
+// and healing-potion (consumable, heal 5, no rules) — plus the potion's
+// low-weight presence in the rat and wolf drop tables (recovery layer 2).
+// Class gates are gone (#55/#56): neither armor card restricts wearability
+// anymore.
 func TestStarterInventoryContentPinned(t *testing.T) {
 	t.Parallel()
 
@@ -915,19 +1258,8 @@ func TestStarterInventoryContentPinned(t *testing.T) {
 		t.Fatal("leather-armor not registered")
 	}
 
-	if got, want := armor.itemType, protocol.ItemTypeBody; got != want {
+	if got, want := armor.itemType, protocol.ItemTypeChest; got != want {
 		t.Errorf("armor itemType = %q, want %q", got, want)
-	}
-
-	wantWear := []string{protocol.ClassFighter, protocol.ClassRogue}
-	if got, want := len(armor.wearableBy), len(wantWear); got != want {
-		t.Fatalf("armor wearableBy lists %d classes, want %d", got, want)
-	}
-
-	for i, c := range wantWear {
-		if got, want := armor.wearableBy[i], c; got != want {
-			t.Errorf("armor wearableBy[%d] = %q, want %q", i, got, want)
-		}
 	}
 
 	if got, want := len(armor.rules), 1; got != want {
@@ -947,12 +1279,8 @@ func TestStarterInventoryContentPinned(t *testing.T) {
 		t.Fatal("headband-of-learning not registered")
 	}
 
-	if got, want := band.itemType, protocol.ItemTypeHead; got != want {
+	if got, want := band.itemType, protocol.ItemTypeHelmet; got != want {
 		t.Errorf("headband itemType = %q, want %q", got, want)
-	}
-
-	if got, want := len(band.wearableBy), 0; got != want {
-		t.Errorf("headband wearableBy lists %d classes, want %d (any)", got, want)
 	}
 
 	if got, want := len(band.rules), 1; got != want {

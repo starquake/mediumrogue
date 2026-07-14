@@ -17,8 +17,8 @@ import (
 )
 
 // equippedRangedStats returns the range/AoE radius of entity id's equipped
-// ranged-slot item, read straight off a real turn bundle (Entity.Items —
-// milestone 6b.4). Used to drive the bow/AoE tests' fire-or-chase decisions
+// ranged/magic-tagged weapon, read straight off a real turn bundle
+// (Entity.Items). Used to drive the bow/AoE tests' fire-or-chase decisions
 // without mirroring internal/game/content.go's shortbow/ember-focus numbers
 // as local literals — the wire is now the single source of truth, also
 // pinned directly against the registry by internal/game's items_test.go.
@@ -28,17 +28,19 @@ func equippedRangedStats(bundle protocol.TurnEvent, id int64) (int, int, bool) {
 		return 0, 0, false
 	}
 
-	// ItemView.Slot carries the itemType since the inventory-slots milestone:
-	// the ranged-ish weapon types are thrown-weapon/ranged-weapon/wand (one
-	// per class shape).
+	// An equipped weapon's Type is the hand it occupies (main-hand/off-hand),
+	// not the generic "weapon" taxonomy string (the gear keystone's
+	// dual-wield model) — Tags names which attacks fire it regardless of
+	// which hand, so filter on Equipped + tag alone.
 	for _, it := range e.Items {
 		if !it.Equipped {
 			continue
 		}
 
-		switch it.Type {
-		case protocol.ItemTypeThrownWeapon, protocol.ItemTypeRangedWeapon, protocol.ItemTypeWand:
-			return it.RangeHex, it.AoERadius, true
+		for _, tag := range it.Tags {
+			if tag == protocol.WeaponTagRanged || tag == protocol.WeaponTagMagic {
+				return it.RangeHex, it.AoERadius, true
+			}
 		}
 	}
 

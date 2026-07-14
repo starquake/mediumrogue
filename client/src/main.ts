@@ -19,7 +19,6 @@ import {
   pickupRows,
   refreshPickup,
   setInventory,
-  setWeaponSlots,
   togglePanel,
 } from "./gear/store";
 import { bindMovementKeys } from "./input/keys";
@@ -48,24 +47,19 @@ import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
-  ClassMage,
-  ClassRogue,
   CombatRadius,
   EntityMonster,
   EntityPlayer,
   IntentAttack,
   IntentMove,
-  ItemTypeMeleeWeapon,
-  ItemTypeRangedWeapon,
-  ItemTypeStaff,
-  ItemTypeThrownWeapon,
-  ItemTypeWand,
   PlaybackSeconds,
   SpeciesHuman,
   StackCap,
   TerrainForest,
   TerrainGrass,
   TurnSeconds,
+  WeaponTagMagic,
+  WeaponTagRanged,
   XPCurveBase,
 } from "./protocol.gen";
 import { DamageNumberLayer } from "./render/damage";
@@ -201,9 +195,10 @@ export interface GameDebug {
   /** This client's entity's owned items (id/defId/equipped), from the latest bundle. Empty until joined. */
   inventory: { id: number; defId: string; equipped: boolean }[];
   /**
-   * My equipped gear keyed by slot (itemType) — the paper-doll's filled
-   * slots, from the latest bundle. Empty slots are absent keys. Exposed for
-   * e2e (the panel itself is DOM).
+   * My equipped gear keyed by one of the eight equip slots (helmet, amulet,
+   * gloves, ring, main-hand, chest, off-hand, boots) — the paper-doll's
+   * filled slots, from the latest bundle. Empty slots are absent keys.
+   * Exposed for e2e (the panel itself is DOM).
    */
   equipped: Record<string, { id: number; defId: string; name: string; type: string }>;
   /**
@@ -278,20 +273,6 @@ function mustGet(id: string): HTMLElement {
   return el;
 }
 
-// weaponSlotsForClass mirrors internal/game's weaponSlotsFor: the two
-// class-shaped weapon-slot itemTypes ([close-ish, ranged-ish]) the paper-doll
-// labels and places. Fighter's thrown slot ships empty (no thrown content),
-// so a fighter's ranged-ish slot always renders empty — matching the server.
-function weaponSlotsForClass(cls: string): [string, string] {
-  switch (cls) {
-    case ClassRogue:
-      return [ItemTypeMeleeWeapon, ItemTypeRangedWeapon];
-    case ClassMage:
-      return [ItemTypeStaff, ItemTypeWand];
-    default: // fighter (and any unknown class): melee + (empty) thrown
-      return [ItemTypeMeleeWeapon, ItemTypeThrownWeapon];
-  }
-}
 
 const turnEl = mustGet("turn");
 const statusEl = mustGet("status");
@@ -495,43 +476,71 @@ window.game = {
 // this number (or its source), not the structure.
 const COMBAT_MOVE_RANGE = 1;
 
-// My equipped ranged weapon's range/AoE radius, refreshed every turn bundle
-// from Entity.Items (Milestone 6b.4: weapon numbers now live in the server's
-// item registry, internal/game/content.go, not in a client-side literal
-// mirror) — null range means "no ranged weapon equipped" (a fighter, or a
-// rogue/mage that somehow unequipped theirs), which always resolves to a
-// move on click. These only drive the click-vs-move UX hint below; the
-// server independently re-checks the real equipped weapon on every attack
-// intent regardless.
-let myRangedRangeHex: number | null = null;
-let myRangedAoeRadius = 0;
+// My equipped ranged/magic weapons' range/AoE stats — one entry per held
+// weapon across BOTH hands (dual-wield, gear keystone #55) — refreshed every
+// turn bundle from Entity.Items (weapon numbers live in the server's item
+// registry, internal/game/content.go, not in a client-side literal mirror).
+// Kept PER WEAPON, never collapsed into independent maxes: max(range) +
+// max(aoe) would synthesize a range/AoE combination NEITHER weapon has
+// (e.g. a long single-target bow + a short AoE focus reading as a long AoE),
+// and the click hint would promise a blast the server then no-ops. Empty =
+// no ranged weapon equipped, which always resolves to a move on click.
+// These only drive the click-vs-move UX hint below; the server independently
+// re-checks the real equipped weapons on every attack intent regardless.
+let myRangedWeapons: { rangeHex: number; aoeRadius: number }[] = [];
+
+// aoeReachesDist: some held AoE-capable (aoeRadius > 0) ranged/magic weapon
+// reaches dist — the weapon that lets a click on empty ground still attack.
+function aoeReachesDist(dist: number): boolean {
+  return myRangedWeapons.some((w) => w.aoeRadius > 0 && dist <= w.rangeHex);
+}
+
+// aoeReaches: aoeReachesDist measured from my own hex to target.
+function aoeReaches(target: Hex): boolean {
+  const me = window.game.me;
+
+  return me !== null && aoeReachesDist(hexDistance(me.hex, target));
+}
+
+// maxRangedRange: the farthest any held ranged/magic weapon reaches (0 when
+// none held) — drives the red range-wash overlay, where "some weapon can act
+// on this tile" is the right rendering question even if not every weapon can.
+function maxRangedRange(): number {
+  return myRangedWeapons.reduce((m, w) => Math.max(m, w.rangeHex), 0);
+}
 
 /**
  * Decides whether a click on `target` should fire a ranged attack instead of
- * a move. Out of combat, or no ranged weapon equipped: always a move. In
- * combat with a ranged weapon equipped: a single-target weapon (a rogue's
- * bow) only fires at a hostile actually standing on the clicked hex, within
- * range — any other click there still walks (mirrors the melee-bump flow).
- * An AoE weapon (a mage's staff, aoeRadius > 0) can be aimed at any hex
- * within range — the blast can land on empty ground and still catch nearby
- * hostiles — so any in-range click attacks. Reads window.game (the same
- * state the debug/test surface exposes) rather than closed-over locals, so
- * it stays correct regardless of when it's called.
+ * a move, mirroring the server's per-weapon rule (rangedDefsFor: each held
+ * ranged/magic weapon fires iff ITS OWN rangeHex reaches the target). Out of
+ * combat, or no ranged weapon equipped: always a move. An AoE weapon
+ * (aoeRadius > 0) in range can be aimed at any hex — the blast can land on
+ * empty ground and still catch nearby hostiles. A single-target weapon (a
+ * rogue's bow) in range only fires at a hostile actually standing on the
+ * clicked hex — any other click there still walks (mirrors the melee-bump
+ * flow). Each weapon is checked against its own range, so a short AoE weapon
+ * never green-lights an empty-ground click that only a longer single-target
+ * weapon reaches. Reads window.game (the same state the debug/test surface
+ * exposes) rather than closed-over locals, so it stays correct regardless of
+ * when it's called.
  */
 function isRangedAttackClick(target: Hex): boolean {
   if (!window.game.inCombat) {
     return false;
   }
   const me = window.game.me;
-  if (myRangedRangeHex === null || me === null || hexDistance(me.hex, target) > myRangedRangeHex) {
+  if (me === null) {
     return false;
   }
-  if (myRangedAoeRadius > 0) {
+
+  const dist = hexDistance(me.hex, target);
+  if (aoeReachesDist(dist)) {
     return true;
   }
 
-  return window.game.positions.some(
-    (p) => p.kind === EntityMonster && p.hex.q === target.q && p.hex.r === target.r,
+  return (
+    myRangedWeapons.some((w) => dist <= w.rangeHex) &&
+    window.game.positions.some((p) => p.kind === EntityMonster && p.hex.q === target.q && p.hex.r === target.r)
   );
 }
 
@@ -782,10 +791,10 @@ async function start(): Promise<void> {
     feedbackLayer.setCommitted(null);
   };
 
-  // Inventory panel toggle: the HUD button, the `i` key, and the panel's own
-  // close button all route through applyPanelOpen, which keeps the store
-  // signal, the HUD button's open-state class, and window.game.panelOpen in
-  // sync.
+  // Inventory panel toggle: the HUD button, the `i`/`c` keys, Escape, and the
+  // panel's own close button all route through applyPanelOpen, which keeps
+  // the store signal, the HUD button's open-state class, and
+  // window.game.panelOpen in sync.
   const applyPanelOpen = (open: boolean): void => {
     if (panelOpen() !== open) {
       togglePanel();
@@ -829,15 +838,10 @@ async function start(): Promise<void> {
     },
   });
 
-  // The character panel's weapon slots are class-shaped — set them once, now
-  // that the joined class is known, so the paper-doll labels and places the
-  // two weapon slots correctly (fighter melee+thrown, rogue melee+ranged,
-  // mage staff+wand).
-  setWeaponSlots(weaponSlotsForClass(joinedClass));
-
   // The HUD toggle button reveals now that there is a character to show; the
-  // `i` key is bound via bindMovementKeys below (sharing the typing-focus
-  // guard). Both call toggleInventory (defined above).
+  // `i`/`c`/Escape keys are bound via bindMovementKeys below (sharing the
+  // typing-focus guard). All route through toggleInventory/applyPanelOpen
+  // (defined above).
   toggleInventoryEl.hidden = false;
   toggleInventoryEl.addEventListener("click", toggleInventory);
 
@@ -943,14 +947,15 @@ async function start(): Promise<void> {
   // attackAt fires a ranged attack intent at target: no destination bookkeeping
   // (the attacker doesn't move onto it) — a one-shot flash on the target hex
   // acknowledges the click; the turn bundle's HP changes speak for the result.
-  // A single-target weapon (myRangedAoeRadius 0, a bow) targets the
-  // hostile's ENTITY id instead of the bare hex (item 7); an AoE weapon
-  // stays ground-targeted — its blast radius makes a hex the natural target,
-  // and it can land on empty ground and still catch nearby hostiles.
+  // When no held AoE weapon reaches the target (a single-target shot, a bow),
+  // it targets the hostile's ENTITY id instead of the bare hex (item 7); with
+  // an AoE weapon in reach it stays ground-targeted — the blast radius makes
+  // a hex the natural target, and it can land on empty ground and still
+  // catch nearby hostiles.
   const attackAt = (target: Hex): Promise<void> => {
     feedbackLayer.flashAttack(target);
 
-    const targetEntityId = myRangedAoeRadius === 0 ? (hostileIdAt(target) ?? 0) : 0;
+    const targetEntityId = aoeReaches(target) ? 0 : (hostileIdAt(target) ?? 0);
 
     // Committed-action indicator (item 6): a persistent crosshair on the
     // target, alongside the flashAttack one-shot ring above.
@@ -991,7 +996,7 @@ async function start(): Promise<void> {
 
       if (inList(lastReach.bumps, target)) {
         clearPending();
-        if (myRangedAoeRadius > 0 && isRangedAttackClick(target)) {
+        if (aoeReaches(target)) {
           return attackAt(target); // mage: blast the adjacent hostile
         }
         return walkTo(target); // bump-attack: step in and swing
@@ -1116,10 +1121,13 @@ async function start(): Promise<void> {
         // Gear: my owned items ride Entity.Items every bundle (full-snapshot
         // philosophy, same as everything else here). setInventory feeds the
         // paper-doll's slot-keyed equipped map + backpack; the mirrors below
-        // expose the same to window.game for e2e. The equipped ranged item's
-        // range/AoE radius (if any) also drives the click-vs-move UX hint
-        // above (isRangedAttackClick) — the ranged-ish weapon types are
-        // thrown-weapon/ranged-weapon/wand.
+        // expose the same to window.game for e2e. The click-vs-move UX hint
+        // above (isRangedAttackClick) reads every held ranged/magic weapon
+        // across BOTH hands (dual-wield, gear keystone #55) — an equipped
+        // weapon's Type is now the hand it occupies, not the generic
+        // taxonomy string, so filtering is on Tags alone (a ranged or magic
+        // tag means it fires the ranged/AoE attack path regardless of which
+        // hand holds it).
         setInventory(mine.items);
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
@@ -1129,10 +1137,9 @@ async function start(): Promise<void> {
         window.game.equipped = equippedSignal();
         window.game.backpack = backpackSignal();
 
-        const rangedTypes: string[] = [ItemTypeThrownWeapon, ItemTypeRangedWeapon, ItemTypeWand];
-        const rangedItem = mine.items.find((it: ItemView) => rangedTypes.includes(it.type) && it.equipped);
-        myRangedRangeHex = rangedItem?.rangeHex ?? null;
-        myRangedAoeRadius = rangedItem?.aoeRadius ?? 0;
+        myRangedWeapons = mine.items
+          .filter((it: ItemView) => it.equipped && (it.tags.includes(WeaponTagRanged) || it.tags.includes(WeaponTagMagic)))
+          .map((it: ItemView) => ({ rangeHex: it.rangeHex, aoeRadius: it.aoeRadius }));
       }
 
       // Ground loot: every dropped item currently lying on the map, redrawn
@@ -1257,17 +1264,21 @@ async function start(): Promise<void> {
         lastReach = reach;
         window.game.combatMoves = [...reach.moves, ...reach.bumps];
 
-        // The equipped ranged weapon's reach: every map tile within range
-        // (distance-only, no LOS — matching the server's rule), minus the
-        // tiles that already act differently on click (moves, bumps, self).
+        // The held ranged weapons' reach: every map tile within the FARTHEST
+        // weapon's range (distance-only, no LOS — matching the server's
+        // rule), minus the tiles that already act differently on click
+        // (moves, bumps, self). Max range is right for a wash — it shows
+        // "some weapon can act here"; the click routing itself is per-weapon
+        // (isRangedAttackClick).
         const ranged: Hex[] = [];
         const meNow = window.game.me;
-        if (meNow !== null && myRangedRangeHex !== null) {
+        const washRange = maxRangedRange();
+        if (meNow !== null && washRange > 0) {
           for (const tile of map.tiles) {
             const d = hexDistance(meNow.hex, tile.hex);
             if (
               d >= 1 &&
-              d <= myRangedRangeHex &&
+              d <= washRange &&
               !inList(reach.moves, tile.hex) &&
               !inList(reach.bumps, tile.hex)
             ) {
@@ -1320,10 +1331,14 @@ async function start(): Promise<void> {
       }
       void clickTarget(me.hex);
     },
-    // `i` toggles the character/inventory panel — shares the movement keys'
-    // typing-focus guard (input/keys.ts) so typing "i" into chat never opens
-    // it, and the same start-screen block below.
+    // `i` / `c` toggle the character/inventory panel, Escape closes it —
+    // shares the movement keys' typing-focus guard (input/keys.ts) so typing
+    // "i", "c", or Escape into chat never touches the panel, and the same
+    // start-screen block below. Escape's isPanelOpen gate lives in
+    // keys.ts (a no-op while already closed, never a toggle).
     onToggleInventory: toggleInventory,
+    onClosePanel: (): void => applyPanelOpen(false),
+    isPanelOpen: (): boolean => panelOpen(),
     isBlocked: (): boolean => !startScreenEl.hidden,
   });
 
@@ -1346,11 +1361,11 @@ async function start(): Promise<void> {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
-    // Crosshair only where a click would actually shoot — a bump tile with a
-    // single-target weapon swings instead (see clickTarget's routing).
+    // Crosshair only where a click would actually shoot — a bump tile with
+    // no AoE weapon in reach swings instead (see clickTarget's routing).
     const hover = pixelToHex({ x: worldX, y: worldY });
     const wouldShoot =
-      isRangedAttackClick(hover) && !(myRangedAoeRadius === 0 && inList(lastReach.bumps, hover));
+      isRangedAttackClick(hover) && (aoeReaches(hover) || !inList(lastReach.bumps, hover));
     app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
 
     // Enemy hover tooltip (item 13, playtest batch 2): kind display name +

@@ -141,28 +141,37 @@ const (
 	IntentDrink = "drink"
 )
 
-// Item types (the inventory-slots milestone's taxonomy): every item
-// definition's itemType determines exactly which equip slot it fits
-// (internal/game's slotForType — the slot key equals the type string itself
-// for every type except consumable, which has no slot and lives only in the
-// backpack as a stack). The five weapon types are the class-shaped weapon
-// slots: fighter wears melee-weapon + thrown-weapon, rogue wears
-// melee-weapon + ranged-weapon, mage wears staff + wand (internal/game's
-// weaponSlotsFor). The six body types (head, body, hands, ring, amulet,
-// feet) are universal gear slots, not class-shaped.
+// The item taxonomy (gear keystone, #55/#56): one weapon type carrying
+// tags, plus armor/jewelry types that each map 1:1 to an equip slot.
 const (
-	ItemTypeMeleeWeapon  = "melee-weapon"
-	ItemTypeThrownWeapon = "thrown-weapon"
-	ItemTypeRangedWeapon = "ranged-weapon"
-	ItemTypeStaff        = "staff"
-	ItemTypeWand         = "wand"
-	ItemTypeConsumable   = "consumable"
-	ItemTypeHead         = "head"
-	ItemTypeBody         = "body"
-	ItemTypeHands        = "hands"
-	ItemTypeRing         = "ring"
-	ItemTypeAmulet       = "amulet"
-	ItemTypeFeet         = "feet"
+	ItemTypeWeapon     = "weapon"
+	ItemTypeConsumable = "consumable"
+	ItemTypeHelmet     = "helmet"
+	ItemTypeChest      = "chest"
+	ItemTypeGloves     = "gloves"
+	ItemTypeBoots      = "boots"
+	ItemTypeRing       = "ring"
+	ItemTypeAmulet     = "amulet"
+)
+
+// Weapon tags: which attacks fire the weapon (§3 of the keystone spec).
+const (
+	WeaponTagMelee  = "melee"
+	WeaponTagRanged = "ranged"
+	WeaponTagMagic  = "magic"
+)
+
+// Equip-slot names. Armor slots equal their item type; weapons go to a
+// hand (main first, then off; two-handed locks both).
+const (
+	SlotMainHand = "main-hand"
+	SlotOffHand  = "off-hand"
+	SlotHelmet   = ItemTypeHelmet
+	SlotChest    = ItemTypeChest
+	SlotGloves   = ItemTypeGloves
+	SlotBoots    = ItemTypeBoots
+	SlotRing     = ItemTypeRing
+	SlotAmulet   = ItemTypeAmulet
 )
 
 // BackpackSize is the fixed number of backpack entries every entity has (the
@@ -365,14 +374,19 @@ type ItemView struct {
 	ID    int64  `json:"id"`
 	DefID string `json:"defId"`
 	Name  string `json:"name"`
-	// Type is the item's itemType (the ItemType* consts above); the equip
-	// slot is derived from it (the slot key equals the type for gear;
-	// consumables have no slot). Replaces the pre-inventory two-value Slot
-	// field.
-	Type      string `json:"type"`
-	Damage    int    `json:"damage"`
-	RangeHex  int    `json:"rangeHex"`
-	AoERadius int    `json:"aoeRadius"`
+	// Type is the item's itemType (the ItemType* consts above) — the equip
+	// slot this item occupies or would occupy (hand name for weapons; the
+	// slot key equals the type for armor/jewelry; consumables have no slot).
+	Type string `json:"type"`
+	// Tags names which attacks fire a weapon (WeaponTagMelee/Ranged/Magic);
+	// empty for a non-weapon item.
+	Tags []string `json:"tags"`
+	// TwoHanded is true for a weapon that occupies main-hand AND locks
+	// off-hand; always false for a non-weapon item.
+	TwoHanded bool `json:"twoHanded"`
+	Damage    int  `json:"damage"`
+	RangeHex  int  `json:"rangeHex"`
+	AoERadius int  `json:"aoeRadius"`
 	// Desc is the authored human-readable rule text ("+3 vs targets below
 	// half HP"); empty for rule-less items.
 	Desc string `json:"desc"`

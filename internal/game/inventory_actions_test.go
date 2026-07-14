@@ -167,7 +167,7 @@ func TestDropEquippedItemLandsOnOwnHex(t *testing.T) {
 		t.Errorf("ground item def = %q, want %q", got, want)
 	}
 
-	if got, want := ground.Type, protocol.ItemTypeMeleeWeapon; got != want {
+	if got, want := ground.Type, protocol.ItemTypeWeapon; got != want {
 		t.Errorf("ground item type = %q, want %q", got, want)
 	}
 }
@@ -211,8 +211,8 @@ func TestDropThenRePickupKeepsIdentity(t *testing.T) {
 		t.Errorf("backpack[0] = %q, want %q (the re-picked sword)", got, want)
 	}
 
-	if got := w.EquippedInSlotForTest(id, protocol.ItemTypeMeleeWeapon); got != 0 {
-		t.Errorf("melee slot instance = %d, want 0", got)
+	if got := w.EquippedInSlotForTest(id, protocol.SlotMainHand); got != 0 {
+		t.Errorf("main-hand slot instance = %d, want 0", got)
 	}
 }
 
@@ -573,9 +573,9 @@ func TestDrinkGearRejected(t *testing.T) {
 }
 
 // TestEquipConsumableRejectedAsNotEquippable: equipping a consumable is
-// ErrNotEquippable ("that item can't be equipped"), a distinct error from
-// ErrWrongClass ("item is for a different class") — a consumable has no equip
-// slot at all, it is not merely for the wrong class.
+// ErrNotEquippable ("that item can't be equipped") — a consumable has no
+// equip slot at all (drink, not equip, is its action); class gates are gone
+// entirely (#56), so this is the only equip-intent rejection left.
 func TestEquipConsumableRejectedAsNotEquippable(t *testing.T) {
 	t.Parallel()
 

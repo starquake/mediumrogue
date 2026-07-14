@@ -1,7 +1,68 @@
 # Project Status — resume here
 
-*Last updated: 2026-07-13 — **fast-lane batch 1 landed**; branch
-`feat/fast-lane-batch`, PR open against `main` (not yet merged).*
+*Last updated: 2026-07-13 — **the gear keystone (#55/#56) landed**; branch
+`feat/arpg-inventory`, PR open against `main` (not yet merged, docs-sync task
+still to commit).*
+
+*__The gear keystone — #55/#56, G1+G2+G3 (design-roadmap.md §1) — spec → plan
+→ 5-task build on `feat/arpg-inventory`.__ Weapon type-properties (G1): the
+five class-shaped weapon item types (`melee-weapon/thrown-weapon/
+ranged-weapon/staff/wand`) collapsed into one `protocol.ItemTypeWeapon`
+carrying `Tags []string` (`WeaponTagMelee/Ranged/Magic` — which attacks fire
+it, ≥1 required) + `TwoHanded bool`. Generic hand slots (G2): the per-class
+weapon-slot pair is gone — `SlotMainHand`/`SlotOffHand` replace it, placement
+picked at equip time by `weaponTargetSlot` (2H or empty main → main; empty
+off → off; else main, evicting the swapped-out occupant to the backpack); a
+two-handed weapon locks the off-hand. Gates dropped (G3, #56): `wearableBy`
+and the `ErrWrongClass` sentinel are deleted outright — every class may equip
+every item; class identity moves to (future) skills, not equip-time
+restrictions. **Rebalance + first 2H**: all 15 registry weapons retagged,
+several 1H damages rebalanced down (the keystone's "1H ≈ ½ 2H" anchor —
+Dagger 7→4, Shortbow 6→4, Ember Focus 4→3, Iron Warhammer 6→5, Venom Fang
+5→3, Pack Bow 5→3, Misericorde 6→4, Duelist's Saber 5→4), and the Wyrmslayer
+Greatsword rebalanced 4→9 + `twoHanded: true` — the game's first two-handed
+weapon. **Per-hit dual-wield combat** (task 2): every fitting held weapon
+now fires as its own hit — a bump resolves every melee-tagged held weapon
+against one picked victim, a ranged attack resolves every ranged/magic-
+tagged held weapon that still reaches; two single-target ranged weapons
+share one stack-victim pick (mirroring melee), AoE weapons hit independently.
+Self-review on task 2 found and fixed a real routing bug: `queueAttackLocked`
+still gated entity-vs-ground targeting on the single longest-range held
+weapon's `aoeRadius == 0`, so a player with an AoE weapon in main hand and a
+bow in off hand would have an entity-targeted intent silently fall through
+to the (wrong) ground-targeted branch even though both weapons could legally
+reach — fixed by dropping that gate entirely (entity-targeting no longer
+depends on which weapon happens to be "best"), with a regression test
+pinning the exact main/off-hand arrangement that exposed it. **The client
+panel** (task 3) needed a wire-contract fix to actually display two hands
+correctly: `client/src/gear/store.ts` originally keyed `equipped` by item
+type, so two held weapons (both now `ItemTypeWeapon`) collided under one key
+— fixed at the source, `itemViewOf` (`internal/game/world.go`), which now
+emits an equipped weapon's wire `Type` as the **occupied hand**
+(`main-hand`/`off-hand`) instead of the generic `"weapon"` string; armor/
+jewelry are unaffected (their type already equals their slot). The approved
+ARPG mockup panel then rendered on top of that fixed wire: eight named
+hexes, the off-hand greyed with a "two-handed grip" ghost label while
+locked, hover tooltips comparing against the hand a backpack weapon would
+land in (`targetSlotFor`, the client's mirror of `weaponTargetSlot`). **Keys**
+(task 4): `C` and `I` both toggle the panel, `Esc` closes it (a genuine
+no-op while already closed), all three sharing the movement keys' existing
+typing-focus guard. **Snapshot version bumped 3→4** — an old world's
+equipped map used class-shaped slot keys and five weapon item-types; a
+pre-keystone snapshot fails the version check and is rejected/renamed aside,
+never migrated (per the project's disk-as-wire, no-backward-compat rule).
+`docs/FEATURES.md` (Gear & inventory section, snapshot version-history note)
+and `docs/rule-based-content-design.md` §4 (gear card template, wearability
+prose) are the up-to-date references; `docs/design-roadmap.md`'s
+G1/G2/G3 are marked done.*
+
+**⚠️ DEPLOY NOTE — read before the next deploy**: snapshot version 4 rejects
+every snapshot written by the pre-keystone server (dev/staging worlds
+included) — on the next deploy, dev and staging will silently start a fresh
+world with no snapshot to load (the old file gets moved aside as
+`<path>.rejected-<unix-ts>`, never migrated), and every character on those
+environments is lost. **Announce this in the group chat before deploying**
+so nobody reads a wiped dev/staging character as a bug.
 
 *__Fast-lane batch 1 — six slices landed, one commit each + review
 fixes.__ The `design-roadmap.md` fast-lane list (XP1/XP2/XP3, Q8, Q9's

@@ -95,7 +95,7 @@ client: client/node_modules protocol
 
 .PHONY: client-check
 client-check: client/node_modules protocol
-	cd client && npm run check
+	cd client && npm run check && npm run test
 
 .PHONY: client-dev
 client-dev: client/node_modules

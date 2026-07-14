@@ -157,28 +157,34 @@ is what we preserve. Always write it.
 Gear is the system this pipeline is being built for. The decided frame
 (updated by the inventory-slots milestone):
 
-- Every item has a **type**, and the type decides where it goes. The 12
-  types: `melee-weapon, thrown-weapon, ranged-weapon, staff, wand,
-  consumable, head, body, hands, ring, amulet, feet`. Every type except
-  `consumable` fills exactly one **equip slot** of the same name;
-  consumables have no slot — they live in the backpack as stacks.
-- A character has **8 equip slots**: the six body slots (head, body, hands,
-  ring, amulet, feet) plus **two class-shaped weapon slots** — fighter:
-  melee + thrown · rogue: melee + ranged · mage: staff + wand. A staff can
-  melee-bonk; a wand never melees. No melee-ish weapon equipped → unarmed
-  punch (minimal damage). No thrown weapons exist yet, so a fighter has no
-  ranged attack until that content lands.
+- Every item has a **type**, and the type decides where it goes. The 8
+  types (the gear keystone, #55/#56 — collapsed from the inventory-slots
+  milestone's original 12): one `weapon` type (carrying **tags** —
+  `melee`/`ranged`/`magic`, which attacks fire it — plus a `two-handed?`
+  flag), a `consumable`, and six armor/jewelry types that each fill exactly
+  one **equip slot** of the same name: `helmet, chest, gloves, boots, ring,
+  amulet`. Consumables have no slot — they live in the backpack as stacks.
+- A character has **8 equip slots**: the six armor slots above plus **two
+  hand slots**, `main-hand` and `off-hand` — chosen at equip time, not fixed
+  per class. A two-handed weapon occupies main-hand and locks off-hand
+  (equipping one evicts whatever the off-hand held back to the backpack). No
+  melee-tagged weapon equipped → unarmed punch (minimal damage). Every
+  fitting held weapon fires as its own hit in combat — dual-wielding two 1H
+  weapons means two hits, not a pick-one-best-weapon rule.
 - Plus a **backpack of exactly 4 entries** — a gear item or a consumable
   stack (up to 5 identical consumables) per entry. Dropping things is a real
   decision; that's deliberate.
-- Classes have hard weapon lanes (§5) — gear creates **variety within a
-  lane**, it never breaks the lane. There will be many fighter melee
-  weapons; there will never be a fighter bow.
-- **Wearability is an item property, classes stay single**: a weapon card
-  names exactly which classes can wield it; an armor/jewelry card may name
-  SEVERAL classes (e.g. Leather Armor: fighter or rogue) or "any" (the
-  default for armor and jewelry). A character never has more than one
-  class — multi-classing does not exist.
+- **Any class can equip anything** (the gear keystone, #55/#56 — a decided
+  reversal of the earlier "hard weapon lanes" design): there is no more
+  per-weapon class list. A weapon's **tags** (`melee`/`ranged`/`magic` —
+  which attacks fire it, ≥1 required) plus `twoHanded` are its only
+  restriction, and tags are about *how the weapon fights*, not *who may
+  carry it*. Variety still comes from gear (a fighter can carry a bow now,
+  and will actually be good with it if it's in their hands), but **class
+  identity moves to skills** (#56, roadmap Q10) — the class trees are where
+  "a fighter feels like a fighter" gets built, not an equip-time gate.
+  A character never has more than one class — multi-classing does not
+  exist — but that's a class-selection rule, not a wearability rule.
 - The planned trade-off axes for weapons: **speed vs. damage vs. reach**;
   for magic: **damage vs. control vs. support**.
 
@@ -186,12 +192,13 @@ Gear is the system this pipeline is being built for. The decided frame
 
 ```
 Name:        (evocative — names carry half the flavor)
-Type:        melee-weapon / thrown-weapon / ranged-weapon / staff / wand /
-             head / body / hands / ring / amulet / feet
-             (the slot follows from the type — don't specify it separately)
-Wearable by: fighter / rogue / mage / any — weapons must name classes
-             explicitly; armor & jewelry default to "any"; several classes
-             are fine (that's an item property, characters stay one class)
+Type:        weapon (+ tags: melee / ranged / magic — pick ≥1; + two-handed?
+             yes/no) / helmet / chest / gloves / boots / ring / amulet /
+             consumable
+             (the slot follows from the type — a weapon lands in a hand
+             chosen at equip time, not a fixed slot; don't specify it
+             separately. No "wearable by" line — any class may equip any
+             item; tags describe how a weapon fights, not who may carry it)
 Base stats:  damage, range in hexes (0 = melee), area radius (0 = single target)
              (weapons only — armor/jewelry cards usually carry rules instead)
 Rules:       0 or more when/if/then rules
@@ -229,15 +236,15 @@ Headband of Learning: *when* earning XP, *then* ×1.05).
 
 More examples of the range of what cards can express:
 
-> **Longspear** (fighter) — damage 4, range 1 hex (attack without being
-> adjacent). No rules. Intent: reach as a trade-off; poke from behind a
-> dwarf friend.
+> **Longspear** (weapon — melee) — damage 4, range 1 hex (attack without
+> being adjacent). No rules. Intent: reach as a trade-off; poke from behind
+> a dwarf friend.
 
-> **Hunting Bow of the Pack** (rogue, ranged) — damage 3, range 4.
+> **Hunting Bow of the Pack** (weapon — ranged) — damage 3, range 4.
 > Rule: *when* dealing damage, *if* at least one ally shares the bubble,
 > *then* +2 damage. Intent: a party-play bow — weaker solo.
 
-> **Ember Staff** (mage, ranged) — damage 3, range 4, area radius 1.
+> **Ember Staff** (weapon — magic) — damage 3, range 4, area radius 1.
 > Rule: *when* dealing damage, *if* the target is adjacent to you, *then*
 > double damage. Intent: a risky brawler-mage staff; rewards standing
 > dangerously close.
@@ -249,15 +256,16 @@ More examples of the range of what cards can express:
 Classes are the most protected part of the design. The three launch classes
 and their identities are **decided** (plan §0):
 
-| | Weapons | Damage | Toughness | Role |
+| | Starting kit | Damage | Toughness | Role |
 |---|---|---|---|---|
-| **Fighter** | melee only | medium | tanky | holds the front |
-| **Rogue** | dagger + bow, auto-picked by distance | high single-target | squishy | flexible mid-line |
-| **Mage** | magic only (area hits) | area damage | squishy | back line vs. groups |
+| **Fighter** | Iron Sword | medium | tanky | holds the front |
+| **Rogue** | Dagger + Shortbow | high single-target | squishy | flexible mid-line |
+| **Mage** | Oak Wand + Ember Focus | area damage | squishy | back line vs. groups |
 
-In rule terms, a class is: **allowed weapon lanes + base max HP + default
-starting weapons + (later) class ability rules**. Per-level growth (+HP,
-+damage) currently applies evenly to everyone.
+In rule terms, a class is: **base max HP + a starting kit + (future) its
+Class skill tree (#61/Q10) — gear is NOT class-gated anymore (#56): anyone
+can equip anything, and class identity comes from skills, not gear locks.**
+Per-level growth (+HP, +damage) currently applies evenly to everyone.
 
 What you can design here:
 
@@ -351,9 +359,9 @@ registry, which every gear card and species passive feeds today.
 ```
 ### <Name>
 Type:       gear / consumable / species / class tweak / mechanic
-Item type:  (gear: one of the 12 item types from §4 — the slot follows;
-             else: n/a)
-Wearable by: (gear: class list or "any" — see §4; else: n/a)
+Item type:  weapon (+ tags: melee / ranged / magic; two-handed: yes/no)
+            or: helmet / chest / gloves / boots / ring / amulet / consumable
+            (the slot follows from the type; weapons go to a hand)
 Base stats: (weapons: damage / range / area; consumables: heal N;
              armor/jewelry, species & mechanics: usually n/a)
 Rules:
