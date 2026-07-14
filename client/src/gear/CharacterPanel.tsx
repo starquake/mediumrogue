@@ -154,7 +154,7 @@ function HexSlot(props: { slot: string; cls: string; actions: CharacterActions }
         <Show when={item() !== undefined} fallback={<span class="empty">—</span>}>
           <span class="itemname">{item()!.name}</span>
           <Show when={isPending(item()!.id)}>
-            <span class="pending-badge">⇄ queued</span>
+            <span class="spinner" />
           </Show>
         </Show>
       </Show>
@@ -202,7 +202,7 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
           {entry()!.name}
         </button>
         <Show when={isPending(entry()!.id)}>
-          <span class="pending-badge">⇄ queued</span>
+          <span class="spinner" />
         </Show>
         <Show when={entry()!.count > 1}>
           <span class="count">×{entry()!.count}</span>

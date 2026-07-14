@@ -678,19 +678,10 @@
         line-height: 1.25;
       }
       /* Pending item action (equip/unequip/drink/drop): the panel half of the
-         clock-gated-action feedback — an amber rim + a pulsing "⇄ queued" tag,
-         shown from the click until the turn bundle reflects the change (same in
-         AND out of combat: the pending set drives it, not the clock). Pairs with
-         the on-map ⇄ swap glyph (FeedbackLayer.setItemAction). */
-      @keyframes pending-pulse {
-        0%,
-        100% {
-          opacity: 0.5;
-        }
-        50% {
-          opacity: 1;
-        }
-      }
+         clock-gated-action feedback — an amber rim on the button plus a spinner
+         (below), shown from the click until the turn bundle reflects the change
+         (same in AND out of combat: the pending set drives it, not the clock).
+         Pairs with the on-map ⇄ swap glyph (FeedbackLayer.setItemAction). */
       .hex.pending {
         background: #d9a441;
       }
@@ -701,21 +692,46 @@
         border-color: #d9a441;
         background: #1c1a10;
       }
-      .pending-badge {
-        color: #d9a441;
-        font-size: 0.5rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        margin-top: 0.1rem;
-        animation: pending-pulse 1.2s ease-in-out infinite;
+      /* An in-flight action shows a small amber spinner on the button (equip/
+         unequip/drink/drop pending, and the pickup modal's "take"). */
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
-      .cell .pending-badge {
+      .spinner {
+        display: inline-block;
+        box-sizing: border-box;
+        width: 0.85rem;
+        height: 0.85rem;
+        border: 2px solid rgba(217, 164, 65, 0.3);
+        border-top-color: #d9a441;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      .hex .spinner {
+        margin-top: 0.25rem;
+      }
+      .cell .spinner {
         position: absolute;
-        top: 0.1rem;
-        left: 0;
-        right: 0;
-        text-align: center;
-        margin-top: 0;
+        top: 0.2rem;
+        right: 0.2rem;
+        width: 0.7rem;
+        height: 0.7rem;
+      }
+      /* Pickup modal "take" button: the spinner replaces the label while taking;
+         keep the button from collapsing so it doesn't jump. */
+      #pickup-modal .yes {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /* While taking, the button is disabled (no double-submit) but stays bright
+         so the spinner reads — overriding the dimmed .grow button:disabled. */
+      #pickup-modal .grow button.taking:disabled {
+        opacity: 1;
+        border-color: var(--accent);
+        cursor: default;
       }
       .hex.helmet {
         left: 7.8rem;

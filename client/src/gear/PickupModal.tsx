@@ -2,7 +2,7 @@ import { Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
-import { dismissPickup, modalOpen, pickupRows, typeLabel } from "./store";
+import { dismissPickup, modalOpen, pickupRows, taking, typeLabel } from "./store";
 
 /** Callbacks the pickup modal needs. */
 export interface PickupActions {
@@ -33,10 +33,13 @@ function PickupModal(props: { actions: PickupActions }): JSXElement {
                 <button
                   type="button"
                   class="yes"
-                  disabled={row().rejected}
+                  classList={{ taking: taking().has(row().id) }}
+                  disabled={row().rejected || taking().has(row().id)}
                   onClick={() => props.actions.take(row().id)}
                 >
-                  take
+                  <Show when={taking().has(row().id)} fallback={"take"}>
+                    <span class="spinner" />
+                  </Show>
                 </button>
               </div>
             )}
