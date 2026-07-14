@@ -53,7 +53,7 @@ test("hovering a monster shows its kind, and its HP only within CombatRadius", a
     .toBeGreaterThanOrEqual(1);
 
   const hover = await page.evaluate(() => {
-    const HEX_SIZE = 22;
+    const HEX_SIZE = 32; // keep in sync with render/hex.ts
     const hexToPixel = (hex: { q: number; r: number }): { x: number; y: number } => ({
       x: HEX_SIZE * 1.5 * hex.q,
       y: HEX_SIZE * ((Math.sqrt(3) / 2) * hex.q + Math.sqrt(3) * hex.r),
