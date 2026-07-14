@@ -33,8 +33,8 @@ test("a second tab joining as a different player triggers the first tab to reloa
   // Tab 1: the seeded storageState identity auto-joins (fighter/human/
   // traveler, no token yet — see playwright.config.ts's storageStateFor).
   await page.goto("/");
-  await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
-  await expect.poll(() => page.evaluate(() => window.game.class)).not.toBe("");
+  await expect.poll(() => page.evaluate(() => window.game?.me?.id ?? null)).not.toBeNull();
+  await expect.poll(() => page.evaluate(() => window.game?.class ?? "")).not.toBe("");
 
   const tokenA = await page.evaluate(
     () => (JSON.parse(localStorage.getItem("mediumrogue.identity")!) as { token: string }).token,
@@ -56,8 +56,8 @@ test("a second tab joining as a different player triggers the first tab to reloa
 
   await page2.locator("#start-enter").click();
 
-  await expect.poll(() => page2.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
-  await expect.poll(() => page2.evaluate(() => window.game.class)).not.toBe("");
+  await expect.poll(() => page2.evaluate(() => window.game?.me?.id ?? null)).not.toBeNull();
+  await expect.poll(() => page2.evaluate(() => window.game?.class ?? "")).not.toBe("");
 
   const tokenB = await page2.evaluate(
     () => (JSON.parse(localStorage.getItem("mediumrogue.identity")!) as { token: string }).token,
@@ -90,7 +90,7 @@ test("a second tab joining as a different player triggers the first tab to reloa
   // Generous timeout: the reloaded tab must re-fetch the app, reclaim, and
   // see a first turn bundle — slow under CI-grade parallel contention.
   await expect
-    .poll(() => page.evaluate(() => window.game.me?.id ?? null), { timeout: 15_000 })
+    .poll(() => page.evaluate(() => window.game?.me?.id ?? null), { timeout: 15_000 })
     .not.toBeNull();
 
   // After the reload, tab 1 comes back up consistent with whatever is now
@@ -121,8 +121,8 @@ test("a forced rejoin reclaims with the tab's own in-memory token, ignoring a cl
   page,
 }) => {
   await page.goto("/");
-  await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
-  await expect.poll(() => page.evaluate(() => window.game.forceRejoin !== null)).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.game?.me?.id ?? null)).not.toBeNull();
+  await expect.poll(() => page.evaluate(() => (window.game?.forceRejoin ?? null) !== null)).toBe(true);
 
   const myToken = await page.evaluate(
     () => (JSON.parse(localStorage.getItem("mediumrogue.identity")!) as { token: string }).token,
