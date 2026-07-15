@@ -66,7 +66,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   transition, and the client drops the walk goal and its destination ring on
   the same bundle. What survives: a path queued *inside* a bubble (fleeing),
   a path carried across a bubble merge, and a **single remaining step** —
-  that's a deliberate adjacent action, a deliberate adjacent move. Every
+  that's a deliberate adjacent move. Every
   in-combat move is otherwise a fresh, deliberate intent; after the fight,
   click the destination again.
 
