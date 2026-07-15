@@ -19,17 +19,6 @@ declare global {
 // panel; it now anchors to the HUD's measured bottom (--hud-bottom).
 test.use({ viewport: { width: 1920, height: 1080 } });
 
-type Box = { x: number; y: number; width: number; height: number };
-
-// Overlap with a 2px tolerance: adjacent borders may touch, real overlap
-// (content under content) may not.
-const intersects = (a: Box, b: Box): boolean =>
-  Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 2 &&
-  Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 2;
-
-const within = (b: Box, w: number, h: number): boolean =>
-  b.x >= 0 && b.y >= 0 && b.x + b.width <= w && b.y + b.height <= h;
-
 test("worst-case HUD + open panels fit 1920×1080 without overlap", async ({ page }) => {
   await page.goto("/");
 
@@ -83,42 +72,75 @@ test("worst-case HUD + open panels fit 1920×1080 without overlap", async ({ pag
     )
     .toBe(true);
 
-  // The chase may have closed the panel? It cannot (only c/i/Esc do) — but
-  // assert the full worst-case state explicitly before measuring.
-  await expect(page.locator("#combat-panel")).toBeVisible();
-  await expect(page.locator("#character-panel")).toBeVisible();
-  await expect(page.locator("#chat-panel")).toBeVisible();
+  // One atomic in-page measurement, polled until clean. A single evaluate
+  // (not per-element locator roundtrips — those can take whole seconds each
+  // on a starved CI runner) reads every box in the same frame and NAMES any
+  // violation, so a timeout failure says what overlapped. The poll also
+  // re-establishes the worst-case state when it decays mid-run — both decays
+  // are real on slow CI: a reload gap (the #86 hazard class) comes back with
+  // the default-closed panel, and the player can die out of the bubble while
+  // measuring. The HUD's ResizeObserver updates --hud-bottom a frame after
+  // the combat panel swaps in; polling (never sleeping) absorbs that too.
+  const measure = (): Promise<{ panelOpen: boolean; inCombat: boolean; violations: string[] | null }> =>
+    page.evaluate(() => {
+      const rect = (sel: string): DOMRect | null => {
+        const el = document.querySelector<HTMLElement>(sel);
+        if (el === null || el.hidden) {
+          return null;
+        }
+        const r = el.getBoundingClientRect();
 
-  const box = async (sel: string): Promise<Box> => {
-    const b = await page.locator(sel).boundingBox();
-    expect(b, `${sel} has no bounding box`).not.toBeNull();
+        return r.width > 0 && r.height > 0 ? r : null;
+      };
+      const sels = ["#hud", "#combat-panel", "#toggle-inventory", "#character-panel", "#chat-panel"];
+      const boxes = new Map<string, DOMRect | null>(sels.map((s) => [s, rect(s)]));
+      if ([...boxes.values()].some((b) => b === null)) {
+        // A worst-case element is missing/hidden: state decayed (or the RO
+        // frame hasn't landed) — the driver re-establishes and re-polls.
+        return { panelOpen: window.game.panelOpen, inCombat: window.game.inCombat, violations: null };
+      }
+      const overlap = (a: DOMRect, b: DOMRect): boolean =>
+        Math.min(a.right, b.right) - Math.max(a.x, b.x) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) > 2;
+      const violations: string[] = [];
+      for (const [sel, b] of boxes) {
+        if (b!.x < 0 || b!.y < 0 || b!.right > window.innerWidth || b!.bottom > window.innerHeight) {
+          violations.push(`${sel} off-screen (${Math.round(b!.x)},${Math.round(b!.y)}→${Math.round(b!.right)},${Math.round(b!.bottom)})`);
+        }
+      }
+      // The character panel may cover the quest board (by design: an
+      // inventory screen, not a peek) but nothing else on the left column.
+      const panel = boxes.get("#character-panel")!;
+      for (const sel of ["#hud", "#combat-panel", "#toggle-inventory", "#chat-panel"]) {
+        const b = boxes.get(sel)!;
+        if (overlap(b, panel)) {
+          violations.push(`${sel} overlaps #character-panel (bottom ${Math.round(b.bottom)} vs panel top ${Math.round(panel.y)})`);
+        }
+      }
 
-    return b!;
-  };
+      return { panelOpen: window.game.panelOpen, inCombat: window.game.inCombat, violations };
+    });
 
-  // The HUD's ResizeObserver updates --hud-bottom a frame after the combat
-  // panel appears — poll until the panel has settled below the HUD rather
-  // than sleeping.
   await expect
-    .poll(async () => intersects(await box("#hud"), await box("#character-panel")), { intervals: [100] })
-    .toBe(false);
+    .poll(
+      async () => {
+        const s = await measure();
+        if (!s.panelOpen) {
+          await page.keyboard.press("c");
 
-  const panels = ["#hud", "#combat-panel", "#toggle-inventory", "#character-panel", "#chat-panel"];
-  const boxes = new Map<string, Box>();
-  for (const sel of panels) {
-    boxes.set(sel, await box(sel));
-  }
+          return "panel closed (reload gap?) — reopened, re-polling";
+        }
+        if (!s.inCombat) {
+          await chase();
 
-  for (const [sel, b] of boxes) {
-    expect(within(b, 1920, 1080), `${sel} extends off-screen: ${JSON.stringify(b)}`).toBe(true);
-  }
+          return "not in combat (died?) — re-chasing, re-polling";
+        }
+        if (s.violations === null) {
+          return "a worst-case element has no box yet";
+        }
 
-  // The character panel may cover the quest board (by design: an inventory
-  // screen, not a peek) but nothing else on the left column.
-  for (const sel of ["#hud", "#combat-panel", "#toggle-inventory", "#chat-panel"]) {
-    expect(
-      intersects(boxes.get(sel)!, boxes.get("#character-panel")!),
-      `${sel} overlaps #character-panel: ${JSON.stringify(boxes.get(sel))} vs ${JSON.stringify(boxes.get("#character-panel"))}`,
-    ).toBe(false);
-  }
+        return s.violations.length === 0 ? "clean" : s.violations.join("; ");
+      },
+      { timeout: 30_000, intervals: [250] },
+    )
+    .toBe("clean");
 });
