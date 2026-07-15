@@ -78,15 +78,18 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   2): a bow shot names its victim by **entity id** (`IntentRequest.
   targetEntityId`), not a hex — clicking a hostile in range sends its id.
   An AoE cast (mage) stays **ground-targeted** (a hex — the blast radius
-  makes that the natural target). Validated at submit (entity exists+alive,
-  hostile, in range) AND re-validated at resolution against the victim's
-  **post-move hex**: hits if still in range from the shooter's own post-move
-  hex, else fizzles — the shot tracks a sidestepping or retreating target
-  instead of trusting a stale hex.
-- **Phased resolution**: all moves resolve simultaneously (seeded-RNG
-  tie-break on hex overflow), then all attacks land against **post-move
-  positions** — retreating genuinely dodges; mutual kills are possible and
-  intended. A stacked hex takes hits on a **random member**.
+  makes that the natural target).
+  Validated at submit (entity exists+alive, hostile, in range); resolution
+  (#104) runs against **pre-move positions**, so a committed shot always
+  lands — the `out_of_range` fizzle survives only as a defensive guard
+  (nothing moves between submit and the attack phase).
+- **Phased resolution** (#104, attacks-before-moves): all attacks resolve
+  simultaneously against **pre-move positions** (shared damage map — mutual
+  kills are possible and intended; a stacked hex takes hits on a **random
+  member**), then all moves resolve (seeded-RNG tie-break on hex overflow;
+  an entity killed in the attack phase does not get its move). Committing
+  to an attack always lands it; retreat means **trading hits for distance**
+  — a one-action chaser that bumps you isn't gaining ground that turn.
 - Class weapon routing on click: a rogue **bumps with the dagger when
   adjacent**, shoots the bow at range (weapon-by-distance identity); a mage
   **blasts even adjacent** targets (staff bonk exists but its ranged magic is
@@ -122,7 +125,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 | | Weapons (defaults) | HP | Role |
 |---|---|---|---|
 | **Fighter** | Iron Sword (4) | 30 | melee, tanky, holds the front |
-| **Rogue** | Dagger (4) + Shortbow (4, rng 4) | 16 | high single-target, squishy |
+| **Rogue** | Dagger (4) + Shortbow (4, rng 4) | 16 | high single-target, squishy; glance% passive — 20% chance an incoming hit is halved |
 | **Mage** | Oak Wand (2 bonk) + Ember Focus (3, rng 4, AoE 1) | 14 | area damage, back line |
 
 Default kits are granted into the hand slots (main-hand/off-hand) at join
@@ -524,7 +527,7 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   structured `slog`, the milestone-12 analytics seed): every resolution
   path emits `slog.Info("combat", "event",
   ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
-  `fizzle` (reasons: `out_of_range`, `unequipped`, `bump_target_vacated`,
+  `fizzle` (reasons: `out_of_range`, `unequipped`,
   `pending_item_action`), `death`, `xp_award`, `pickup` (item defID, count),
   `drop` (item defID, count, hex), `drink` (item defID, resulting hp) —
   filterable on the `"combat"` msg key or the
@@ -576,6 +579,7 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 | `XPCurveBase` / `QuestKillRewardPerTarget` | 100 / 20 | quadratic XP curve: total XP to **reach** level L = `XPCurveBase*(L-1)^2` (#60 XP1) & flat per-target kill-quest reward |
 | `MonsterMaxHP` / `FistsDamage` | 10 / 1 | pre-6c monster baseline (wolf's HP) & unarmed profile |
 | `HumanXPBonusPercent` / `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 50 / 20 / 2 / 1 | species knobs |
+| `RogueGlanceChancePercent` / `GlanceDamagePercent` | 20 / 50 | Rogue class passive: chance an incoming hit is halved (never negated; floor 1 still applies) |
 | `RegenPerTurn` | 1 | out-of-combat HP per world turn |
 | `MonsterAggroRadius` | 10 | default world-monster notice distance (> CombatRadius, compile-guarded); per-kind `aggroRadius` overrides it |
 | `RingCount` | 3 | difficulty rings worldgen bands the map into |
@@ -594,19 +598,8 @@ values are unchanged (20 / 3 / 30%).*
 Recorded in `design.md` §0/§8/§9, `design-decisions.md` (Q1–Q11
 all decided 2026-07-13), and issue #36: the **3-tree
 skill system** (Class/Adventure/Survival; level-up = one bankable skill
-point; First Aid & Make Camp seed the Survival/Adventure trees), the
-**`glance%` combat chance** (#69/#91, amended 2026-07-15 — an X% chance an
-incoming hit is **halved**, never negated; replaces the old binary
-`evasion%` and its planned pre-damage `evasion-check` event, so like crit
-it's pure content — a chance-conditioned `take-damage` card — plus one
-protocol constant; applies to all damage, AoE included; `crit%` is no longer
-on this list — it shipped as pure content, first the elf-species passive and
-now two crit%-weapons, fast-lane batch task 6), the **attacks-before-moves
-resolution flip** (#104, decided 2026-07-15 — attacks land against pre-move
-positions; retreat becomes trading hits for distance; the "Phased
-resolution" bullet in §Combat above describes the shipped moves-first order
-until #104's implementation lands), downed state & revive, further
-recovery layers (rests, the sanctuary
+point; First Aid & Make Camp seed the Survival/Adventure trees), downed
+state & revive, further recovery layers (rests, the sanctuary
 **trade hub** — the 6c sanctuary zone is only the monster-free ground, not
 the hub itself; healing potions + the backpack-cap layer now ship with the
 inventory system), wand↔staff interactions, item destruction/durability, backpack

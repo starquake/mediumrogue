@@ -199,11 +199,11 @@ type entity struct {
 	attackTarget *protocol.Hex
 	// attackTargetEntity is a pending single-target (bow) ranged attack's
 	// victim, named by entity id (item 7, playtest batch 2) — 0 for none, or
-	// for a ground-targeted attack (see attackTarget). Resolution re-aims at
-	// this entity's CURRENT (post-move) hex rather than trusting the hex
-	// captured at submit time, so a sidestepping or retreating victim is
-	// tracked: hits if still within the weapon's range from the shooter's
-	// own post-move hex, else fizzles (resolveEntityTargetedLocked).
+	// for a ground-targeted attack (see attackTarget). Resolution aims at
+	// this entity's PRE-MOVE hex (#104 — attacks resolve before moves), so a
+	// sidestepping or retreating victim is tracked by id rather than a stale
+	// hex: hits if still within the weapon's range from the shooter's own
+	// pre-move hex, else fizzles defensively (resolveEntityTargetedLocked).
 	attackTargetEntity int64
 	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
 	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
@@ -908,13 +908,14 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // ErrAttackTargetNotFound), be a hostile — opposing faction (else
 // ErrAttackTargetNotHostile) — and be within reach of AT LEAST ONE held
 // ranged/magic weapon from e's current hex at submit time (else
-// ErrOutOfRange); resolution re-aims at the victim's post-move hex
-// (resolveEntityTargetedLocked) rather than trusting this submit-time
-// position, so a sidestep or retreat is tracked. This routing no longer keys
-// off any single "best" weapon's aoeRadius (task 2, dual-wield): a shooter
-// dual-wielding a bow and a magic weapon still gets the bow's entity-targeted
-// post-move re-aim AND the magic weapon's AoE around the victim's hex, both
-// from one entity-targeted intent — resolution (resolveEntityTargetedLocked)
+// ErrOutOfRange); resolution (#104) runs against the victim's pre-move hex
+// (resolveEntityTargetedLocked) — the same position checked at submit, so a
+// sidestep or retreat is tracked by id rather than a stale hex. This routing
+// no longer keys off any single "best" weapon's aoeRadius (task 2,
+// dual-wield): a shooter dual-wielding a bow and a magic weapon still gets
+// the bow's entity-targeted hit AND the magic weapon's AoE around the
+// victim's hex, both from one entity-targeted intent — resolution
+// (resolveEntityTargetedLocked)
 // already fires every reaching def this way regardless of which one happens
 // to have the longest range. Anything else (targetEntityID 0 — e.g. a
 // defensive/legacy hex-only shot) is GROUND-targeted at target, checked the

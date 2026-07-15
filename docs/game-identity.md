@@ -54,8 +54,8 @@ Here's the fun part: **the rest of the world keeps running at normal speed.** Yo
   server-authoritative, with chat / parties / quests.
 - **ARPG in its stat grammar.** Gear = pure-data modifier cards; defence is a
   rule, not a stat; damage-reduction and decoupled `crit%` (shipped) /
-  `glance%` (the intended identity; not yet built — #91; softened from
-  binary `evasion%` on 2026-07-15: a glance halves a hit, never negates it).
+  `glance%` (shipped — #91; softened from binary `evasion%` on 2026-07-15: a
+  glance halves a hit, never negates it).
 - **Spatially a hex-grid tactics game** — discrete movement, hex range, ring
   AoE, positioning that matters.
 

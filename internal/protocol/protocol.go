@@ -507,10 +507,9 @@ type IntentRequest struct {
 	// id instead of a hex (item 7, playtest batch 2): 0 = none (ground-
 	// targeted — a mage's AoE cast, whose blast radius makes a hex the
 	// natural target). A bow-class attack (aoeRadius 0) sets this instead of
-	// relying on Target; the server re-aims at the named entity's post-move
-	// hex at resolution time, so a sidestepping shooter's shot still tracks
-	// a fleeing target the way a hex-pinned shot never could. Attack intents
-	// only.
+	// relying on Target; the server resolves against the named entity's
+	// pre-move hex (#104), so a committed shot tracks a sidestepping or
+	// fleeing target by id rather than a stale hex. Attack intents only.
 	TargetEntityID int64 `json:"targetEntityId"`
 }
 
