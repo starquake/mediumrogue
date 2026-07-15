@@ -10,7 +10,7 @@ import (
 )
 
 // TestKillQuestTicksOverHTTP reproduces the user's live flow end-to-end: join,
-// take a KILL quest via /quest <id>, bump a monster to death, and watch the
+// take a KILL quest via /quest <id>, melee-attack a monster to death, and watch the
 // quest's Progress on the wire. Reported broken in live play ("the monster
 // count in the quest doesn't really go down") despite green unit tests.
 //

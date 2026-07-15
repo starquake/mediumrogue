@@ -7,11 +7,12 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// TestBumpDamageUsesClassCloseWeapon: a player's melee bump deals its
+// TestMeleeDamageUsesClassCloseWeapon: a player's melee attack deals its
 // melee-tagged main-hand weapon (starting kit) damage, not a flat constant.
-// A Fighter's bump hits for the sword (4) and a Rogue's for the dagger (4) —
-// each dropping the monster's HP by exactly that weapon's level-1 damage.
-func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
+// A Fighter's melee attack hits for the sword (4) and a Rogue's for the
+// dagger (4) — each dropping the monster's HP by exactly that weapon's
+// level-1 damage.
+func TestMeleeDamageUsesClassCloseWeapon(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -43,19 +44,19 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 
 			monsterID := w.PlaceMonsterForTest(monsterHex)
 
-			// Bump the monster: a move onto its hex lands as a melee attack. The
-			// monster has no path set, so it does not retaliate — isolating the
-			// attacker's damage.
+			// Melee attack the monster: a move onto its hex lands as a melee
+			// attack. The monster has no path set, so it does not retaliate —
+			// isolating the attacker's damage.
 			w.SetPathForTest(pid, []protocol.Hex{monsterHex})
 			w.ResolveCombatOnlyForTest()
 
 			monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 			if !ok {
-				t.Fatalf("monster %d missing after a single %s bump", monsterID, tc.class)
+				t.Fatalf("monster %d missing after a single %s melee attack", monsterID, tc.class)
 			}
 
 			if got, want := monster.HP, protocol.MonsterMaxHP-tc.want; got != want {
-				t.Errorf("monster HP after %s bump = %d, want %d (drop by the class close weapon)", tc.class, got, want)
+				t.Errorf("monster HP after %s melee attack = %d, want %d (drop by the class close weapon)", tc.class, got, want)
 			}
 		})
 	}
@@ -64,7 +65,7 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 // TestAttackDamageDoesNotScaleWithLevel: DamagePerLevel is cut (#60, roadmap
 // XP3) — a level-5 attacker's sword hit equals a level-1's. Two identical
 // Fighters, one at level 1 (xp 0) and one at level 5 (xp
-// XPCurveBase*(5-1)^2 == 1600), each bump an identical monster off identical
+// XPCurveBase*(5-1)^2 == 1600), each melee-attacks an identical monster off identical
 // boards with identical seeds: the damage dealt must be equal, and must equal
 // the level-1 base (the pinned combat number from the old
 // DamagePerLevel-scaled test — re-derived: DamagePerLevel cut (fast-lane
@@ -72,7 +73,7 @@ func TestBumpDamageUsesClassCloseWeapon(t *testing.T) {
 func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 	t.Parallel()
 
-	bump := func(t *testing.T, xp int) int {
+	meleeHit := func(t *testing.T, xp int) int {
 		t.Helper()
 
 		w := newWorld()
@@ -95,24 +96,24 @@ func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 		if !ok {
-			t.Fatalf("monster %d missing after a single bump", monsterID)
+			t.Fatalf("monster %d missing after a single melee attack", monsterID)
 		}
 
 		return protocol.MonsterMaxHP - monster.HP
 	}
 
-	level1Dealt := bump(t, 0)
-	level5Dealt := bump(t, 16*protocol.XPCurveBase) // 1600: levelFor(1600) == 5
+	level1Dealt := meleeHit(t, 0)
+	level5Dealt := meleeHit(t, 16*protocol.XPCurveBase) // 1600: levelFor(1600) == 5
 
 	if got, want := level5Dealt, level1Dealt; got != want {
-		t.Errorf("level-5 Fighter bump damage = %d, want %d (equal to level-1's — level must not scale damage)", got, want)
+		t.Errorf("level-5 Fighter melee damage = %d, want %d (equal to level-1's — level must not scale damage)", got, want)
 	}
 
 	// re-derived: DamagePerLevel cut (fast-lane T3) — the old test asserted
 	// base + 2*DamagePerLevel for a level-3 attacker; damage is now always
 	// exactly the weapon's base regardless of level.
 	if got, want := level1Dealt, game.ItemDamageForTest("iron-sword"); got != want {
-		t.Errorf("bump damage = %d, want %d (iron-sword base, level-free)", got, want)
+		t.Errorf("melee damage = %d, want %d (iron-sword base, level-free)", got, want)
 	}
 }
 
@@ -120,7 +121,7 @@ func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 // n=10): this is the attack's SECOND RNG draw (victim pick is first). Found
 // the same way misericordeCritSeed/misericordeMissSeed were (species_test.go),
 // scanned 0-39 — seed 0 rolls 67 (>=10, no proc), seed 1 rolls 8 (<10, proc).
-// In the dual-wield bump below, the dagger hit consumes NO rng (no chance card
+// In the dual-wield melee attack below, the dagger hit consumes NO rng (no chance card
 // on it), confirming the saber's crit card consumes the stream's second draw
 // (rng.IntN(len(victims)) for victim pick always advances the generator, even
 // with 1 candidate).
@@ -130,12 +131,12 @@ const (
 	saberMissSeed = 0 // Duelist's Saber does not proc (base damage) at this seed
 )
 
-// dualWieldBumpDamage places a human (non-elf, no species crit) player
+// dualWieldMeleeDamage places a human (non-elf, no species crit) player
 // wielding the Dagger (main hand) and the Duelist's Saber (off hand) at the
-// origin, bumps a fat-HP monster at a neighbour so it survives even a double
-// crit, and returns the total damage dealt across BOTH hits — isolating the
-// saber's own crit card as the only source of a per-hit multiplier in play.
-func dualWieldBumpDamage(t *testing.T, seed int64) int {
+// origin, melee-attacks a fat-HP monster at a neighbour so it survives even a
+// double crit, and returns the total damage dealt across BOTH hits — isolating
+// the saber's own crit card as the only source of a per-hit multiplier in play.
+func dualWieldMeleeDamage(t *testing.T, seed int64) int {
 	t.Helper()
 
 	w := newWorld()
@@ -172,13 +173,13 @@ func dualWieldBumpDamage(t *testing.T, seed int64) int {
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 	if !ok {
-		t.Fatalf("monster %d missing after a dual-wield bump (unexpected kill)", monsterID)
+		t.Fatalf("monster %d missing after a dual-wield melee attack (unexpected kill)", monsterID)
 	}
 
 	return fatHP - monster.HP
 }
 
-// TestDualWieldTwoMeleeHits: a bump with two melee-tagged weapons held lands
+// TestDualWieldTwoMeleeHits: a melee attack with two melee-tagged weapons held lands
 // TWO independent pipeline hits against the same victim, not one shared roll
 // — the dagger's flat 4 plus the saber's own 4 (or 8 on its 10% crit).
 func TestDualWieldTwoMeleeHits(t *testing.T) {
@@ -192,16 +193,16 @@ func TestDualWieldTwoMeleeHits(t *testing.T) {
 	t.Run("no proc", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := dualWieldBumpDamage(t, saberMissSeed), daggerDamage+saberDamage; got != want {
-			t.Errorf("dual-wield bump = %d, want %d (dagger %d + saber base %d)", got, want, daggerDamage, saberDamage)
+		if got, want := dualWieldMeleeDamage(t, saberMissSeed), daggerDamage+saberDamage; got != want {
+			t.Errorf("dual-wield melee attack = %d, want %d (dagger %d + saber base %d)", got, want, daggerDamage, saberDamage)
 		}
 	})
 
 	t.Run("saber procs", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := dualWieldBumpDamage(t, saberCritSeed), daggerDamage+2*saberDamage; got != want {
-			t.Errorf("dual-wield bump = %d, want %d (dagger %d + saber crit %d)", got, want, daggerDamage, 2*saberDamage)
+		if got, want := dualWieldMeleeDamage(t, saberCritSeed), daggerDamage+2*saberDamage; got != want {
+			t.Errorf("dual-wield melee attack = %d, want %d (dagger %d + saber crit %d)", got, want, daggerDamage, 2*saberDamage)
 		}
 	})
 }
@@ -242,11 +243,11 @@ func TestSingleWeaponSingleHit(t *testing.T) {
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 		if !ok {
-			t.Fatalf("monster %d missing after a single dagger bump", monsterID)
+			t.Fatalf("monster %d missing after a single dagger melee attack", monsterID)
 		}
 
 		if got, want := protocol.MonsterMaxHP-monster.HP, game.ItemDamageForTest("dagger"); got != want {
-			t.Errorf("bump damage = %d, want %d (exactly one dagger hit, no phantom off-hand hit)", got, want)
+			t.Errorf("melee damage = %d, want %d (exactly one dagger hit, no phantom off-hand hit)", got, want)
 		}
 	})
 
@@ -273,20 +274,21 @@ func TestSingleWeaponSingleHit(t *testing.T) {
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 		if !ok {
-			t.Fatalf("monster %d missing after a single fists bump", monsterID)
+			t.Fatalf("monster %d missing after a single fists melee attack", monsterID)
 		}
 
 		if got, want := protocol.MonsterMaxHP-monster.HP, protocol.FistsDamage; got != want {
-			t.Errorf("bump damage = %d, want %d (exactly one fists hit)", got, want)
+			t.Errorf("melee damage = %d, want %d (exactly one fists hit)", got, want)
 		}
 	})
 }
 
-// TestMonsterBumpDamageUnchanged: a monster's melee is its kind's own claws
+// TestMonsterMeleeDamageUnchanged: a monster's melee is its kind's own claws
 // damage (wolf here — the default spawn kind, carrying the old flat number
-// forward unchanged) — classes changed only the player side of the bump. A
-// wolf bumping a Fighter drops the Fighter by exactly wolf's claws damage.
-func TestMonsterBumpDamageUnchanged(t *testing.T) {
+// forward unchanged) — classes changed only the player side of the melee
+// attack. A wolf striking a Fighter drops the Fighter by exactly wolf's claws
+// damage.
+func TestMonsterMeleeDamageUnchanged(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -302,16 +304,16 @@ func TestMonsterBumpDamageUnchanged(t *testing.T) {
 	pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter, FighterMaxHP
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	// Monster bumps the player; the player has no path, so it does not hit back.
+	// Monster strikes the player; the player has no path, so it does not hit back.
 	w.SetPathForTest(monsterID, []protocol.Hex{center})
 	w.ResolveCombatOnlyForTest()
 
 	player, ok := entityOfSnap(w.Snapshot(), pid)
 	if !ok {
-		t.Fatalf("player %d missing after a monster bump", pid)
+		t.Fatalf("player %d missing after a monster melee attack", pid)
 	}
 
 	if got, want := player.HP, protocol.FighterMaxHP-game.MonsterDamageForTest("wolf"); got != want {
-		t.Errorf("player HP after monster bump = %d, want %d (monster melee flat, unchanged)", got, want)
+		t.Errorf("player HP after monster melee attack = %d, want %d (monster melee flat, unchanged)", got, want)
 	}
 }

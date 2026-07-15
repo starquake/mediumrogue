@@ -421,7 +421,7 @@ func TestEquippedDefInReturnsOwnedInstance(t *testing.T) {
 	}
 }
 
-// TestCloseDefForFallsBackToFists: a bare player (both hands empty) bumps
+// TestCloseDefForFallsBackToFists: a bare player (both hands empty) strikes
 // with fists, not a zero-value weapon — for every class.
 func TestCloseDefForFallsBackToFists(t *testing.T) {
 	t.Parallel()
@@ -435,7 +435,7 @@ func TestCloseDefForFallsBackToFists(t *testing.T) {
 	}
 }
 
-// TestCloseDefForMonsterIsClaws: a monster (which owns no items) always bumps
+// TestCloseDefForMonsterIsClaws: a monster (which owns no items) always strikes
 // with its kind's own claws profile, regardless of its slot bookkeeping —
 // the exact same *itemDef pointer every time (monsters.go's
 // buildMonsterIndex builds it once per kind, not fresh per call).
@@ -480,7 +480,7 @@ func TestCloseDefForEquippedWeapon(t *testing.T) {
 }
 
 // TestMagicOnlyWeaponNeverMelees: a mage holding only a magic-tagged weapon
-// (no melee-tagged item in either hand) bumps with FISTS — a magic weapon
+// (no melee-tagged item in either hand) strikes with FISTS — a magic weapon
 // never melees — but still has a ranged attack via rangedDefFor.
 func TestMagicOnlyWeaponNeverMelees(t *testing.T) {
 	t.Parallel()

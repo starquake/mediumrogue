@@ -50,7 +50,7 @@ func newTimedWorld(t *testing.T) (*game.World, *fakeClock) {
 
 // formBubble joins a player and drops a monster on an adjacent hex, then fires
 // one world tick to form the combat bubble around them. It returns the player's
-// join response and the monster id. After it returns the monster has bumped the
+// join response and the monster id. After it returns the monster has struck the
 // player once (its think-then-attack on the forming tick), so callers read HP
 // from the returned snapshot, not from full health.
 func formBubble(t *testing.T, w *game.World, clk *fakeClock) (protocol.JoinResponse, int64, protocol.TurnEvent) {
@@ -133,7 +133,7 @@ func TestBubbleFreezesWhileWorldTicks(t *testing.T) {
 
 // TestBubbleAdvancesOnLockIn: submitting an intent for the sole player of a
 // bubble locks it in, so the bubble resolves immediately — a combat turn runs
-// (the player bumps the monster, the monster bumps back) without any clock
+// (the player strikes the monster, the monster strikes back) without any clock
 // advance.
 func TestBubbleAdvancesOnLockIn(t *testing.T) {
 	t.Parallel()
@@ -147,7 +147,7 @@ func TestBubbleAdvancesOnLockIn(t *testing.T) {
 	monsterHP := entityHP(t, form, monsterID)
 	monsterHex := hexOfSnap(form, monsterID)
 
-	// Lock in with a bump onto the monster: all (one) players ready -> resolve now.
+	// Lock in with a melee attack onto the monster: all (one) players ready -> resolve now.
 	if !submitOK(w, me, monsterHex) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")
 	}
@@ -159,7 +159,7 @@ func TestBubbleAdvancesOnLockIn(t *testing.T) {
 	}
 
 	if got, want := entityHP(t, snap, me.EntityID), meHP-game.MonsterDamageForTest("wolf"); got != want {
-		t.Errorf("player HP = %d, want %d (monster bumps back on the resolved turn)", got, want)
+		t.Errorf("player HP = %d, want %d (monster strikes back on the resolved turn)", got, want)
 	}
 
 	// Lock-in cleared: the player is waiting again for the next bubble-turn.

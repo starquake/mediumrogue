@@ -58,9 +58,9 @@ func nearestMonster(bundle protocol.TurnEvent, from protocol.Hex) (protocol.Hex,
 // independent TRENDS rather than exact hexes or HP values:
 //
 //  1. some monster's HP falls below its starting value, or it disappears
-//     from the snapshot entirely (killed) — the player's bump attack lands.
+//     from the snapshot entirely (killed) — the player's melee attack lands.
 //  2. the player's own HP drops below max at some point — a monster's
-//     hunting AI closes distance and bumps back, unprompted by the test.
+//     hunting AI closes distance and strikes back, unprompted by the test.
 //
 // The monster is seeded one hex from the origin (where the player spawns), so
 // both combat directions land within a couple of bubble-turns resolved on the

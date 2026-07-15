@@ -269,7 +269,7 @@ func spawnRingCandidates(origin protocol.Hex, maxRing int) []protocol.Hex {
 // game, invisible to this package (Go only compiles _test.go files into that
 // package's own test binary, never into an importer). So there is no seed
 // available to hunt from HTTP. Instead this test pre-seeds a whole ring of
-// monsters (dropFarmMonsterCount) around spawn and farms kills (bump combat,
+// monsters (dropFarmMonsterCount) around spawn and farms kills (melee combat,
 // like TestCombatOverHTTP) until one of them drops — DropChancePercent's 30%
 // across that many independent tries makes a miss a sub-0.02% event, not a
 // coin flip against the deadline (see dropFarmMonsterCount's doc comment). A
@@ -335,13 +335,13 @@ func TestDropPickupLoop(t *testing.T) {
 	// loop never stalls an action-gated bubble.
 	//
 	// This phase FIGHTS THROUGH the remaining ring instead of walking blindly
-	// at one pinned drop (#111): since #104 (attacks-before-moves) every bump
-	// a monster commits against the player lands — the old walk-toward-the-
+	// at one pinned drop (#111): since #104 (attacks-before-moves) every melee
+	// attack a monster commits against the player lands — the old walk-toward-the-
 	// drop retry silently relied on retreat-dodge to survive the ring, and
 	// under a CPU-starved runner a multi-monster convergence could kill the
 	// player, respawn them near origin (inside the ring), and death-loop the
 	// walk back until the deadline. Policy, one intent per bundle: standing
-	// on a drop → pick it up; an adjacent monster → bump it (clears the
+	// on a drop → pick it up; an adjacent monster → melee-attack it (clears the
 	// threat, and its own 30% drop roll can land loot on an adjacent hex,
 	// exactly like the farm phase above); otherwise walk toward the NEAREST
 	// known drop — re-targeted every bundle, so a death/respawn simply
@@ -383,7 +383,7 @@ func TestDropPickupLoop(t *testing.T) {
 		}
 
 		if target, found := nearestMonster(bundle, ent.Hex); found && hexDistance(ent.Hex, target) == 1 {
-			postIntent(t, ts, me, target) // bump — a move onto a hostile hex attacks
+			postIntent(t, ts, me, target) // melee attack — a move onto a hostile hex attacks
 
 			continue
 		}

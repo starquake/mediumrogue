@@ -153,7 +153,7 @@ func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
 	hexes := walkableNeighborsN(t, w, startHex, targetN)
 	for _, h := range hexes {
 		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
+		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 	}
 
 	step(t, w) // forming turn: the monsters chase into the bubble
@@ -197,7 +197,7 @@ func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
 	// Now complete the reach quest too, by teleporting to its goal — its own
 	// completion pays its own reward, on top of (not instead of) the kill
 	// reward already paid above. Clear the leftover queued path first: a
-	// bump-turned-attack never consumes it (the mover stays put), and
+	// melee-attack-converted move never consumes it (the mover stays put), and
 	// movePhaseLocked doesn't re-validate a queued path's adjacency against
 	// SetHexForTest's raw teleport — an unconsumed path would otherwise
 	// silently walk her back toward hexes[1] on the next resolution instead
@@ -338,7 +338,7 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 	// rather than completing it out from under the test).
 	hexes := walkableNeighborsN(t, w, alice.Hex, 1)
 	monsterID := w.PlaceMonsterForTest(hexes[0])
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 
 	step(t, w) // forming turn: the monster chases into the bubble
 
@@ -509,7 +509,7 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 
 	for _, h := range hexes {
 		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
+		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 	}
 
 	// Forming turn: both idle, the monsters chase into the shared bubble.
@@ -851,7 +851,7 @@ func TestKillQuestTickAnnouncesProgress(t *testing.T) {
 	hexes := walkableNeighborsN(t, w, alice.Hex, targetN)
 	for _, h := range hexes {
 		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
+		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 	}
 
 	step(t, w) // forming turn

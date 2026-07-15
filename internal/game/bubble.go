@@ -71,8 +71,8 @@ func (w *World) recomputeBubblesLocked(now time.Time) {
 			// INSIDE a bubble (fleeing) is a deliberate combat action and
 			// survives recomputes, as does a path carried across a bubble
 			// merge. A single remaining step also survives: that is a
-			// deliberate adjacent action — in particular the standing bump
-			// intent (TestBumpKillRemovesMonster), which bump deferral retains
+			// deliberate adjacent action — in particular the standing melee
+			// intent (TestMeleeKillRemovesMonster), which melee deferral retains
 			// so it keeps landing turn after turn.
 			if e.bubbleID == 0 && e.kind == protocol.EntityPlayer && len(e.path) > 1 {
 				e.path = nil

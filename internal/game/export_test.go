@@ -116,7 +116,7 @@ func (w *World) WorldIDForTest() string {
 // instead of depending on spawn geometry. The player is a level-1 Fighter (the
 // Join default), so its HP matches a plainly-joined player. It also grants
 // and equips the class's default items (mirroring Join), so a placed
-// Fighter bumps for iron-sword damage exactly like a joined one.
+// Fighter strikes for iron-sword damage exactly like a joined one.
 func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -362,7 +362,7 @@ func (w *World) SetPathForTest(id int64, path []protocol.Hex) {
 // over all entities without the monster-AI think phase, mirroring
 // resolveCombatLocked minus thinkMonstersLocked (#104: attack resolves
 // before move). It exists so combat tests can pin an exact monster
-// path via SetPathForTest (simulating a monster-initiated bump — attack or
+// path via SetPathForTest (simulating a monster-initiated melee attack — attack or
 // retreat) without the AI recomputing and overriding it on the very same
 // turn.
 func (w *World) ResolveCombatOnlyForTest() {
@@ -384,9 +384,9 @@ func (w *World) ResolveCombatOnlyForTest() {
 		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
-	attacks, bumped := w.collectBumpsLocked(byHex, members)
+	attacks, attacked := w.collectMeleeAttacksLocked(byHex, members)
 	w.attackLocked(rng, byHex, attacks)
-	w.movePhaseLocked(rng, byHex, members, bumped)
+	w.movePhaseLocked(rng, byHex, members, attacked)
 	w.resolveDeathsLocked(rng, members)
 
 	w.turn++

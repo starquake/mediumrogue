@@ -56,7 +56,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   for mine, neutral near-white for anyone else.
 - **In combat**: click-anywhere is replaced by tactical selection — only the
   tiles reachable this turn are clickable, tinted **blue** (open moves) /
-  **strong red** (adjacent hostile = bump-attack); the equipped ranged
+  **strong red** (adjacent hostile = melee attack); the equipped ranged
   weapon's full reach is washed **light red** (click shoots when a hostile is
   there; anywhere for AoE); clicking your own hex waits/cancels. Reach is a
   BFS with `COMBAT_MOVE_RANGE = 1` (client), structured for future run/jump.
@@ -65,15 +65,16 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   transition, and the client drops the walk goal and its destination ring on
   the same bundle. What survives: a path queued *inside* a bubble (fleeing),
   a path carried across a bubble merge, and a **single remaining step** —
-  that's a deliberate adjacent action, in particular the standing bump
+  that's a deliberate adjacent action, in particular the standing melee
   intent, which keeps attacking turn after turn. Every in-combat move is
   otherwise a fresh, deliberate intent; after the fight, click the
   destination again.
 
 ### Combat
-- **No separate combat screen** — same map, same intents. **Bump-to-attack**
-  melee; ranged **attack intent** (bow single-target, mage AoE radius 1),
-  range 4 hexes, distance-only (no LOS), **no friendly fire**.
+- **No separate combat screen** — same map, same intents. **Melee**: walk
+  into an enemy to strike it (the classic roguelike bump-to-attack); ranged
+  **attack intent** (bow single-target, mage AoE radius 1), range 4 hexes,
+  distance-only (no LOS), **no friendly fire**.
 - **Entity-targeted single-target ranged attacks** (item 7, playtest batch
   2): a bow shot names its victim by **entity id** (`IntentRequest.
   targetEntityId`), not a hex — clicking a hostile in range sends its id.
@@ -89,14 +90,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   member**), then all moves resolve (seeded-RNG tie-break on hex overflow;
   an entity killed in the attack phase does not get its move). Committing
   to an attack always lands it; retreat means **trading hits for distance**
-  — a one-action chaser that bumps you isn't gaining ground that turn.
-- Class weapon routing on click: a rogue **bumps with the dagger when
+  — a one-action chaser that strikes you isn't gaining ground that turn.
+- Class weapon routing on click: a rogue **melee-attacks with the dagger when
   adjacent**, shoots the bow at range (weapon-by-distance identity); a mage
   **blasts even adjacent** targets (staff bonk exists but its ranged magic is
   its real weapon); fighters are melee-only.
 - **Feedback**: instant destination ring on walk clicks, one-shot flash on
-  attack clicks — **including melee (bump-to-attack) clicks** (#113: a melee
-  bump is a committed attack since #104, so clicking an adjacent hostile
+  attack clicks — **including melee attack clicks** (#113: a melee attack
+  always lands as a committed attack since #104, so clicking an adjacent hostile
   shows the attack flash + crosshair, never the walk ring/marker; the
   crosshair mouse cursor covers melee tiles too; `window.game.lastAttackFlash`
   records the most recent flash target for e2e), **pending item-action feedback** (equip/unequip/drink/drop) — an
@@ -196,8 +197,8 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   The Wyrmslayer Greatsword was the game's first two-handed weapon; the two
   magic staves are also two-handed since the keystone amendment.
 - **Dual-wield / per-hit combat (#55 task 2)** — every fitting **held**
-  weapon fires as its own hit, not just one "best" weapon: a bump resolves
-  every melee-tagged held weapon against the same picked victim; a ranged
+  weapon fires as its own hit, not just one "best" weapon: a melee attack
+  resolves every melee-tagged held weapon against the same picked victim; a ranged
   attack resolves every ranged/magic-tagged held weapon that still reaches
   the target. Two single-target ranged weapons dual-wielded into a stacked
   hex **share one stack-victim pick** (mirroring melee's one-victim-then-

@@ -13,7 +13,7 @@ import (
 // Pinned seeds for the one-hit-kill drop roll (rng.IntN(100) < the slain
 // KIND's own dropChance — wolf's 30%, the default spawn kind, since loot
 // moved monster-side in 6c — drawn from the same PCG stream as the rest of
-// a bubble-turn resolution: move-shuffle first, then the bump's damage
+// a bubble-turn resolution: move-shuffle first, then the melee attack's damage
 // roll, then the drop roll in resolveDeathsLocked). Found by probing
 // killSeedDrops' exact scenario: seed 0 misses (no ground item), seed 4
 // hits. WHICH def the hit yields depends on the whole of wolf's own drop
@@ -32,7 +32,7 @@ const (
 
 // oneHitKillBubble joins a named level-1 Fighter (iron sword, the Join
 // default), relocates it next to a monster whose HP is set to die to
-// exactly one bump, forms the bubble, then bumps — killing the monster
+// exactly one melee attack, forms the bubble, then strikes — killing the monster
 // inside the fight (so the shared kill-XP/drop path runs). A real Join
 // (rather than PlaceEntityForTest) gives the player an actual display name,
 // so the announce-text tests can assert the exact "NAME picked up ITEM"
@@ -60,10 +60,10 @@ func oneHitKillBubble(t *testing.T, w *game.World, seed int64) (protocol.JoinRes
 	step(t, w) // idle turn: forms the bubble around the player and monster
 
 	w.SetPathForTest(playerID, []protocol.Hex{monsterHex})
-	snap := step(t, w) // bump-kills the monster inside the bubble
+	snap := step(t, w) // melee-kills the monster inside the bubble
 
 	if _, ok := entityOfSnap(snap, monsterID); ok {
-		t.Fatalf("monster %d should have died to the one-hit-kill bump", monsterID)
+		t.Fatalf("monster %d should have died to the one-hit-kill melee attack", monsterID)
 	}
 
 	return me, snap
@@ -104,8 +104,8 @@ func TestPickDropCoversWolfsWholeTable(t *testing.T) {
 
 // TestKillDropVisibleInSnapshot: a monster killed in a bubble leaves a ground
 // item visible in Snapshot().GroundItems when its seed rolls a drop
-// (killDropSeed); the killer does not auto-loot it the same turn (a bump
-// attacker stays in place — see collectBumpsLocked — so it never lands on
+// (killDropSeed); the killer does not auto-loot it the same turn (a melee
+// attacker stays in place — see collectMeleeAttacksLocked — so it never lands on
 // the corpse hex this turn).
 func TestKillDropVisibleInSnapshot(t *testing.T) {
 	t.Parallel()
@@ -130,7 +130,7 @@ func TestKillDropVisibleInSnapshot(t *testing.T) {
 	playerHex := hexOfSnap(snap, playerID) // player did not move onto the corpse
 
 	if got, want := ground.Hex, playerHex; got == want {
-		t.Fatalf("dropped item landed on the killer's own hex %v — bump attacker should not have moved", got)
+		t.Fatalf("dropped item landed on the killer's own hex %v — melee attacker should not have moved", got)
 	}
 
 	player, ok := entityOfSnap(snap, playerID)

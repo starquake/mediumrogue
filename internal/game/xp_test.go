@@ -33,7 +33,7 @@ func TestFreshPlayerHasZeroXPLevelOne(t *testing.T) {
 	}
 }
 
-// TestKillGrantsXP: a player who bumps a one-hit monster to death is awarded
+// TestKillGrantsXP: a player who strikes a one-hit monster to death is awarded
 // the slain kind's full XP (wolf's here — the default spawn kind); the
 // derived Level reflects the new total. Joins as a Dwarf so the base award
 // is asserted without the Human XP bonus (the bonus has its own test);
@@ -51,7 +51,7 @@ func TestKillGrantsXP(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
-	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
+	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 
 	// Kill XP is only earned inside a combat bubble (a real fight). One world
 	// resolution with the monster adjacent forms that bubble around the idle
@@ -65,7 +65,7 @@ func TestKillGrantsXP(t *testing.T) {
 	snap := w.Snapshot()
 
 	if _, ok := entityOfSnap(snap, monsterID); ok {
-		t.Fatalf("monster %d should have been killed by the bump", monsterID)
+		t.Fatalf("monster %d should have been killed by the melee attack", monsterID)
 	}
 
 	player, ok := entityOfSnap(snap, me.EntityID)
@@ -112,7 +112,7 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	// monster is not attacked this turn, so it survives to be killed in the bubble.
 	step(t, w)
 
-	// Both players bump the monster's hex on the same bubble-turn. The monster
+	// Both players melee-attack the monster's hex on the same bubble-turn. The monster
 	// deals only 3 damage to one player per turn, so both attackers survive to be
 	// paid the full award.
 	w.SetPathForTest(idA, []protocol.Hex{center})
@@ -121,7 +121,7 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterID); ok {
-		t.Fatalf("monster %d should have died to the shared bumps", monsterID)
+		t.Fatalf("monster %d should have died to the shared melee attacks", monsterID)
 	}
 
 	if got, want := w.XPForTest(idA), game.MonsterXPForTest("wolf"); got != want {
@@ -156,7 +156,7 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 
 	monsterA := w.PlaceMonsterForTest(ns[0])
 	monsterB := w.PlaceMonsterForTest(ns[1])
-	w.SetHPForTest(monsterA, 1) // each dies to a single bump
+	w.SetHPForTest(monsterA, 1) // each dies to a single melee attack
 	w.SetHPForTest(monsterB, 1)
 
 	// One world resolution with both monsters adjacent forms the combat bubble
@@ -165,19 +165,19 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 	// domain — proving the two later awards come from the bubble path.
 	step(t, w)
 
-	// Bump monster A, then monster B — one attack, one kill per bubble-turn.
+	// Melee-attack monster A, then monster B — one attack, one kill per bubble-turn.
 	w.SetPathForTest(pid, []protocol.Hex{ns[0]})
 	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterA); ok {
-		t.Fatalf("monster A %d should have died to the first bump", monsterA)
+		t.Fatalf("monster A %d should have died to the first melee attack", monsterA)
 	}
 
 	w.SetPathForTest(pid, []protocol.Hex{ns[1]})
 	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterB); ok {
-		t.Fatalf("monster B %d should have died to the second bump", monsterB)
+		t.Fatalf("monster B %d should have died to the second melee attack", monsterB)
 	}
 
 	if got, want := w.XPForTest(pid), 2*game.MonsterXPForTest("wolf"); got != want {

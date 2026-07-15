@@ -16,11 +16,11 @@ declare global {
 // bubble and goes AFK; at the default 60s patience that wedge outlasts the
 // test's whole deadline).
 
-// #113: a melee (bump-to-attack) click gets ATTACK feedback — the one-shot flash
+// #113: a melee attack click gets ATTACK feedback — the one-shot flash
 // (window.game.lastAttackFlash) and the committed crosshair (kind "attack")
 // — never walk feedback. Pre-#113 the click routed through walkTo and
 // planted the blue "move" marker on the enemy's hex, which reads as
-// "walking there" now that a committed bump always lands (#104).
+// "walking there" now that a committed melee attack always lands (#104).
 test("a melee-attack click commits the attack glyph, not a walk marker", async ({ page }) => {
   await page.goto("/");
 
@@ -30,12 +30,12 @@ test("a melee-attack click commits the attack glyph, not a walk marker", async (
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
   // combat.spec's damage-test chase pick (the reachable tile that closes the
-  // most distance — the monster's own hex, a bump tile, once adjacent), but
+  // most distance — the monster's own hex, a melee tile, once adjacent), but
   // instead of watching HP, read the CLICK FEEDBACK synchronously after each
   // tap: clickTarget's routing sets committedAction/lastAttackFlash before
   // the intent POST even starts, so the read can't race a turn bundle. A
   // plain step reads back kind "move" (or nothing, out of combat) and the
-  // chase continues; the tap that lands on the bump tile reads back kind
+  // chase continues; the tap that lands on the melee tile reads back kind
   // "attack" — the #113 behavior under test — and stops. Deliberately NO
   // "wait until adjacent" pre-check: at a 250ms turn cadence any adjacency
   // observed in one evaluate is stale by the next, so a precondition-gated

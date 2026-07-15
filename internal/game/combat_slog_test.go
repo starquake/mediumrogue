@@ -82,7 +82,7 @@ func TestCombatSlogMove(t *testing.T) {
 	}
 }
 
-// TestCombatSlogAttackDeathXP: a one-hit-kill bump inside a bubble emits the
+// TestCombatSlogAttackDeathXP: a one-hit-kill melee attack inside a bubble emits the
 // attack → death → xp_award sequence on the injected logger, each
 // filterable by the "event" attribute.
 func TestCombatSlogAttackDeathXP(t *testing.T) {

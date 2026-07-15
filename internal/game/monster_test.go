@@ -241,7 +241,7 @@ func TestMonsterAIApproachesNearestPlayer(t *testing.T) {
 // TestMonsterAIAttacksAdjacentSolePlayer: superseded by 6.3 Task 3 — a
 // monster already adjacent to the sole player no longer holds position (6.2
 // behaviour); it steps onto the player's hex, and the move phase converts
-// that into a bump-to-attack. See TestMonsterAIAttacksAdjacentPlayer in
+// that into a melee attack. See TestMonsterAIAttacksAdjacentPlayer in
 // combat_test.go for the HP/positioning assertions; this test keeps the 6.2
 // coverage of the AI's targeting/path-length decision at range 1.
 func TestMonsterAIAttacksAdjacentSolePlayer(t *testing.T) {
@@ -261,7 +261,7 @@ func TestMonsterAIAttacksAdjacentSolePlayer(t *testing.T) {
 
 	gotHex := hexOfSnap(snap, monsterID)
 	if got, want := gotHex, monsterHex; got != want {
-		t.Fatalf("monster hex = %v, want unchanged %v (a bump does not move the attacker)", got, want)
+		t.Fatalf("monster hex = %v, want unchanged %v (a melee attack does not move the attacker)", got, want)
 	}
 
 	if got, want := game.HexDistance(gotHex, me.Hex), 1; got != want {

@@ -14,11 +14,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// bumpDamageTaken places a fighter at origin (optionally wearing
+// meleeDamageTaken places a fighter at origin (optionally wearing
 // leather-armor), a monster of the given kind adjacent, resolves one turn
-// (the adjacent monster bumps the nearest player), and returns how much HP
-// the player lost to that bump.
-func bumpDamageTaken(t *testing.T, kind string, wearArmor bool) int {
+// (the adjacent monster strikes the nearest player), and returns how much HP
+// the player lost to that attack.
+func meleeDamageTaken(t *testing.T, kind string, wearArmor bool) int {
 	t.Helper()
 
 	w := newWorld()
@@ -56,27 +56,27 @@ func bumpDamageTaken(t *testing.T, kind string, wearArmor bool) int {
 	return before - e.HP
 }
 
-// TestLeatherArmorReducesDamageThroughLivePipeline: a wolf bump against a
-// leather-armored fighter lands for exactly one less than against a bare
-// one — the card's take-damage −1 folded at the live combat site, not a
+// TestLeatherArmorReducesDamageThroughLivePipeline: a wolf melee attack
+// against a leather-armored fighter lands for exactly one less than against a
+// bare one — the card's take-damage −1 folded at the live combat site, not a
 // special case.
 func TestLeatherArmorReducesDamageThroughLivePipeline(t *testing.T) {
 	t.Parallel()
 
-	bare := bumpDamageTaken(t, "wolf", false)
+	bare := meleeDamageTaken(t, "wolf", false)
 	if got, want := bare, game.MonsterDamageForTest("wolf"); got != want {
-		t.Fatalf("bare fighter lost %d HP to a wolf bump, want %d", got, want)
+		t.Fatalf("bare fighter lost %d HP to a wolf melee attack, want %d", got, want)
 	}
 
-	armored := bumpDamageTaken(t, "wolf", true)
+	armored := meleeDamageTaken(t, "wolf", true)
 	if got, want := armored, bare-1; got != want {
 		t.Errorf("armored fighter lost %d HP, want %d (take-damage -1)", got, want)
 	}
 }
 
-// TestLeatherArmorFloorsAtOne: a rat bump (1 damage) against leather armor
-// still lands for 1 — applyRules' take-damage clamp (a landed hit always
-// costs at least 1), the card's "floor 1".
+// TestLeatherArmorFloorsAtOne: a rat melee attack (1 damage) against leather
+// armor still lands for 1 — applyRules' take-damage clamp (a landed hit
+// always costs at least 1), the card's "floor 1".
 func TestLeatherArmorFloorsAtOne(t *testing.T) {
 	t.Parallel()
 
@@ -84,8 +84,8 @@ func TestLeatherArmorFloorsAtOne(t *testing.T) {
 		t.Fatalf("rat damage = %d, want %d (this test's floor premise)", got, want)
 	}
 
-	if got, want := bumpDamageTaken(t, "rat", true), 1; got != want {
-		t.Errorf("armored fighter lost %d HP to a rat bump, want %d (floor 1)", got, want)
+	if got, want := meleeDamageTaken(t, "rat", true), 1; got != want {
+		t.Errorf("armored fighter lost %d HP to a rat melee attack, want %d (floor 1)", got, want)
 	}
 }
 
@@ -119,10 +119,10 @@ func TestHeadbandBoostsXPThroughLivePipeline(t *testing.T) {
 	step(t, w) // form the bubble
 
 	w.SetPathForTest(me.EntityID, []protocol.Hex{monsterHex})
-	snap := step(t, w) // bump-kill inside the bubble
+	snap := step(t, w) // melee-kill inside the bubble
 
 	if _, ok := entityOfSnap(snap, monsterID); ok {
-		t.Fatal("monster should have died to the bump")
+		t.Fatal("monster should have died to the melee attack")
 	}
 
 	// Fold order (applyRules): no adds, then multipliers in card order —
