@@ -95,7 +95,11 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   **blasts even adjacent** targets (staff bonk exists but its ranged magic is
   its real weapon); fighters are melee-only.
 - **Feedback**: instant destination ring on walk clicks, one-shot flash on
-  attack clicks, **pending item-action feedback** (equip/unequip/drink/drop) — an
+  attack clicks — **including bump-attack clicks** (#113: a bump is a
+  committed attack since #104, so clicking an adjacent hostile shows the
+  attack flash + crosshair, never the walk ring/marker; the crosshair mouse
+  cursor covers bump tiles too; `window.game.lastAttackFlash` records the
+  most recent flash target for e2e), **pending item-action feedback** (equip/unequip/drink/drop) — an
   on-map ⇄ **swap glyph** on my own hex (drawn above the entity layer, with a dark
   rim) plus a small **amber spinner** on the pending button (the item stays
   named, not a bare "…"), shown from the click until the turn bundle applies the change and cleared
@@ -109,7 +113,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   (`window.game.pickupPending`, `FeedbackLayer.setPickup`), Diablo-style **floating damage numbers** (white over hostiles, red over players; killing blows shown as
   remaining HP — derived client-side by diffing bundles), **committed-action
   indicator** (item 6, playtest batch 2 — a solid step marker for a queued
-  move, a persistent crosshair for a queued attack, a small hourglass on my
+  move, a persistent crosshair for a queued attack **or bump-attack** (#113),
+  a small hourglass on my
   own hex for a wait; shown while I've locked in this bubble-turn and it's
   still waiting on the rest of the bubble, cleared on the next turn bundle;
   `window.game.committedAction`), kill summaries and

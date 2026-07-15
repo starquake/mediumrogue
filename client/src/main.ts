@@ -259,6 +259,15 @@ export interface GameDebug {
    */
   committedAction: CommittedAction | null;
   /**
+   * The target hex of the most recent attack-feedback flash
+   * (FeedbackLayer.flashAttack) — set synchronously by both a ranged click
+   * and a bump-attack click (#113), never cleared (a "last event" record,
+   * not live state; the flash itself fades in FLASH_DURATION_MS). Exposed
+   * for e2e: the flash is a 450ms one-shot, so tests read this instead of
+   * racing the animation.
+   */
+  lastAttackFlash: Hex | null;
+  /**
    * Item ids with an in-flight panel action (equip/unequip/drink/drop) whose
    * result hasn't ridden a turn bundle yet — the same pending set that drives
    * the panel badge and the on-map ⇄ swap glyph (FeedbackLayer.setItemAction).
@@ -492,6 +501,7 @@ window.game = {
   combatMoves: [],
   combatRanged: [],
   committedAction: null,
+  lastAttackFlash: null,
   pendingItems: [],
   pickupPending: false,
 };
@@ -1039,6 +1049,7 @@ async function start(): Promise<void> {
   // catch nearby hostiles.
   const attackAt = (target: Hex): Promise<void> => {
     feedbackLayer.flashAttack(target);
+    window.game.lastAttackFlash = target;
 
     const targetEntityId = aoeReaches(target) ? 0 : (hostileIdAt(target) ?? 0);
 
@@ -1049,6 +1060,26 @@ async function start(): Promise<void> {
     feedbackLayer.setCommitted(committed);
 
     return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
+  };
+
+  // bumpAt submits a bump-attack at an adjacent hostile: mechanically a MOVE
+  // intent (the server converts a step onto a hostile-held hex into the
+  // swing), but since #104 a committed bump always lands, so the click gets
+  // ATTACK feedback, not walk feedback (#113): the same one-shot flash and
+  // committed crosshair a ranged click gets — never the destination ring or
+  // a blue "move" marker, which would read as "walking there" on a hex the
+  // player is deliberately striking. No destination bookkeeping either
+  // (window.game.destination stays untouched): the attacker doesn't move on
+  // a bump, and the standing intent keeps swinging turn after turn.
+  const bumpAt = (target: Hex): Promise<void> => {
+    feedbackLayer.flashAttack(target);
+    window.game.lastAttackFlash = target;
+
+    const committed: CommittedAction = { kind: "attack", target };
+    window.game.committedAction = committed;
+    feedbackLayer.setCommitted(committed);
+
+    return submitIntent(identity, target, IntentMove).then(() => undefined);
   };
 
   // lastReach mirrors the tactical overlay's move/bump split for click
@@ -1084,7 +1115,7 @@ async function start(): Promise<void> {
         if (aoeReaches(target)) {
           return attackAt(target); // mage: blast the adjacent hostile
         }
-        return walkTo(target); // bump-attack: step in and swing
+        return bumpAt(target); // bump-attack: swing, with attack feedback (#113)
       }
 
       if (isRangedAttackClick(target)) {
@@ -1471,12 +1502,12 @@ async function start(): Promise<void> {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
-    // Crosshair only where a click would actually shoot — a bump tile with
-    // no AoE weapon in reach swings instead (see clickTarget's routing).
+    // Crosshair wherever a click would attack — a shot OR a bump swing
+    // (#113: a bump is a committed attack since #104, so it earns the same
+    // pre-click affordance as a ranged target; see clickTarget's routing).
     const hover = pixelToHex({ x: worldX, y: worldY });
-    const wouldShoot =
-      isRangedAttackClick(hover) && (aoeReaches(hover) || !inList(lastReach.bumps, hover));
-    app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
+    const wouldAttack = isRangedAttackClick(hover) || inList(lastReach.bumps, hover);
+    app.canvas.style.cursor = wouldAttack ? "crosshair" : "default";
 
     // Enemy hover tooltip (item 13, playtest batch 2): kind display name +
     // "HP cur/max", near the cursor. pointer-events: none on the tooltip

@@ -50,6 +50,14 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // to one (equal move speeds — the gap can never be reopened, so the spec
   // can only skip; see the spec's precondition guard).
   { name: "autowalk", monsters: 1, env: { COMBAT_PATIENCE: "700ms" } },
+  // bumpfeedback (#113) must land a real bump CLICK with its own player, so
+  // it cannot share combat.spec's server: that file's freeze test abandons a
+  // player mid-bubble by design, and under --repeat-each contention sibling
+  // instances join each other's bubbles — at the default 60s COMBAT_PATIENCE
+  // one AFK member wedges every bubble turn far past the test's deadline.
+  // A private server plus autowalk's short patience keeps bubble turns
+  // flowing (~700ms worst case) no matter what siblings do.
+  { name: "bumpfeedback", monsters: 3, env: { COMBAT_PATIENCE: "700ms" } },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },
   // kinds needs several distinct monster kinds actually spawned to prove
