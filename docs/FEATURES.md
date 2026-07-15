@@ -175,20 +175,27 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   this level) XP · (q, r)` — my entity's hex, live per turn bundle.
 
 ### Gear & inventory (milestone 6b.4, loot 6c, inventory system: slots/backpack/drop/pickup/drink; gear keystone #55/#56: weapon tags, hand slots, gates dropped, rebalance + first 2H)
-- **8-type item taxonomy** (`internal/protocol`'s `ItemType*` consts): one
+- **9-type item taxonomy** (`internal/protocol`'s `ItemType*` consts): one
   `weapon` type — carrying **tags** (`WeaponTagMelee` / `WeaponTagRanged` /
   `WeaponTagMagic`, which attacks fire it — a weapon needs ≥1) plus a
   `twoHanded` bool — replaces the old five class-shaped weapon types
   (`melee-weapon/thrown-weapon/ranged-weapon/staff/wand`); a `consumable`;
-  and six armor/jewelry types that each map 1:1 to a slot: `helmet`, `chest`,
-  `gloves`, `boots`, `ring`, `amulet`.
+  a `shield` (#90 — occupies the off-hand; never fires as a hit, its −N is
+  a `take-damage` rule card); and six armor/jewelry types that each map 1:1
+  to a slot: `helmet`, `chest`, `gloves`, `boots`, `ring`, `amulet`. Only a
+  weapon def may set `damage`/`rangeHex`/`aoeRadius` — a combat stat on any
+  other type panics at load (`validateItemCombatStats`).
 - **Eight equip slots** (`Slot*` consts): `main-hand` and `off-hand` — chosen
   at equip time, not fixed per class — plus the six armor slots above. A
   weapon's landing hand is `weaponTargetSlot`: two-handed, or an empty
   main-hand → main-hand; else an empty off-hand → off-hand; else main-hand
   (a swap, evicting the current occupant back to the backpack, rejected if
   the backpack has no room). Empty hands fall back to unarmed fists
-  (`FistsDamage`). A consumable has no slot (backpack-only). Backpack stays
+  (`FistsDamage`). A **shield equips into the off-hand only** (#90):
+  equipping one evicts a two-handed main-hand weapon to the backpack
+  (room-checked first — rejected politely if full); equipping a two-hander
+  evicts the shield the same way; a one-hander swaps **main** and leaves the
+  shield in place. A consumable has no slot (backpack-only). Backpack stays
   **exactly 4 entries**: a gear instance or a consumable stack (identical
   consumables merge, up to 5; stacks never split) per entry.
 - **Class equip gates dropped (#55/#56)** — any class may equip any item.
@@ -248,14 +255,31 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   to gear instead of a species passive; both are now equippable by any
   class (gates dropped) though the "rogue"/"fighter" naming is a flavor
   holdover from before #56.
+- **Shields (#90, S4 of #55)** — the trade: a shield holds your off-hand
+  (~half of dual-wield's melee output) in exchange for a flat `take-damage
+  −N` on **every** hit, floor 1 (`applyRules`' event-level clamp); the −N
+  stacks additively with Leather Armor's −1 and the dwarf passive's −1
+  inside the same take-damage fold. Pure rule-card content — no new
+  pipeline event, no `chance` roll (rng untouched). Drop-only (no class
+  starts with one); richer defence (active block/evasion) is deferred to
+  #69, shield skills to #57:
+
+  | Item | Type | Card | Source |
+  |---|---|---|---|
+  | Wooden Buckler | shield | take-damage −1 | rat (w1) / wolf (w4) drop |
+  | Iron Kite Shield | shield | take-damage −2 | troll (w4) / dragon (w1) drop |
+
 - **Non-weapon items**: Leather Armor (chest: take-damage −1, floor 1),
   Headband of Learning (helmet: earn-XP ×1.05), Healing Potion (consumable:
-  drink +5 HP, stacks to 5).
+  drink +5 HP, stacks to 5), and the two shields above (off-hand:
+  take-damage −1/−2).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride
-  the rat/wolf tables at low weight). Items land on the death hex and render
-  as map markers.
+  the rat/wolf tables at low weight; the Wooden Buckler rides rat w1 / wolf
+  w4, the Iron Kite Shield troll w4 / dragon w1 — the ghoul table is
+  untouched by design, its identity is venom-fang/misericorde). Items land
+  on the death hex and render as map markers.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):

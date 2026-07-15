@@ -214,6 +214,31 @@ var itemDefs = []*itemDef{
 		},
 	},
 
+	// Shields (#90, S4 of #55): the last gear-keystone slice. A shield is
+	// pure defence — a flat take-damage card, no damage of its own
+	// (validateItemCombatStats) — and occupies the off-hand (slotForType),
+	// trading dual-wield's second hit for the reduction. Richer
+	// block/evasion waits on #69; shield skills on #57. Drop-only: no class
+	// starting kit changes. applyRules' event-level clamp keeps every
+	// landed hit ≥ 1, so the −2 stacking with leather armor and the dwarf
+	// passive never zeroes a hit.
+	{
+		id: idWoodenBuckler, name: "Wooden Buckler", itemType: protocol.ItemTypeShield,
+		desc:   "block 1 damage from every hit",
+		flavor: "A barrel lid with delusions of grandeur. It holds.",
+		rules: []ruleCard{
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -1}},
+		},
+	},
+	{
+		id: idIronKiteShield, name: "Iron Kite Shield", itemType: protocol.ItemTypeShield,
+		desc:   "block 2 damage from every hit",
+		flavor: "Iron-bound and man-high — the wall the front rank hides behind.",
+		rules: []ruleCard{
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -2}},
+		},
+	},
+
 	// Crit%-weapons (fast-lane batch task 6, #69 Q5): the first weapons
 	// carrying a per-hit crit-chance card — the elf-crit card pattern
 	// (elfCards, above) applied to an ITEM instead of a species passive.
@@ -271,6 +296,10 @@ var monsterDefs = []*monsterDef{
 			{defID: idButchersCleaver, weight: 1},
 			// Low-weight potion (inventory-slots task 3): recovery layer 2.
 			{defID: idHealingPotion, weight: 1},
+			// Wooden Buckler (#90): appended LAST so every earlier entry keeps
+			// its cumulative-weight position. Rare here (weight 1) — the wolf
+			// table is its common source.
+			{defID: idWoodenBuckler, weight: 1},
 		},
 		rings: []int{0, 1},
 	},
@@ -297,6 +326,10 @@ var monsterDefs = []*monsterDef{
 			// cumulative-weight position, so killDropSeed/killMissSeed
 			// (drops_test.go) survive unchanged.
 			{defID: idDuelistsSaber, weight: 4},
+			// Wooden Buckler (#90): appended LAST so every earlier entry keeps
+			// its cumulative-weight position (killDropSeed/killMissSeed
+			// re-derived if the new total weight moves them).
+			{defID: idWoodenBuckler, weight: 4},
 		},
 		rings: []int{1},
 	},
@@ -333,6 +366,10 @@ var monsterDefs = []*monsterDef{
 			{defID: idEmberStaff, weight: 4},
 			{defID: idAncientDwarvenMattock, weight: 4},
 			{defID: idWarMageStaff, weight: 8},
+			// Iron Kite Shield (#90): appended LAST so every earlier entry
+			// keeps its cumulative-weight position — frontier loot, common on
+			// the troll.
+			{defID: idIronKiteShield, weight: 4},
 		},
 		rings: []int{2},
 	},
@@ -346,6 +383,10 @@ var monsterDefs = []*monsterDef{
 			{defID: idWyrmslayerGreatsword, weight: 2},
 			{defID: idIronWarhammer, weight: 1},
 			{defID: idWarMageStaff, weight: 1},
+			// Iron Kite Shield (#90): appended LAST so every earlier entry
+			// keeps its cumulative-weight position — rare here (weight 1),
+			// the troll table is its common source.
+			{defID: idIronKiteShield, weight: 1},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},

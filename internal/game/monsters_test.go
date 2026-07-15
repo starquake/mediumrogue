@@ -80,6 +80,9 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		// Saber, wolf's crit% signature drop. Appended LAST for the same
 		// reason — every earlier entry keeps its cumulative-weight position.
 		{defID: idDuelistsSaber, weight: 4},
+		// Appended by shields v1 (#90): the Wooden Buckler, the wolf table
+		// being its common source. Appended LAST for the same reason.
+		{defID: idWoodenBuckler, weight: 4},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {
