@@ -40,10 +40,12 @@ test("a melee-attack click commits the attack glyph, not a walk marker", async (
   // "wait until adjacent" pre-check: at a 250ms turn cadence any adjacency
   // observed in one evaluate is stale by the next, so a precondition-gated
   // version of this test timed out under parallel-worker contention; letting
-  // the routing itself decide converges like the damage test does. The
-  // awaited own-hex retarget afterwards replaces the standing melee intent within
-  // the same input window (latest intent wins), so a repeat-each sibling
-  // still finds monsters alive in the shared fixed pool.
+  // the routing itself decide converges like the damage test does. Melee
+  // intents are one-shot now (#116: an entity-targeted ATTACK intent, not a
+  // standing MOVE-onto-hostile) — the awaited own-hex retarget afterwards is
+  // just a wait intent submitted in the same input window, harmless but no
+  // longer "replacing" anything standing, so a repeat-each sibling still
+  // finds monsters alive in the shared fixed pool.
   interface MeleeFeedback {
     target: Hex;
     committed: { kind: string; target: Hex } | null;
@@ -98,7 +100,7 @@ test("a melee-attack click commits the attack glyph, not a walk marker", async (
         return null; // that tap was a step (or an out-of-combat walk) — keep converging
       }
 
-      await window.game.tapHex(me.hex.q, me.hex.r); // cancel the standing melee swing
+      await window.game.tapHex(me.hex.q, me.hex.r); // own-hex tap: harmless wait, clears any queued residue
 
       return { target, committed, flash };
     }, EntityMonster);

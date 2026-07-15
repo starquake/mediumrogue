@@ -1062,18 +1062,20 @@ async function start(): Promise<void> {
     return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
 
-  // meleeAt submits a melee attack at an adjacent hostile: mechanically a
-  // MOVE intent (a move onto a hostile-held hex converts to a melee attack —
-  // the server converts a step onto that hex into the swing), but since #104
-  // a committed melee swing
-  // always lands, so the click gets ATTACK feedback, not walk feedback
-  // (#113): the same one-shot flash and committed crosshair a ranged click
-  // gets — never the destination ring or a blue "move" marker, which would
-  // read as "walking there" on a hex the player is deliberately striking.
-  // No destination bookkeeping either (window.game.destination stays
-  // untouched): the attacker doesn't move on a melee swing, and the
-  // standing intent keeps swinging turn after turn.
+  // meleeAt submits a melee attack at an adjacent hostile: mechanically an
+  // entity-targeted ATTACK intent now (#116) — one click = one swing, parity
+  // with ranged. The server rejects a stale/empty target (targetEntityId 0
+  // would be a ground shot a melee-only class can't make), so if
+  // hostileIdAt returns null we fall back to walkTo(target): the melee tile
+  // routing means a hostile is there in practice, but a bundle race is
+  // possible (the hostile left between the overlay computing reach and the
+  // click landing).
   const meleeAt = (target: Hex): Promise<void> => {
+    const targetEntityId = hostileIdAt(target);
+    if (targetEntityId === null) {
+      return walkTo(target); // the hostile left this bundle — treat as a step
+    }
+
     feedbackLayer.flashAttack(target);
     window.game.lastAttackFlash = target;
 
@@ -1081,7 +1083,7 @@ async function start(): Promise<void> {
     window.game.committedAction = committed;
     feedbackLayer.setCommitted(committed);
 
-    return submitIntent(identity, target, IntentMove).then(() => undefined);
+    return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
 
   // lastReach mirrors the tactical overlay's move/melee split for click
@@ -1215,14 +1217,20 @@ async function start(): Promise<void> {
       const mine = event.entities.find((e) => e.id === me.entityId);
       if (mine !== undefined && window.game.me !== null) {
         window.game.me.hex = mine.hex;
-        // Arrived at the destination → clear it.
-        if (
-          window.game.destination !== null &&
-          mine.hex.q === window.game.destination.q &&
-          mine.hex.r === window.game.destination.r
-        ) {
-          window.game.destination = null;
-          feedbackLayer.setDestination(null);
+        // Arrived at the destination — or, for a hostile-held destination,
+        // arrived ADJACENT to it (#116: the server trims such walks one hex
+        // short; without this mirror the ring would linger forever).
+        const dest = window.game.destination;
+        if (dest !== null) {
+          const arrived = mine.hex.q === dest.q && mine.hex.r === dest.r;
+          const hostileHeld = window.game.positions.some(
+            (p) => p.kind === EntityMonster && p.hex.q === dest.q && p.hex.r === dest.r,
+          );
+          const adjacent = hexDistance(mine.hex, dest) === 1;
+          if (arrived || (hostileHeld && adjacent)) {
+            window.game.destination = null;
+            feedbackLayer.setDestination(null);
+          }
         }
 
         window.game.xp = mine.xp;
@@ -1460,7 +1468,11 @@ async function start(): Promise<void> {
       if (from === undefined) {
         return;
       }
-      walkTo(neighbor(from, dir));
+      // #116: through clickTarget, not walkTo — stepping into an adjacent
+      // hostile is a melee attack (the roguelike idiom survives; only the
+      // wire changed), and key-steps get the same in-combat reach filter
+      // clicks have.
+      void clickTarget(neighbor(from, dir));
     },
     // SPACE = wait (item 11): the same own-hex move a click on my own hex
     // already sends — clickTarget's "self" branch, reached here via

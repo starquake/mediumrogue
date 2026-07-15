@@ -39,15 +39,18 @@ func TestMeleeDamageUsesClassCloseWeapon(t *testing.T) {
 
 			monsterHex := walkableNeighbor(t, w, center)
 
-			pid, _ := w.PlaceEntityForTest(center)
+			pid, tok := w.PlaceEntityForTest(center)
 			w.SetClassForTest(pid, tc.class)
 
 			monsterID := w.PlaceMonsterForTest(monsterHex)
 
-			// Melee attack the monster: a move onto its hex lands as a melee
-			// attack. The monster has no path set, so it does not retaliate —
-			// isolating the attacker's damage.
-			w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+			// Melee attack the monster via an entity-targeted attack intent: an
+			// adjacent target resolves as a melee swing. The monster has no path
+			// set, so it does not retaliate — isolating the attacker's damage.
+			if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+				t.Fatalf("SubmitIntent(melee): %v", err)
+			}
+
 			w.ResolveCombatOnlyForTest()
 
 			monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -86,12 +89,15 @@ func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 
 		monsterHex := walkableNeighbor(t, w, center)
 
-		pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter by default
+		pid, tok := w.PlaceEntityForTest(center) // level-1 Fighter by default
 		w.SetXPForTest(pid, xp)
 
 		monsterID := w.PlaceMonsterForTest(monsterHex)
 
-		w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+		if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+			t.Fatalf("SubmitIntent(melee): %v", err)
+		}
+
 		w.ResolveCombatOnlyForTest()
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -118,17 +124,25 @@ func TestAttackDamageDoesNotScaleWithLevel(t *testing.T) {
 }
 
 // Pinned seeds for the Duelist's Saber's own 10% crit-chance card (condChance
-// n=10): this is the attack's SECOND RNG draw (victim pick is first). Found
-// the same way misericordeCritSeed/misericordeMissSeed were (species_test.go),
-// scanned 0-39 — seed 0 rolls 67 (>=10, no proc), seed 1 rolls 8 (<10, proc).
-// In the dual-wield melee attack below, the dagger hit consumes NO rng (no chance card
-// on it), confirming the saber's crit card consumes the stream's second draw
-// (rng.IntN(len(victims)) for victim pick always advances the generator, even
-// with 1 candidate).
-// re-derived: dual-wield per-hit resolution
+// n=10): this is the attack's FIRST rng draw (the dagger hit consumes NO rng
+// — no chance card on it).
+//
+// re-derived: #116 melee-as-attack-intent — the player's half of this attack
+// now resolves via resolveEntityTargetedLocked (a named victim id), which
+// never draws rng to pick a victim from a stack; the old move-conversion
+// path (attackLocked's collectMeleeAttacksLocked loop) always drew
+// rng.IntN(len(victims)) first — even for a single-candidate "stack" — before
+// rollDamageLocked ever ran, so the saber's crit draw used to be the
+// attack's SECOND draw. With that pick gone, the crit draw shifts to first,
+// which redraws a different PCG output for the same seed and moves which
+// seeds proc. Re-hunted by scanning seeds 0-59 through the migrated
+// dualWieldMeleeDamage helper (dmg 8 == no proc, dmg 12 == proc, the same
+// discriminator as before): seed 0 still misses (dmg 8, unchanged — kept as
+// the miss control), seed 20 is the first seed in the scanned range that
+// procs (dmg 12).
 const (
-	saberCritSeed = 1 // Duelist's Saber procs (double damage) at this seed
-	saberMissSeed = 0 // Duelist's Saber does not proc (base damage) at this seed
+	saberCritSeed = 20 // Duelist's Saber procs (double damage) at this seed
+	saberMissSeed = 0  // Duelist's Saber does not proc (base damage) at this seed
 )
 
 // dualWieldMeleeDamage places a human (non-elf, no species crit) player
@@ -168,7 +182,10 @@ func dualWieldMeleeDamage(t *testing.T, seed int64) int {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetHPForTest(monsterID, fatHP) // survives even a double crit, so HP is readable
 
-	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	w.ResolveCombatOnlyForTest()
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -238,7 +255,10 @@ func TestSingleWeaponSingleHit(t *testing.T) {
 
 		monsterID := w.PlaceMonsterForTest(monsterHex)
 
-		w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+		if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+			t.Fatalf("SubmitIntent(melee): %v", err)
+		}
+
 		w.ResolveCombatOnlyForTest()
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -264,12 +284,15 @@ func TestSingleWeaponSingleHit(t *testing.T) {
 
 		monsterHex := walkableNeighbor(t, w, center)
 
-		pid, _ := w.PlaceEntityForTest(center)
+		pid, tok := w.PlaceEntityForTest(center)
 		w.SetClassForTest(pid, "") // both hands empty: closeDefFor/meleeDefsFor falls back to fists
 
 		monsterID := w.PlaceMonsterForTest(monsterHex)
 
-		w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+		if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+			t.Fatalf("SubmitIntent(melee): %v", err)
+		}
+
 		w.ResolveCombatOnlyForTest()
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)

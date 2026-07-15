@@ -313,13 +313,17 @@ func TestDropPickupLoop(t *testing.T) {
 			t.Fatal("joined player missing from turn bundle")
 		}
 
-		target, found := nearestMonster(bundle, myHex)
+		id, target, found := nearestMonsterID(bundle, myHex)
 		if !found {
 			t.Fatal("every pre-seeded monster died with no drop — statistically shouldn't happen " +
 				"(see dropFarmMonsterCount's doc comment); bump DropFarmMonsterCount or re-check DropChancePercent")
 		}
 
-		postIntent(t, ts, me, target)
+		if hexDistance(myHex, target) == 1 {
+			postEntityAttackIntent(t, ts, me, id)
+		} else {
+			postIntent(t, ts, me, target)
+		}
 	}
 
 	if dropped.ID == 0 {
@@ -382,8 +386,8 @@ func TestDropPickupLoop(t *testing.T) {
 			continue
 		}
 
-		if target, found := nearestMonster(bundle, ent.Hex); found && hexDistance(ent.Hex, target) == 1 {
-			postIntent(t, ts, me, target) // melee attack — a move onto a hostile hex attacks
+		if id, target, found := nearestMonsterID(bundle, ent.Hex); found && hexDistance(ent.Hex, target) == 1 {
+			postEntityAttackIntent(t, ts, me, id) // adjacent monster → entity-targeted melee attack (#116)
 
 			continue
 		}
@@ -445,5 +449,24 @@ func postPickupIntent(t *testing.T, ts *httptest.Server, me protocol.JoinRespons
 	resp := postJSON(t, ts, "/api/intent", intent)
 	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
 		t.Fatalf("pickup intent status = %d, want 202", got)
+	}
+}
+
+// postEntityAttackIntent submits an explicit entity-targeted attack intent
+// (#116, item 7 playtest batch 2) naming targetEntityID as the victim — an
+// adjacent target resolves as a melee swing, the player-side counterpart of
+// postAttackIntent's ground-targeted ranged shot. Attack intents are
+// one-shot: unlike a move onto a hostile hex (the old conversion path), this
+// must be resubmitted before every turn that should land a swing.
+func postEntityAttackIntent(t *testing.T, ts *httptest.Server, me protocol.JoinResponse, targetEntityID int64) {
+	t.Helper()
+
+	intent := protocol.IntentRequest{
+		Kind: protocol.IntentAttack, EntityID: me.EntityID, Token: me.Token, TargetEntityID: targetEntityID,
+	}
+
+	resp := postJSON(t, ts, "/api/intent", intent)
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("entity attack intent status = %d, want 202", got)
 	}
 }

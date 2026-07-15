@@ -75,6 +75,11 @@ spawn (Q9 first half).
 - **Skill model** (if built) — the **3-tree** model (Class / Adventure /
   Survival) governs; class-agnostic life skills are the Adventure/Survival
   trees; the Class tree carries class-identity-via-skills. (Q10)
+- **Melee is an attack intent** (#116, 2026-07-15): one click = one swing
+  (ranged parity); attacking never moves the player (no after-kill walk);
+  walks stop adjacent to a hostile destination; move-conversion is
+  monster-only. Keyboard steps route through the click path so the
+  roguelike step-into-enemy idiom survives.
 
 ## Cut — won't build (and why)
 

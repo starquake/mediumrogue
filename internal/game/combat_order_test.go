@@ -50,8 +50,8 @@ func TestKilledEntityDoesNotMove(t *testing.T) {
 		t.Skip("no free walkable escape hex around the monster on this map")
 	}
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	w.SetPathForTest(monsterID, []protocol.Hex{escapeHex})

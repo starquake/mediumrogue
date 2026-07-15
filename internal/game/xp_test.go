@@ -58,8 +58,8 @@ func TestKillGrantsXP(t *testing.T) {
 	// player; the kill then lands inside it via the lock-in immediate resolution.
 	step(t, w)
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	snap := w.Snapshot()
@@ -101,8 +101,8 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 
 	ns := game.HexNeighbors(center)
 
-	idA, _ := w.PlaceEntityForTest(ns[0])
-	idB, _ := w.PlaceEntityForTest(ns[1])
+	idA, tokA := w.PlaceEntityForTest(ns[0])
+	idB, tokB := w.PlaceEntityForTest(ns[1])
 
 	monsterID := w.PlaceMonsterForTest(center)
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // dies to a single hit
@@ -112,11 +112,16 @@ func TestSharedXPIsFullNotSplit(t *testing.T) {
 	// monster is not attacked this turn, so it survives to be killed in the bubble.
 	step(t, w)
 
-	// Both players melee-attack the monster's hex on the same bubble-turn. The monster
+	// Both players melee-attack the monster on the same bubble-turn. The monster
 	// deals only 3 damage to one player per turn, so both attackers survive to be
 	// paid the full award.
-	w.SetPathForTest(idA, []protocol.Hex{center})
-	w.SetPathForTest(idB, []protocol.Hex{center})
+	if err := w.SubmitIntent(entityAttackIntent(idA, tokA, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee, A): %v", err)
+	}
+
+	if err := w.SubmitIntent(entityAttackIntent(idB, tokB, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee, B): %v", err)
+	}
 
 	step(t, w)
 
@@ -152,7 +157,7 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 
 	ns := game.HexNeighbors(center)
 
-	pid, _ := w.PlaceEntityForTest(center)
+	pid, tok := w.PlaceEntityForTest(center)
 
 	monsterA := w.PlaceMonsterForTest(ns[0])
 	monsterB := w.PlaceMonsterForTest(ns[1])
@@ -165,15 +170,23 @@ func TestTwoKillsInOneFightGrantTwoMonsterXP(t *testing.T) {
 	// domain — proving the two later awards come from the bubble path.
 	step(t, w)
 
-	// Melee-attack monster A, then monster B — one attack, one kill per bubble-turn.
-	w.SetPathForTest(pid, []protocol.Hex{ns[0]})
+	// Melee-attack monster A, then monster B — one attack, one kill per
+	// bubble-turn. Attack intents are one-shot, so each kill needs its own
+	// SubmitIntent.
+	if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterA)); err != nil {
+		t.Fatalf("SubmitIntent(melee, A): %v", err)
+	}
+
 	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterA); ok {
 		t.Fatalf("monster A %d should have died to the first melee attack", monsterA)
 	}
 
-	w.SetPathForTest(pid, []protocol.Hex{ns[1]})
+	if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterB)); err != nil {
+		t.Fatalf("SubmitIntent(melee, B): %v", err)
+	}
+
 	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterB); ok {
@@ -220,8 +233,8 @@ func TestKillCrossingLevelBoundaryLevelsUp(t *testing.T) {
 	// resolution (player idle, monster survives), then land the kill inside it.
 	step(t, w)
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	snap := w.Snapshot()
@@ -307,8 +320,8 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	w.SetPathForTest(monsterID, []protocol.Hex{me.Hex})

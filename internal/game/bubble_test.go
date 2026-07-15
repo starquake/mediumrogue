@@ -435,8 +435,10 @@ func TestPlayersExtendBubbleReach(t *testing.T) {
 // cancelled the moment its owner is pulled into a combat bubble (#103) — the
 // route must not keep advancing one hex per bubble-turn underneath the fight.
 // The flee counterpart (a path queued INSIDE a bubble survives recomputes) is
-// TestBubbleMemberEscapesWhenLeavingRange; the standing-melee counterpart (a
-// single-step path survives bubble entry) is TestMeleeKillRemovesMonster.
+// TestBubbleMemberEscapesWhenLeavingRange; the melee counterpart (an
+// entity-targeted attack intent is resubmitted turn after turn, never a
+// queued path, so it is unaffected by walk-cancellation) is
+// TestMeleeKillRemovesMonster.
 func TestBubbleEntryCancelsAutoWalk(t *testing.T) {
 	t.Parallel()
 

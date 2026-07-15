@@ -145,11 +145,10 @@ func TestBubbleAdvancesOnLockIn(t *testing.T) {
 
 	meHP := entityHP(t, form, me.EntityID)
 	monsterHP := entityHP(t, form, monsterID)
-	monsterHex := hexOfSnap(form, monsterID)
 
-	// Lock in with a melee attack onto the monster: all (one) players ready -> resolve now.
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	// Lock in with a melee attack intent on the monster: all (one) players ready -> resolve now.
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	snap := w.Snapshot()
@@ -278,12 +277,10 @@ func TestNoDoubleResolveAfterLockIn(t *testing.T) {
 	w, clk := newTimedWorld(t)
 	w.SetCombatPatienceForTest(time.Hour)
 
-	me, monsterID, form := formBubble(t, w, clk)
+	me, monsterID, _ := formBubble(t, w, clk)
 
-	monsterHex := hexOfSnap(form, monsterID)
-
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	afterLockIn := w.Snapshot()

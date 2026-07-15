@@ -79,8 +79,8 @@ func TestPerKindKillXP(t *testing.T) {
 
 	step(t, w) // forms the bubble
 
-	if !submitOK(w, me, trollHex) {
-		t.Fatalf("SubmitIntent onto the troll's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, trollID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	snap := step(t, w)
@@ -318,10 +318,14 @@ func TestWyrmslayerDamageMultiplierVsDragon(t *testing.T) {
 		monsterHex := walkableNeighbor(t, w, center)
 		monsterID := w.PlaceMonsterKindForTest(monsterHex, kind)
 
-		// Melee-attack the monster; the monster has no path set, so it does not
-		// retaliate — isolating the attacker's damage (mirrors
-		// melee_damage_test.go's TestMeleeDamageUsesClassCloseWeapon).
-		w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+		// Melee-attack the monster via an entity-targeted attack intent; the
+		// monster has no path set, so it does not retaliate — isolating the
+		// attacker's damage (mirrors melee_damage_test.go's
+		// TestMeleeDamageUsesClassCloseWeapon).
+		if err := w.SubmitIntent(entityAttackIntent(pid, token, monsterID)); err != nil {
+			t.Fatalf("SubmitIntent(melee): %v", err)
+		}
+
 		w.ResolveCombatOnlyForTest()
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)

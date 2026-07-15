@@ -138,9 +138,20 @@ func TestHumanEarnsMoreXPThanDwarfOverHTTP(t *testing.T) {
 		// Both players chase/attack the same (only) monster every round; a
 		// bubble's action-gated turn only advances once every member locks in
 		// an intent, so both must submit each round for the fight to progress.
-		if target, found := nearestMonster(bundle, humanEntity.Hex); found {
-			postIntent(t, ts, human, target)
-			postIntent(t, ts, dwarf, target)
+		// Each player's own adjacency decides move vs. entity-targeted melee
+		// attack intent (#116) — they need not be adjacent on the same turn.
+		if id, target, found := nearestMonsterID(bundle, humanEntity.Hex); found {
+			if hexDistance(humanEntity.Hex, target) == 1 {
+				postEntityAttackIntent(t, ts, human, id)
+			} else {
+				postIntent(t, ts, human, target)
+			}
+
+			if hexDistance(dwarfEntity.Hex, target) == 1 {
+				postEntityAttackIntent(t, ts, dwarf, id)
+			} else {
+				postIntent(t, ts, dwarf, target)
+			}
 		}
 	}
 
