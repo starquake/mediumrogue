@@ -40,6 +40,9 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   { name: "identity" },
   { name: "identity-multitab" },
   { name: "combat", monsters: 3 },
+  // layout (#105) measures the worst-case HUD (in combat) against the open
+  // character panel at the 1920×1080 minimum supported viewport.
+  { name: "layout", monsters: 3 },
   // autowalk (#103) needs bubble-turns to resolve WITHOUT the client locking
   // in — a short patience makes those AFK resolutions observable in-test. A
   // SINGLE monster: the test must queue a long walk before combat starts, and

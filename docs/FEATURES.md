@@ -281,6 +281,16 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   type), an individual **take** button, inline backpack-full feedback on a
   rejected row (row stays pickable), and "Close — leave the rest" (reopens
   on hex re-entry). Monster loot and player drops behave identically.
+- **Layout: 1920×1080 is the minimum supported viewport** (#105). The
+  character panel anchors below the HUD's **measured** bottom edge
+  (`--hud-bottom`, kept current by a ResizeObserver in `main.ts`) — the HUD's
+  height varies (combat panel swaps in for the timer, copy-link appears after
+  join), and a hardcoded offset used to let the grown in-combat HUD run
+  underneath the open panel. It still fully covers the quest board by design
+  (an inventory screen, not a peek), reserves the same bottom chat-zone
+  allowance as `#left-panels` (taller content scrolls inside the panel), and
+  the worst case (in combat, panel open, chat populated) is pinned by
+  `client/e2e/layout.spec.ts` at exactly 1920×1080.
 - **Hover stat tooltip** — hovering an equipped hex or a backpack cell shows a
   floating tooltip: the item's `damage`/`range`/`AoE` and its effect line,
   and — when a **different** item fills the slot the hovered item occupies

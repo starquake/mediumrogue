@@ -304,6 +304,16 @@ const startEnterEl = mustGet("start-enter") as HTMLButtonElement;
 const classCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-class]"));
 const speciesCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-species]"));
 
+// The character panel anchors below the HUD's REAL bottom edge (#105): the
+// HUD's height varies (the combat panel swaps in for the timer, the copy-link
+// button appears after join), and the old hardcoded 8rem offset let a grown
+// HUD run underneath the open panel. A ResizeObserver keeps the CSS variable
+// current; #character-root's top/max-height read it (index.html).
+const hudEl = mustGet("hud");
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty("--hud-bottom", `${Math.ceil(hudEl.getBoundingClientRect().bottom)}px`);
+}).observe(hudEl);
+
 // Enemy hover tooltip (item 13, playtest batch 2).
 const hoverTooltipEl = mustGet("hover-tooltip");
 const hoverTooltipKindEl = mustQuery(hoverTooltipEl, ".tooltip-kind");
