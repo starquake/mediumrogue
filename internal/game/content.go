@@ -296,6 +296,10 @@ var monsterDefs = []*monsterDef{
 			{defID: idButchersCleaver, weight: 1},
 			// Low-weight potion (inventory-slots task 3): recovery layer 2.
 			{defID: idHealingPotion, weight: 1},
+			// Wooden Buckler (#90): appended LAST so every earlier entry keeps
+			// its cumulative-weight position. Rare here (weight 1) — the wolf
+			// table is its common source.
+			{defID: idWoodenBuckler, weight: 1},
 		},
 		rings: []int{0, 1},
 	},
@@ -322,6 +326,10 @@ var monsterDefs = []*monsterDef{
 			// cumulative-weight position, so killDropSeed/killMissSeed
 			// (drops_test.go) survive unchanged.
 			{defID: idDuelistsSaber, weight: 4},
+			// Wooden Buckler (#90): appended LAST so every earlier entry keeps
+			// its cumulative-weight position (killDropSeed/killMissSeed
+			// re-derived if the new total weight moves them).
+			{defID: idWoodenBuckler, weight: 4},
 		},
 		rings: []int{1},
 	},
@@ -358,6 +366,10 @@ var monsterDefs = []*monsterDef{
 			{defID: idEmberStaff, weight: 4},
 			{defID: idAncientDwarvenMattock, weight: 4},
 			{defID: idWarMageStaff, weight: 8},
+			// Iron Kite Shield (#90): appended LAST so every earlier entry
+			// keeps its cumulative-weight position — frontier loot, common on
+			// the troll.
+			{defID: idIronKiteShield, weight: 4},
 		},
 		rings: []int{2},
 	},
@@ -371,6 +383,10 @@ var monsterDefs = []*monsterDef{
 			{defID: idWyrmslayerGreatsword, weight: 2},
 			{defID: idIronWarhammer, weight: 1},
 			{defID: idWarMageStaff, weight: 1},
+			// Iron Kite Shield (#90): appended LAST so every earlier entry
+			// keeps its cumulative-weight position — rare here (weight 1),
+			// the troll table is its common source.
+			{defID: idIronKiteShield, weight: 1},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},
