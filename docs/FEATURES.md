@@ -595,10 +595,17 @@ Recorded in `design.md` §0/§8/§9, `design-decisions.md` (Q1–Q11
 all decided 2026-07-13), and issue #36: the **3-tree
 skill system** (Class/Adventure/Survival; level-up = one bankable skill
 point; First Aid & Make Camp seed the Survival/Adventure trees), the
-**`evasion%` combat chance** (#69 — needs the new pre-damage
-`evasion-check` event; AoE always hits; `crit%` is no longer on this list —
-it shipped as pure content, first the elf-species passive and now two
-crit%-weapons, fast-lane batch task 6), downed state & revive, further
+**`glance%` combat chance** (#69/#91, amended 2026-07-15 — an X% chance an
+incoming hit is **halved**, never negated; replaces the old binary
+`evasion%` and its planned pre-damage `evasion-check` event, so like crit
+it's pure content — a chance-conditioned `take-damage` card — plus one
+protocol constant; applies to all damage, AoE included; `crit%` is no longer
+on this list — it shipped as pure content, first the elf-species passive and
+now two crit%-weapons, fast-lane batch task 6), the **attacks-before-moves
+resolution flip** (#104, decided 2026-07-15 — attacks land against pre-move
+positions; retreat becomes trading hits for distance; the "Phased
+resolution" bullet in §Combat above describes the shipped moves-first order
+until #104's implementation lands), downed state & revive, further
 recovery layers (rests, the sanctuary
 **trade hub** — the 6c sanctuary zone is only the monster-free ground, not
 the hub itself; healing potions + the backpack-cap layer now ship with the

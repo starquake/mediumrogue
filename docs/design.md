@@ -178,12 +178,13 @@ The core of the design. Every 4 seconds, one world turn:
 - Group tactics emerge from the shared turn: allies coordinate in chat during the input window, then everything lands at once.
 - **XP — DECIDED: you get XP when you are in the bubble, per kill as it happens.** Each enemy death immediately grants the same, full XP amount to **every player inside the time bubble at that moment** — presence is the only criterion, and there is **no battle-end payout**. Join mid-fight and you earn from the next kill onward; leave early and you keep what you earned while present. No damage-based split, no kill credit, no participation requirement — walking in to help literally pays. (Human's +XP% applies to each award; species is the only differentiator.)
 
-**Conflict resolution — DECIDED: phased. All moves resolve first, then all attacks.**
-- **Move phase:** all move intents resolve simultaneously. If more entities target a hex than it can hold (`STACK_CAP`, or a hostile-held hex), the overflow is settled by a **deterministic tie-break** (server-seeded RNG for the turn — reproducible, no favoritism); losers stay put.
-- **Bump-to-attack sequencing:** a move onto a hostile-held hex checks the board *after* the move phase — if the hostile is still there, the move converts into an attack (resolved in the attack phase, mover stays put); if the hostile vacated, the move simply completes into the empty hex.
-- **Attack phase:** all attacks resolve simultaneously against **post-move positions**. Consequences, embraced as features:
-  - Moving away from a melee attacker means the attack finds nothing — **retreating genuinely dodges**, which makes flight a real tactic and pairs with bubble-escape.
+**Conflict resolution — DECIDED: phased. All attacks resolve first, then all moves.** *(Amended 2026-07-15, #104 — the original decision was moves-then-attacks; the flip and its reasoning live in `superpowers/specs/2026-07-15-attack-resolution-and-glancing-design.md`. Shipped behavior is still moves-first until #104's implementation lands.)*
+- **Attack phase:** all attacks resolve simultaneously against **pre-move positions**. Consequences, embraced as features:
+  - Committing to an attack **always lands it** — a target can no longer step out of a swing on the same tick, so an attack turn is never wasted (the old retreat-dodge read as whiffing, worst for the mage's ground-targeted AoE).
   - Two entities attacking each other can **both die on the same turn** — mutual kills are allowed and dramatic; the turn playback should sell these moments.
+  - Retreat still works, as **trading hits for distance**: one action per turn means a chaser that stops to bump you isn't gaining ground that turn — flight stays a real tactic and pairs with bubble-escape, it just costs HP instead of being a free dodge.
+- **Bump-to-attack sequencing:** a move intent whose next step is a hostile-held hex converts into an attack against that occupant (resolved in the attack phase, mover stays put). No post-move recheck — the target's pre-move position is what's hit, so the bump cannot fizzle by vacation.
+- **Move phase:** all move intents resolve simultaneously. If more entities target a hex than it can hold (`STACK_CAP`, or a hostile-held hex), the overflow is settled by a **deterministic tie-break** (server-seeded RNG for the turn — reproducible, no favoritism); losers stay put. An entity killed in the attack phase does not get its move.
 - No initiative stat, no per-entity ordering — the phase structure plus one seeded tie-break is the entire rule set. Write it once in `internal/game`, property-test it hard (it's pure logic, ideal territory).
 
 ## 6. Rendering, UI & the "Filter" Look
@@ -250,7 +251,7 @@ The core of the design. Every 4 seconds, one world turn:
 - [x] ~~What happens to a character when its player goes offline~~ → **Decided (issue #21): despawn after a grace.** A player's entity is removed from the live world once its event stream has been gone for `DISCONNECT_GRACE` (default 20s); a reconnect within the grace keeps it. So no vulnerable offline body stands around. Open follow-ups: **persist the character data** so a returning player gets their *old* character back (not a fresh one), and a **bed / home spawn** to return to — see the `character-persistence-reconnect` and `bed-home-spawn` notes.
 - [x] ~~Does gear survive death?~~ → **Decided (2026-07-10): equipped gear ALWAYS survives death.** Under toolbox progression (§0) your gear *is* your power — dropping it on death would make dying deep a death spiral by construction (die → toolbox lies deep in danger → return weaker → die again). If corpse-run tension is ever wanted, at most *unequipped inventory* may drop — never the equipped toolbox. Where you respawn is still open (bed/home-spawn note; issue #36's random-spawn and camera-snap items).
 - [x] ~~Scaling with a variable player count (people pop in and out)~~ → **Decided (2026-07-10), layered:** (1) **world density tracks online players** — a monsters-per-player spawn target once continuous spawning lands; (2) **spatial difficulty rings** as the difficulty story — monster kinds get stronger with distance from origin, players self-select by where they hunt (needs monster kinds; pairs with per-kind loot tables). Danger must be **legible**: distinct looks per kind, zone borders that announce themselves, no ambush-by-ignorance. (3) **Bubble-size scaling held in reserve** (HP-only, at formation, via a pipeline card conditioned on bubble player count) only if parties still trivialize their ring in playtests. **Rejected:** reward-side scaling (undermines XP-by-presence) and level-based monster scaling (rubber-banding kills felt progression; moot under the flat curve anyway). See the scaling-options correspondence doc (2026-07-10). **Monster kinds + difficulty rings + per-kind loot shipped in milestone 6c** (see §8); world-density-tracks-players and bubble-size scaling remain open, gated on continuous spawning.
-- [x] ~~Ranged combat rules~~ → **Decided (6b.2):** bow & magic **range = 4 hexes**; **distance-only, no line-of-sight** requirement (terrain-blocked LOS deferred); **no friendly fire** (ranged hits opposing faction only) — a bow into a mixed stack hits a random *hostile* member (the 6.3 random-member rule); mage magic is **AoE** (radius 1) hitting all hostiles in the area. Ranged resolves inside a combat bubble, simultaneous with melee. **Amended (item 7, playtest feedback batch 2):** a single-target shot (bow) now targets the victim's **entity id**, not a hex — the AoE cast stays ground-targeted (hex) since its blast radius makes a hex the natural target. Resolution re-aims at the entity-targeted victim's post-move hex, hitting if it is still in range from the shooter's own post-move hex and fizzling otherwise — this is the retreat-dodge rule (§5) finally applied honestly to ranged, since a hex-pinned target used to let a sidestepping victim dodge a shot it should have still eaten, and let a fleeing one still eat a shot it should have dodged.
+- [x] ~~Ranged combat rules~~ → **Decided (6b.2):** bow & magic **range = 4 hexes**; **distance-only, no line-of-sight** requirement (terrain-blocked LOS deferred); **no friendly fire** (ranged hits opposing faction only) — a bow into a mixed stack hits a random *hostile* member (the 6.3 random-member rule); mage magic is **AoE** (radius 1) hitting all hostiles in the area. Ranged resolves inside a combat bubble, simultaneous with melee. **Amended (item 7, playtest feedback batch 2):** a single-target shot (bow) now targets the victim's **entity id**, not a hex — the AoE cast stays ground-targeted (hex) since its blast radius makes a hex the natural target. Resolution re-aims at the entity-targeted victim's post-move hex, hitting if it is still in range from the shooter's own post-move hex and fizzling otherwise — this is the retreat-dodge rule (§5) finally applied honestly to ranged, since a hex-pinned target used to let a sidestepping victim dodge a shot it should have still eaten, and let a fleeing one still eat a shot it should have dodged. **Amended again (2026-07-15, #104):** with attacks now resolving before moves, the post-move re-aim goes away — every attack (bump, bow, AoE) resolves against pre-move positions and always lands; entity-targeting remains as the aiming UX for single-target shots.
 - [x] ~~Species~~ → **Decided: human (+% XP gain), elf (+% crit chance), dwarf (flat −1 damage reduction); the numbers are protocol constants for playtest balancing** (see §0)
 - [x] ~~XP distribution~~ → **Decided: per kill, at the moment it happens — every player in the time bubble gets the same full amount; no damage split, no kill credit, no battle-end payout** (see §5)
 - [ ] Weapon/magic variety design: which weapon types (speed/damage/reach) and magic types (damage, control, support) exist at launch
@@ -303,15 +304,21 @@ bits that crept in, and their native-ARPG equivalents:
 
 | TTRPG thing we picked up | ARPG equivalent |
 |---|---|
-| `d20 + accuracy vs Armor Rating` — one *coupled* roll | *Decoupled* stats: `evasion%` (defence) + `crit%` (offence) |
+| `d20 + accuracy vs Armor Rating` — one *coupled* roll | *Decoupled* stats: `glance%` (defence) + `crit%` (offence) |
 | "percent hit = 80% + attacker bonus − defender penalty" | …is *still* the coupled attack-roll, just in % clothing |
 | Crit on a *die face* (nat-20, elf 19–20) | Crit *chance %* (elf = +crit%) |
-| "Armor Rating / AC" = harder to *hit* | `evasion%` (avoid) *or* damage-reduction (mitigate) |
+| "Armor Rating / AC" = harder to *hit* | `glance%` (blunt) *or* damage-reduction (mitigate) |
 | "meets it beats it," clamp-as-nat-1 / nat-20 | just a % floor / ceiling |
+
+*(2026-07-15: the defence chance was softened from binary `evasion%` to
+`glance%` — a chance the incoming hit is halved, never fully negated — so an
+attack turn is never wasted on a total miss. Still defender-side, still
+decoupled; every argument in this appendix carries over unchanged. See
+`superpowers/specs/2026-07-15-attack-resolution-and-glancing-design.md`.)*
 
 **The tell is coupling.** TTRPG folds attacker accuracy *and* defender armour
 into a **single** to-hit roll. ARPG keeps them as **separate** gear stats —
-the weapon rolls its own `crit%`, the armour its own `evasion%`,
+the weapon rolls its own `crit%`, the armour its own `glance%`,
 independently. Everything decided before the pivot (baseline hit chance,
 "−%to-hit" defence, accuracy modifiers) was the *coupled* model wearing
 percentages.
@@ -320,7 +327,7 @@ percentages.
 already built. A `d20`/AC path would graft a TTRPG resolution layer onto an
 ARPG stat system, and they would keep fighting — the *armor-rating-as-AC vs
 armour-as-a-rule-card* seam is exactly where it grinds. Pulling it back to
-`evasion%` / `crit%` gear stats removes the friction: offence lives on
+`glance%` / `crit%` gear stats removes the friction: offence lives on
 weapons, defence on armour, each an independent percentage the engine already
 knows how to fold.
 
@@ -341,7 +348,7 @@ TTRPG/ARPG line. In D&D, "attack bonus" and "AC" are literally stacks of
 modifiers (proficiency + ability + item) — exactly what the pipeline folds.
 TTRPG would lean on it *more*, not less. What changes is only what sits on
 top: a couple of new folded values and an attack-roll event that reads them.
-Same shape as the ARPG extension (`evasion%` / `crit%`). Either way the
+Same shape as the ARPG extension (`glance%` / `crit%`). Either way the
 pipeline is **extended, never replaced.**
 
 ### Would it work with our time-based turns? — Split.
@@ -380,7 +387,7 @@ whole second combat mode, a jarring real-time→turn-based mode switch, and the
 ### Verdict
 
 The pipeline is safe either way — the real incompatibility was never the
-pipeline, it's **WeGo vs initiative**. ARPG stat-checks (`evasion%` /
+pipeline, it's **WeGo vs initiative**. ARPG stat-checks (`glance%` /
 `crit%`) fit WeGo *natively*: simultaneous, no turn order, one seeded draw at
 resolution. TTRPG's genuine value — tactical initiative, reactions — needs
 the sequential structure the game deliberately doesn't have. Cherry-pick its
