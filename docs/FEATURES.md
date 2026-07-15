@@ -113,7 +113,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   (`window.game.pickupPending`, `FeedbackLayer.setPickup`), Diablo-style **floating damage numbers** (white over hostiles, red over players; killing blows shown as
   remaining HP — derived client-side by diffing bundles), **committed-action
   indicator** (item 6, playtest batch 2 — a solid step marker for a queued
-  move, a persistent crosshair for a queued attack **or melee bump** (#113),
+  move, a persistent crosshair for a queued attack, **ranged or melee** (#113),
   a small hourglass on my
   own hex for a wait; shown while I've locked in this bubble-turn and it's
   still waiting on the rest of the bubble, cleared on the next turn bundle;

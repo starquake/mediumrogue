@@ -1504,7 +1504,7 @@ async function start(): Promise<void> {
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
     // Crosshair wherever a click would attack — a shot OR a melee swing
-    // (#113: a melee bump is a committed attack since #104, so it earns the
+    // (#113: a melee swing is a committed attack since #104, so it earns the
     // same pre-click affordance as a ranged target; see clickTarget's routing).
     const hover = pixelToHex({ x: worldX, y: worldY });
     const wouldAttack = isRangedAttackClick(hover) || inList(lastReach.bumps, hover);
