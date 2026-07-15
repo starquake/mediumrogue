@@ -146,14 +146,16 @@ drift between calls; use absolute paths or `cd` to the repo root before
   `docs/superpowers/` spec+plan are the design layer. They compose — don't
   duplicate. The deciding question for an issue is *"is there a design decision
   with unexamined assumptions?"*:
-  - **A new mechanic/feature** → run brainstorming → writing-plans, commit the
-    spec+plan, and cross-link (issue body points at the spec path; the spec
-    references `#NN`). Keep the issue body a short pointer, not a third copy of
-    the design — three copies drift.
-  - **A bug** → systematic-debugging, no spec.
+  - **A new mechanic/feature** → design first: question the assumptions with
+    the maintainer, write the spec, then the implementation plan; commit both
+    and cross-link (issue body points at the spec path; the spec references
+    `#NN`). Keep the issue body a short pointer, not a third copy of the
+    design — three copies drift.
+  - **A bug** → debug systematically (reproduce, root-cause, then fix — never
+    patch a symptom), no spec.
   - **A tweak** (a tuning number, a config default, copy) → straight to a PR
-    that references the issue. The brainstorming "every project needs a design"
-    gate is calibrated for new mechanics; running it on a one-liner is friction.
+    that references the issue. The design-first gate is calibrated for new
+    mechanics; running it on a one-liner is friction.
 - **Visual/looks-driven work gets a mockup first**: build an HTML mockup,
   screenshot it, and get approval **before** implementing the real UI (a CRT
   filter was built and rejected post-hoc; a paper-doll inventory was approved
