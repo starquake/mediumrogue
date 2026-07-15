@@ -328,13 +328,32 @@ func TestDropPickupLoop(t *testing.T) {
 
 	t.Logf("drop landed: item %d (%s) at %v", dropped.ID, dropped.DefID, dropped.Hex)
 
-	// Walk onto the drop's hex, then claim it with an explicit PICKUP intent
-	// (the inventory-slots milestone removed walk-over auto-pickup): outside a
-	// bubble the pickup applies immediately; inside one it is the player's
-	// action for that turn — either way the very submission doubles as the
-	// bubble lock-in, so this loop never stalls an action-gated bubble.
+	// Claim a farmed drop with an explicit PICKUP intent (the inventory-slots
+	// milestone removed walk-over auto-pickup): outside a bubble the pickup
+	// applies immediately; inside one it is the player's action for that turn
+	// — either way the very submission doubles as the bubble lock-in, so this
+	// loop never stalls an action-gated bubble.
+	//
+	// This phase FIGHTS THROUGH the remaining ring instead of walking blindly
+	// at one pinned drop (#111): since #104 (attacks-before-moves) every bump
+	// a monster commits against the player lands — the old walk-toward-the-
+	// drop retry silently relied on retreat-dodge to survive the ring, and
+	// under a CPU-starved runner a multi-monster convergence could kill the
+	// player, respawn them near origin (inside the ring), and death-loop the
+	// walk back until the deadline. Policy, one intent per bundle: standing
+	// on a drop → pick it up; an adjacent monster → bump it (clears the
+	// threat, and its own 30% drop roll can land loot on an adjacent hex,
+	// exactly like the farm phase above); otherwise walk toward the NEAREST
+	// known drop — re-targeted every bundle, so a death/respawn simply
+	// resumes toward whatever is closest now. Success is ANY farmed ground
+	// item reaching the player's Items: every id in this map came out of
+	// GroundItems, so the kill → drop → walk → pickup loop is proven
+	// end-to-end regardless of which drop completes it. Submitting every
+	// bundle also keeps feeding lock-ins to any bubble the player is in.
 	// Generous deadline as a safety margin against a CPU-starved runner (#22).
-	pickupDeadline := time.Now().Add(30 * time.Second)
+	pickupDeadline := time.Now().Add(60 * time.Second)
+
+	farmed := map[int64]bool{dropped.ID: true}
 
 	for time.Now().Before(pickupDeadline) {
 		bundle := decodeTurnFrame(t, reader)
@@ -345,27 +364,73 @@ func TestDropPickupLoop(t *testing.T) {
 		}
 
 		for _, it := range ent.Items {
-			if it.ID == dropped.ID {
+			if farmed[it.ID] {
 				return // picked up — the full drop/pickup loop proven end to end
 			}
 		}
 
-		// Submit every turn: a move toward the drop until this bundle shows
-		// the player standing on its hex, then pickup intents (repeated —
-		// the first may resolve on a later bubble turn, and a stale ground
-		// id after someone took it would 422, which pickupOrMoveIntent
-		// treats as fatal so a real bug still fails fast). Submitting every
-		// bundle also keeps feeding lock-ins to any bubble the player is in
-		// (other ring monsters still alive) so it never stalls on the AFK
-		// patience timeout.
-		if ent.Hex == dropped.Hex {
-			postPickupIntent(t, ts, me, dropped.ID)
-		} else {
-			postIntent(t, ts, me, dropped.Hex)
+		for _, g := range bundle.GroundItems {
+			farmed[g.ID] = true
+		}
+
+		if id, onDrop := groundItemAt(bundle, ent.Hex); onDrop {
+			// Repeated re-submission while the pickup is pending is fine
+			// (the latest intent in a window wins); once it applies, the
+			// farmed check above returns before this can go stale and 422.
+			postPickupIntent(t, ts, me, id)
+
+			continue
+		}
+
+		if target, found := nearestMonster(bundle, ent.Hex); found && hexDistance(ent.Hex, target) == 1 {
+			postIntent(t, ts, me, target) // bump — a move onto a hostile hex attacks
+
+			continue
+		}
+
+		target, found := nearestGroundItem(bundle, ent.Hex)
+		if !found {
+			// Unreachable while the loop runs: the phase-1 drop persists until
+			// picked up (single player), and a pickup returns via farmed above.
+			t.Fatal("no ground item left in the bundle during the pickup phase")
+		}
+
+		postIntent(t, ts, me, target)
+	}
+
+	t.Fatalf("player never picked up a farmed drop (first: item %d at %v) before the pickup deadline",
+		dropped.ID, dropped.Hex)
+}
+
+// groundItemAt returns the id of the ground item sitting on hex in this
+// bundle, if any.
+func groundItemAt(bundle protocol.TurnEvent, hex protocol.Hex) (int64, bool) {
+	for _, g := range bundle.GroundItems {
+		if g.Hex == hex {
+			return g.ID, true
 		}
 	}
 
-	t.Fatalf("player never picked up item %d (dropped at %v) before the pickup deadline", dropped.ID, dropped.Hex)
+	return 0, false
+}
+
+// nearestGroundItem returns the hex of the ground item nearest to from —
+// nearestMonster's shape, over GroundItems.
+func nearestGroundItem(bundle protocol.TurnEvent, from protocol.Hex) (protocol.Hex, bool) {
+	var (
+		best     protocol.Hex
+		bestDist int
+		found    bool
+	)
+
+	for _, g := range bundle.GroundItems {
+		d := hexDistance(from, g.Hex)
+		if !found || d < bestDist {
+			best, bestDist, found = g.Hex, d, true
+		}
+	}
+
+	return best, found
 }
 
 // postPickupIntent submits an explicit pickup intent for a ground item id
