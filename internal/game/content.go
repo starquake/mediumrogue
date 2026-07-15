@@ -18,6 +18,10 @@ var (
 	dwarfCards = []ruleCard{
 		{event: evTakeDamage, then: effect{kind: effAdd, n: -protocol.DwarfDamageReduction}},
 	}
+	rogueGlanceCards = []ruleCard{
+		{event: evTakeDamage, when: []condition{{kind: condChance, n: protocol.RogueGlanceChancePercent}},
+			then: effect{kind: effMulPct, n: protocol.GlanceDamagePercent}},
+	}
 )
 
 // speciesCards returns a species' passive rule cards (nil for monsters'
@@ -33,6 +37,20 @@ func speciesCards(species string) []ruleCard {
 	default:
 		return nil
 	}
+}
+
+// classCards returns a class's passive rule cards (nil for other classes
+// and for monsters' empty class). The Rogue's glance% (#91) is the first
+// class passive: the take-damage mirror of the elf-crit card — a
+// chance-conditioned mulPct, pure content, no new pipeline event (the
+// 2026-07-15 spec's point). Folded victim-side by rollDamageLocked, right
+// after speciesCards.
+func classCards(class string) []ruleCard {
+	if class == protocol.ClassRogue {
+		return rogueGlanceCards
+	}
+
+	return nil
 }
 
 // itemDefs is the item content registry: class defaults first, then the

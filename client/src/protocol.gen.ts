@@ -388,6 +388,16 @@ export const ElfCritMultiplier = 2;
  */
 export const DwarfDamageReduction = 1;
 /**
+ * RogueGlanceChancePercent is the percent chance an incoming hit on a
+ * Rogue only glances (GlanceDamagePercent applies).
+ */
+export const RogueGlanceChancePercent = 20;
+/**
+ * GlanceDamagePercent is a glancing hit's damage multiplier in percent
+ * (50 = half damage), shared by any future glance-granting content.
+ */
+export const GlanceDamagePercent = 50;
+/**
  * Tile is one hex of the world map.
  */
 export interface Tile {

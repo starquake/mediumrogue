@@ -1430,7 +1430,7 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 
 // rollDamageLocked runs one hit through the pipeline: the attacker's
 // deal-damage cards (species + the acting weapon's rules) then the victim's
-// take-damage cards (species + the rules of EVERYTHING the victim has
+// take-damage cards (species + class + the rules of EVERYTHING the victim has
 // equipped, folded in canonicalSlotOrder — a hit lands on the whole entity,
 // not just the slot that happens to be attacking; this is how armor's
 // take-damage cards apply). A monster victim folds its kind's claws rules
@@ -1448,7 +1448,9 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
 	dealt := applyRules(evDealDamage, base, attackerCards, ctx)
 
-	victimCards := slices.Concat(speciesCards(victim.species), victimGearCards(victim))
+	// Species, then class, then gear: chance conditions consume the turn rng
+	// in card order, so this concat order is contractual for determinism.
+	victimCards := slices.Concat(speciesCards(victim.species), classCards(victim.class), victimGearCards(victim))
 
 	return applyRules(evTakeDamage, dealt, victimCards, ctx)
 }

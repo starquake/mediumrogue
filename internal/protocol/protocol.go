@@ -259,6 +259,19 @@ const (
 	DwarfDamageReduction = 1
 )
 
+// Per-class passive bonuses (tunable). The Rogue's glance is the first
+// class passive: the decoupled defender-side combat chance (#69/#91,
+// amended 2026-07-15) — a glancing hit is HALVED, never fully negated (and
+// the take-damage fold still floors every landed hit at 1).
+const (
+	// RogueGlanceChancePercent is the percent chance an incoming hit on a
+	// Rogue only glances (GlanceDamagePercent applies).
+	RogueGlanceChancePercent = 20
+	// GlanceDamagePercent is a glancing hit's damage multiplier in percent
+	// (50 = half damage), shared by any future glance-granting content.
+	GlanceDamagePercent = 50
+)
+
 // Tile is one hex of the world map.
 type Tile struct {
 	Hex     Hex     `json:"hex"`
