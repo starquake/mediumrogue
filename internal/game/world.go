@@ -895,6 +895,21 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 		return ErrNoPath
 	}
 
+	// #116: a walk that ends on a hostile-held hex stops adjacent — attacking
+	// is an explicit attack intent, never a move. Board read at submit time:
+	// a monster that wanders mid-walk just leaves the route one hex short,
+	// like any stale path. Trimming to empty is a valid no-op move (already
+	// adjacent — the client routes that click as an attack anyway). The
+	// len(path) > 0 guard covers Pathfind's own no-op case (target ==
+	// e.hex, e.g. a "stay"/ready move in a bubble): that returns a non-nil
+	// EMPTY slice, which the path == nil check above does not catch, so an
+	// unguarded path[len(path)-1] would panic. Only players reach
+	// queueMoveLocked (intents are player-dispatched); the AI writes
+	// monster paths directly and never passes through this trim.
+	if len(path) > 0 && w.occupiedByMonsterLocked(path[len(path)-1]) {
+		path = path[:len(path)-1]
+	}
+
 	e.path = path
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
@@ -1591,7 +1606,13 @@ func (w *World) bubbleFloorElapsedLocked(b *bubble, now time.Time) bool {
 // movePhaseLocked to skip. The old retreat-dodge (a deferred melee attack
 // re-checked post-move, completing as a move when the defender vacated —
 // fizzle reason melee_target_vacated) is removed by design: a committed
-// attack always lands. Callers hold w.mu.
+// attack always lands.
+//
+// #116: move-conversion is a MONSTER rule — the AI attacks by pathing onto
+// players. A PLAYER mover whose next step is hostile-held no longer converts;
+// movePhaseLocked's hasOpposing check blocks it (waits, path retained), and
+// player melee arrives as an entity-targeted attack intent instead
+// (resolveEntityTargetedLocked). Callers hold w.mu.
 func (w *World) collectMeleeAttacksLocked(
 	byHex map[protocol.Hex][]*entity, members []*entity,
 ) ([]pendingAttack, map[int64]bool) {
@@ -1600,7 +1621,7 @@ func (w *World) collectMeleeAttacksLocked(
 	attacked := make(map[int64]bool)
 
 	for _, m := range members {
-		if len(m.path) == 0 {
+		if m.kind != protocol.EntityMonster || len(m.path) == 0 {
 			continue
 		}
 
