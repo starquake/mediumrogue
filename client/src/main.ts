@@ -1021,9 +1021,9 @@ async function start(): Promise<void> {
 
   // hostileIdAt returns the entity id of a monster standing on hex, or null.
   // Resolves a single-target ranged click into an entity-targeted attack
-  // intent (item 7, playtest batch 2): the server re-aims at the victim's
-  // post-move hex at resolution time, tracking a sidestep or retreat a
-  // hex-pinned shot never could.
+  // intent (item 7, playtest batch 2): the server resolves against the
+  // victim's pre-move hex (#104), tracking it by id rather than trusting a
+  // stale hex.
   const hostileIdAt = (hex: Hex): number | null => {
     const hit = window.game.positions.find((p) => p.kind === EntityMonster && p.hex.q === hex.q && p.hex.r === hex.r);
     return hit === undefined ? null : hit.id;

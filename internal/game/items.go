@@ -794,6 +794,12 @@ func mustValidateContent() {
 	validateMaxReach(itemDefs)
 	validateMonsterDefs(monsterDefs)
 
+	// Class passives ride the same card vocabulary as items/monsters —
+	// validate them at init so a bad kind panics at process start, not
+	// mid-combat (speciesCards predate this check and stay grandfathered;
+	// extend this list when a card is added there).
+	validateRuleCards("class:rogue", rogueGlanceCards)
+
 	for _, class := range []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage} {
 		for _, id := range classDefaultIDs(class) {
 			def, ok := itemDefByID[id]

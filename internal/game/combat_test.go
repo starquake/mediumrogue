@@ -113,19 +113,22 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 	}
 }
 
-// TestBumpRetreatDodgesDamage: the defender vacates the bump-target hex
-// during the very same move phase (a retreat), so the deferred bump's
-// post-move re-check finds the hex empty and completes as an ordinary move
-// instead of an attack — no damage, and the attacker advances into the
-// vacated hex.
+// TestBumpHitsRetreatingDefender (#104, attacks-before-moves): the defender
+// vacates the bump-target hex during this same turn's MOVE phase, but the
+// attack phase has already resolved against pre-move positions — the bump
+// lands anyway. The defender takes the hit, then completes its retreat; the
+// attacker stays put (a bump never moves the attacker, and its path is
+// retained). This replaces TestBumpRetreatDodgesDamage: the retreat-dodge
+// (an automatic miss on vacation) is removed by design — retreat now trades
+// hits for distance.
 //
 // The retreating entity here is the monster; its path is set directly via
 // SetPathForTest and resolved with ResolveCombatOnlyForTest (skips
 // thinkMonstersLocked), because the real AI never voluntarily retreats a
-// monster away from a player — it only ever holds or advances. This test is
-// about the combat *machinery* (moveAndBumpLocked's bump/re-check logic),
-// independent of which AI actually drives it.
-func TestBumpRetreatDodgesDamage(t *testing.T) {
+// monster away from a player. This test is about the combat machinery
+// (collectBumpsLocked/attackLocked/movePhaseLocked ordering), independent of
+// which AI drives it.
+func TestBumpHitsRetreatingDefender(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -168,19 +171,19 @@ func TestBumpRetreatDodgesDamage(t *testing.T) {
 
 	monster, ok := entityOfSnap(snap, monsterID)
 	if !ok {
-		t.Fatalf("monster %d should survive an undamaged retreat", monsterID)
+		t.Fatalf("monster %d should survive one sword hit", monsterID)
 	}
 
-	if got, want := monster.HP, protocol.MonsterMaxHP; got != want {
-		t.Errorf("monster HP = %d, want %d (no damage: the bump found the hex vacated)", got, want)
+	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword"); got != want {
+		t.Errorf("monster HP = %d, want %d (the bump lands against the pre-move position)", got, want)
 	}
 
 	if got, want := monster.Hex, escapeHex; got != want {
-		t.Errorf("monster hex = %v, want %v (retreated)", got, want)
+		t.Errorf("monster hex = %v, want %v (the retreat itself still lands, after the hit)", got, want)
 	}
 
-	if got, want := hexOfSnap(snap, me.EntityID), monsterHex; got != want {
-		t.Errorf("attacker hex = %v, want %v (advanced into the vacated hex)", got, want)
+	if got, want := hexOfSnap(snap, me.EntityID), me.Hex; got != want {
+		t.Errorf("attacker hex = %v, want unchanged %v (a bump never moves the attacker)", got, want)
 	}
 }
 

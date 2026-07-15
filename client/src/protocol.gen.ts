@@ -388,6 +388,16 @@ export const ElfCritMultiplier = 2;
  */
 export const DwarfDamageReduction = 1;
 /**
+ * RogueGlanceChancePercent is the percent chance an incoming hit on a
+ * Rogue only glances (GlanceDamagePercent applies).
+ */
+export const RogueGlanceChancePercent = 20;
+/**
+ * GlanceDamagePercent is a glancing hit's damage multiplier in percent
+ * (50 = half damage), shared by any future glance-granting content.
+ */
+export const GlanceDamagePercent = 50;
+/**
  * Tile is one hex of the world map.
  */
 export interface Tile {
@@ -701,10 +711,9 @@ export interface IntentRequest {
    * id instead of a hex (item 7, playtest batch 2): 0 = none (ground-
    * targeted — a mage's AoE cast, whose blast radius makes a hex the
    * natural target). A bow-class attack (aoeRadius 0) sets this instead of
-   * relying on Target; the server re-aims at the named entity's post-move
-   * hex at resolution time, so a sidestepping shooter's shot still tracks
-   * a fleeing target the way a hex-pinned shot never could. Attack intents
-   * only.
+   * relying on Target; the server resolves against the named entity's
+   * pre-move hex (#104), so a committed shot tracks a sidestepping or
+   * fleeing target by id rather than a stale hex. Attack intents only.
    */
   targetEntityId: number /* int64 */;
 }

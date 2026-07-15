@@ -358,9 +358,10 @@ func (w *World) SetPathForTest(id int64, path []protocol.Hex) {
 	}
 }
 
-// ResolveCombatOnlyForTest runs the move/bump/attack/death phases of a turn
+// ResolveCombatOnlyForTest runs the attack/move/death phases of a turn
 // over all entities without the monster-AI think phase, mirroring
-// resolveCombatLocked minus thinkMonstersLocked. It exists so combat tests can pin an exact monster
+// resolveCombatLocked minus thinkMonstersLocked (#104: attack resolves
+// before move). It exists so combat tests can pin an exact monster
 // path via SetPathForTest (simulating a monster-initiated bump — attack or
 // retreat) without the AI recomputing and overriding it on the very same
 // turn.
@@ -383,8 +384,9 @@ func (w *World) ResolveCombatOnlyForTest() {
 		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
-	attacks := w.moveAndBumpLocked(rng, byHex, members)
+	attacks, bumped := w.collectBumpsLocked(byHex, members)
 	w.attackLocked(rng, byHex, attacks)
+	w.movePhaseLocked(rng, byHex, members, bumped)
 	w.resolveDeathsLocked(rng, members)
 
 	w.turn++

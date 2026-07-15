@@ -198,10 +198,10 @@ func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
 	// completion pays its own reward, on top of (not instead of) the kill
 	// reward already paid above. Clear the leftover queued path first: a
 	// bump-turned-attack never consumes it (the mover stays put), and
-	// moveAndBumpLocked doesn't re-validate a queued path's adjacency
-	// against SetHexForTest's raw teleport — an unconsumed path would
-	// otherwise silently walk her back toward hexes[1] on the next
-	// resolution instead of landing on goal.
+	// movePhaseLocked doesn't re-validate a queued path's adjacency against
+	// SetHexForTest's raw teleport — an unconsumed path would otherwise
+	// silently walk her back toward hexes[1] on the next resolution instead
+	// of landing on goal.
 	w.SetPathForTest(alice.EntityID, nil)
 	w.SetHexForTest(alice.EntityID, goal)
 	step(t, w)

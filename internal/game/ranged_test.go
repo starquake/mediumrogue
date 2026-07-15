@@ -358,8 +358,13 @@ func TestRangedIntentIsLockIn(t *testing.T) {
 		t.Errorf("monster HP = %d, want %d (attack lock-in runs the bubble turn)", got, wantMonsterHP)
 	}
 
-	if got, want := entityHP(t, snap, me.EntityID), rogueHPBefore-game.MonsterDamageForTest("wolf"); got != want {
-		t.Errorf("rogue HP = %d, want %d (monster bumps back on the resolved turn)", got, want)
+	// Re-derived for #91 (Rogue glance%): the victim here is a Rogue, and this
+	// suite's default seed procs the glance card's chance condition on the
+	// resolved-turn bump too (confirmed via combat log: wolf base 3, dealt=1),
+	// so the expected loss is the halved hit, not the full one.
+	wantRogueLoss := game.MonsterDamageForTest("wolf") * protocol.GlanceDamagePercent / 100
+	if got, want := entityHP(t, snap, me.EntityID), rogueHPBefore-wantRogueLoss; got != want {
+		t.Errorf("rogue HP = %d, want %d (monster bumps back on the resolved turn, glanced)", got, want)
 	}
 }
 
@@ -396,7 +401,12 @@ func TestRangedAndBumpAccumulateSimultaneously(t *testing.T) {
 		t.Errorf("monster still alive, want removed (bow was lethal)")
 	}
 
-	if got, want := entityHP(t, snap, rogueID), rogueHPBefore-game.MonsterDamageForTest("wolf"); got != want {
-		t.Errorf("rogue HP = %d, want %d (monster's bump lands vs pre-attack HP)", got, want)
+	// Re-derived for #91 (Rogue glance%): the victim here is a Rogue, and
+	// seed 1 procs the glance card's chance condition on this bump (confirmed
+	// via combat log: wolf base 3, dealt=1), so the expected loss is the
+	// halved hit, not the full one.
+	wantRogueLoss := game.MonsterDamageForTest("wolf") * protocol.GlanceDamagePercent / 100
+	if got, want := entityHP(t, snap, rogueID), rogueHPBefore-wantRogueLoss; got != want {
+		t.Errorf("rogue HP = %d, want %d (monster's bump lands vs pre-attack HP, glanced)", got, want)
 	}
 }

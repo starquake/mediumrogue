@@ -70,12 +70,10 @@ moments. The short version (full detail: plan §5):
 - The world moves in **shared 4-second turns**; near enemies, time freezes
   locally into a **combat bubble** where turns wait for everyone's choice.
   Same rules everywhere — only the clock differs.
-- Within a turn, **all movement resolves first, then all attacks land** —
-  simultaneously, against post-move positions — *for now*: the reverse order
-  (**attacks first, against pre-move positions**) is decided (#104,
-  2026-07-15) and lands soon, after which committing to an attack always
-  lands it and stepping away no longer dodges. Either way, two combatants
-  can kill each other on the same turn.
+- Within a turn, **all attacks land first — against pre-move positions —
+  then all movement resolves** (#104): committing to an attack always lands
+  it, and stepping away does not dodge. Two combatants can kill each other
+  on the same turn.
 - **Melee** is bump-to-attack (walk into an enemy). **Ranged** (bow, magic)
   reaches 4 hexes, needs no line of sight, and never hits allies. Mage magic
   is an **area hit** (the target hex plus its ring of neighbors).
@@ -343,11 +341,10 @@ proposing! But these get scheduled as milestones, not slipped in as cards.
 
 A few engine truths to design *with*, not against:
 
-- **Simultaneous phased turns** is the bedrock (today moves-then-attacks;
-  decided 2026-07-15, #104: attacks-then-moves, so a committed attack always
-  lands and retreat means trading hits for distance instead of a free
-  dodge). Mutual kills are a feature either way. Nothing may depend on
-  within-turn ordering like "who acted first."
+- **Simultaneous phased turns** is the bedrock (attacks-then-moves, #104: a
+  committed attack always lands and retreat means trading hits for distance
+  instead of a free dodge). Mutual kills are a feature either way. Nothing
+  may depend on within-turn ordering like "who acted first."
 - **Determinism:** all randomness is a seeded server-side roll (a per-scope
   PCG keyed on world seed + turn). "X% chance" is fine; "player skill-shot
   timing" is not — there are no reflexes in this game, ever.

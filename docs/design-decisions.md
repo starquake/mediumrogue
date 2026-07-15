@@ -37,7 +37,7 @@ spawn (Q9 first half).
   `evasion%` softened to `glance%` — an X% chance the incoming hit is
   **halved**, never fully negated, so an attack turn is never wasted on a
   total miss. Rogue gets it as the class passive, proposed 20%. See the
-  2026-07-15 spec.)
+  2026-07-15 spec. (Shipped: `RogueGlanceChancePercent`.)
 - ~~**AoE always hits** — evasion applies to *targeted* attacks only~~
   *(superseded 2026-07-15)*: the carve-out existed so binary evasion could
   not make anything unhittable and the mage kept an anti-evasion niche; a
@@ -52,7 +52,7 @@ spawn (Q9 first half).
   (stepping away auto-dodged the swing, worst for the mage's ground-targeted
   AoE) is removed. Fleeing survives as *trading hits for distance*: a
   one-action chaser that bumps you isn't gaining ground that turn. Mutual
-  kills unchanged. (#104, decided 2026-07-15; not yet implemented.)
+  kills unchanged. (#104, decided 2026-07-15; shipped.)
 - **One action per turn, reaffirmed** — move XOR attack per 4-second turn.
   Full move+attack was examined and rejected (2026-07-15): at uniform
   1-hex/turn speed it makes fleeing melee impossible (chaser moves *and*
@@ -128,12 +128,6 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
 
 ## Open flags (doc vs implementation)
 
-- **Resolution order — attacks vs moves** *(decided 2026-07-15)*. The
-  shipped turn loop still resolves **moves first** (retreat-dodge is live
-  behavior); **attacks-before-moves** is the decided rule (#104) and lands
-  with its implementation plan. `FEATURES.md` keeps describing the shipped
-  order until that PR. Not a contradiction — moves-first is shipped,
-  attacks-first is committed.
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14)*. Bubbles trigger
   on **pure distance** (`≤ CombatRadius`) today; the plan keeps **mutual
   line-of-sight** as the design target (terrain blocks spotting), now tracked as

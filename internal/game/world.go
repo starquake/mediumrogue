@@ -199,11 +199,11 @@ type entity struct {
 	attackTarget *protocol.Hex
 	// attackTargetEntity is a pending single-target (bow) ranged attack's
 	// victim, named by entity id (item 7, playtest batch 2) — 0 for none, or
-	// for a ground-targeted attack (see attackTarget). Resolution re-aims at
-	// this entity's CURRENT (post-move) hex rather than trusting the hex
-	// captured at submit time, so a sidestepping or retreating victim is
-	// tracked: hits if still within the weapon's range from the shooter's
-	// own post-move hex, else fizzles (resolveEntityTargetedLocked).
+	// for a ground-targeted attack (see attackTarget). Resolution aims at
+	// this entity's PRE-MOVE hex (#104 — attacks resolve before moves), so a
+	// sidestepping or retreating victim is tracked by id rather than a stale
+	// hex: hits if still within the weapon's range from the shooter's own
+	// pre-move hex, else fizzles defensively (resolveEntityTargetedLocked).
 	attackTargetEntity int64
 	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
 	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
@@ -908,13 +908,14 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // ErrAttackTargetNotFound), be a hostile — opposing faction (else
 // ErrAttackTargetNotHostile) — and be within reach of AT LEAST ONE held
 // ranged/magic weapon from e's current hex at submit time (else
-// ErrOutOfRange); resolution re-aims at the victim's post-move hex
-// (resolveEntityTargetedLocked) rather than trusting this submit-time
-// position, so a sidestep or retreat is tracked. This routing no longer keys
-// off any single "best" weapon's aoeRadius (task 2, dual-wield): a shooter
-// dual-wielding a bow and a magic weapon still gets the bow's entity-targeted
-// post-move re-aim AND the magic weapon's AoE around the victim's hex, both
-// from one entity-targeted intent — resolution (resolveEntityTargetedLocked)
+// ErrOutOfRange); resolution (#104) runs against the victim's pre-move hex
+// (resolveEntityTargetedLocked) — the same position checked at submit, so a
+// sidestep or retreat is tracked by id rather than a stale hex. This routing
+// no longer keys off any single "best" weapon's aoeRadius (task 2,
+// dual-wield): a shooter dual-wielding a bow and a magic weapon still gets
+// the bow's entity-targeted hit AND the magic weapon's AoE around the
+// victim's hex, both from one entity-targeted intent — resolution
+// (resolveEntityTargetedLocked)
 // already fires every reaching def this way regardless of which one happens
 // to have the longest range. Anything else (targetEntityID 0 — e.g. a
 // defensive/legacy hex-only shot) is GROUND-targeted at target, checked the
@@ -1239,14 +1240,11 @@ func removeEntity(occs []*entity, m *entity) []*entity {
 	return occs
 }
 
-// pendingBump is a move onto an opposing-held hex, re-checked post-move.
-type pendingBump struct {
-	m      *entity
-	target protocol.Hex
-}
-
-// pendingAttack is a bump that is still opposing-held after the move phase
-// completes, and therefore lands as an attack.
+// pendingAttack is a bump committed in the attack phase (#104,
+// attacks-before-moves): a move intent whose next step was opposing-held on
+// the PRE-MOVE board. The attacker stays put (path retained — a standing
+// intent keeps attacking); target is the victim hex as it stood before any
+// move this turn.
 type pendingAttack struct {
 	attacker *entity
 	target   protocol.Hex
@@ -1351,9 +1349,10 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 }
 
 // resolveCombatLocked runs the decided phased resolution over a given entity
-// set: think → move (faction-aware, with bump deferral) → attack (simultaneous,
-// post-move positions) → apply damage & deaths. The set is a whole
-// CombatRadius-connected domain (the world domain or one bubble), so no move,
+// set: think → attack (simultaneous, pre-move positions — #104,
+// attacks-before-moves) → move (faction-aware, bumpers skipped) → apply
+// damage & deaths. The set is a whole CombatRadius-connected domain (the
+// world domain or one bubble), so no move,
 // bump, stack, or attack can reach an entity outside it. worldDomain selects
 // thinkMonstersLocked's aggro gating (true for the world domain, false inside
 // a bubble — see that function's doc comment). It does not recompute bubbles
@@ -1389,14 +1388,22 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDoma
 		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
-	attacks := w.moveAndBumpLocked(rng, byHex, members)
-
 	// NOTE: walk-over auto-pickup used to run here (between movement and the
-	// attack phase). The inventory-slots milestone removed it — picking up is
-	// now an explicit pickup INTENT (inventory.go), free outside a bubble and
-	// a whole turn inside one, applied by the pending pass above.
+	// attack phase, pre-#104). The inventory-slots milestone removed it —
+	// picking up is now an explicit pickup INTENT (inventory.go), free
+	// outside a bubble and a whole turn inside one, applied by the pending
+	// pass above.
+
+	// #104, attacks-before-moves: the attack phase resolves first, against
+	// PRE-MOVE positions (byHex as built above), then movers advance. A
+	// committed attack always lands; retreat trades hits for distance. Note
+	// the rng-consumption order is contractual for determinism: bump victim
+	// picks + damage folds draw first, the mover shuffle draws after.
+	attacks, bumped := w.collectBumpsLocked(byHex, members)
 
 	w.attackLocked(rng, byHex, attacks)
+
+	w.movePhaseLocked(rng, byHex, members, bumped)
 
 	return w.resolveDeathsLocked(rng, members)
 }
@@ -1424,7 +1431,7 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 
 // rollDamageLocked runs one hit through the pipeline: the attacker's
 // deal-damage cards (species + the acting weapon's rules) then the victim's
-// take-damage cards (species + the rules of EVERYTHING the victim has
+// take-damage cards (species + class + the rules of EVERYTHING the victim has
 // equipped, folded in canonicalSlotOrder — a hit lands on the whole entity,
 // not just the slot that happens to be attacking; this is how armor's
 // take-damage cards apply). A monster victim folds its kind's claws rules
@@ -1442,7 +1449,9 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
 	dealt := applyRules(evDealDamage, base, attackerCards, ctx)
 
-	victimCards := slices.Concat(speciesCards(victim.species), victimGearCards(victim))
+	// Species, then class, then gear: chance conditions consume the turn rng
+	// in card order, so this concat order is contractual for determinism.
+	victimCards := slices.Concat(speciesCards(victim.species), classCards(victim.class), victimGearCards(victim))
 
 	return applyRules(evTakeDamage, dealt, victimCards, ctx)
 }
@@ -1554,20 +1563,54 @@ func (w *World) bubbleFloorElapsedLocked(b *bubble, now time.Time) bool {
 	return b.lastResolvedAt.IsZero() || now.Sub(b.lastResolvedAt) >= w.interval
 }
 
-// moveAndBumpLocked resolves the move phase: movers advance one hex from
-// their path in seeded-shuffled order, unless the destination is
-// opposing-held (deferred as a bump) or the destination hex is at StackCap
-// for a same-faction move (waits, path retained). Deferred bumps are
-// re-checked once every other move has landed — a bump target that emptied
-// out this turn (the defender retreated) completes as a normal move instead
-// of an attack. Returns the bumps that are still opposing-held after that
-// re-check, i.e. the attacks to resolve this turn. Callers hold w.mu.
-func (w *World) moveAndBumpLocked(
-	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity,
-) []pendingAttack {
+// collectBumpsLocked scans the PRE-MOVE board for this turn's bump attacks
+// (#104, attacks-before-moves): a mover whose next step is an opposing-held
+// hex commits its turn to an attack on that hex and will not move (path
+// retained). Consumes no rng — detection reads the static pre-move board in
+// members' id-sorted order, so the returned attack order is deterministic
+// without a draw. Returns the attacks and the committed bumpers' ids for
+// movePhaseLocked to skip. The old retreat-dodge (a deferred bump
+// re-checked post-move, completing as a move when the defender vacated —
+// fizzle reason bump_target_vacated) is removed by design: a committed
+// attack always lands. Callers hold w.mu.
+func (w *World) collectBumpsLocked(
+	byHex map[protocol.Hex][]*entity, members []*entity,
+) ([]pendingAttack, map[int64]bool) {
+	var attacks []pendingAttack
+
+	bumped := make(map[int64]bool)
+
+	for _, m := range members {
+		if len(m.path) == 0 {
+			continue
+		}
+
+		if hasOpposing(byHex[m.path[0]], m) {
+			attacks = append(attacks, pendingAttack{m, m.path[0]})
+			bumped[m.id] = true
+		}
+	}
+
+	return attacks, bumped
+}
+
+// movePhaseLocked resolves the move phase, AFTER attacks (#104): movers
+// advance one hex from their path in seeded-shuffled order — skipping
+// entities that committed a bump this turn (bumped; a bump is the turn's
+// whole action) and entities killed in the attack phase (hp <= 0 — the dead
+// never move; deaths are removed later by resolveDeathsLocked). A
+// destination that is opposing-held on the evolving board (including a
+// hostile that arrived this same phase) blocks the mover — it waits, path
+// retained, and next turn the standing intent becomes a bump. A
+// same-faction destination at StackCap also waits, path retained. Callers
+// hold w.mu.
+func (w *World) movePhaseLocked(
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity, bumped map[int64]bool,
+) {
 	movers := make([]*entity, 0, len(members))
+
 	for _, e := range members {
-		if len(e.path) > 0 {
+		if len(e.path) > 0 && !bumped[e.id] && e.hp > 0 {
 			movers = append(movers, e)
 		}
 	}
@@ -1575,50 +1618,21 @@ func (w *World) moveAndBumpLocked(
 	slices.SortFunc(movers, func(a, b *entity) int { return int(a.id - b.id) })
 	rng.Shuffle(len(movers), func(i, j int) { movers[i], movers[j] = movers[j], movers[i] })
 
-	var bumps []pendingBump
-
 	for _, m := range movers {
 		next := m.path[0]
 		occs := byHex[next]
 
-		switch {
-		case hasOpposing(occs, m):
-			bumps = append(bumps, pendingBump{m, next}) // stay; resolve after move phase
-		case len(occs) < protocol.StackCap:
-			from := m.hex
-			byHex[m.hex] = removeEntity(byHex[m.hex], m)
-			byHex[next] = append(byHex[next], m)
-			m.hex = next
-			m.path = m.path[1:]
-			w.logger.Info(combatLogMsg, "event", combatEventMove, "id", m.id, "kind", m.kind, "from", from, "to", next)
+		if hasOpposing(occs, m) || len(occs) >= protocol.StackCap {
+			continue // blocked (hostile-held or full) → wait, path retained
 		}
-		// else: same-faction hex full → wait (path retained).
+
+		from := m.hex
+		byHex[m.hex] = removeEntity(byHex[m.hex], m)
+		byHex[next] = append(byHex[next], m)
+		m.hex = next
+		m.path = m.path[1:]
+		w.logger.Info(combatLogMsg, "event", combatEventMove, "id", m.id, "kind", m.kind, "from", from, "to", next)
 	}
-
-	// Post-move bump re-check: still opposing-held → attack; vacated → complete
-	// the move (retreat dodge / follow into the empty hex).
-	var attacks []pendingAttack
-
-	for _, b := range bumps {
-		occs := byHex[b.target]
-
-		switch {
-		case hasOpposing(occs, b.m):
-			attacks = append(attacks, pendingAttack{b.m, b.target})
-		case len(occs) < protocol.StackCap:
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "bump_target_vacated",
-				"attacker", b.m.id, "target_hex", b.target)
-
-			from := b.m.hex
-			byHex[b.m.hex] = removeEntity(byHex[b.m.hex], b.m)
-			byHex[b.target] = append(byHex[b.target], b.m)
-			b.m.hex = b.target
-			b.m.path = b.m.path[1:]
-			w.logger.Info(combatLogMsg, "event", combatEventMove, "id", b.m.id, "kind", b.m.kind, "from", from, "to", b.target)
-		}
-	}
-
-	return attacks
 }
 
 // attackLocked resolves the attack phase: each bump attack and each pending
@@ -1634,7 +1648,9 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	for _, a := range attacks {
 		victims := opposingOccupants(byHex[a.target], a.attacker)
 		if len(victims) == 0 {
-			continue // guard; the re-check ensured at least one
+			// Guard; collectBumpsLocked ensured at least one on the pre-move
+			// board — a same-phase state change here would be a bug.
+			continue
 		}
 
 		// Canonical order first, like the movers shuffle above: byHex was
@@ -1675,10 +1691,12 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 // reproducible regardless of map iteration order. An ENTITY-targeted attack
 // (item 7, playtest batch 2 — attackTargetEntity != 0, aimed at a specific
 // victim rather than a hex) delegates to resolveEntityTargetedLocked, which
-// re-aims at the victim's post-move hex. Everything else is GROUND-targeted at
-// attackTarget's hex, re-checked against post-move positions in byHex: a shot
-// that is now out of every held weapon's range fizzles. Every ranged/magic
-// weapon that still reaches the target (rangedDefsFor, task 2 dual-wield)
+// aims at the victim's pre-move hex (#104 — attacks resolve before moves, so
+// entity/hex positions here are as-submitted). Everything else is
+// GROUND-targeted at attackTarget's hex, checked against pre-move positions
+// (#104 — attacks resolve before moves, so entity/hex positions here are
+// as-submitted) in byHex: a shot that is out of every held weapon's range
+// fizzles. Every ranged/magic weapon that still reaches the target (rangedDefsFor, task 2 dual-wield)
 // fires as its own hit, in hand order: a bow (aoeRadius 0) damages one
 // opposing occupant at the target hex — a stack picks one hostile with rng,
 // mirroring the bump victim pick (this is the legacy/defensive hex-only bow
@@ -1730,9 +1748,10 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 // resolveGroundTargetedLocked resolves one ground-targeted ranged attack (the
 // legacy/defensive hex-only path — kept for the SetAttackTargetForTest bridge
 // and any future hex-only ranged use; a real client always sends an entity id
-// for a single-target weapon), re-checked against post-move positions in
-// byHex: fizzles (reason out_of_range) if the target hex is now out of every
-// held weapon's range. Every ranged/magic weapon that still reaches
+// for a single-target weapon), checked against pre-move positions in byHex
+// (#104 — attacks resolve before moves, so entity/hex positions here are
+// as-submitted): fizzles (reason out_of_range) if the target hex is out of
+// every held weapon's range. Every ranged/magic weapon that still reaches
 // (rangedDefsFor, task 2 dual-wield) fires as its own hit, in hand order.
 // Single-target (aoeRadius 0) defs share ONE stack-victim pick, drawn lazily
 // on the first such def, mirroring attackLocked's bump victim pick — a
@@ -1748,7 +1767,9 @@ func (w *World) resolveGroundTargetedLocked(
 ) {
 	defs := rangedDefsFor(e, HexDistance(e.hex, target))
 	if len(defs) == 0 {
-		// moved out of range this turn → fizzle
+		// Defensive only (#104): nothing moves between submit validation and
+		// attack resolution, so this hex-only path is out of range only via
+		// the SetAttackTargetForTest bridge or a mid-turn unequip.
 		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range", "attacker", e.id,
 			"target_hex", target)
 
@@ -1779,27 +1800,32 @@ func (w *World) resolveGroundTargetedLocked(
 }
 
 // resolveEntityTargetedLocked resolves one entity-targeted ranged attack
-// (item 7, playtest batch 2): re-aims at the victim's CURRENT (post-move) hex
-// rather than trusting the hex it happened to occupy at submit time, so a
-// sidestepping or retreating target is tracked the way a hex-pinned shot
-// never could. Every ranged/magic weapon the attacker holds that still
-// reaches the victim's post-move hex (rangedDefsFor, task 2 dual-wield) fires
-// as its own hit, in hand order: a bow (aoeRadius 0) damages exactly the named
-// victim; a magic weapon (aoeRadius > 0) AoEs around the victim's hex
-// (resolveAoELocked — no friendly fire, may also catch other hostiles nearby).
-// A single ranged weapon still fires exactly one hit at exactly the named
-// victim, so this is unchanged for every pre-dual-wield board. Fizzles
-// (reason out_of_range) if NO held weapon reaches — same reason the
-// ground-targeted path logs. A victim that died or vanished this same turn —
-// a simultaneous kill by another attacker, resolved earlier in this same
-// damage-accumulation pass — also fizzles (reason target_gone) rather than
-// panicking on a missing entity; damage application happens all-at-once after
-// every attack accumulates (attackLocked), so "vanished" here really means
-// removed by a PRIOR resolution this turn (deaths, not this pass —
-// resolveDeathsLocked runs after this), i.e. any entity that already left
-// w.entities entirely, which resolveCombatLocked never does mid-attack-phase;
-// this guard is therefore mostly defensive, matching resolveBowLocked's own
-// empty-hex no-op. Callers hold w.mu.
+// (item 7, playtest batch 2): aims at the victim's pre-move hex (#104 —
+// attacks resolve before moves, so entity/hex positions here are
+// as-submitted) rather than trusting the hex it happened to occupy at
+// submit time, so a sidestepping or retreating target is tracked the way a
+// hex-pinned shot never could. Every ranged/magic weapon the attacker holds
+// that still reaches the victim's pre-move hex (rangedDefsFor, task 2
+// dual-wield) fires as its own hit, in hand order: a bow (aoeRadius 0)
+// damages exactly the named victim; a magic weapon (aoeRadius > 0) AoEs
+// around the victim's hex (resolveAoELocked — no friendly fire, may also
+// catch other hostiles nearby). A single ranged weapon still fires exactly
+// one hit at exactly the named victim, so this is unchanged for every
+// pre-dual-wield board. Fizzles (reason out_of_range) if NO held weapon
+// reaches — same reason the ground-targeted path logs; this is now
+// defensive only (#104): nothing moves between submit validation and
+// attack resolution, so it is reachable only via the
+// SetAttackTargetEntityForTest bridge or a mid-turn unequip. A victim that
+// died or vanished this same turn — a simultaneous kill by another
+// attacker, resolved earlier in this same damage-accumulation pass — also
+// fizzles (reason target_gone) rather than panicking on a missing entity;
+// damage application happens all-at-once after every attack accumulates
+// (attackLocked), so "vanished" here really means removed by a PRIOR
+// resolution this turn (deaths, not this pass — resolveDeathsLocked runs
+// after this), i.e. any entity that already left w.entities entirely, which
+// resolveCombatLocked never does mid-attack-phase; this guard is therefore
+// mostly defensive, matching resolveBowLocked's own empty-hex no-op.
+// Callers hold w.mu.
 func (w *World) resolveEntityTargetedLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacker *entity, targetEntityID int64, damage map[int64]int,
 ) {

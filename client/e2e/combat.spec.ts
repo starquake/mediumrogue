@@ -231,7 +231,7 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   expect(await page.evaluate(() => window.game.me?.hex ?? null)).toEqual(hexAtFreeze);
 
   // Stop this entity's walk immediately: the chase loop above left a queued
-  // path aimed at the monster. moveAndBumpLocked unconditionally consumes a
+  // path aimed at the monster. movePhaseLocked unconditionally consumes a
   // non-empty e.path when the bubble resolves — lock-in gating only controls
   // *when* the bubble resolves, not whether a queued path gets walked. If
   // this bubble ever resolves (e.g. via the e2e server's COMBAT_PATIENCE

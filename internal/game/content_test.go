@@ -102,3 +102,19 @@ func TestKeystoneRetagAndRebalance(t *testing.T) {
 		}
 	}
 }
+
+// TestClassCards: the Rogue carries exactly the glance passive; other
+// classes (and monsters' empty class) carry none.
+func TestClassCards(t *testing.T) {
+	t.Parallel()
+
+	if got, want := len(classCards(protocol.ClassRogue)), 1; got != want {
+		t.Errorf("len(classCards(rogue)) = %d, want %d", got, want)
+	}
+
+	for _, class := range []string{protocol.ClassFighter, protocol.ClassMage, ""} {
+		if got := classCards(class); got != nil {
+			t.Errorf("classCards(%q) = %v, want nil", class, got)
+		}
+	}
+}
