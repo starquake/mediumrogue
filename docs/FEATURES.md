@@ -527,7 +527,7 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   structured `slog`, the milestone-12 analytics seed): every resolution
   path emits `slog.Info("combat", "event",
   ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
-  `fizzle` (reasons: `out_of_range`, `unequipped`,
+  `fizzle` (reasons: `out_of_range`, `unequipped`, `target_gone`,
   `pending_item_action`), `death`, `xp_award`, `pickup` (item defID, count),
   `drop` (item defID, count, hex), `drink` (item defID, resulting hp) —
   filterable on the `"combat"` msg key or the
