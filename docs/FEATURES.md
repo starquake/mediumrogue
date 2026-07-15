@@ -56,30 +56,34 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   for mine, neutral near-white for anyone else.
 - **In combat**: click-anywhere is replaced by tactical selection — only the
   tiles reachable this turn are clickable, tinted **blue** (open moves) /
-  **strong red** (adjacent hostile = melee attack); the equipped ranged
-  weapon's full reach is washed **light red** (click shoots when a hostile is
-  there; anywhere for AoE); clicking your own hex waits/cancels. Reach is a
-  BFS with `COMBAT_MOVE_RANGE = 1` (client), structured for future run/jump.
+  **strong red** (adjacent hostile = melee attack (an attack intent)); the
+  equipped ranged weapon's full reach is washed **light red** (click shoots
+  when a hostile is there; anywhere for AoE); clicking your own hex
+  waits/cancels. Reach is a BFS with `COMBAT_MOVE_RANGE = 1` (client),
+  structured for future run/jump.
 - **Entering a combat bubble hard-cancels a queued auto-walk** (#103): the
   server clears a remaining **multi-hex** route on the world→bubble
   transition, and the client drops the walk goal and its destination ring on
   the same bundle. What survives: a path queued *inside* a bubble (fleeing),
   a path carried across a bubble merge, and a **single remaining step** —
-  that's a deliberate adjacent action, in particular the standing melee
-  intent, which keeps attacking turn after turn. Every in-combat move is
-  otherwise a fresh, deliberate intent; after the fight, click the
-  destination again.
+  that's a deliberate adjacent action, a deliberate adjacent move. Every
+  in-combat move is otherwise a fresh, deliberate intent; after the fight,
+  click the destination again.
 
 ### Combat
-- **No separate combat screen** — same map, same intents. **Melee**: walk
-  into an enemy to strike it (the classic roguelike bump-to-attack); ranged
-  **attack intent** (bow single-target, mage AoE radius 1), range 4 hexes,
-  distance-only (no LOS), **no friendly fire**.
+- **No separate combat screen** — same map, same intents. **Melee**: click
+  (or key-step into) an adjacent enemy to swing — an entity-targeted attack
+  intent (#116), one click per swing, and attacking never moves you;
+  monsters still fight by moving into you (the classic roguelike
+  bump-to-attack is now the monsters' rule); ranged **attack intent** (bow
+  single-target, mage AoE radius 1), range 4 hexes, distance-only (no LOS),
+  **no friendly fire**.
 - **Entity-targeted single-target ranged attacks** (item 7, playtest batch
   2): a bow shot names its victim by **entity id** (`IntentRequest.
   targetEntityId`), not a hex — clicking a hostile in range sends its id.
-  An AoE cast (mage) stays **ground-targeted** (a hex — the blast radius
-  makes that the natural target).
+  Melee shares this entity-targeted intent at distance 1 (#116). An AoE cast
+  (mage) stays **ground-targeted** (a hex — the blast radius makes that the
+  natural target).
   Validated at submit (entity exists+alive, hostile, in range); resolution
   (#104) runs against **pre-move positions**, so a committed shot always
   lands — the `out_of_range` fizzle survives only as a defensive guard
