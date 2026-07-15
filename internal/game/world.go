@@ -1641,9 +1641,11 @@ func (w *World) collectMeleeAttacksLocked(
 // never move; deaths are removed later by resolveDeathsLocked). A
 // destination that is opposing-held on the evolving board (including a
 // hostile that arrived this same phase) blocks the mover — it waits, path
-// retained, and next turn the standing intent becomes a melee attack. A
-// same-faction destination at StackCap also waits, path retained. Callers
-// hold w.mu.
+// retained; next turn a MONSTER mover's standing intent becomes a melee
+// attack (collectMeleeAttacksLocked), while a blocked PLAYER simply keeps
+// waiting — player melee is an entity-targeted attack intent, never a move
+// (#116). A same-faction destination at StackCap also waits, path retained.
+// Callers hold w.mu.
 func (w *World) movePhaseLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool,
 ) {
