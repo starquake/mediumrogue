@@ -60,6 +60,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   weapon's full reach is washed **light red** (click shoots when a hostile is
   there; anywhere for AoE); clicking your own hex waits/cancels. Reach is a
   BFS with `COMBAT_MOVE_RANGE = 1` (client), structured for future run/jump.
+- **Entering a combat bubble hard-cancels a queued auto-walk** (#103): the
+  server clears a remaining **multi-hex** route on the world→bubble
+  transition, and the client drops the walk goal and its destination ring on
+  the same bundle. What survives: a path queued *inside* a bubble (fleeing),
+  a path carried across a bubble merge, and a **single remaining step** —
+  that's a deliberate adjacent action, in particular the standing bump
+  intent, which keeps attacking turn after turn. Every in-combat move is
+  otherwise a fresh, deliberate intent; after the fight, click the
+  destination again.
 
 ### Combat
 - **No separate combat screen** — same map, same intents. **Bump-to-attack**

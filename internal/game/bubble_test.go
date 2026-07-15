@@ -431,6 +431,56 @@ func TestPlayersExtendBubbleReach(t *testing.T) {
 	}
 }
 
+// TestBubbleEntryCancelsAutoWalk: a queued world-time auto-walk is hard-
+// cancelled the moment its owner is pulled into a combat bubble (#103) — the
+// route must not keep advancing one hex per bubble-turn underneath the fight.
+// The flee counterpart (a path queued INSIDE a bubble survives recomputes) is
+// TestBubbleMemberEscapesWhenLeavingRange; the standing-bump counterpart (a
+// single-step path survives bubble entry) is TestBumpKillRemovesMonster.
+func TestBubbleEntryCancelsAutoWalk(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	pinToOrigin(w, &me)
+
+	// South axis (an unbroken grass corridor on the generated map): queue a
+	// long walk BEFORE any monster exists, so the full route lands server-side
+	// in world time.
+	far := mustWalkable(t, w, protocol.Hex{Q: 0, R: 8})
+	if !submitOK(w, me, far) {
+		t.Fatalf("SubmitIntent for the auto-walk failed")
+	}
+
+	if got := len(w.PathForTest(me.EntityID)); got == 0 {
+		t.Fatalf("queued path is empty, want a multi-hex route to %v", far)
+	}
+
+	// A monster lying in wait partway down the route: the first step's final
+	// recompute links the pair into a bubble (dist ≤ CombatRadius).
+	monsterID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: 0, R: 4}))
+
+	snap := step(t, w)
+
+	if !inCombat(t, snap, me.EntityID) {
+		t.Fatalf("player InCombat = false, want true (bubble must form on the route)")
+	}
+
+	if !inCombat(t, snap, monsterID) {
+		t.Fatalf("monster InCombat = false, want true")
+	}
+
+	if got := w.PathForTest(me.EntityID); got != nil {
+		t.Errorf("path after bubble entry = %v, want nil (auto-walk must be hard-cancelled)", got)
+	}
+}
+
 // TestBubbleDissolvesWhenMonsterDies: killing the only monster drops the
 // component below an opposing pair, so the surviving player returns to the
 // world domain and the bubble disappears.
