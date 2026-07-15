@@ -80,6 +80,13 @@ spawn (Q9 first half).
   walks stop adjacent to a hostile destination; move-conversion is
   monster-only. Keyboard steps route through the click path so the
   roguelike step-into-enemy idiom survives.
+- **Shields v1** (#90, 2026-07-15; shipped): off-hand only (no dual-shield,
+  no shield-in-main); two tiers (−1 common / −2 rare) as flat `take-damage`
+  cards on the existing pipeline — no new event kind, no chance roll;
+  drop-only (no starting-kit change). The trade is dual-wield's second hit
+  for the reduction; a two-handed weapon still locks the slot (equipping a
+  shield evicts it, room-checked). Active block/evasion stays deferred to
+  #69, shield skills to #57.
 
 ## Cut — won't build (and why)
 

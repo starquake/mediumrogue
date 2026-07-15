@@ -163,13 +163,17 @@ is what we preserve. Always write it.
 Gear is the system this pipeline is being built for. The decided frame
 (updated by the inventory-slots milestone):
 
-- Every item has a **type**, and the type decides where it goes. The 8
+- Every item has a **type**, and the type decides where it goes. The 9
   types (the gear keystone, #55/#56 — collapsed from the inventory-slots
-  milestone's original 12): one `weapon` type (carrying **tags** —
-  `melee`/`ranged`/`magic`, which attacks fire it — plus a `two-handed?`
-  flag), a `consumable`, and six armor/jewelry types that each fill exactly
-  one **equip slot** of the same name: `helmet, chest, gloves, boots, ring,
-  amulet`. Consumables have no slot — they live in the backpack as stacks.
+  milestone's original 12; `shield` added by #90): one `weapon` type
+  (carrying **tags** — `melee`/`ranged`/`magic`, which attacks fire it —
+  plus a `two-handed?` flag), a `consumable`, a `shield` (fills the
+  **off-hand** only — its whole effect is a `take-damage` rule card, e.g.
+  add −1; it never carries damage/range of its own, and a two-handed weapon
+  in main is evicted to the backpack when one equips), and six armor/jewelry
+  types that each fill exactly one **equip slot** of the same name:
+  `helmet, chest, gloves, boots, ring, amulet`. Consumables have no slot —
+  they live in the backpack as stacks.
 - A character has **8 equip slots**: the six armor slots above plus **two
   hand slots**, `main-hand` and `off-hand` — chosen at equip time, not fixed
   per class. A two-handed weapon occupies main-hand and locks off-hand
@@ -199,12 +203,13 @@ Gear is the system this pipeline is being built for. The decided frame
 ```
 Name:        (evocative — names carry half the flavor)
 Type:        weapon (+ tags: melee / ranged / magic — pick ≥1; + two-handed?
-             yes/no) / helmet / chest / gloves / boots / ring / amulet /
-             consumable
+             yes/no) / shield / helmet / chest / gloves / boots / ring /
+             amulet / consumable
              (the slot follows from the type — a weapon lands in a hand
-             chosen at equip time, not a fixed slot; don't specify it
-             separately. No "wearable by" line — any class may equip any
-             item; tags describe how a weapon fights, not who may carry it)
+             chosen at equip time, not a fixed slot; a shield always fills
+             the off-hand; don't specify it separately. No "wearable by"
+             line — any class may equip any item; tags describe how a
+             weapon fights, not who may carry it)
 Base stats:  damage, range in hexes (0 = melee), area radius (0 = single target)
              (weapons only — armor/jewelry cards usually carry rules instead)
 Rules:       0 or more when/if/then rules
