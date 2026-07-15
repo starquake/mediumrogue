@@ -235,6 +235,11 @@ export const ItemTypeRing = "ring";
  */
 export const ItemTypeAmulet = "amulet";
 /**
+ * ItemTypeShield occupies the off-hand — pure defence, never fires as a
+ * hit (#90, S4 of #55).
+ */
+export const ItemTypeShield = "shield";
+/**
  * Weapon tags: which attacks fire the weapon (§3 of the keystone spec).
  */
 export const WeaponTagMelee = "melee";

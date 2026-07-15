@@ -111,6 +111,24 @@ func (*World) equipItemLocked(e *entity, itemID int64) error {
 		return e.equipWeaponLocked(inst, def)
 	}
 
+	// A shield equips into the off-hand (slotForType), but a two-handed
+	// weapon in main LOCKS that slot — equipping the shield evicts the
+	// two-hander to the backpack first, room-checked BEFORE any state
+	// change (mirroring equipWeaponLocked's polite failure). A two-hander
+	// in main implies an empty off-hand (equipWeaponLocked's invariant), so
+	// eviction is the only prerequisite. heldSlotOf == "" is exactly "not
+	// currently equipped" for a shield (off-hand is its only possible
+	// slot), so a toggle-OFF of an equipped shield never fires this. #90.
+	if def.itemType == protocol.ItemTypeShield && heldSlotOf(e, inst.id) == "" {
+		if main := e.equippedDefIn(protocol.SlotMainHand); main != nil && main.twoHanded {
+			if e.freeBackpackIndex() < 0 {
+				return ErrBackpackFull
+			}
+
+			e.toggleEquip(e.equipped[protocol.SlotMainHand], protocol.SlotMainHand)
+		}
+	}
+
 	// A toggle-OFF (already equipped) is an unequip: it needs a free
 	// backpack entry, and the intent path should say so rather than no-op.
 	slot := slotForType(def.itemType)

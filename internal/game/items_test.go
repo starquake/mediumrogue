@@ -929,6 +929,38 @@ func TestValidateItemDefsPanicsOnNonWeaponTagsOrTwoHanded(t *testing.T) {
 	})
 }
 
+// TestValidateItemDefsPanicsOnNonWeaponCombatStats: damage, rangeHex, and
+// aoeRadius are weapon-only fields — only a weapon fires as a hit, so a
+// copy-paste shield or armor def carrying one is an authoring mistake that
+// must fail at load (#90; a shield's −N lives in its rule card, not a damage
+// field).
+func TestValidateItemDefsPanicsOnNonWeaponCombatStats(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		def  *itemDef
+	}{
+		{"damage on a shield", &itemDef{id: "x", itemType: protocol.ItemTypeShield, damage: 3}},
+		{"rangeHex on armor", &itemDef{id: "x", itemType: protocol.ItemTypeChest, rangeHex: 2}},
+		{"aoeRadius on a shield", &itemDef{id: "x", itemType: protocol.ItemTypeShield, aoeRadius: 1}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("validateItemDefs did not panic on %s", tc.name)
+				}
+			}()
+
+			validateItemDefs([]*itemDef{tc.def})
+		})
+	}
+}
+
 // TestValidateItemDefsHealRules: a consumable must have heal > 0; gear must
 // never set heal.
 func TestValidateItemDefsHealRules(t *testing.T) {

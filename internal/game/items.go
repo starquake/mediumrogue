@@ -25,10 +25,11 @@ type itemDef struct {
 	// text in the inventory tooltip — separate from desc's mechanical effect
 	// line, and never gameplay-affecting. Empty for items without lore.
 	flavor string
-	// itemType is one of the protocol.ItemType* consts — the taxonomy's 8
-	// types (one weapon type plus consumable plus the six armor/jewelry
-	// types). It determines the item's slot (slotForType/weaponTargetSlot):
-	// each armor/jewelry type fits exactly one slot, a weapon fits a hand
+	// itemType is one of the protocol.ItemType* consts — the taxonomy's 9
+	// types (one weapon type plus consumable plus shield plus the six
+	// armor/jewelry types). It determines the item's slot
+	// (slotForType/weaponTargetSlot): each armor/jewelry type fits exactly
+	// one slot, a shield fits the off-hand (#90), a weapon fits a hand
 	// chosen at equip time, and a consumable has no slot (backpack stack
 	// only).
 	itemType string
@@ -99,12 +100,13 @@ var fistsDef = &itemDef{
 	tags: []string{protocol.WeaponTagMelee}, damage: protocol.FistsDamage,
 }
 
-// validItemType reports whether t is one of the taxonomy's 8 known types.
+// validItemType reports whether t is one of the taxonomy's 9 known types.
 func validItemType(t string) bool {
 	switch t {
 	case protocol.ItemTypeWeapon, protocol.ItemTypeConsumable,
 		protocol.ItemTypeHelmet, protocol.ItemTypeChest, protocol.ItemTypeGloves,
-		protocol.ItemTypeBoots, protocol.ItemTypeRing, protocol.ItemTypeAmulet:
+		protocol.ItemTypeBoots, protocol.ItemTypeRing, protocol.ItemTypeAmulet,
+		protocol.ItemTypeShield:
 		return true
 	default:
 		return false
@@ -112,12 +114,16 @@ func validItemType(t string) bool {
 }
 
 // slotForType returns the equip slot for a NON-WEAPON item type (armor
-// slots equal their type), "" for consumable (no slot), and "" for weapon —
-// a weapon's slot is a hand chosen at equip time (weaponTargetSlot).
+// slots equal their type; a shield is the one non-weapon whose slot is a
+// HAND — the off-hand, #90), "" for consumable (no slot), and "" for
+// weapon — a weapon's slot is a hand chosen at equip time
+// (weaponTargetSlot).
 func slotForType(t string) string {
 	switch t {
 	case protocol.ItemTypeConsumable, protocol.ItemTypeWeapon:
 		return ""
+	case protocol.ItemTypeShield:
+		return protocol.SlotOffHand
 	default:
 		return t
 	}
@@ -548,6 +554,14 @@ const (
 	idDuelistsSaber = "duelists-saber"
 )
 
+// Shield ids (#90, S4 of #55): the first shield-type items — referenced
+// from the registry, the rat/wolf/troll/dragon drop tables (both
+// content.go), and their pinning tests.
+const (
+	idWoodenBuckler  = "wooden-buckler"
+	idIronKiteShield = "iron-kite-shield"
+)
+
 // classDefaultIDs returns the item def ids a class starts with at Join: one
 // melee-tagged weapon, plus a ranged/magic-tagged weapon for Rogue and Mage
 // (Fighter has none — no ranged/magic-tagged default, so its off-hand starts
@@ -628,6 +642,7 @@ func validateItemDefs(defs []*itemDef) {
 
 		validateItemType(def)
 		validateItemHeal(def)
+		validateItemCombatStats(def)
 		validateRuleCards(def.id, def.rules)
 	}
 }
@@ -702,6 +717,20 @@ func validateItemHeal(def *itemDef) {
 
 	if def.heal != 0 {
 		panic("game: gear item " + def.id + " must not set heal (consumables only)")
+	}
+}
+
+// validateItemCombatStats panics if a non-weapon def sets damage, rangeHex,
+// or aoeRadius — only a weapon fires as a hit, so combat stats on a shield
+// or armor def are authoring mistakes (a shield's −N lives in its rule card,
+// not a damage field). #90.
+func validateItemCombatStats(def *itemDef) {
+	if def.isWeapon() {
+		return
+	}
+
+	if def.damage != 0 || def.rangeHex != 0 || def.aoeRadius != 0 {
+		panic("game: non-weapon item " + def.id + " must not set damage, rangeHex, or aoeRadius")
 	}
 }
 

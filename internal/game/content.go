@@ -214,6 +214,31 @@ var itemDefs = []*itemDef{
 		},
 	},
 
+	// Shields (#90, S4 of #55): the last gear-keystone slice. A shield is
+	// pure defence — a flat take-damage card, no damage of its own
+	// (validateItemCombatStats) — and occupies the off-hand (slotForType),
+	// trading dual-wield's second hit for the reduction. Richer
+	// block/evasion waits on #69; shield skills on #57. Drop-only: no class
+	// starting kit changes. applyRules' event-level clamp keeps every
+	// landed hit ≥ 1, so the −2 stacking with leather armor and the dwarf
+	// passive never zeroes a hit.
+	{
+		id: idWoodenBuckler, name: "Wooden Buckler", itemType: protocol.ItemTypeShield,
+		desc:   "block 1 damage from every hit",
+		flavor: "A barrel lid with delusions of grandeur. It holds.",
+		rules: []ruleCard{
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -1}},
+		},
+	},
+	{
+		id: idIronKiteShield, name: "Iron Kite Shield", itemType: protocol.ItemTypeShield,
+		desc:   "block 2 damage from every hit",
+		flavor: "Iron-bound and man-high — the wall the front rank hides behind.",
+		rules: []ruleCard{
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -2}},
+		},
+	},
+
 	// Crit%-weapons (fast-lane batch task 6, #69 Q5): the first weapons
 	// carrying a per-hit crit-chance card — the elf-crit card pattern
 	// (elfCards, above) applied to an ITEM instead of a species passive.
