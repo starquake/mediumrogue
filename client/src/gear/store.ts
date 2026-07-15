@@ -3,6 +3,7 @@ import { createSignal } from "solid-js";
 import type { ItemView } from "../protocol.gen";
 import {
   BackpackSize,
+  ItemTypeShield,
   ItemTypeWeapon,
   SlotAmulet,
   SlotBoots,
@@ -187,11 +188,16 @@ export function offHandLocked(): boolean {
  * (internal/game/items.go) client-side, so the hover tooltip can compare a
  * backpack weapon against the hand it would actually land in: two-handed or
  * an empty main-hand -> main-hand; else an empty off-hand -> off-hand; else
- * main-hand (the swap case). A non-weapon item's slot equals its type
- * already (armor/jewelry); a consumable has no slot ("" — never compared,
- * the tooltip only compares combat-stat items).
+ * main-hand (the swap case). A shield always equips off-hand — the server's
+ * slotForType rule (#90) — regardless of occupancy. Any other non-weapon
+ * item's slot equals its type already (armor/jewelry); a consumable has no
+ * slot ("" — never compared, the tooltip only compares combat-stat items).
  */
 export function targetSlotFor(item: { type: string; twoHanded: boolean }): string {
+  if (item.type === ItemTypeShield) {
+    return SlotOffHand; // a shield equips off-hand only (#90)
+  }
+
   if (item.type !== ItemTypeWeapon) {
     return item.type;
   }

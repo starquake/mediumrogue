@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { ItemView } from "../protocol.gen";
-import { ItemTypeConsumable, ItemTypeWeapon, SlotChest, SlotMainHand, SlotOffHand } from "../protocol.gen";
+import { ItemTypeConsumable, ItemTypeShield, ItemTypeWeapon, SlotChest, SlotMainHand, SlotOffHand } from "../protocol.gen";
 import { backpack, equipped, offHandLocked, setInventory, targetSlotFor } from "./store";
 
 // store.test.ts covers the slot-placement logic no e2e path can reach: the
@@ -80,6 +80,20 @@ describe("targetSlotFor", () => {
       itemView({ id: 2, name: "Shortbow", type: SlotOffHand, equipped: true, twoHanded: false }),
     ]);
     expect(targetSlotFor({ type: ItemTypeWeapon, twoHanded: false })).toBe(SlotMainHand);
+  });
+
+  // A shield ALWAYS targets the off-hand (#90) — unlike a weapon's placement
+  // matrix, occupancy never redirects it. Without the mapping, the raw
+  // "shield" type string matches no slot key and the tooltip's
+  // compare-against-equipped silently shows nothing.
+  test("a shield targets off-hand when empty", () => {
+    setInventory([]);
+    expect(targetSlotFor({ type: ItemTypeShield, twoHanded: false })).toBe(SlotOffHand);
+  });
+
+  test("a shield targets off-hand even when occupied", () => {
+    setInventory([itemView({ id: 1, name: "Shortbow", type: SlotOffHand, equipped: true, twoHanded: false })]);
+    expect(targetSlotFor({ type: ItemTypeShield, twoHanded: false })).toBe(SlotOffHand);
   });
 });
 
