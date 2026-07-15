@@ -118,7 +118,10 @@ func TestHeadbandBoostsXPThroughLivePipeline(t *testing.T) {
 
 	step(t, w) // form the bubble
 
-	w.SetPathForTest(me.EntityID, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	snap := step(t, w) // melee-kill inside the bubble
 
 	if _, ok := entityOfSnap(snap, monsterID); ok {

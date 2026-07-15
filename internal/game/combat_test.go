@@ -20,9 +20,9 @@ func entityOfSnap(snap protocol.TurnEvent, id int64) (protocol.Entity, bool) {
 	return protocol.Entity{}, false
 }
 
-// TestMeleeDealsDamageAttackerStays: a player moving onto an adjacent
-// monster's hex converts to a melee attack, not a move — the monster takes
-// damage and the attacker's own hex does not change.
+// TestMeleeDealsDamageAttackerStays: an entity-targeted attack intent at an
+// adjacent monster resolves as a melee swing — the monster takes damage and
+// the attacker's own hex does not change.
 func TestMeleeDealsDamageAttackerStays(t *testing.T) {
 	t.Parallel()
 
@@ -37,8 +37,8 @@ func TestMeleeDealsDamageAttackerStays(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	snap := step(t, w)
@@ -62,9 +62,9 @@ func TestMeleeDealsDamageAttackerStays(t *testing.T) {
 }
 
 // TestMeleeKillRemovesMonster: repeated melee attacks drain the monster's HP
-// to 0; once dead it is gone from the next snapshot. The melee attack defers
-// the attacker's path (never consumed on a melee attack), so the same
-// standing intent keeps landing turn after turn without resubmitting.
+// to 0; once dead it is gone from the next snapshot. Attack intents are
+// one-shot, so the attacker resubmits before every turn that should land a
+// swing.
 func TestMeleeKillRemovesMonster(t *testing.T) {
 	t.Parallel()
 
@@ -79,11 +79,11 @@ func TestMeleeKillRemovesMonster(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	// MonsterMaxHP=10, a Fighter's sword melee attack = iron-sword damage 4: three melee attacks kill it.
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
-	// MonsterMaxHP=10, a Fighter's sword melee attack = iron-sword damage 4: three melee attacks kill it.
 	firstHit := step(t, w)
 
 	monster, ok := entityOfSnap(firstHit, monsterID)
@@ -93,6 +93,10 @@ func TestMeleeKillRemovesMonster(t *testing.T) {
 
 	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword"); got != want {
 		t.Fatalf("monster HP after first hit = %d, want %d", got, want)
+	}
+
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	secondHit := step(t, w)
@@ -106,6 +110,10 @@ func TestMeleeKillRemovesMonster(t *testing.T) {
 		t.Fatalf("monster HP after second hit = %d, want %d", got, want)
 	}
 
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	thirdHit := step(t, w)
 
 	if _, ok := entityOfSnap(thirdHit, monsterID); ok {
@@ -117,17 +125,19 @@ func TestMeleeKillRemovesMonster(t *testing.T) {
 // vacates the melee target hex during this same turn's MOVE phase, but the
 // attack phase has already resolved against pre-move positions — the melee
 // attack lands anyway. The defender takes the hit, then completes its
-// retreat; the attacker stays put (a melee attack never moves the attacker,
-// and its path is retained). This replaces TestMeleeRetreatDodgesDamage: the
+// retreat; the attacker stays put (an entity-targeted attack intent never
+// moves the attacker). This replaces TestMeleeRetreatDodgesDamage: the
 // retreat-dodge (an automatic miss on vacation) is removed by design —
 // retreat now trades hits for distance.
 //
 // The retreating entity here is the monster; its path is set directly via
 // SetPathForTest and resolved with ResolveCombatOnlyForTest (skips
 // thinkMonstersLocked), because the real AI never voluntarily retreats a
-// monster away from a player. This test is about the combat machinery
-// (collectMeleeAttacksLocked/attackLocked/movePhaseLocked ordering),
-// independent of which AI drives it.
+// monster away from a player. The player's half is an explicit
+// entity-targeted attack intent (#116) — the monster's half keeps
+// SetPathForTest, since this test is about the combat machinery
+// (resolveEntityTargetedLocked/attackLocked/movePhaseLocked ordering),
+// independent of which AI drives the monster.
 func TestMeleeHitsRetreatingDefender(t *testing.T) {
 	t.Parallel()
 
@@ -160,8 +170,8 @@ func TestMeleeHitsRetreatingDefender(t *testing.T) {
 		t.Skip("no free walkable escape hex around the monster on this map")
 	}
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	w.SetPathForTest(monsterID, []protocol.Hex{escapeHex})
@@ -215,8 +225,8 @@ func TestMeleeMutualKill(t *testing.T) {
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
 
-	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent onto the monster's hex failed")
+	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	w.SetPathForTest(monsterID, []protocol.Hex{me.Hex})

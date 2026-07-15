@@ -51,6 +51,33 @@ func nearestMonster(bundle protocol.TurnEvent, from protocol.Hex) (protocol.Hex,
 	return best, found
 }
 
+// nearestMonsterID is nearestMonster's entity-id counterpart: the id AND hex
+// of the alive monster in bundle closest to from, so a caller that decides
+// to melee-attack it (adjacent, #116) can submit an entity-targeted attack
+// intent instead of a move-onto-hex — id 0/found false when no monster is
+// present in bundle.
+func nearestMonsterID(bundle protocol.TurnEvent, from protocol.Hex) (int64, protocol.Hex, bool) {
+	var (
+		id       int64
+		hex      protocol.Hex
+		bestDist int
+		found    bool
+	)
+
+	for _, e := range bundle.Entities {
+		if e.Kind != protocol.EntityMonster {
+			continue
+		}
+
+		d := hexDistance(from, e.Hex)
+		if !found || d < bestDist {
+			id, hex, bestDist, found = e.ID, e.Hex, d, true
+		}
+	}
+
+	return id, hex, found
+}
+
 // TestCombatOverHTTP exercises milestone 6.3 combat over real HTTP/SSE: a
 // joined player is driven turn by turn toward whichever monster is nearest
 // (recomputed from the latest bundle every turn, since monsters hunt the player
@@ -115,9 +142,15 @@ func TestCombatOverHTTP(t *testing.T) {
 		}
 
 		// Chase whichever monster is nearest right now — a fixed target can
-		// go stale since monsters hunt the player back.
-		if target, found := nearestMonster(bundle, myHex); found {
-			postIntent(t, ts, me, target)
+		// go stale since monsters hunt the player back. Adjacent, the chase
+		// becomes an entity-targeted attack intent (#116, a melee swing);
+		// otherwise it's a plain move toward the monster's hex.
+		if id, target, found := nearestMonsterID(bundle, myHex); found {
+			if hexDistance(myHex, target) == 1 {
+				postEntityAttackIntent(t, ts, me, id)
+			} else {
+				postIntent(t, ts, me, target)
+			}
 		}
 
 		seenNow := make(map[int64]bool, len(startHP))

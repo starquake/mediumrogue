@@ -117,7 +117,10 @@ func TestFistsFallbackDamageAfterUnequip(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	monsterMaxHP := game.MonsterMaxHPForTest(w.MonsterKindForTest(monsterID))
 
-	w.SetPathForTest(playerID, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(playerID, token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	w.ResolveCombatOnlyForTest()
 
 	snap := w.Snapshot()

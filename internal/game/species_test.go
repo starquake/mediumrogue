@@ -13,8 +13,24 @@ import (
 // the rng differently (melee vs bow — the bow site now draws the victim-pick
 // roll before the crit-chance roll, pipeline order per rollDamageLocked), so
 // each has its own pair.
+//
+// re-derived: #116 melee-as-attack-intent — elfMeleeDamage's attacker now
+// submits an entity-targeted attack intent instead of walking onto the
+// monster's hex, so its melee resolves via resolveEntityTargetedLocked (a
+// named victim id) instead of the old move-conversion path
+// (collectMeleeAttacksLocked/attackLocked), which always drew
+// rng.IntN(len(victims)) — even for a single-candidate hex — before the
+// crit-chance roll. With that draw gone, the elf's crit-chance card becomes
+// the melee attack's FIRST rng draw rather than its second, which redraws a
+// different PCG output for the same seed. bowCritSeed/bowMissSeed are
+// UNCHANGED: elfBowDamage still submits a ground-targeted ranged attack
+// intent (untouched by this migration), so its draw order is the same as
+// before. Re-hunted meleeCritSeed by scanning seeds 0-39 through the
+// migrated elfMeleeDamage helper for a dealt value != the sword base (4):
+// seed 0 (meleeMissSeed, unchanged) still misses; seed 4 is the first seed
+// in the scanned range that crits.
 const (
-	meleeCritSeed = 1 // elf melee attack crits at this seed
+	meleeCritSeed = 4 // elf melee attack crits at this seed
 	meleeMissSeed = 0 // elf melee attack misses (base damage) at this seed
 	bowCritSeed   = 1 // elf bow shot crits at this seed
 	bowMissSeed   = 0 // elf bow shot misses (base damage) at this seed
@@ -38,10 +54,10 @@ func TestHumanKillXPBonus(t *testing.T) {
 
 	ns := game.HexNeighbors(center)
 
-	human, _ := w.PlaceEntityForTest(ns[0])
+	human, humanTok := w.PlaceEntityForTest(ns[0])
 	w.SetSpeciesForTest(human, protocol.SpeciesHuman)
 
-	dwarf, _ := w.PlaceEntityForTest(ns[1])
+	dwarf, dwarfTok := w.PlaceEntityForTest(ns[1])
 	w.SetSpeciesForTest(dwarf, protocol.SpeciesDwarf)
 
 	monsterID := w.PlaceMonsterForTest(center)
@@ -52,8 +68,14 @@ func TestHumanKillXPBonus(t *testing.T) {
 	// real fight).
 	step(t, w)
 
-	w.SetPathForTest(human, []protocol.Hex{center})
-	w.SetPathForTest(dwarf, []protocol.Hex{center})
+	if err := w.SubmitIntent(entityAttackIntent(human, humanTok, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee, human): %v", err)
+	}
+
+	if err := w.SubmitIntent(entityAttackIntent(dwarf, dwarfTok, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee, dwarf): %v", err)
+	}
+
 	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterID); ok {
@@ -86,12 +108,15 @@ func elfMeleeDamage(t *testing.T, seed int64) int {
 
 	monsterHex := walkableNeighbor(t, w, center)
 
-	pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter (sword)
+	pid, tok := w.PlaceEntityForTest(center) // level-1 Fighter (sword)
 	w.SetSpeciesForTest(pid, protocol.SpeciesElf)
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	w.ResolveCombatOnlyForTest()
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -279,13 +304,16 @@ func TestDwarfDamageReductionFloor(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, center)
 
-	pid, _ := w.PlaceEntityForTest(center)
+	pid, tok := w.PlaceEntityForTest(center)
 	w.SetClassForTest(pid, "") // unarmed: closeDefFor falls back to fists (1 damage)
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetSpeciesForTest(monsterID, protocol.SpeciesDwarf)
 
-	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	w.ResolveCombatOnlyForTest()
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -318,13 +346,16 @@ func TestElfCritThenDwarfDR(t *testing.T) {
 
 	monsterHex := walkableNeighbor(t, w, center)
 
-	pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter (sword)
+	pid, tok := w.PlaceEntityForTest(center) // level-1 Fighter (sword)
 	w.SetSpeciesForTest(pid, protocol.SpeciesElf)
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetSpeciesForTest(monsterID, protocol.SpeciesDwarf)
 
-	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	w.ResolveCombatOnlyForTest()
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -374,12 +405,15 @@ func TestNonElfNeverCrits(t *testing.T) {
 
 				monsterHex := walkableNeighbor(t, w, center)
 
-				pid, _ := w.PlaceEntityForTest(center) // Fighter (sword)
+				pid, tok := w.PlaceEntityForTest(center) // Fighter (sword)
 				w.SetSpeciesForTest(pid, sp.val)
 
 				monsterID := w.PlaceMonsterForTest(monsterHex)
 
-				w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+				if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+					t.Fatalf("SubmitIntent(melee): %v", err)
+				}
+
 				w.ResolveCombatOnlyForTest()
 
 				monster, ok := entityOfSnap(w.Snapshot(), monsterID)
@@ -401,13 +435,25 @@ func TestNonElfNeverCrits(t *testing.T) {
 // same way meleeCritSeed/meleeMissSeed were: scanning seeds 0-39 with a
 // human Rogue (no species crit in play) wielding the Misericorde against a
 // fat-HP monster and printing dealt damage per seed — seed 0 misses (dealt
-// base 4, gear keystone rebalance), seed 1 procs (dealt 8, the x2). They
+// base 4, gear keystone rebalance), seed 4 procs (dealt 8, the x2). They
 // happen to equal meleeCritSeed/meleeMissSeed because both scenarios are a
 // single first melee attack on a fresh RNG stream, drawing the same one
 // chance roll at the same pipeline position — a coincidence of this test's
 // setup, not a rule.
+//
+// re-derived: #116 melee-as-attack-intent — misericordeMeleeDamage's
+// attacker now submits an entity-targeted attack intent instead of walking
+// onto the monster's hex, for the same reason and with the same
+// stream-shift as meleeCritSeed above (the move-conversion path's
+// rng.IntN(len(victims)) victim-pick draw, always taken even for a single
+// candidate, no longer precedes the weapon's own crit-chance roll). Re-hunted
+// by scanning seeds 0-39 through the migrated misericordeMeleeDamage helper:
+// seed 0 (misericordeMissSeed, unchanged) still misses; seed 4 is the first
+// seed in the scanned range that procs — and it coincidentally still equals
+// the re-derived meleeCritSeed, for the same reason the pair coincided
+// before (both are a single first melee attack on a fresh stream).
 const (
-	misericordeCritSeed = 1 // Misericorde procs (double damage) at this seed
+	misericordeCritSeed = 4 // Misericorde procs (double damage) at this seed
 	misericordeMissSeed = 0 // Misericorde does not proc (base damage) at this seed
 )
 
@@ -442,7 +488,10 @@ func misericordeMeleeDamage(t *testing.T, seed int64) int {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetHPForTest(monsterID, fatHP) // survives even a crit, so HP is readable
 
-	w.SetPathForTest(pid, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(pid, tok, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	w.ResolveCombatOnlyForTest()
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)

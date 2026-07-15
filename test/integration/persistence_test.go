@@ -329,12 +329,16 @@ func farmKillAndPickup(
 
 			myHex = hex
 
-			target, found := nearestMonster(bundle, myHex)
+			id, target, found := nearestMonsterID(bundle, myHex)
 			if !found {
 				break // this wolf died with no drop; the outer loop places another
 			}
 
-			postIntent(t, ts, me, target)
+			if hexDistance(myHex, target) == 1 {
+				postEntityAttackIntent(t, ts, me, id)
+			} else {
+				postIntent(t, ts, me, target)
+			}
 		}
 	}
 

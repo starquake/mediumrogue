@@ -14,20 +14,31 @@ import (
 // KIND's own dropChance — wolf's 30%, the default spawn kind, since loot
 // moved monster-side in 6c — drawn from the same PCG stream as the rest of
 // a bubble-turn resolution: move-shuffle first, then the melee attack's damage
-// roll, then the drop roll in resolveDeathsLocked). Found by probing
-// killSeedDrops' exact scenario: seed 0 misses (no ground item), seed 4
-// hits. WHICH def the hit yields depends on the whole of wolf's own drop
-// table (the weighted pick walks it — content.go's monsterDefs), so these
-// two constants are re-derived whenever that table changes — the tests
-// prove the drop→pickup cycle, not any particular item. Current values:
-// re-derived after the first designer batch (mattock + war-mage staff)
-// widened the table; 6c kept wolf's table byte-identical to that pre-6c
-// global dropTable precisely so these seeds survive.
+// roll, then the drop roll in resolveDeathsLocked). WHICH def the hit yields
+// depends on the whole of wolf's own drop table (the weighted pick walks it
+// — content.go's monsterDefs), so these two constants are re-derived
+// whenever that table changes — the tests prove the drop→pickup cycle, not
+// any particular item.
+//
+// re-derived: #116 melee-as-attack-intent — oneHitKillBubble's player now
+// submits an entity-targeted attack intent instead of walking onto the
+// monster's hex, so the kill resolves via resolveEntityTargetedLocked (a
+// named victim id) instead of the old move-conversion path
+// (collectMeleeAttacksLocked/attackLocked), which always drew
+// rng.IntN(len(victims)) — even for this scenario's single occupant hex —
+// before the melee damage roll. With that draw gone, every later draw in the
+// stream (the damage roll, then the drop roll) shifts one position earlier,
+// which redraws different PCG outputs for the same seed. Re-hunted by
+// scanning seeds 0-39 through the migrated oneHitKillBubble helper, logging
+// GroundItems length and DefID per seed: seed 3 is the first seed in the
+// scanned range with no ground item (the new killMissSeed); seed 0 (no
+// longer a miss) now hits with "Butcher's Cleaver" and is the smallest
+// hit-seed available, so it becomes the new killDropSeed.
 const (
-	killMissSeed        = 0
-	killDropSeed        = 4
-	killDropSeedDefID   = "venom-fang"
-	killDropSeedDefName = "Venom Fang"
+	killMissSeed        = 3
+	killDropSeed        = 0
+	killDropSeedDefID   = "butchers-cleaver"
+	killDropSeedDefName = "Butcher's Cleaver"
 )
 
 // oneHitKillBubble joins a named level-1 Fighter (iron sword, the Join
@@ -59,7 +70,10 @@ func oneHitKillBubble(t *testing.T, w *game.World, seed int64) (protocol.JoinRes
 
 	step(t, w) // idle turn: forms the bubble around the player and monster
 
-	w.SetPathForTest(playerID, []protocol.Hex{monsterHex})
+	if err := w.SubmitIntent(entityAttackIntent(playerID, me.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	snap := step(t, w) // melee-kills the monster inside the bubble
 
 	if _, ok := entityOfSnap(snap, monsterID); ok {

@@ -48,14 +48,18 @@ func TestMonsterKillAnnouncedInChatNamesNobodyForTwoPlayers(t *testing.T) {
 
 	w.SetAnnounce(func(_, text string) { announced = append(announced, text) })
 
-	idA, tokA, _, _, monsterID, form := twoPlayerBubble(t, w)
+	// Only idA/tokA (the attacker) and monsterID are needed; twoPlayerBubble's
+	// second player (idB/tokB) and turn bundle (form) exist only to seed the
+	// two-player bubble itself — kept and explicitly discarded rather than
+	// blanked to stay within dogsled's 2-blank-identifier limit.
+	idA, tokA, idB, tokB, monsterID, form := twoPlayerBubble(t, w)
+	_, _ = idB, tokB
+	_ = form
+
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 
-	target := hexOfSnap(form, monsterID)
-	if err := w.SubmitIntent(protocol.IntentRequest{
-		EntityID: idA, Token: tokA, Kind: protocol.IntentMove, Target: target,
-	}); err != nil {
-		t.Fatalf("SubmitIntent move: %v", err)
+	if err := w.SubmitIntent(entityAttackIntent(idA, tokA, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
 	// ResolveTurnForTest is ungated (lock-in/patience are exercised

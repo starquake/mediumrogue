@@ -340,8 +340,17 @@ func fireAoEOrChase(
 	candidate, _ := bestAoETarget(myHex, monsterHexes, aoeRadius)
 
 	if hexDistance(myHex, candidate) > mageRange {
-		if target, found := nearestMonster(bundle, myHex); found {
-			postIntent(t, ts, me, target)
+		// Chase the nearest monster into range. If the chase itself has
+		// already closed to adjacency (a closer monster than the AoE
+		// candidate), landing on its hex would be a melee swing rather than
+		// positioning — submit an entity-targeted attack intent (#116)
+		// instead of a move onto its hex.
+		if id, target, found := nearestMonsterID(bundle, myHex); found {
+			if hexDistance(myHex, target) == 1 {
+				postEntityAttackIntent(t, ts, me, id)
+			} else {
+				postIntent(t, ts, me, target)
+			}
 		}
 
 		return

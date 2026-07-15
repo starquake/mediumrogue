@@ -151,15 +151,20 @@ func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
 	}
 
 	hexes := walkableNeighborsN(t, w, startHex, targetN)
-	for _, h := range hexes {
-		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
+
+	monsterIDs := make([]int64, len(hexes))
+	for i, h := range hexes {
+		monsterIDs[i] = w.PlaceMonsterForTest(h)
+		w.SetHPForTest(monsterIDs[i], game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 	}
 
 	step(t, w) // forming turn: the monsters chase into the bubble
 
 	// Progress the kill quest by one kill; the reach quest must be untouched.
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monsterIDs[0])); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w)
 
 	if got, want := questByID(t, w, killID).Progress, 1; got != want {
@@ -177,7 +182,10 @@ func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
 	// Finish the kill quest with the second monster (still waiting, alice
 	// never left the bubble) — completes and pays it. The reach quest must
 	// still be untouched.
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[1]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monsterIDs[1])); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w)
 
 	if got, want := questByID(t, w, killID).State, protocol.QuestCompleted; got != want {
@@ -196,12 +204,14 @@ func TestTwoConcurrentPersonalQuestsProgressAndPayIndependently(t *testing.T) {
 
 	// Now complete the reach quest too, by teleporting to its goal — its own
 	// completion pays its own reward, on top of (not instead of) the kill
-	// reward already paid above. Clear the leftover queued path first: a
-	// melee-attack-converted move never consumes it (the mover stays put), and
+	// reward already paid above. The explicit path clear below is defensive
+	// only (#116): an entity-targeted attack intent already clears the path
+	// at submit (queueAttackLocked) and is one-shot (never re-queued), so
+	// alice has no queued path left over from the kill above — but
 	// movePhaseLocked doesn't re-validate a queued path's adjacency against
-	// SetHexForTest's raw teleport — an unconsumed path would otherwise
-	// silently walk her back toward hexes[1] on the next resolution instead
-	// of landing on goal.
+	// SetHexForTest's raw teleport, so if some future site ever left a path
+	// queued here, it would otherwise silently walk her back toward
+	// monsterIDs[1]'s hex on the next resolution instead of landing on goal.
 	w.SetPathForTest(alice.EntityID, nil)
 	w.SetHexForTest(alice.EntityID, goal)
 	step(t, w)
@@ -342,7 +352,10 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 
 	step(t, w) // forming turn: the monster chases into the bubble
 
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monsterID)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w) // the kill
 
 	progressed := questByID(t, w, q1).Progress
@@ -507,16 +520,20 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 
 	hexes := walkableNeighborsN(t, w, alice.Hex, targetN)
 
-	for _, h := range hexes {
-		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
+	monsterIDs := make([]int64, len(hexes))
+	for i, h := range hexes {
+		monsterIDs[i] = w.PlaceMonsterForTest(h)
+		w.SetHPForTest(monsterIDs[i], game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 	}
 
 	// Forming turn: both idle, the monsters chase into the shared bubble.
 	step(t, w)
 
 	// First kill: progress must land at 1, not 2 (one tick for the party).
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monsterIDs[0])); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w)
 
 	if got, want := questByID(t, w, qID).Progress, 1; got != want {
@@ -538,7 +555,10 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 	}
 
 	// Second (final) kill: completes the quest and pays the reward on top.
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[1]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monsterIDs[1])); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w)
 
 	qv := questByID(t, w, qID)
@@ -587,7 +607,10 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 
 	step(t, w) // forming turn
 
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monster0)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w) // one kill short of done
 
 	if got, want := questByID(t, w, qID).Progress, 1; got != want {
@@ -607,7 +630,10 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 
 	step(t, w) // settle turn: bob and monster1 join the existing bubble
 
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[1]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monster1)); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w) // final kill: completes the quest
 
 	qv := questByID(t, w, qID)
@@ -849,15 +875,20 @@ func TestKillQuestTickAnnouncesProgress(t *testing.T) {
 	}
 
 	hexes := walkableNeighborsN(t, w, alice.Hex, targetN)
-	for _, h := range hexes {
-		monsterID := w.PlaceMonsterForTest(h)
-		w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
+
+	monsterIDs := make([]int64, len(hexes))
+	for i, h := range hexes {
+		monsterIDs[i] = w.PlaceMonsterForTest(h)
+		w.SetHPForTest(monsterIDs[i], game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 	}
 
 	step(t, w) // forming turn
 
 	// First kill: a progress announcement, no completion yet.
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[0]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monsterIDs[0])); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w)
 
 	if got, want := lastAnnouncement(announced), "Cull the pack: 1 down, 1 to go"; got != want {
@@ -865,7 +896,10 @@ func TestKillQuestTickAnnouncesProgress(t *testing.T) {
 	}
 
 	// Final kill: completion announcement, and NOT another tick line.
-	w.SetPathForTest(alice.EntityID, []protocol.Hex{hexes[1]})
+	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monsterIDs[1])); err != nil {
+		t.Fatalf("SubmitIntent(melee): %v", err)
+	}
+
 	step(t, w)
 
 	last := lastAnnouncement(announced)

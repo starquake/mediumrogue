@@ -134,8 +134,12 @@ func TestKillSpecificKindOverHTTP(t *testing.T) {
 			gotXP = true
 		}
 
-		if target, found := nearestMonster(*bundle, myEntity.Hex); found {
-			postIntent(t, ts, me, target)
+		if id, target, found := nearestMonsterID(*bundle, myEntity.Hex); found {
+			if hexDistance(myEntity.Hex, target) == 1 {
+				postEntityAttackIntent(t, ts, me, id)
+			} else {
+				postIntent(t, ts, me, target)
+			}
 		}
 	}
 
