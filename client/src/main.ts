@@ -261,7 +261,7 @@ export interface GameDebug {
   /**
    * The target hex of the most recent attack-feedback flash
    * (FeedbackLayer.flashAttack) — set synchronously by both a ranged click
-   * and a bump-attack click (#113), never cleared (a "last event" record,
+   * and a melee click (#113), never cleared (a "last event" record,
    * not live state; the flash itself fades in FLASH_DURATION_MS). Exposed
    * for e2e: the flash is a 450ms one-shot, so tests read this instead of
    * racing the animation.
@@ -1062,16 +1062,17 @@ async function start(): Promise<void> {
     return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
 
-  // bumpAt submits a bump-attack at an adjacent hostile: mechanically a MOVE
-  // intent (the server converts a step onto a hostile-held hex into the
-  // swing), but since #104 a committed bump always lands, so the click gets
-  // ATTACK feedback, not walk feedback (#113): the same one-shot flash and
-  // committed crosshair a ranged click gets — never the destination ring or
-  // a blue "move" marker, which would read as "walking there" on a hex the
-  // player is deliberately striking. No destination bookkeeping either
-  // (window.game.destination stays untouched): the attacker doesn't move on
-  // a bump, and the standing intent keeps swinging turn after turn.
-  const bumpAt = (target: Hex): Promise<void> => {
+  // meleeAt submits a melee attack at an adjacent hostile: mechanically a
+  // MOVE intent (bump-to-attack — the server converts a step onto a
+  // hostile-held hex into the swing), but since #104 a committed melee swing
+  // always lands, so the click gets ATTACK feedback, not walk feedback
+  // (#113): the same one-shot flash and committed crosshair a ranged click
+  // gets — never the destination ring or a blue "move" marker, which would
+  // read as "walking there" on a hex the player is deliberately striking.
+  // No destination bookkeeping either (window.game.destination stays
+  // untouched): the attacker doesn't move on a melee swing, and the
+  // standing intent keeps swinging turn after turn.
+  const meleeAt = (target: Hex): Promise<void> => {
     feedbackLayer.flashAttack(target);
     window.game.lastAttackFlash = target;
 
@@ -1115,7 +1116,7 @@ async function start(): Promise<void> {
         if (aoeReaches(target)) {
           return attackAt(target); // mage: blast the adjacent hostile
         }
-        return bumpAt(target); // bump-attack: swing, with attack feedback (#113)
+        return meleeAt(target); // melee attack: swing, with attack feedback (#113)
       }
 
       if (isRangedAttackClick(target)) {
@@ -1502,9 +1503,9 @@ async function start(): Promise<void> {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
-    // Crosshair wherever a click would attack — a shot OR a bump swing
-    // (#113: a bump is a committed attack since #104, so it earns the same
-    // pre-click affordance as a ranged target; see clickTarget's routing).
+    // Crosshair wherever a click would attack — a shot OR a melee swing
+    // (#113: a melee bump is a committed attack since #104, so it earns the
+    // same pre-click affordance as a ranged target; see clickTarget's routing).
     const hover = pixelToHex({ x: worldX, y: worldY });
     const wouldAttack = isRangedAttackClick(hover) || inList(lastReach.bumps, hover);
     app.canvas.style.cursor = wouldAttack ? "crosshair" : "default";

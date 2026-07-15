@@ -16,12 +16,12 @@ declare global {
 // bubble and goes AFK; at the default 60s patience that wedge outlasts the
 // test's whole deadline).
 
-// #113: a bump-attack click gets ATTACK feedback — the one-shot flash
+// #113: a melee (bump-to-attack) click gets ATTACK feedback — the one-shot flash
 // (window.game.lastAttackFlash) and the committed crosshair (kind "attack")
 // — never walk feedback. Pre-#113 the click routed through walkTo and
 // planted the blue "move" marker on the enemy's hex, which reads as
 // "walking there" now that a committed bump always lands (#104).
-test("a bump-attack click commits the attack glyph, not a walk marker", async ({ page }) => {
+test("a melee-attack click commits the attack glyph, not a walk marker", async ({ page }) => {
   await page.goto("/");
 
   await expect
@@ -41,18 +41,18 @@ test("a bump-attack click commits the attack glyph, not a walk marker", async ({
   // observed in one evaluate is stale by the next, so a precondition-gated
   // version of this test timed out under parallel-worker contention; letting
   // the routing itself decide converges like the damage test does. The
-  // awaited own-hex retarget afterwards replaces the standing bump within
+  // awaited own-hex retarget afterwards replaces the standing melee intent within
   // the same input window (latest intent wins), so a repeat-each sibling
   // still finds monsters alive in the shared fixed pool.
-  interface BumpFeedback {
+  interface MeleeFeedback {
     target: Hex;
     committed: { kind: string; target: Hex } | null;
     flash: Hex | null;
   }
 
-  let feedback: BumpFeedback | null = null;
+  let feedback: MeleeFeedback | null = null;
 
-  const tryBumpClick = (): Promise<BumpFeedback | null> =>
+  const tryMeleeClick = (): Promise<MeleeFeedback | null> =>
     page.evaluate(async (monsterKind) => {
       const me = window.game.me;
       if (me === null) {
@@ -98,7 +98,7 @@ test("a bump-attack click commits the attack glyph, not a walk marker", async ({
         return null; // that tap was a step (or an out-of-combat walk) — keep converging
       }
 
-      await window.game.tapHex(me.hex.q, me.hex.r); // cancel the standing bump
+      await window.game.tapHex(me.hex.q, me.hex.r); // cancel the standing melee swing
 
       return { target, committed, flash };
     }, EntityMonster);
@@ -106,7 +106,7 @@ test("a bump-attack click commits the attack glyph, not a walk marker", async ({
   await expect
     .poll(
       async () => {
-        feedback = await tryBumpClick();
+        feedback = await tryMeleeClick();
 
         return feedback !== null;
       },
