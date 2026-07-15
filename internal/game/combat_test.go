@@ -20,10 +20,10 @@ func entityOfSnap(snap protocol.TurnEvent, id int64) (protocol.Entity, bool) {
 	return protocol.Entity{}, false
 }
 
-// TestBumpDealsDamageAttackerStays: a player moving onto an adjacent
-// monster's hex is a bump-to-attack, not a move — the monster takes damage
-// and the attacker's own hex does not change.
-func TestBumpDealsDamageAttackerStays(t *testing.T) {
+// TestMeleeDealsDamageAttackerStays: a player moving onto an adjacent
+// monster's hex converts to a melee attack, not a move — the monster takes
+// damage and the attacker's own hex does not change.
+func TestMeleeDealsDamageAttackerStays(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -45,7 +45,7 @@ func TestBumpDealsDamageAttackerStays(t *testing.T) {
 
 	monster, ok := entityOfSnap(snap, monsterID)
 	if !ok {
-		t.Fatalf("monster %d missing from snapshot after a single bump", monsterID)
+		t.Fatalf("monster %d missing from snapshot after a single melee attack", monsterID)
 	}
 
 	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword"); got != want {
@@ -53,7 +53,7 @@ func TestBumpDealsDamageAttackerStays(t *testing.T) {
 	}
 
 	if got, want := hexOfSnap(snap, me.EntityID), me.Hex; got != want {
-		t.Errorf("attacker hex = %v, want unchanged %v (a bump does not move the attacker)", got, want)
+		t.Errorf("attacker hex = %v, want unchanged %v (a melee attack does not move the attacker)", got, want)
 	}
 
 	if got, want := monster.Hex, monsterHex; got != want {
@@ -61,11 +61,11 @@ func TestBumpDealsDamageAttackerStays(t *testing.T) {
 	}
 }
 
-// TestBumpKillRemovesMonster: repeated bumps drain the monster's HP to 0;
-// once dead it is gone from the next snapshot. The bump defers the
-// attacker's path (never consumed on a bump), so the same standing intent
-// keeps landing turn after turn without resubmitting.
-func TestBumpKillRemovesMonster(t *testing.T) {
+// TestMeleeKillRemovesMonster: repeated melee attacks drain the monster's HP
+// to 0; once dead it is gone from the next snapshot. The melee attack defers
+// the attacker's path (never consumed on a melee attack), so the same
+// standing intent keeps landing turn after turn without resubmitting.
+func TestMeleeKillRemovesMonster(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -83,7 +83,7 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 		t.Fatalf("SubmitIntent onto the monster's hex failed")
 	}
 
-	// MonsterMaxHP=10, a Fighter's sword bump = iron-sword damage 4: three bumps kill it.
+	// MonsterMaxHP=10, a Fighter's sword melee attack = iron-sword damage 4: three melee attacks kill it.
 	firstHit := step(t, w)
 
 	monster, ok := entityOfSnap(firstHit, monsterID)
@@ -113,22 +113,22 @@ func TestBumpKillRemovesMonster(t *testing.T) {
 	}
 }
 
-// TestBumpHitsRetreatingDefender (#104, attacks-before-moves): the defender
-// vacates the bump-target hex during this same turn's MOVE phase, but the
-// attack phase has already resolved against pre-move positions — the bump
-// lands anyway. The defender takes the hit, then completes its retreat; the
-// attacker stays put (a bump never moves the attacker, and its path is
-// retained). This replaces TestBumpRetreatDodgesDamage: the retreat-dodge
-// (an automatic miss on vacation) is removed by design — retreat now trades
-// hits for distance.
+// TestMeleeHitsRetreatingDefender (#104, attacks-before-moves): the defender
+// vacates the melee target hex during this same turn's MOVE phase, but the
+// attack phase has already resolved against pre-move positions — the melee
+// attack lands anyway. The defender takes the hit, then completes its
+// retreat; the attacker stays put (a melee attack never moves the attacker,
+// and its path is retained). This replaces TestMeleeRetreatDodgesDamage: the
+// retreat-dodge (an automatic miss on vacation) is removed by design —
+// retreat now trades hits for distance.
 //
 // The retreating entity here is the monster; its path is set directly via
 // SetPathForTest and resolved with ResolveCombatOnlyForTest (skips
 // thinkMonstersLocked), because the real AI never voluntarily retreats a
 // monster away from a player. This test is about the combat machinery
-// (collectBumpsLocked/attackLocked/movePhaseLocked ordering), independent of
-// which AI drives it.
-func TestBumpHitsRetreatingDefender(t *testing.T) {
+// (collectMeleeAttacksLocked/attackLocked/movePhaseLocked ordering),
+// independent of which AI drives it.
+func TestMeleeHitsRetreatingDefender(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -175,7 +175,7 @@ func TestBumpHitsRetreatingDefender(t *testing.T) {
 	}
 
 	if got, want := monster.HP, protocol.MonsterMaxHP-game.ItemDamageForTest("iron-sword"); got != want {
-		t.Errorf("monster HP = %d, want %d (the bump lands against the pre-move position)", got, want)
+		t.Errorf("monster HP = %d, want %d (the melee attack lands against the pre-move position)", got, want)
 	}
 
 	if got, want := monster.Hex, escapeHex; got != want {
@@ -183,21 +183,21 @@ func TestBumpHitsRetreatingDefender(t *testing.T) {
 	}
 
 	if got, want := hexOfSnap(snap, me.EntityID), me.Hex; got != want {
-		t.Errorf("attacker hex = %v, want unchanged %v (a bump never moves the attacker)", got, want)
+		t.Errorf("attacker hex = %v, want unchanged %v (a melee attack never moves the attacker)", got, want)
 	}
 }
 
-// TestBumpMutualKill: a player and monster bump each other on the same turn,
-// each with exactly enough damage to kill the other. Both attacks must
+// TestMeleeMutualKill: a player and monster strike each other on the same
+// turn, each with exactly enough damage to kill the other. Both attacks must
 // accumulate against pre-attack HP and apply together — the monster is
 // removed and the player, rather than vanishing, respawns at full HP.
 //
-// The monster's half of the mutual bump is driven via SetPathForTest +
-// ResolveCombatOnlyForTest rather than thinkMonstersLocked, to pin the exact
-// turn the bump lands independent of the AI's own targeting/pathfinding.
-// This test targets the combat resolution algorithm's simultaneity, not the
-// AI.
-func TestBumpMutualKill(t *testing.T) {
+// The monster's half of the mutual melee attack is driven via SetPathForTest
+// + ResolveCombatOnlyForTest rather than thinkMonstersLocked, to pin the
+// exact turn the melee attack lands independent of the AI's own
+// targeting/pathfinding. This test targets the combat resolution algorithm's
+// simultaneity, not the AI.
+func TestMeleeMutualKill(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -246,11 +246,11 @@ func TestBumpMutualKill(t *testing.T) {
 	}
 }
 
-// TestBumpPlayerDeathRespawns: a lethal bump against a player removes it from
-// play only momentarily — resolveDeathsLocked immediately respawns it at
-// full HP, on a walkable hex, keeping the same id (so the client, still
-// holding the same token, stays joined).
-func TestBumpPlayerDeathRespawns(t *testing.T) {
+// TestMeleePlayerDeathRespawns: a lethal melee attack against a player
+// removes it from play only momentarily — resolveDeathsLocked immediately
+// respawns it at full HP, on a walkable hex, keeping the same id (so the
+// client, still holding the same token, stays joined).
+func TestMeleePlayerDeathRespawns(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -297,7 +297,7 @@ func TestBumpPlayerDeathRespawns(t *testing.T) {
 	}
 }
 
-// TestBumpRandomVictimOnStackedHexIsReproducible: a monster bumping a
+// TestMeleeRandomVictimOnStackedHexIsReproducible: a monster striking a
 // same-faction stack of two players must damage exactly one of them, and
 // under a pinned seed the choice must be reproducible — the same seed and
 // the same board must always pick the same victim.
@@ -311,7 +311,7 @@ func TestBumpPlayerDeathRespawns(t *testing.T) {
 // against each other (rather than pinning a literal id) verifies that
 // determinism without also encoding an incidental implementation detail
 // (which id happens to win) into the test.
-func TestBumpRandomVictimOnStackedHexIsReproducible(t *testing.T) {
+func TestMeleeRandomVictimOnStackedHexIsReproducible(t *testing.T) {
 	t.Parallel()
 
 	const seed = 6
@@ -368,7 +368,7 @@ func TestBumpRandomVictimOnStackedHexIsReproducible(t *testing.T) {
 }
 
 // TestMonsterAIAttacksAdjacentPlayer: with no player intent, a monster
-// already adjacent to the sole player now bumps into it (milestone 6.3 Task
+// already adjacent to the sole player now strikes it (milestone 6.3 Task
 // 3) instead of holding position (6.2's behaviour) — thinkMonstersLocked
 // steps onto the player's hex, and the move phase converts that into an
 // attack. The player takes the monster's claws damage (wolf's, here) and
@@ -399,10 +399,10 @@ func TestMonsterAIAttacksAdjacentPlayer(t *testing.T) {
 	}
 
 	if got, want := player.Hex, me.Hex; got != want {
-		t.Errorf("player hex = %v, want unchanged %v (a bump does not move the defender)", got, want)
+		t.Errorf("player hex = %v, want unchanged %v (a melee attack does not move the defender)", got, want)
 	}
 
 	if got, want := hexOfSnap(snap, monsterID), monsterHex; got != want {
-		t.Errorf("monster hex = %v, want unchanged %v (a bump does not move the attacker)", got, want)
+		t.Errorf("monster hex = %v, want unchanged %v (a melee attack does not move the attacker)", got, want)
 	}
 }

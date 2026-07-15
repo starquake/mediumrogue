@@ -285,7 +285,7 @@ func TestWorldSurvivesRestartCharacterSurvivesSweep(t *testing.T) {
 // footprint — see farmKillAndPickup's doc comment).
 const persistFarmTries = 40
 
-// farmKillAndPickup places a single wolf adjacent to me, bump-fights it to
+// farmKillAndPickup places a single wolf adjacent to me, melee-fights it to
 // death (a level-1 Fighter's 30 HP / iron-sword-4-dmg outright beats a lone
 // wolf's 10 HP / 3 dmg — no death/respawn risk, unlike a pre-seeded ring of
 // many at once), and repeats with a fresh wolf if that one didn't drop loot,
@@ -377,7 +377,7 @@ func farmKillAndPickup(
 
 // spawnAdjacentWolf places one wolf on a walkable neighbor of near (trying
 // every direction in order), so farmKillAndPickup's next fight starts in
-// bump range immediately instead of needing a chase. Fails the test if
+// melee range immediately instead of needing a chase. Fails the test if
 // every neighbor is refused (water/rock/StackCap) — near comes from a live
 // turn bundle, so this should only happen on a pathologically cramped map.
 func spawnAdjacentWolf(t *testing.T, world *game.World, near protocol.Hex) {

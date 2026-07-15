@@ -102,7 +102,7 @@ test("entering a combat bubble hard-cancels the auto-walk goal and path", async 
   expect(await page.evaluate(() => window.game.destination)).toBeNull();
 
   // Now the server half. Submit NOTHING more; the short patience resolves
-  // bubble-turns anyway (the monster keeps stepping toward us / bumping).
+  // bubble-turns anyway (the monster keeps stepping toward us / striking).
   // Observe two resolutions and assert our own hex never moved — before the
   // fix the residual path advanced one hex per resolution.
   const hexAtFreeze = await page.evaluate(() => window.game.me?.hex ?? null);

@@ -263,8 +263,8 @@ type World struct {
 	// now is the clock, injectable in tests so the two-clock gating can be driven
 	// deterministically without real time. Defaults to time.Now.
 	now func() time.Time
-	// logger receives the structured "combat" event stream (moves, bumps,
-	// ranged hits/fizzles, deaths, kill-XP awards, pickups) — the seed of the
+	// logger receives the structured "combat" event stream (moves, melee
+	// attacks, ranged hits/fizzles, deaths, kill-XP awards, pickups) — the seed of the
 	// milestone-12 analytics log. Defaults to slog.Default() in NewWorld;
 	// override via SetLogger (mirrors SetAnnounce).
 	logger *slog.Logger
@@ -1240,7 +1240,7 @@ func removeEntity(occs []*entity, m *entity) []*entity {
 	return occs
 }
 
-// pendingAttack is a bump committed in the attack phase (#104,
+// pendingAttack is a melee attack committed in the attack phase (#104,
 // attacks-before-moves): a move intent whose next step was opposing-held on
 // the PRE-MOVE board. The attacker stays put (path retained — a standing
 // intent keeps attacking); target is the victim hex as it stood before any
@@ -1350,10 +1350,10 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 
 // resolveCombatLocked runs the decided phased resolution over a given entity
 // set: think → attack (simultaneous, pre-move positions — #104,
-// attacks-before-moves) → move (faction-aware, bumpers skipped) → apply
+// attacks-before-moves) → move (faction-aware, melee attackers skipped) → apply
 // damage & deaths. The set is a whole CombatRadius-connected domain (the
 // world domain or one bubble), so no move,
-// bump, stack, or attack can reach an entity outside it. worldDomain selects
+// melee attack, stack, or attack can reach an entity outside it. worldDomain selects
 // thinkMonstersLocked's aggro gating (true for the world domain, false inside
 // a bubble — see that function's doc comment). It does not recompute bubbles
 // or advance the turn — the two resolve callers own that. It returns the
@@ -1397,13 +1397,13 @@ func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDoma
 	// #104, attacks-before-moves: the attack phase resolves first, against
 	// PRE-MOVE positions (byHex as built above), then movers advance. A
 	// committed attack always lands; retreat trades hits for distance. Note
-	// the rng-consumption order is contractual for determinism: bump victim
+	// the rng-consumption order is contractual for determinism: melee victim
 	// picks + damage folds draw first, the mover shuffle draws after.
-	attacks, bumped := w.collectBumpsLocked(byHex, members)
+	attacks, attacked := w.collectMeleeAttacksLocked(byHex, members)
 
 	w.attackLocked(rng, byHex, attacks)
 
-	w.movePhaseLocked(rng, byHex, members, bumped)
+	w.movePhaseLocked(rng, byHex, members, attacked)
 
 	return w.resolveDeathsLocked(rng, members)
 }
@@ -1436,7 +1436,7 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 // not just the slot that happens to be attacking; this is how armor's
 // take-damage cards apply). A monster victim folds its kind's claws rules
 // instead (it never equips). weapon is the ONE hit currently resolving's
-// acting weapon def — a single entry of meleeDefsFor for a bump or
+// acting weapon def — a single entry of meleeDefsFor for a melee attack or
 // rangedDefsFor for a shot (task 2: every fitting held weapon fires its own
 // hit, each folding through here separately); it is never nil — every combat
 // site resolves a real def per hit (fists/claws fallback for an unarmed
@@ -1563,22 +1563,22 @@ func (w *World) bubbleFloorElapsedLocked(b *bubble, now time.Time) bool {
 	return b.lastResolvedAt.IsZero() || now.Sub(b.lastResolvedAt) >= w.interval
 }
 
-// collectBumpsLocked scans the PRE-MOVE board for this turn's bump attacks
-// (#104, attacks-before-moves): a mover whose next step is an opposing-held
+// collectMeleeAttacksLocked scans the PRE-MOVE board for this turn's melee
+// attacks (#104, attacks-before-moves): a mover whose next step is an opposing-held
 // hex commits its turn to an attack on that hex and will not move (path
 // retained). Consumes no rng — detection reads the static pre-move board in
 // members' id-sorted order, so the returned attack order is deterministic
-// without a draw. Returns the attacks and the committed bumpers' ids for
-// movePhaseLocked to skip. The old retreat-dodge (a deferred bump
+// without a draw. Returns the attacks and the committed melee attackers' ids for
+// movePhaseLocked to skip. The old retreat-dodge (a deferred melee attack
 // re-checked post-move, completing as a move when the defender vacated —
-// fizzle reason bump_target_vacated) is removed by design: a committed
+// fizzle reason melee_target_vacated) is removed by design: a committed
 // attack always lands. Callers hold w.mu.
-func (w *World) collectBumpsLocked(
+func (w *World) collectMeleeAttacksLocked(
 	byHex map[protocol.Hex][]*entity, members []*entity,
 ) ([]pendingAttack, map[int64]bool) {
 	var attacks []pendingAttack
 
-	bumped := make(map[int64]bool)
+	attacked := make(map[int64]bool)
 
 	for _, m := range members {
 		if len(m.path) == 0 {
@@ -1587,30 +1587,30 @@ func (w *World) collectBumpsLocked(
 
 		if hasOpposing(byHex[m.path[0]], m) {
 			attacks = append(attacks, pendingAttack{m, m.path[0]})
-			bumped[m.id] = true
+			attacked[m.id] = true
 		}
 	}
 
-	return attacks, bumped
+	return attacks, attacked
 }
 
 // movePhaseLocked resolves the move phase, AFTER attacks (#104): movers
 // advance one hex from their path in seeded-shuffled order — skipping
-// entities that committed a bump this turn (bumped; a bump is the turn's
+// entities that committed a melee attack this turn (attacked; a melee attack is the turn's
 // whole action) and entities killed in the attack phase (hp <= 0 — the dead
 // never move; deaths are removed later by resolveDeathsLocked). A
 // destination that is opposing-held on the evolving board (including a
 // hostile that arrived this same phase) blocks the mover — it waits, path
-// retained, and next turn the standing intent becomes a bump. A
+// retained, and next turn the standing intent becomes a melee attack. A
 // same-faction destination at StackCap also waits, path retained. Callers
 // hold w.mu.
 func (w *World) movePhaseLocked(
-	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity, bumped map[int64]bool,
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool,
 ) {
 	movers := make([]*entity, 0, len(members))
 
 	for _, e := range members {
-		if len(e.path) > 0 && !bumped[e.id] && e.hp > 0 {
+		if len(e.path) > 0 && !attacked[e.id] && e.hp > 0 {
 			movers = append(movers, e)
 		}
 	}
@@ -1635,12 +1635,12 @@ func (w *World) movePhaseLocked(
 	}
 }
 
-// attackLocked resolves the attack phase: each bump attack and each pending
+// attackLocked resolves the attack phase: each melee attack and each pending
 // ranged attack accumulates damage against pre-attack HP (nothing applied yet)
 // into one shared map, so order is irrelevant and mutual kills work, then
 // applies it all at once. A stacked defending hex picks its victim with rng, so
-// a bump against a stack damages exactly one occupant. Ranged attacks resolve in
-// the same map (resolveRangedLocked) so a bow shot and a bump land
+// a melee attack against a stack damages exactly one occupant. Ranged attacks resolve in
+// the same map (resolveRangedLocked) so a bow shot and a melee attack land
 // simultaneously. Callers hold w.mu.
 func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacks []pendingAttack) {
 	damage := make(map[int64]int)
@@ -1648,7 +1648,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	for _, a := range attacks {
 		victims := opposingOccupants(byHex[a.target], a.attacker)
 		if len(victims) == 0 {
-			// Guard; collectBumpsLocked ensured at least one on the pre-move
+			// Guard; collectMeleeAttacksLocked ensured at least one on the pre-move
 			// board — a same-phase state change here would be a bug.
 			continue
 		}
@@ -1661,7 +1661,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 
 		victim := victims[rng.IntN(len(victims))]
 
-		// Melee/bump damage: EVERY melee-tagged weapon the attacker holds
+		// Melee damage: EVERY melee-tagged weapon the attacker holds
 		// lands its own hit on the same victim (task 2, dual-wield) — the
 		// fists/claws fallback (meleeDefsFor) for an unarmed player or a
 		// monster's KIND claws profile (6c — monsterDef.claws, e.g. a rat's 1
@@ -1686,7 +1686,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 }
 
 // resolveRangedLocked folds every pending ranged attack into the shared damage
-// map (against pre-attack HP, so a bow shot lands simultaneously with bumps).
+// map (against pre-attack HP, so a bow shot lands simultaneously with melee attacks).
 // Shooters are processed in id order so the seeded single-target victim pick is
 // reproducible regardless of map iteration order. An ENTITY-targeted attack
 // (item 7, playtest batch 2 — attackTargetEntity != 0, aimed at a specific
@@ -1699,7 +1699,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 // fizzles. Every ranged/magic weapon that still reaches the target (rangedDefsFor, task 2 dual-wield)
 // fires as its own hit, in hand order: a bow (aoeRadius 0) damages one
 // opposing occupant at the target hex — a stack picks one hostile with rng,
-// mirroring the bump victim pick (this is the legacy/defensive hex-only bow
+// mirroring the melee victim pick (this is the legacy/defensive hex-only bow
 // path — kept for the SetAttackTargetForTest bridge and any future hex-only
 // ranged use; a real client always sends an entity id for a single-target
 // weapon) — while magic (aoeRadius > 0) damages every opposing-faction entity
@@ -1754,7 +1754,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 // every held weapon's range. Every ranged/magic weapon that still reaches
 // (rangedDefsFor, task 2 dual-wield) fires as its own hit, in hand order.
 // Single-target (aoeRadius 0) defs share ONE stack-victim pick, drawn lazily
-// on the first such def, mirroring attackLocked's bump victim pick — a
+// on the first such def, mirroring attackLocked's melee victim pick — a
 // dual-wielded pair of single-target weapons both land on the SAME stack
 // member instead of splitting a stack across weapons via independent rng
 // picks. Magic (aoeRadius > 0) defs are unaffected — each already damages
@@ -1867,7 +1867,7 @@ func (w *World) resolveEntityTargetedLocked(
 // resolveGroundTargetedLocked's per-def loop, drawn ONCE per shooter even
 // when several single-target (aoeRadius 0) held weapons fire this same
 // target, so a dual-wielded pair concentrates on one victim (mirroring
-// attackLocked's bump victim pick) instead of splitting a stack across
+// attackLocked's melee victim pick) instead of splitting a stack across
 // weapons via independent picks. Callers hold w.mu.
 func (w *World) stackVictimLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacker *entity, target protocol.Hex,
@@ -2201,7 +2201,7 @@ func (w *World) tooCloseToMonsterLocked(h protocol.Hex) bool {
 // CombatRadius" preference (a crowded clearing may leave no hex outside it)
 // before it EVER relaxes "not literally on top of one": a monster co-located
 // with its own target pathfinds itself-to-itself (empty path) and never
-// bumps (thinkMonstersLocked's co-location dormancy), so landing a spawn
+// attacks (thinkMonstersLocked's co-location dormancy), so landing a spawn
 // there doesn't just risk an instant bubble — it can silently stall combat
 // forever. Callers hold w.mu.
 func (w *World) occupiedByMonsterLocked(h protocol.Hex) bool {
@@ -2475,7 +2475,7 @@ func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
 // you're already in one. Callers hold w.mu.
 //
 // When adjacent, path[0] is the player's own hex, so the move phase converts
-// this into a bump-to-attack (6.3).
+// this into a melee attack (6.3).
 func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, worldDomain bool) {
 	if len(targets) == 0 {
 		return
@@ -2500,7 +2500,7 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 
 		path := Pathfind(m.hex, target.hex, w.walkableLocked)
 		// Step toward the target; when adjacent, path[0] is the player's own
-		// hex, so the move phase converts this into a bump-to-attack (6.3).
+		// hex, so the move phase converts this into a melee attack (6.3).
 		if len(path) >= 1 {
 			m.path = []protocol.Hex{path[0]}
 		} else {
@@ -2700,7 +2700,7 @@ func (w *World) spawnHexLocked() (protocol.Hex, error) {
 // Faction-blind by design in this fallback path: it can land a player on a
 // monster-occupied hex (opposing co-occupancy, a §5 MUST in the rare case it
 // is ever reached). It is inert only because a co-located monster's think
-// step gets Pathfind(from==to)==∅ and holds (never bumps).
+// step gets Pathfind(from==to)==∅ and holds (never attacks).
 func (w *World) spawnHexSpiralLocked() (protocol.Hex, error) {
 	origin := protocol.Hex{Q: 0, R: 0}
 

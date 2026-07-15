@@ -280,7 +280,7 @@ func (e *entity) stackIndexFor(defID string) int {
 // iteration order. Used by rollDamageLocked's victim-side fold: a hit lands
 // on the whole entity, not just whichever slot happens to be attacking, so
 // e.g. leather armor's take-damage card applies even though the hit came
-// from a bump, not the armor "acting".
+// from a melee attack, not the armor "acting".
 func equippedRuleCards(e *entity) []ruleCard {
 	var cards []ruleCard
 
@@ -395,17 +395,17 @@ func (e *entity) equipWeaponLocked(inst itemInstance, def *itemDef) error {
 	return nil
 }
 
-// closeDefFor is the def an entity's bump would highlight (the client's range
+// closeDefFor is the def an entity's melee attack would highlight (the client's range
 // hint) or falls back to when only one hit matters (unequipped-mid-turn
 // guards): meleeDefsFor(e)'s first entry — its kind's claws for a monster, its
 // first melee-tagged held weapon in hand order, or fists for a bare/unarmed
-// player. A real bump resolves EVERY entry of meleeDefsFor, not just this one
+// player. A real melee attack resolves EVERY entry of meleeDefsFor, not just this one
 // (attackLocked) — this shim is for non-combat callers only.
 func closeDefFor(e *entity) *itemDef {
 	return meleeDefsFor(e)[0]
 }
 
-// meleeDefsFor returns every melee hit an entity's bump delivers this turn, in
+// meleeDefsFor returns every melee hit an entity's melee attack delivers this turn, in
 // hand order (heldWeapons — main before off): a monster's kind claws profile
 // (single — monsters own no items and never equip; checked first, so a
 // monster never falls through to the fists case), else every melee-tagged

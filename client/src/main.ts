@@ -236,7 +236,7 @@ export interface GameDebug {
    */
   damage: { id: number; amount: number }[];
   /**
-   * The hexes my entity can act on THIS combat turn (moves + bump-attacks),
+   * The hexes my entity can act on THIS combat turn (moves + melee attacks),
    * from the latest bundle. Empty outside a bubble — out there, click-anywhere
    * pathing applies and no restriction exists. Drives the tactical overlay
    * and the in-combat click filter; exposed for e2e.
@@ -244,7 +244,7 @@ export interface GameDebug {
   combatMoves: Hex[];
   /**
    * The hexes within my equipped ranged weapon's reach this combat turn
-   * (excluding move/bump tiles — those act differently on click). Clicking
+   * (excluding move/melee tiles — those act differently on click). Clicking
    * one shoots when a hostile stands there (or regardless, for AoE). Empty
    * outside a bubble or with no ranged weapon. Drives the red range wash.
    */
@@ -258,6 +258,15 @@ export interface GameDebug {
    * committed-action indicator (FeedbackLayer.setCommitted); exposed for e2e.
    */
   committedAction: CommittedAction | null;
+  /**
+   * The target hex of the most recent attack-feedback flash
+   * (FeedbackLayer.flashAttack) — set synchronously by both a ranged click
+   * and a melee click (#113), never cleared (a "last event" record,
+   * not live state; the flash itself fades in FLASH_DURATION_MS). Exposed
+   * for e2e: the flash is a 450ms one-shot, so tests read this instead of
+   * racing the animation.
+   */
+  lastAttackFlash: Hex | null;
   /**
    * Item ids with an in-flight panel action (equip/unequip/drink/drop) whose
    * result hasn't ridden a turn bundle yet — the same pending set that drives
@@ -492,6 +501,7 @@ window.game = {
   combatMoves: [],
   combatRanged: [],
   committedAction: null,
+  lastAttackFlash: null,
   pendingItems: [],
   pickupPending: false,
 };
@@ -544,7 +554,7 @@ function maxRangedRange(): number {
  * (aoeRadius > 0) in range can be aimed at any hex — the blast can land on
  * empty ground and still catch nearby hostiles. A single-target weapon (a
  * rogue's bow) in range only fires at a hostile actually standing on the
- * clicked hex — any other click there still walks (mirrors the melee-bump
+ * clicked hex — any other click there still walks (mirrors the melee-attack
  * flow). Each weapon is checked against its own range, so a short AoE weapon
  * never green-lights an empty-ground click that only a longer single-target
  * weapon reaches. Reads window.game (the same state the debug/test surface
@@ -645,12 +655,12 @@ async function start(): Promise<void> {
 
   // combatReach BFS-expands from my hex up to COMBAT_MOVE_RANGE steps through
   // walkable, non-hostile, non-full tiles. A hostile-held tile on the
-  // frontier is a bump-attack target (stepping in swings), never expanded
+  // frontier is a melee-attack target (stepping in swings), never expanded
   // through. Occupancy and hostility read the latest bundle via window.game.
-  const combatReach = (): { moves: Hex[]; bumps: Hex[] } => {
+  const combatReach = (): { moves: Hex[]; melees: Hex[] } => {
     const me = window.game.me;
     if (me === null) {
-      return { moves: [], bumps: [] };
+      return { moves: [], melees: [] };
     }
 
     const occupants = new Map<string, { n: number; hostile: boolean }>();
@@ -663,7 +673,7 @@ async function start(): Promise<void> {
     }
 
     const moves: Hex[] = [];
-    const bumps: Hex[] = [];
+    const melees: Hex[] = [];
     const seen = new Set<string>([`${me.hex.q},${me.hex.r}`]);
     let frontier: Hex[] = [me.hex];
 
@@ -681,7 +691,7 @@ async function start(): Promise<void> {
 
           const occ = occupants.get(key);
           if (occ?.hostile) {
-            bumps.push(h); // swing in, never walk through
+            melees.push(h); // swing in, never walk through
           } else if ((occ?.n ?? 0) < StackCap) {
             moves.push(h);
             next.push(h); // a future range >1 keeps expanding from here
@@ -692,7 +702,7 @@ async function start(): Promise<void> {
       frontier = next;
     }
 
-    return { moves, bumps };
+    return { moves, melees };
   };
 
   // Ground-loot layer sits under the entity layer (added first) — a dropped
@@ -1039,6 +1049,7 @@ async function start(): Promise<void> {
   // catch nearby hostiles.
   const attackAt = (target: Hex): Promise<void> => {
     feedbackLayer.flashAttack(target);
+    window.game.lastAttackFlash = target;
 
     const targetEntityId = aoeReaches(target) ? 0 : (hostileIdAt(target) ?? 0);
 
@@ -1051,10 +1062,32 @@ async function start(): Promise<void> {
     return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
 
-  // lastReach mirrors the tactical overlay's move/bump split for click
+  // meleeAt submits a melee attack at an adjacent hostile: mechanically a
+  // MOVE intent (a move onto a hostile-held hex converts to a melee attack —
+  // the server converts a step onto that hex into the swing), but since #104
+  // a committed melee swing
+  // always lands, so the click gets ATTACK feedback, not walk feedback
+  // (#113): the same one-shot flash and committed crosshair a ranged click
+  // gets — never the destination ring or a blue "move" marker, which would
+  // read as "walking there" on a hex the player is deliberately striking.
+  // No destination bookkeeping either (window.game.destination stays
+  // untouched): the attacker doesn't move on a melee swing, and the
+  // standing intent keeps swinging turn after turn.
+  const meleeAt = (target: Hex): Promise<void> => {
+    feedbackLayer.flashAttack(target);
+    window.game.lastAttackFlash = target;
+
+    const committed: CommittedAction = { kind: "attack", target };
+    window.game.committedAction = committed;
+    feedbackLayer.setCommitted(committed);
+
+    return submitIntent(identity, target, IntentMove).then(() => undefined);
+  };
+
+  // lastReach mirrors the tactical overlay's move/melee split for click
   // routing (window.game.combatMoves merges them for the e2e surface).
   // Refreshed by onTurn alongside the overlay.
-  let lastReach: { moves: Hex[]; bumps: Hex[] } = { moves: [], bumps: [] };
+  let lastReach: { moves: Hex[]; melees: Hex[] } = { moves: [], melees: [] };
   const inList = (list: Hex[], h: Hex): boolean => list.some((x) => x.q === h.q && x.r === h.r);
 
   // clickTarget is the single decision point shared by canvas clicks and
@@ -1062,12 +1095,12 @@ async function start(): Promise<void> {
   // clicked" for tests. Out of combat this is the pre-classes behavior:
   // click-anywhere pathing (ranged clicks only exist in combat). IN combat,
   // the tinted overlay is the contract: blue = step there, strong red
-  // (adjacent hostile) = bump-attack, light red (weapon reach) = shoot when
+  // (adjacent hostile) = melee attack, light red (weapon reach) = shoot when
   // an enemy is on the hex (or anywhere in it, for AoE), own hex = stand
   // still/cancel; anything else is not a valid selection. One deliberate
   // class nuance: an AoE caster (mage) blasts an adjacent hostile rather
   // than staff-bonking it — its ranged weapon IS its real weapon — while a
-  // bow user (rogue) bumps adjacent hostiles with the dagger, the plan's
+  // bow user (rogue) melee-attacks adjacent hostiles with the dagger, the plan's
   // "weapon by distance" identity.
   const clickTarget = (target: Hex): Promise<void> => {
     if (window.game.inCombat) {
@@ -1079,12 +1112,12 @@ async function start(): Promise<void> {
         return walkTo(target);
       }
 
-      if (inList(lastReach.bumps, target)) {
+      if (inList(lastReach.melees, target)) {
         clearItemPending();
         if (aoeReaches(target)) {
           return attackAt(target); // mage: blast the adjacent hostile
         }
-        return walkTo(target); // bump-attack: step in and swing
+        return meleeAt(target); // melee attack: swing, with attack feedback (#113)
       }
 
       if (isRangedAttackClick(target)) {
@@ -1372,12 +1405,12 @@ async function start(): Promise<void> {
       if (window.game.inCombat) {
         const reach = combatReach();
         lastReach = reach;
-        window.game.combatMoves = [...reach.moves, ...reach.bumps];
+        window.game.combatMoves = [...reach.moves, ...reach.melees];
 
         // The held ranged weapons' reach: every map tile within the FARTHEST
         // weapon's range (distance-only, no LOS — matching the server's
         // rule), minus the tiles that already act differently on click
-        // (moves, bumps, self). Max range is right for a wash — it shows
+        // (moves, melees, self). Max range is right for a wash — it shows
         // "some weapon can act here"; the click routing itself is per-weapon
         // (isRangedAttackClick).
         const ranged: Hex[] = [];
@@ -1390,16 +1423,16 @@ async function start(): Promise<void> {
               d >= 1 &&
               d <= washRange &&
               !inList(reach.moves, tile.hex) &&
-              !inList(reach.bumps, tile.hex)
+              !inList(reach.melees, tile.hex)
             ) {
               ranged.push(tile.hex);
             }
           }
         }
         window.game.combatRanged = ranged;
-        moveRangeLayer.update(reach.moves, reach.bumps, ranged);
+        moveRangeLayer.update(reach.moves, reach.melees, ranged);
       } else {
-        lastReach = { moves: [], bumps: [] };
+        lastReach = { moves: [], melees: [] };
         window.game.combatMoves = [];
         window.game.combatRanged = [];
         moveRangeLayer.update([], [], []);
@@ -1471,12 +1504,12 @@ async function start(): Promise<void> {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
     const worldY = ev.clientY - rect.top - world.position.y;
-    // Crosshair only where a click would actually shoot — a bump tile with
-    // no AoE weapon in reach swings instead (see clickTarget's routing).
+    // Crosshair wherever a click would attack — a shot OR a melee swing
+    // (#113: a melee swing is a committed attack since #104, so it earns the
+    // same pre-click affordance as a ranged target; see clickTarget's routing).
     const hover = pixelToHex({ x: worldX, y: worldY });
-    const wouldShoot =
-      isRangedAttackClick(hover) && (aoeReaches(hover) || !inList(lastReach.bumps, hover));
-    app.canvas.style.cursor = wouldShoot ? "crosshair" : "default";
+    const wouldAttack = isRangedAttackClick(hover) || inList(lastReach.melees, hover);
+    app.canvas.style.cursor = wouldAttack ? "crosshair" : "default";
 
     // Enemy hover tooltip (item 13, playtest batch 2): kind display name +
     // "HP cur/max", near the cursor. pointer-events: none on the tooltip

@@ -191,10 +191,10 @@ func fireBowOrChase(
 // once within range, fires an "attack" intent instead of moving.
 //
 // Because an attack intent clears the rogue's route (queueAttackLocked), the
-// rogue never bumps while it is firing — so any monster HP drop observed on a
+// rogue never melee-attacks while it is firing — so any monster HP drop observed on a
 // turn where the rogue fired is attributable solely to the ranged shot
 // (resolveBowLocked), proving the bow path lands over real HTTP, not just a
-// disguised bump.
+// disguised melee attack.
 //
 // The monster is seeded two hexes from the origin (where the rogue spawns) —
 // already inside range, so the rogue fires from range on its first bubble
@@ -400,7 +400,7 @@ func placeMonsterClusterNear(world *game.World, center protocol.Hex) bool {
 // hostiles within AoE radius (bestAoETarget, recomputed every bundle),
 // falling back to chasing the nearest monster into range otherwise.
 //
-// It requires TWO OR MORE monsters to take damage in the SAME turn (a bump or
+// It requires TWO OR MORE monsters to take damage in the SAME turn (a melee attack or
 // a bow always resolves to exactly one victim, so a same-turn multi-drop is
 // only possible via the AoE) — not just the single-hit trend, matching the
 // unit-level "2 monsters in radius, both take damage, no friendly fire" case
@@ -529,7 +529,7 @@ func TestMageAoEDamagesMonsters(t *testing.T) {
 
 		// Bonus signal: how many distinct monsters lost HP (or vanished)
 		// between the previous and this bundle. Only the AoE can drop >=2 in
-		// one turn (a bump or a bow always resolves to exactly one victim).
+		// one turn (a melee attack or a bow always resolves to exactly one victim).
 		hitThisBundle := 0
 
 		for id, before := range prevHP {

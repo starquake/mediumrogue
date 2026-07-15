@@ -41,15 +41,15 @@ func TestPerKindClawsDamage(t *testing.T) {
 			pid, _ := w.PlaceEntityForTest(center) // level-1 Fighter, FighterMaxHP
 			monsterID := w.PlaceMonsterKindForTest(monsterHex, kind)
 
-			// Monster bumps the player; ResolveCombatOnlyForTest skips the AI
+			// Monster strikes the player; ResolveCombatOnlyForTest skips the AI
 			// think phase, so the pinned path is not overwritten by targeting
-			// (mirrors melee_damage_test.go's TestMonsterBumpDamageUnchanged).
+			// (mirrors melee_damage_test.go's TestMonsterMeleeDamageUnchanged).
 			w.SetPathForTest(monsterID, []protocol.Hex{center})
 			w.ResolveCombatOnlyForTest()
 
 			player, ok := entityOfSnap(w.Snapshot(), pid)
 			if !ok {
-				t.Fatalf("player %d missing after a %s bump", pid, kind)
+				t.Fatalf("player %d missing after a %s melee attack", pid, kind)
 			}
 
 			dealt := protocol.FighterMaxHP - player.HP
@@ -75,7 +75,7 @@ func TestPerKindKillXP(t *testing.T) {
 
 	trollHex := walkableNeighbor(t, w, me.Hex)
 	trollID := w.PlaceMonsterKindForTest(trollHex, kindTroll)
-	w.SetHPForTest(trollID, game.ItemDamageForTest("iron-sword")) // one bump is lethal
+	w.SetHPForTest(trollID, game.ItemDamageForTest("iron-sword")) // one melee attack is lethal
 
 	step(t, w) // forms the bubble
 
@@ -86,7 +86,7 @@ func TestPerKindKillXP(t *testing.T) {
 	snap := step(t, w)
 
 	if _, ok := entityOfSnap(snap, trollID); ok {
-		t.Fatalf("troll %d should have died to the bump", trollID)
+		t.Fatalf("troll %d should have died to the melee attack", trollID)
 	}
 
 	if got, want := w.XPForTest(me.EntityID), game.MonsterXPForTest(kindTroll); got != want {
@@ -318,15 +318,15 @@ func TestWyrmslayerDamageMultiplierVsDragon(t *testing.T) {
 		monsterHex := walkableNeighbor(t, w, center)
 		monsterID := w.PlaceMonsterKindForTest(monsterHex, kind)
 
-		// Bump the monster; the monster has no path set, so it does not
+		// Melee-attack the monster; the monster has no path set, so it does not
 		// retaliate — isolating the attacker's damage (mirrors
-		// melee_damage_test.go's TestBumpDamageUsesClassCloseWeapon).
+		// melee_damage_test.go's TestMeleeDamageUsesClassCloseWeapon).
 		w.SetPathForTest(pid, []protocol.Hex{monsterHex})
 		w.ResolveCombatOnlyForTest()
 
 		monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 		if !ok {
-			t.Fatalf("%s missing after a single bump", kind)
+			t.Fatalf("%s missing after a single melee attack", kind)
 		}
 
 		return game.MonsterMaxHPForTest(kind) - monster.HP

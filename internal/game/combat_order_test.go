@@ -11,7 +11,7 @@ import (
 
 // TestKilledEntityDoesNotMove (#104): an entity killed in the attack phase
 // does not get its move — the spec's death-timing consequence. A 1-HP
-// monster with a queued retreat path dies to the bump (resolved first) and
+// monster with a queued retreat path dies to the melee attack (resolved first) and
 // is removed; no "move" combat event is ever logged for it.
 func TestKilledEntityDoesNotMove(t *testing.T) {
 	t.Parallel()

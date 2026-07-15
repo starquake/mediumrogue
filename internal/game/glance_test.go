@@ -7,17 +7,17 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// Seeds pinned so the wolf's bump on the Rogue does / does not proc the
-// glance card's chance condition — found by scanning seeds during
+// Seeds pinned so the wolf's melee attack on the Rogue does / does not proc
+// the glance card's chance condition — found by scanning seeds during
 // implementation (the drops_test.go killDropSeed/killMissSeed pattern). If
 // a change reorders rng consumption these move: re-derive by re-scanning,
 // never by weakening the halved/full assertions.
 const (
-	glanceProcSeed = 1 // verified: wolf bump (base 3) resolves dealt=1 (glanced)
-	glanceMissSeed = 2 // verified: wolf bump (base 3) resolves dealt=3 (full hit)
+	glanceProcSeed = 1 // verified: wolf melee attack (base 3) resolves dealt=1 (glanced)
+	glanceMissSeed = 2 // verified: wolf melee attack (base 3) resolves dealt=3 (full hit)
 )
 
-// glanceScenario drives one wolf bump into a stationary Rogue under seed
+// glanceScenario drives one wolf melee attack into a stationary Rogue under seed
 // and returns the player's HP loss: the wolf is placed adjacent, given the
 // player's hex as its path, and resolved without AI
 // (ResolveCombatOnlyForTest), so the take-damage fold — where the glance
@@ -49,7 +49,7 @@ func glanceScenario(t *testing.T, seed int64) int {
 
 // TestRogueGlanceHalvesDamage (#91): the Rogue's class passive gives a
 // RogueGlanceChancePercent chance that an incoming hit is halved
-// (GlanceDamagePercent), never negated. A wolf bump (base 3) lands 3 full
+// (GlanceDamagePercent), never negated. A wolf melee attack (base 3) lands 3 full
 // or 3*50/100 = 1 glanced.
 func TestRogueGlanceHalvesDamage(t *testing.T) {
 	t.Parallel()
@@ -67,7 +67,7 @@ func TestRogueGlanceHalvesDamage(t *testing.T) {
 }
 
 // TestNonRogueTakesFullDamage: the glance card is class-gated — a Fighter
-// victim's take-damage fold carries no chance card, so the same wolf bump
+// victim's take-damage fold carries no chance card, so the same wolf melee attack
 // always lands in full, on any seed.
 func TestNonRogueTakesFullDamage(t *testing.T) {
 	t.Parallel()

@@ -74,7 +74,7 @@ moments. The short version (full detail: plan §5):
   then all movement resolves** (#104): committing to an attack always lands
   it, and stepping away does not dodge. Two combatants can kill each other
   on the same turn.
-- **Melee** is bump-to-attack (walk into an enemy). **Ranged** (bow, magic)
+- **Melee** attacks by walking into an enemy. **Ranged** (bow, magic)
   reaches 4 hexes, needs no line of sight, and never hits allies. Mage magic
   is an **area hit** (the target hex plus its ring of neighbors).
 - Up to 5 allies can stand on one hex; a single-target hit on a stack picks

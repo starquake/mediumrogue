@@ -435,8 +435,8 @@ func TestPlayersExtendBubbleReach(t *testing.T) {
 // cancelled the moment its owner is pulled into a combat bubble (#103) — the
 // route must not keep advancing one hex per bubble-turn underneath the fight.
 // The flee counterpart (a path queued INSIDE a bubble survives recomputes) is
-// TestBubbleMemberEscapesWhenLeavingRange; the standing-bump counterpart (a
-// single-step path survives bubble entry) is TestBumpKillRemovesMonster.
+// TestBubbleMemberEscapesWhenLeavingRange; the standing-melee counterpart (a
+// single-step path survives bubble entry) is TestMeleeKillRemovesMonster.
 func TestBubbleEntryCancelsAutoWalk(t *testing.T) {
 	t.Parallel()
 
@@ -541,7 +541,7 @@ func TestBubbleMemberEscapesWhenLeavingRange(t *testing.T) {
 	friendID, friendToken := w.PlaceEntityForTest(spots[1])
 
 	// Keep the anchor player alive across the escape walk: the monster chases
-	// (and bumps) the lowest-id player every turn, and only InCombat is asserted
+	// (and strikes) the lowest-id player every turn, and only InCombat is asserted
 	// here, not HP.
 	w.SetHPForTest(me.EntityID, 1000)
 

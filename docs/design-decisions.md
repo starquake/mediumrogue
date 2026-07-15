@@ -51,14 +51,14 @@ spawn (Q9 first half).
   Committing to an attack always produces damage; the retreat-dodge
   (stepping away auto-dodged the swing, worst for the mage's ground-targeted
   AoE) is removed. Fleeing survives as *trading hits for distance*: a
-  one-action chaser that bumps you isn't gaining ground that turn. Mutual
+  one-action chaser that strikes you isn't gaining ground that turn. Mutual
   kills unchanged. (#104, decided 2026-07-15; shipped.)
 - **One action per turn, reaffirmed** — move XOR attack per 4-second turn.
   Full move+attack was examined and rejected (2026-07-15): at uniform
   1-hex/turn speed it makes fleeing melee impossible (chaser moves *and*
   hits every turn) and kiting free (ranged steps back and shoots forever),
   and fixing that needs speed/engagement machinery drifting toward TTRPG
-  structure. Noted future option, not committed: *melee move+bump* (finish
+  structure. Noted future option, not committed: *melee move+strike* (finish
   the approach and strike in one turn) as a surgical anti-kiting patch.
 - **No monster levels / no party-scaling** — difficulty stays kinds + distance
   rings, so progress stays *felt* (the wolf that nearly killed you at L1 dies

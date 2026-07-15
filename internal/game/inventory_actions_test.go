@@ -645,8 +645,8 @@ func TestDrinkInBubbleConsumesTurn(t *testing.T) {
 		t.Fatalf("WaitingForIDs = %v, want only %d (drink must mark A ready)", waiting, idB)
 	}
 
-	// B locks in -> the bubble resolves: A heals +5, then the monster's bump
-	// (it targets A — nearest, lowest-id tie-break) deals its damage.
+	// B locks in -> the bubble resolves: A heals +5, then the monster's melee
+	// attack (it targets A — nearest, lowest-id tie-break) deals its damage.
 	hexB0 := hexOfSnap(form, idB)
 	if err := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: idB, Token: tokB, Kind: protocol.IntentMove, Target: hexB0,
@@ -657,7 +657,7 @@ func TestDrinkInBubbleConsumesTurn(t *testing.T) {
 	wolfDamage := game.MonsterDamageForTest(w.MonsterKindForTest(monsterID))
 
 	if got, want := entityHP(t, w.Snapshot(), idA), maxHP-10+5-wolfDamage; got != want {
-		t.Errorf("HP after bubble resolution = %d, want %d (heal, then this turn's bump)", got, want)
+		t.Errorf("HP after bubble resolution = %d, want %d (heal, then this turn's melee attack)", got, want)
 	}
 
 	pack := w.BackpackForTest(idA)

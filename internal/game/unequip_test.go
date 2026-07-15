@@ -86,7 +86,7 @@ func TestUnequipInBubbleQueuesTurnConsumption(t *testing.T) {
 }
 
 // TestFistsFallbackDamageAfterUnequip: once a player's close slot is
-// unequipped, closeDefFor falls back to fists — a bump deals exactly
+// unequipped, closeDefFor falls back to fists — a melee attack deals exactly
 // protocol.FistsDamage (before the take-damage pipeline), not the weapon's
 // damage.
 func TestFistsFallbackDamageAfterUnequip(t *testing.T) {

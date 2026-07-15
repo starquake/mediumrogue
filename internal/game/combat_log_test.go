@@ -60,7 +60,7 @@ func TestMonsterKillAnnouncedInChatNamesNobodyForTwoPlayers(t *testing.T) {
 
 	// ResolveTurnForTest is ungated (lock-in/patience are exercised
 	// elsewhere) — it resolves this bubble-turn regardless of B's lock-in
-	// state, so A's bump alone one-hit-kills the monster here.
+	// state, so A's melee attack alone one-hit-kills the monster here.
 	w.ResolveTurnForTest()
 
 	want := fmt.Sprintf("a wolf was slain (+%d XP to everyone in the fight)", game.MonsterXPForTest("wolf"))
@@ -94,7 +94,7 @@ func TestPlayerDeathAnnouncedInChat(t *testing.T) {
 	w.SetHPForTest(victim.EntityID, 1)
 
 	step(t, w) // bubble forms around victim + monster
-	step(t, w) // bubble turn: the monster bumps, the victim dies
+	step(t, w) // bubble turn: the monster strikes, the victim dies
 
 	if !slices.Contains(announced, "victim died") {
 		t.Errorf("announced = %v, want to contain %q", announced, "victim died")

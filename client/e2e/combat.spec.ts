@@ -14,7 +14,7 @@ declare global {
 // filenames matching /(monsters|combat)\.spec\.ts$/ route to the server
 // started with MONSTER_COUNT=3).
 
-test("bumping into a monster deals damage, observable via window.game.hp", async ({ page }) => {
+test("melee-attacking a monster deals damage, observable via window.game.hp", async ({ page }) => {
   await page.goto("/");
 
   await expect
@@ -66,8 +66,8 @@ test("bumping into a monster deals damage, observable via window.game.hp", async
       // In a bubble, only this turn's reachable tiles are selectable (the
       // tactical click filter) — step onto whichever reachable tile closes
       // the most distance, exactly like a human player now plays it. The
-      // monster's own hex appears in combatMoves as a bump tile once
-      // adjacent, so this same pick lands the killing bump.
+      // monster's own hex appears in combatMoves as a melee tile once
+      // adjacent, so this same pick lands the killing strike.
       if (window.game.inCombat && window.game.combatMoves.length > 0) {
         let step = window.game.combatMoves[0]!;
         for (const h of window.game.combatMoves.slice(1)) {
@@ -99,9 +99,9 @@ test("bumping into a monster deals damage, observable via window.game.hp", async
     .poll(() => chase(baseline), { timeout: 20_000, intervals: [300] })
     .toBe(true);
 
-  // Stop this entity's walk immediately: a bump that's still opposing-held
-  // keeps its queued path (retained, not consumed), so left unattended this
-  // entity would keep autonomously bump-attacking on every future turn —
+  // Stop this entity's walk immediately: a melee attack that's still
+  // opposing-held keeps its queued path (retained, not consumed), so left
+  // unattended this entity would keep autonomously melee-attacking on every future turn —
   // entities persist server-side for the whole shared combat-server session
   // (see playwright.config.ts), and could grind through the fixed monster
   // population that the sibling monsters.spec test also depends on. Retarget
@@ -174,7 +174,7 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   };
 
   // Chase until the bubble forms (CombatRadius=6 is well clear of adjacency,
-  // so this converges before any bump-to-attack — no HP changes expected
+  // so this converges before any melee attack — no HP changes expected
   // here). The instant inCombat flips, stop calling tapHex entirely: no more
   // intents from this client for the rest of the test.
   await expect
@@ -236,7 +236,7 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   // *when* the bubble resolves, not whether a queued path gets walked. If
   // this bubble ever resolves (e.g. via the e2e server's COMBAT_PATIENCE
   // timeout), the residual path would walk this entity toward the monster
-  // and could bump-attack it, draining the shared combat server's fixed
+  // and could melee-attack it, draining the shared combat server's fixed
   // (non-respawning) monster pool that monsters.spec.ts also depends on —
   // the same failure class fixed in 84f1471. Retarget to our own current
   // hex: Pathfind(from == to) sets an empty path. Awaited: tapHex resolves

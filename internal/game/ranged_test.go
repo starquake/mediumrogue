@@ -307,7 +307,7 @@ func TestDualRangedSharesOneStackVictim(t *testing.T) {
 // TestRangedIntentIsLockIn: inside a bubble, an attack intent counts as the
 // player's lock-in — the frozen bubble stays put until the submission, then
 // resolves immediately. The rogue's bow lands on the monster and the monster
-// bumps back the same turn.
+// strikes back the same turn.
 func TestRangedIntentIsLockIn(t *testing.T) {
 	t.Parallel()
 
@@ -324,7 +324,7 @@ func TestRangedIntentIsLockIn(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	// Forming poll: world tick forms the bubble (the monster bumps the rogue once).
+	// Forming poll: world tick forms the bubble (the monster strikes the rogue once).
 	clk.advance(time.Second)
 
 	if !w.PollTickForTest() {
@@ -360,19 +360,20 @@ func TestRangedIntentIsLockIn(t *testing.T) {
 
 	// Re-derived for #91 (Rogue glance%): the victim here is a Rogue, and this
 	// suite's default seed procs the glance card's chance condition on the
-	// resolved-turn bump too (confirmed via combat log: wolf base 3, dealt=1),
+	// resolved-turn melee attack too (confirmed via combat log: wolf base 3, dealt=1),
 	// so the expected loss is the halved hit, not the full one.
 	wantRogueLoss := game.MonsterDamageForTest("wolf") * protocol.GlanceDamagePercent / 100
 	if got, want := entityHP(t, snap, me.EntityID), rogueHPBefore-wantRogueLoss; got != want {
-		t.Errorf("rogue HP = %d, want %d (monster bumps back on the resolved turn, glanced)", got, want)
+		t.Errorf("rogue HP = %d, want %d (monster strikes back on the resolved turn, glanced)", got, want)
 	}
 }
 
-// TestRangedAndBumpAccumulateSimultaneously: a bow shot and a monster's bump land
-// against pre-attack HP in the same turn. The monster starts on exactly-lethal
-// HP for the bow, yet still gets its bump in — proving the two attacks are
-// simultaneous, not sequenced (a dead-first monster could not bite back).
-func TestRangedAndBumpAccumulateSimultaneously(t *testing.T) {
+// TestRangedAndMeleeAccumulateSimultaneously: a bow shot and a monster's melee
+// attack land against pre-attack HP in the same turn. The monster starts on
+// exactly-lethal HP for the bow, yet still gets its melee attack in — proving
+// the two attacks are simultaneous, not sequenced (a dead-first monster could
+// not bite back).
+func TestRangedAndMeleeAccumulateSimultaneously(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -387,7 +388,7 @@ func TestRangedAndBumpAccumulateSimultaneously(t *testing.T) {
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	w.SetHPForTest(monsterID, rangedDamage(t, protocol.ClassRogue)) // exactly lethal to the bow
-	w.SetPathForTest(monsterID, []protocol.Hex{rogueHex})           // bump the rogue this turn
+	w.SetPathForTest(monsterID, []protocol.Hex{rogueHex})           // strike the rogue this turn
 
 	if err := w.SubmitIntent(attackIntent(rogueID, token, monsterHex)); err != nil {
 		t.Fatalf("SubmitIntent(attack): %v", err)
@@ -402,11 +403,11 @@ func TestRangedAndBumpAccumulateSimultaneously(t *testing.T) {
 	}
 
 	// Re-derived for #91 (Rogue glance%): the victim here is a Rogue, and
-	// seed 1 procs the glance card's chance condition on this bump (confirmed
+	// seed 1 procs the glance card's chance condition on this melee attack (confirmed
 	// via combat log: wolf base 3, dealt=1), so the expected loss is the
 	// halved hit, not the full one.
 	wantRogueLoss := game.MonsterDamageForTest("wolf") * protocol.GlanceDamagePercent / 100
 	if got, want := entityHP(t, snap, rogueID), rogueHPBefore-wantRogueLoss; got != want {
-		t.Errorf("rogue HP = %d, want %d (monster's bump lands vs pre-attack HP, glanced)", got, want)
+		t.Errorf("rogue HP = %d, want %d (monster's melee attack lands vs pre-attack HP, glanced)", got, want)
 	}
 }

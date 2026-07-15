@@ -24,11 +24,11 @@ declare global {
 // (src/main.ts's isRangedAttackClick): once this rogue is in a combat bubble
 // (CombatRadius=6 of a monster) and clicks an occupied hex within BowRange,
 // tapHex fires a ranged "attack" intent instead of a move, for ANY distance up
-// to BowRange (including adjacent — a rogue's dagger melee bump is
+// to BowRange (including adjacent — a rogue's dagger melee attack is
 // unreachable through this click path while in combat, since
 // isRangedAttackClick always wins for an occupied, in-range target hex). So
 // any HP drop observed here, over a real browser + HTTP round trip, is the
-// bow landing, not a disguised bump.
+// bow landing, not a disguised melee attack.
 test("a rogue's ranged bow attack damages a monster from range, observable via window.game.hp", async ({
   page,
 }) => {
@@ -117,7 +117,7 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
     .poll(() => chase(baseline), { timeout: 20_000, intervals: [300] })
     .toBe(true);
 
-  // No cleanup needed here (unlike combat.spec.ts's melee bump test): an
+  // No cleanup needed here (unlike combat.spec.ts's melee attack test): an
   // "attack" intent never queues a path (queueAttackLocked clears it), so
   // once this client stops clicking, there is nothing queued that could keep
   // firing or walking on its own — and this server has no other spec to

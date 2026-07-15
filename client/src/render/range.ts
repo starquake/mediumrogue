@@ -4,12 +4,12 @@ import type { Hex } from "../protocol.gen";
 import { hexCorners, hexToPixel, HEX_SIZE } from "./hex";
 
 const MOVE_TILE_COLOR = 0x8fd0ff; // matches my dot / the destination ring
-const BUMP_TILE_COLOR = 0xd6544f; // matches hostiles / the attack flash
+const MELEE_TILE_COLOR = 0xd6544f; // matches hostiles / the attack flash
 
 /**
  * The tactical combat overlay: while my entity is in a combat bubble, the
  * hexes I can act on are tinted — blue for open moves, strong red for
- * bump-attacks (a hostile stands adjacent; stepping in swings), and a
+ * melee attacks (a hostile stands adjacent; stepping in swings), and a
  * lighter red wash for my equipped ranged weapon's reach (clicking there
  * shoots when an enemy is on the hex — or anywhere in it, for AoE). Empty
  * outside combat: in WeGo exploration, click-anywhere pathing stays the
@@ -25,22 +25,22 @@ export class MoveRangeLayer {
     this.container.addChild(this.gfx);
   }
 
-  update(moves: Hex[], bumps: Hex[], ranged: Hex[]): void {
+  update(moves: Hex[], melees: Hex[], ranged: Hex[]): void {
     this.gfx.clear();
 
-    // Lightest first: the ranged wash sits under the move/bump tints where
+    // Lightest first: the ranged wash sits under the move/melee tints where
     // they overlap conceptually (they never overlap in the lists — main.ts
-    // excludes move/bump tiles from ranged — but draw order keeps it honest).
+    // excludes move/melee tiles from ranged — but draw order keeps it honest).
     for (const h of ranged) {
-      this.tile(h, BUMP_TILE_COLOR, 0.08, 0.3);
+      this.tile(h, MELEE_TILE_COLOR, 0.08, 0.3);
     }
 
     for (const h of moves) {
       this.tile(h, MOVE_TILE_COLOR, 0.16, 0.6);
     }
 
-    for (const h of bumps) {
-      this.tile(h, BUMP_TILE_COLOR, 0.2, 0.75);
+    for (const h of melees) {
+      this.tile(h, MELEE_TILE_COLOR, 0.2, 0.75);
     }
   }
 

@@ -14,8 +14,8 @@ import (
 // roll before the crit-chance roll, pipeline order per rollDamageLocked), so
 // each has its own pair.
 const (
-	meleeCritSeed = 1 // elf melee bump crits at this seed
-	meleeMissSeed = 0 // elf melee bump misses (base damage) at this seed
+	meleeCritSeed = 1 // elf melee attack crits at this seed
+	meleeMissSeed = 0 // elf melee attack misses (base damage) at this seed
 	bowCritSeed   = 1 // elf bow shot crits at this seed
 	bowMissSeed   = 0 // elf bow shot misses (base damage) at this seed
 )
@@ -57,7 +57,7 @@ func TestHumanKillXPBonus(t *testing.T) {
 	step(t, w)
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterID); ok {
-		t.Fatalf("monster %d should have died to the shared bumps", monsterID)
+		t.Fatalf("monster %d should have died to the shared melee attacks", monsterID)
 	}
 
 	wantHuman := game.MonsterXPForTest("wolf") * (100 + protocol.HumanXPBonusPercent) / 100
@@ -70,10 +70,10 @@ func TestHumanKillXPBonus(t *testing.T) {
 	}
 }
 
-// elfBumpDamage places an elf of the given class at the origin, bumps a plain
-// (species-less) monster at a neighbour, and returns the damage the monster
-// took. The seed pins the elf crit roll.
-func elfBumpDamage(t *testing.T, seed int64) int {
+// elfMeleeDamage places an elf of the given class at the origin, melee-attacks
+// a plain (species-less) monster at a neighbour, and returns the damage the
+// monster took. The seed pins the elf crit roll.
+func elfMeleeDamage(t *testing.T, seed int64) int {
 	t.Helper()
 
 	w := newWorld()
@@ -96,14 +96,15 @@ func elfBumpDamage(t *testing.T, seed int64) int {
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 	if !ok {
-		t.Fatalf("monster %d missing after an elf bump (unexpected kill)", monsterID)
+		t.Fatalf("monster %d missing after an elf melee attack (unexpected kill)", monsterID)
 	}
 
 	return protocol.MonsterMaxHP - monster.HP
 }
 
-// TestElfCritMelee: an elf's melee bump deals ElfCritMultiplier x base on a crit
-// and exactly the base on a miss — proving both branches of the crit roll.
+// TestElfCritMelee: an elf's melee attack deals ElfCritMultiplier x base on a
+// crit and exactly the base on a miss — proving both branches of the crit
+// roll.
 func TestElfCritMelee(t *testing.T) {
 	t.Parallel()
 
@@ -112,16 +113,16 @@ func TestElfCritMelee(t *testing.T) {
 	t.Run("crit", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := elfBumpDamage(t, meleeCritSeed), protocol.ElfCritMultiplier*swordDamage; got != want {
-			t.Errorf("elf crit bump = %d, want %d (%dx sword)", got, want, protocol.ElfCritMultiplier)
+		if got, want := elfMeleeDamage(t, meleeCritSeed), protocol.ElfCritMultiplier*swordDamage; got != want {
+			t.Errorf("elf crit melee attack = %d, want %d (%dx sword)", got, want, protocol.ElfCritMultiplier)
 		}
 	})
 
 	t.Run("miss", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := elfBumpDamage(t, meleeMissSeed), swordDamage; got != want {
-			t.Errorf("elf non-crit bump = %d, want %d (base sword)", got, want)
+		if got, want := elfMeleeDamage(t, meleeMissSeed), swordDamage; got != want {
+			t.Errorf("elf non-crit melee attack = %d, want %d (base sword)", got, want)
 		}
 	})
 }
@@ -185,11 +186,11 @@ func TestElfCritBow(t *testing.T) {
 	})
 }
 
-// TestDwarfDamageReductionBump: a Dwarf player struck by a monster's melee
+// TestDwarfDamageReductionMelee: a Dwarf player struck by a monster's melee
 // takes the monster's claws damage (wolf's, here) - DwarfDamageReduction. DR
 // is a victim-side passive, so it applies to a dwarf being hit (the attacker
 // here is a species-less monster).
-func TestDwarfDamageReductionBump(t *testing.T) {
+func TestDwarfDamageReductionMelee(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -207,18 +208,18 @@ func TestDwarfDamageReductionBump(t *testing.T) {
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	// Monster bumps the dwarf; the dwarf has no path, so it does not hit back.
+	// Monster strikes the dwarf; the dwarf has no path, so it does not hit back.
 	w.SetPathForTest(monsterID, []protocol.Hex{center})
 	w.ResolveCombatOnlyForTest()
 
 	player, ok := entityOfSnap(w.Snapshot(), pid)
 	if !ok {
-		t.Fatalf("dwarf %d missing after a monster bump", pid)
+		t.Fatalf("dwarf %d missing after a monster melee attack", pid)
 	}
 
 	wantHP := protocol.FighterMaxHP - (game.MonsterDamageForTest("wolf") - protocol.DwarfDamageReduction)
 	if got, want := player.HP, wantHP; got != want {
-		t.Errorf("dwarf HP after monster bump = %d, want %d (hit reduced by %d)",
+		t.Errorf("dwarf HP after monster melee attack = %d, want %d (hit reduced by %d)",
 			got, want, protocol.DwarfDamageReduction)
 	}
 }
@@ -262,8 +263,9 @@ func TestDwarfDamageReductionRanged(t *testing.T) {
 	}
 }
 
-// TestDwarfDamageReductionFloor: DR never zeroes a hit — a 1-damage fists bump
-// (base FistsDamage minus DwarfDamageReduction would be 0) still lands for 1.
+// TestDwarfDamageReductionFloor: DR never zeroes a hit — a 1-damage fists melee
+// attack (base FistsDamage minus DwarfDamageReduction would be 0) still lands
+// for 1.
 func TestDwarfDamageReductionFloor(t *testing.T) {
 	t.Parallel()
 
@@ -288,7 +290,7 @@ func TestDwarfDamageReductionFloor(t *testing.T) {
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 	if !ok {
-		t.Fatalf("dwarf monster %d missing after a fists bump", monsterID)
+		t.Fatalf("dwarf monster %d missing after a fists melee attack", monsterID)
 	}
 
 	if got, want := protocol.MonsterMaxHP-monster.HP, 1; got != want {
@@ -327,7 +329,7 @@ func TestElfCritThenDwarfDR(t *testing.T) {
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 	if !ok {
-		t.Fatalf("dwarf monster %d missing after an elf crit bump", monsterID)
+		t.Fatalf("dwarf monster %d missing after an elf crit melee attack", monsterID)
 	}
 
 	wantDealt := protocol.ElfCritMultiplier*game.ItemDamageForTest("iron-sword") - protocol.DwarfDamageReduction
@@ -343,8 +345,8 @@ func TestElfCritThenDwarfDR(t *testing.T) {
 }
 
 // TestNonElfNeverCrits: a non-elf attacker never crits, whatever the seed — its
-// melee bump deals exactly the base weapon damage across a sweep of seeds, so a
-// Human/Dwarf/species-less attacker is byte-for-byte the pre-species behaviour.
+// melee attack deals exactly the base weapon damage across a sweep of seeds, so
+// a Human/Dwarf/species-less attacker is byte-for-byte the pre-species behaviour.
 func TestNonElfNeverCrits(t *testing.T) {
 	t.Parallel()
 
@@ -386,7 +388,7 @@ func TestNonElfNeverCrits(t *testing.T) {
 				}
 
 				if got, want := protocol.MonsterMaxHP-monster.HP, game.ItemDamageForTest("iron-sword"); got != want {
-					t.Fatalf("%s bump at seed %d = %d, want %d (no crit for non-elf)",
+					t.Fatalf("%s melee attack at seed %d = %d, want %d (no crit for non-elf)",
 						sp.name, seed, got, want)
 				}
 			}
@@ -401,19 +403,19 @@ func TestNonElfNeverCrits(t *testing.T) {
 // fat-HP monster and printing dealt damage per seed — seed 0 misses (dealt
 // base 4, gear keystone rebalance), seed 1 procs (dealt 8, the x2). They
 // happen to equal meleeCritSeed/meleeMissSeed because both scenarios are a
-// single first bump on a fresh RNG stream, drawing the same one chance roll
-// at the same pipeline position — a coincidence of this test's setup, not a
-// rule.
+// single first melee attack on a fresh RNG stream, drawing the same one
+// chance roll at the same pipeline position — a coincidence of this test's
+// setup, not a rule.
 const (
 	misericordeCritSeed = 1 // Misericorde procs (double damage) at this seed
 	misericordeMissSeed = 0 // Misericorde does not proc (base damage) at this seed
 )
 
-// misericordeBumpDamage places a human (non-elf) Rogue wielding the
-// Misericorde at the origin, bumps a fat-HP monster at a neighbour so it
-// survives even a crit, and returns the damage dealt — isolating the
+// misericordeMeleeDamage places a human (non-elf) Rogue wielding the
+// Misericorde at the origin, melee-attacks a fat-HP monster at a neighbour so
+// it survives even a crit, and returns the damage dealt — isolating the
 // weapon's own crit card as the only source of a multiplier in play.
-func misericordeBumpDamage(t *testing.T, seed int64) int {
+func misericordeMeleeDamage(t *testing.T, seed int64) int {
 	t.Helper()
 
 	w := newWorld()
@@ -445,7 +447,7 @@ func misericordeBumpDamage(t *testing.T, seed int64) int {
 
 	monster, ok := entityOfSnap(w.Snapshot(), monsterID)
 	if !ok {
-		t.Fatalf("monster %d missing after a Misericorde bump (unexpected kill)", monsterID)
+		t.Fatalf("monster %d missing after a Misericorde melee attack (unexpected kill)", monsterID)
 	}
 
 	return fatHP - monster.HP
@@ -462,16 +464,16 @@ func TestMisericordeCritProcsSeeded(t *testing.T) {
 	t.Run("proc", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := misericordeBumpDamage(t, misericordeCritSeed), 2*misericordeDamage; got != want {
-			t.Errorf("Misericorde proc bump = %d, want %d (2x base %d)", got, want, misericordeDamage)
+		if got, want := misericordeMeleeDamage(t, misericordeCritSeed), 2*misericordeDamage; got != want {
+			t.Errorf("Misericorde proc melee attack = %d, want %d (2x base %d)", got, want, misericordeDamage)
 		}
 	})
 
 	t.Run("no proc", func(t *testing.T) {
 		t.Parallel()
 
-		if got, want := misericordeBumpDamage(t, misericordeMissSeed), misericordeDamage; got != want {
-			t.Errorf("Misericorde non-proc bump = %d, want %d (base)", got, want)
+		if got, want := misericordeMeleeDamage(t, misericordeMissSeed), misericordeDamage; got != want {
+			t.Errorf("Misericorde non-proc melee attack = %d, want %d (base)", got, want)
 		}
 	})
 }
