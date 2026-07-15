@@ -526,10 +526,19 @@
       #character-root {
         /* Below the HUD (turn/stats/buttons/timer) so it never covers the
            inventory-toggle button; a solid panel (below) then fully covers
-           the quest board while open — an inventory screen, not a peek. */
-        top: 8rem;
+           the quest board while open — an inventory screen, not a peek.
+           Anchored to the HUD's MEASURED bottom (--hud-bottom, kept current
+           by a ResizeObserver in main.ts): the HUD's height varies — the
+           combat panel swaps in for the timer, copy-link appears after join
+           — and a hardcoded offset let a grown HUD run under the open panel
+           (#105). The fallback approximates the old 8rem for the pre-JS
+           frame. */
+        top: calc(var(--hud-bottom, 7.25rem) + 0.75rem);
         left: 1rem;
-        max-height: calc(100vh - 9rem);
+        /* Same chat-zone allowance as #left-column: a panel taller than the
+           window scrolls inside this root instead of running underneath the
+           bottom-anchored chat box. */
+        max-height: calc(100vh - var(--hud-bottom, 7.25rem) - 0.75rem - 14.5rem);
         overflow-y: auto;
       }
       /* Pickup modal: appears on walk-over regardless of the character panel
