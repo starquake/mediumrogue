@@ -69,14 +69,15 @@ drift between calls; use absolute paths or `cd` to the repo root before
 ### Domain patterns (established — follow, don't reinvent)
 
 - **The combat model is ARPG, never TTRPG** (decided 2026-07-13, #69):
-  resolution is *decoupled* percentage stat-checks (`evasion%` defender-side,
+  resolution is *decoupled* percentage stat-checks (`glance%` defender-side —
+  a chance a hit is *halved*, never a binary miss (amended 2026-07-15) —
   `crit%` attacker-side) folded by the pipeline — never a coupled to-hit
   roll, `d20`, save, Armor-Rating/AC, baseline hit chance, initiative, or a
   multi-action turn economy. **The tell is coupling**: any mechanism folding
   attacker + defender stats into one roll is TTRPG even when it wears
   percentages. When a proposal arrives in TTRPG idiom (a collaborator
   habitually designs in D&D vocabulary), do not let it land as-is: translate
-  it to the ARPG equivalent (precedents: "5% miss" → `5% evasion`;
+  it to the ARPG equivalent (precedents: "5% miss" → `5% glance`;
   crit-on-die-face → `crit%`; save-vs-level AoE → AoE-always-hits) or push
   back — in both cases explaining *why* it's TTRPG and what breaks. Check
   against `docs/game-identity.md` (guardrails) and

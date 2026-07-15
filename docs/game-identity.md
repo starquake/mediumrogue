@@ -11,7 +11,7 @@ reasoning (its appendix) — lives in `design.md`.*
 
 **A synchronous co-op session game in a persistent shared hex world** — WeGo
 simultaneous 4-second turns, no twitch/reflexes, combat resolved by ARPG stat
-grammar (decoupled `evasion%` / `crit%` folded through a modifier pipeline).
+grammar (decoupled `glance%` / `crit%` folded through a modifier pipeline).
 Built for a ~15-friend group who hop on together for an evening.
 
 ## How the Game Plays — a plain-language summary
@@ -28,7 +28,7 @@ Built for a ~15-friend group who hop on together for an evening.
 
 Here's the fun part: **the rest of the world keeps running at normal speed.** Your friends elsewhere on the map see your fight frozen mid-swing, marked as "in combat" — and they can walk over and *step into it*. Entering the fight area means joining the fight; there's no invite screen or loading transition. Yelling "help, three ghouls, north bridge!" in chat and watching the cavalry arrive is an intended core experience. Escaping works the same way in reverse: break line of sight or get far enough away, and you slip back into normal time.
 
-**Fighting.** Combat is classic roguelike at heart: walk into an enemy to hit them. The three classes fight differently: a **fighter** deals steady melee damage and is tough enough to hold the front; a **mage** is fragile but casts area magic from the back, hitting groups of enemies at once; a **rogue** hits hardest against single targets but can't take a beating, and switches weapons by distance on their own — dagger against something adjacent, bow against something far away. Within each class there's variety to find: weapon types that trade speed against damage against reach, and different kinds of magic. Within a turn, all movement happens first, then all attacks land. Two consequences you'll feel immediately: stepping *away* from an enemy genuinely dodges the swing aimed at you (so retreating is a real tactic, not just delaying death), and two combatants who go for each other can absolutely take each other down on the same turn — those mutual-kill moments are meant to be dramatic, not glitchy.
+**Fighting.** Combat is classic roguelike at heart: walk into an enemy to hit them. The three classes fight differently: a **fighter** deals steady melee damage and is tough enough to hold the front; a **mage** is fragile but casts area magic from the back, hitting groups of enemies at once; a **rogue** hits hardest against single targets but can't take a beating, and switches weapons by distance on their own — dagger against something adjacent, bow against something far away. Within each class there's variety to find: weapon types that trade speed against damage against reach, and different kinds of magic. Within a turn, all attacks land first, then all movement happens (decided 2026-07-15, #104). Two consequences you'll feel immediately: committing to an attack always means your hit lands — nobody sidesteps a swing that's already coming — and two combatants who go for each other can absolutely take each other down on the same turn — those mutual-kill moments are meant to be dramatic, not glitchy. Retreating is still a real tactic, but it works by *trading hits for distance*: because each turn is one action, a chaser who stops to hit you isn't gaining ground that turn, so you buy your escape with a few HP rather than dodging for free.
 
 **Traveling together.** Up to 5 players can stand on the same tile, so a party moves as one stack — one blob on the map heading somewhere with a shared destination. When something attacks the stack, it hits a random member, so a group soaks danger together. And 15 players *can't* all fit on one tile, which quietly encourages the group to split into a few parties instead of one unstoppable death ball.
 
@@ -54,7 +54,8 @@ Here's the fun part: **the rest of the world keeps running at normal speed.** Yo
   server-authoritative, with chat / parties / quests.
 - **ARPG in its stat grammar.** Gear = pure-data modifier cards; defence is a
   rule, not a stat; damage-reduction and decoupled `crit%` (shipped) /
-  `evasion%` (the intended identity; not yet built — #91).
+  `glance%` (the intended identity; not yet built — #91; softened from
+  binary `evasion%` on 2026-07-15: a glance halves a hit, never negates it).
 - **Spatially a hex-grid tactics game** — discrete movement, hex range, ring
   AoE, positioning that matters.
 
@@ -92,7 +93,7 @@ keeps 15 players in one world from waiting on each other.
 - **Initiative or "your turn, then mine"** → breaks WeGo simultaneity (and the
   15-player no-waiting premise).
 - **A coupled to-hit roll / Armor-Rating / AC / `d20`** → we chose decoupled
-  `evasion%` / `crit%` on purpose (see `design.md`).
+  `glance%` / `crit%` on purpose (see `design.md`).
 - **Random-affix loot, rarity tiers, crafting, currency, a market economy** →
   loot is authored rule-cards; the chase is *designed*, not rolled. *(Simple
   friend-to-friend trading and the decided sanctuary trade-hub / merchant NPC

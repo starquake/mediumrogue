@@ -14,7 +14,7 @@ live in [`game-identity.md`](game-identity.md); the ARPG-vs-TTRPG reasoning in
 
 | Milestone | Issues | Status |
 |---|---|---|
-| **Combat depth** | #69 (evasion/crit umbrella), #91 (evasion% build) | committed |
+| **Combat depth** | #69 (glance/crit umbrella), #91 (glance% build), #104 (attacks-before-moves) | committed |
 | **Gear** | #88 (noticeability gear), #90 (shields) | committed |
 | **Damage types** | #92 (DT1) | deferred |
 | **Skills** | #57, #61, #62 | deferred |
@@ -31,13 +31,35 @@ spawn (Q9 first half).
 
 - **1H vs 2H** — one-handed is the *default*; `two-handed` is the only tag. (Q3)
 - **Combat RNG** — yes, but only as **bounded, decoupled seeded chances**:
-  `evasion%` (defence) and `crit%` (offence), each a pipeline rule card, drawn
+  `glance%` (defence) and `crit%` (offence), each a pipeline rule card, drawn
   from the per-scope seeded PCG. **No coupled to-hit roll, no `d20`.** Block /
-  damage-reduction stay deterministic. (Q5)
-- **AoE always hits** — evasion applies to *targeted* attacks only; area damage
-  is undodgeable (`take-damage` reduction cards still apply). Evasion beats
-  melee/arrows; reduction is the anti-mage answer. The D&D save-vs-level
-  framing stays rejected. (Q6)
+  damage-reduction stay deterministic. (Q5; *amended 2026-07-15*: binary
+  `evasion%` softened to `glance%` — an X% chance the incoming hit is
+  **halved**, never fully negated, so an attack turn is never wasted on a
+  total miss. Rogue gets it as the class passive, proposed 20%. See the
+  2026-07-15 spec.)
+- ~~**AoE always hits** — evasion applies to *targeted* attacks only~~
+  *(superseded 2026-07-15)*: the carve-out existed so binary evasion could
+  not make anything unhittable and the mage kept an anti-evasion niche; a
+  glance can't make anything unhittable (worst case every hit lands at
+  half), so **`glance%` applies to all incoming damage, AoE included** — and
+  the pipeline needs no attack-type condition to express an exemption. Q6's
+  second half stands: flat reduction is the anti-mage answer. The D&D
+  save-vs-level framing stays rejected. (Q6)
+- **Attacks resolve before moves** — within a turn, all attacks land
+  simultaneously against **pre-move positions**, then all moves resolve.
+  Committing to an attack always produces damage; the retreat-dodge
+  (stepping away auto-dodged the swing, worst for the mage's ground-targeted
+  AoE) is removed. Fleeing survives as *trading hits for distance*: a
+  one-action chaser that bumps you isn't gaining ground that turn. Mutual
+  kills unchanged. (#104, decided 2026-07-15; not yet implemented.)
+- **One action per turn, reaffirmed** — move XOR attack per 4-second turn.
+  Full move+attack was examined and rejected (2026-07-15): at uniform
+  1-hex/turn speed it makes fleeing melee impossible (chaser moves *and*
+  hits every turn) and kiting free (ranged steps back and shoots forever),
+  and fixing that needs speed/engagement machinery drifting toward TTRPG
+  structure. Noted future option, not committed: *melee move+bump* (finish
+  the approach and strike in one turn) as a surgical anti-kiting patch.
 - **No monster levels / no party-scaling** — difficulty stays kinds + distance
   rings, so progress stays *felt* (the wolf that nearly killed you at L1 dies
   fast at L5). Ceiling-raising later = **authored variants** (new rules, not
@@ -64,7 +86,7 @@ spawn (Q9 first half).
   vision. The decided direction (subclasses-not-classes, via a class-tree
   capstone) is preserved in #58's history if ever revisited. (2026-07-14)
 - **Combat action economy** — ACT / ACT-B (block) / ACT-P (protect-ally) (#93).
-  Combat stays **attack-only** plus the passive layer (evasion/crit) and
+  Combat stays **attack-only** plus the passive layer (glance/crit) and
   shields. This also cuts **active skills (SK5)** and the **skill-usage UI
   (UI2)** — so a future skill system would be **passive-only**. (2026-07-14)
 
@@ -89,19 +111,29 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
 
 ## Engineering notes
 
-- **`crit%` is free content; `evasion%` is the one engine slice.** `crit%`
+- **`crit%` and `glance%` are both free content** *(rewritten 2026-07-15;
+  this note used to say "`evasion%` is the one engine slice")*. `crit%`
   ships as the elf-crit pattern — a `deal-damage` card with a `chance`
   condition and `mulPct 200`, authored on a weapon — so it needed no engine
-  work (Misericorde / Duelist's Saber already do it). `evasion%` (#91) is the
-  real work: a fully-evaded hit deals **0**, which today's pipeline can't
-  express (the `take-damage` fold floors every landed hit at 1, and `mulPct 0`
-  still clamps to 1), so it needs a **new pre-damage `evasion-check` event**
-  wired through the three agreeing sites (`rules.go` const + `conditionHolds`/
-  `applyRules`; `items.go` `validateRuleCards`). That split is why crit shipped
-  as content while evasion is the committed combat-depth slice.
+  work (Misericorde / Duelist's Saber already do it). Binary `evasion%`
+  *would have been* the engine slice: a fully-evaded hit deals **0**, which
+  the pipeline can't express (the `take-damage` fold floors every landed hit
+  at 1, and `mulPct 0` still clamps to 1), so it needed a new pre-damage
+  `evasion-check` event wired through the three agreeing sites. **That cost
+  is exactly why evasion was softened to `glance%`** (halve, never negate):
+  a glance is an ordinary chance-conditioned `take-damage` card with
+  `mulPct 50` — the mirror of crit — so #91 shrank from an engine slice to a
+  content entry plus one protocol constant. (A glanced 1-damage hit still
+  floors at 1; glance is protection against real hits, not chip damage.)
 
 ## Open flags (doc vs implementation)
 
+- **Resolution order — attacks vs moves** *(decided 2026-07-15)*. The
+  shipped turn loop still resolves **moves first** (retreat-dodge is live
+  behavior); **attacks-before-moves** is the decided rule (#104) and lands
+  with its implementation plan. `FEATURES.md` keeps describing the shipped
+  order until that PR. Not a contradiction — moves-first is shipped,
+  attacks-first is committed.
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14)*. Bubbles trigger
   on **pure distance** (`≤ CombatRadius`) today; the plan keeps **mutual
   line-of-sight** as the design target (terrain blocks spotting), now tracked as

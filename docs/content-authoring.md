@@ -13,9 +13,10 @@ without writing code. Game-design background lives in
 > it today (`internal/game/rules.go`). `on-kill` is still future. The old
 > coupled **`attack-roll`** (a single to-hit roll) has been **dropped**:
 > combat is fully **ARPG**, so defence and offence are *decoupled* percentage
-> chances — `evasion%` (defender dodges) and `crit%` (attacker crits) — never
-> one to-hit roll or `d20` (see §2 and issue #69). Everything below describes
-> the system as it actually runs.
+> chances — `glance%` (defender blunts a hit to half; softened from binary
+> `evasion%` on 2026-07-15) and `crit%` (attacker crits) — never one to-hit
+> roll or `d20` (see §2 and issue #69). Everything below describes the
+> system as it actually runs.
 
 ---
 
@@ -70,9 +71,11 @@ moments. The short version (full detail: plan §5):
   locally into a **combat bubble** where turns wait for everyone's choice.
   Same rules everywhere — only the clock differs.
 - Within a turn, **all movement resolves first, then all attacks land** —
-  simultaneously, against post-move positions. Two built-in consequences:
-  stepping away from a melee attacker genuinely dodges the hit, and two
-  combatants can kill each other on the same turn.
+  simultaneously, against post-move positions — *for now*: the reverse order
+  (**attacks first, against pre-move positions**) is decided (#104,
+  2026-07-15) and lands soon, after which committing to an attack always
+  lands it and stepping away no longer dodges. Either way, two combatants
+  can kill each other on the same turn.
 - **Melee** is bump-to-attack (walk into an enemy). **Ranged** (bow, magic)
   reaches 4 hexes, needs no line of sight, and never hits allies. Mage magic
   is an **area hit** (the target hex plus its ring of neighbors).
@@ -93,19 +96,23 @@ These are the moments the engine will expose. Every rule must name one:
 | **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
 | **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards; no card uses this yet — future sneaky/loud gear |
 | **crit-check** | not yet | …an attacker's chance to land a **critical hit** is computed | `crit%` weapon stats, elf precision (today a `deal-damage` chance card — see note) |
-| **evasion-check** | not yet | …a defender's chance to **avoid an incoming *targeted* hit** is computed (AoE is undodgeable — you dodge attacks, not explosions; #69) | `evasion%` light armour, "hard to hit" species — an evaded hit deals 0 (see note) |
 | **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
 
-`crit-check`, `evasion-check`, and `on-kill` are documented here so designs
-can be written against them now, but nothing calls them yet. **Combat is
-ARPG and decoupled** (issue #69): offence and defence are independent
-percentage chances, never a single coupled to-hit roll. **Crit is already
-expressible today** as a `deal-damage` card with a `chance` condition and a
-×2 multiplier — exactly how **elf's crit** ships — so a dedicated
-`crit-check` event is a convenience, not a requirement. **Evasion is the
-genuinely new machinery:** a fully-dodged hit deals 0, which today's pipeline
-can't express (a landed hit is floored at 1), so it needs a new *pre-damage*
-`evasion-check` event.
+`crit-check` and `on-kill` are documented here so designs can be written
+against them now, but nothing calls them yet. **Combat is ARPG and
+decoupled** (issue #69): offence and defence are independent percentage
+chances, never a single coupled to-hit roll. **Both chances are already
+expressible today.** Crit is a `deal-damage` card with a `chance` condition
+and a ×2 multiplier — exactly how **elf's crit** ships — so a dedicated
+`crit-check` event is a convenience, not a requirement. The defender-side
+chance is **`glance%`** (2026-07-15, replacing the old binary `evasion%`):
+an X% chance an incoming hit is **halved**, never fully negated — the same
+pattern on `take-damage` with a ×0.5 multiplier, and it applies to *all*
+damage, AoE included. *(A planned `evasion-check` event used to sit in this
+table; it was dropped with the softening — a fully-evaded 0-damage hit was
+the one thing the pipeline couldn't express, and glance deliberately avoids
+needing it. It also never wastes an attacker's whole 4-second turn on a
+total miss.)*
 
 This list will grow (likely candidates: `aggro-range` for the backlogged
 "monster aggro radius via the pipeline" idea, *turn-start / turn-end* for
@@ -297,11 +304,11 @@ three, written as rule cards:
 A good new-species proposal is **one or two passive rules that create a
 playstyle** and stay fun across all classes. Sketches of the shape:
 
-> **Halfling — hard to hit:** *when* taking damage, X% chance to **evade** it
-> entirely (0 damage). (This is the `evasion%` mechanic — issue #69; it needs
-> the new pre-damage `evasion-check` event, since today a landed hit is
-> floored at 1 and can't be authored down to 0 as a plain card. Then reusable
-> for smoke bombs, blur spells…)
+> **Halfling — hard to pin down:** *when* taking damage, X% chance the hit
+> only **glances** (half damage). (This is the `glance%` mechanic — issue
+> #69/#91; it's a plain chance-conditioned `take-damage` card, expressible
+> today exactly like elf's crit, and reusable for light armour, smoke bombs,
+> blur spells…)
 
 > **Orc — bloodlust:** when dealing damage, if below half HP, +X damage.
 > A high-risk style that gets scarier as it gets hurt.
@@ -336,8 +343,10 @@ proposing! But these get scheduled as milestones, not slipped in as cards.
 
 A few engine truths to design *with*, not against:
 
-- **Simultaneous phased turns** (moves, then attacks) is the bedrock.
-  Retreat-dodging and mutual kills are features. Nothing may depend on
+- **Simultaneous phased turns** is the bedrock (today moves-then-attacks;
+  decided 2026-07-15, #104: attacks-then-moves, so a committed attack always
+  lands and retreat means trading hits for distance instead of a free
+  dodge). Mutual kills are a feature either way. Nothing may depend on
   within-turn ordering like "who acted first."
 - **Determinism:** all randomness is a seeded server-side roll (a per-scope
   PCG keyed on world seed + turn). "X% chance" is fine; "player skill-shot
@@ -365,7 +374,7 @@ Item type:  weapon (+ tags: melee / ranged / magic; two-handed: yes/no)
 Base stats: (weapons: damage / range / area; consumables: heal N;
              armor/jewelry, species & mechanics: usually n/a)
 Rules:
-  - WHEN <deal-damage | take-damage | earn-XP | crit-check | evasion-check | on-kill>
+  - WHEN <deal-damage | take-damage | earn-XP | crit-check | on-kill>
     IF   <condition(s), or "always">
     THEN <add/subtract N | +N% | chance-based …>
   (consumables carry no rules — their effect is the drink action itself)
