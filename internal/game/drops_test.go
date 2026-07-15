@@ -105,8 +105,8 @@ func TestPickDropCoversWolfsWholeTable(t *testing.T) {
 // TestKillDropVisibleInSnapshot: a monster killed in a bubble leaves a ground
 // item visible in Snapshot().GroundItems when its seed rolls a drop
 // (killDropSeed); the killer does not auto-loot it the same turn (a bump
-// attacker stays in place — see moveAndBumpLocked — so it never lands on the
-// corpse hex this turn).
+// attacker stays in place — see collectBumpsLocked — so it never lands on
+// the corpse hex this turn).
 func TestKillDropVisibleInSnapshot(t *testing.T) {
 	t.Parallel()
 
