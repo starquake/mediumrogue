@@ -20,8 +20,8 @@ import identityStorageStateTemplate from "./e2e/identity-storage-state.json" wit
 const BASE_PORT = 8123;
 
 // Each e2e spec file gets its own server; `monsters` = how many that server
-// spawns (omitted → monster-free).
-const specs: { name: string; monsters?: number }[] = [
+// spawns (omitted → monster-free); `env` = extra per-spec server overrides.
+const specs: { name: string; monsters?: number; env?: Record<string, string> }[] = [
   { name: "hex" },
   { name: "turn" },
   { name: "move" },
@@ -40,6 +40,13 @@ const specs: { name: string; monsters?: number }[] = [
   { name: "identity" },
   { name: "identity-multitab" },
   { name: "combat", monsters: 3 },
+  // autowalk (#103) needs bubble-turns to resolve WITHOUT the client locking
+  // in — a short patience makes those AFK resolutions observable in-test. A
+  // SINGLE monster: the test must queue a long walk before combat starts, and
+  // every extra randomly-placed monster raises the odds of spawning too close
+  // to one (equal move speeds — the gap can never be reopened, so the spec
+  // can only skip; see the spec's precondition guard).
+  { name: "autowalk", monsters: 1, env: { COMBAT_PATIENCE: "700ms" } },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },
   // kinds needs several distinct monster kinds actually spawned to prove
@@ -54,13 +61,14 @@ const specs: { name: string; monsters?: number }[] = [
 
 const portFor = (i: number): number => BASE_PORT + i;
 
-const serverEnv = (port: number, monsters?: number): Record<string, string> => ({
+const serverEnv = (port: number, monsters?: number, extra?: Record<string, string>): Record<string, string> => ({
   LISTEN_ADDR: `:${port}`,
   TURN_INTERVAL: "250ms",
   // Fast heartbeat so a browser test observes named heartbeat events within its
   // short run (default is 15s — never seen in a fast e2e).
   HEARTBEAT_INTERVAL: "500ms",
   ...(monsters ? { MONSTER_COUNT: String(monsters) } : {}),
+  ...(extra ?? {}),
 });
 
 // Every project gets its browser context pre-seeded (via storageState) with a
@@ -94,13 +102,16 @@ export default defineConfig({
   workers: "50%",
   projects: specs.map((s, i) => ({
     name: s.name,
-    testMatch: new RegExp(`${s.name}\\.spec\\.ts$`),
+    // Anchored at a path boundary: a bare-suffix regex would let one spec's
+    // name match another's tail (walk.spec.ts$ also matches autowalk.spec.ts,
+    // running it a second time against the wrong — monster-free — server).
+    testMatch: new RegExp(`(^|/)${s.name}\\.spec\\.ts$`),
     use: { baseURL: `http://127.0.0.1:${portFor(i)}`, storageState: storageStateFor(portFor(i)) },
   })),
   webServer: specs.map((s, i) => ({
     command: "../build/bin/rogue",
     url: `http://127.0.0.1:${portFor(i)}/healthz`,
     reuseExistingServer: false,
-    env: serverEnv(portFor(i), s.monsters),
+    env: serverEnv(portFor(i), s.monsters, s.env),
   })),
 });

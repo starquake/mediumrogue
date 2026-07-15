@@ -1318,7 +1318,18 @@ async function start(): Promise<void> {
       // world's — swap the WeGo timer for a "waiting for…" panel while a
       // member of one, using the bubble's own patience countdown.
       const myBubble = event.bubbles.find((b) => b.memberIds.includes(me.entityId)) ?? null;
+      const wasInCombat = window.game.inCombat;
       window.game.inCombat = (mine?.inCombat ?? false) || myBubble !== null;
+
+      // Entering combat hard-cancels a pending auto-walk (#103): the server
+      // clears the queued route on bubble entry, so drop the destination and
+      // its ring too — otherwise a stale goal marker lingers for a walk that
+      // will never resume.
+      if (!wasInCombat && window.game.inCombat && window.game.destination !== null) {
+        window.game.destination = null;
+        feedbackLayer.setDestination(null);
+      }
+
       window.game.bubble =
         myBubble !== null
           ? { waitingFor: myBubble.waitingForIds, patienceRemainingMs: myBubble.patienceRemainingMs }
