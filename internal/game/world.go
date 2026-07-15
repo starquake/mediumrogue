@@ -197,13 +197,16 @@ type entity struct {
 	// don't move), resolved and cleared in the attack phase. Mutually
 	// exclusive with attackTargetEntity; see queueAttackLocked.
 	attackTarget *protocol.Hex
-	// attackTargetEntity is a pending single-target (bow) ranged attack's
-	// victim, named by entity id (item 7, playtest batch 2) — 0 for none, or
-	// for a ground-targeted attack (see attackTarget). Resolution aims at
-	// this entity's PRE-MOVE hex (#104 — attacks resolve before moves), so a
+	// attackTargetEntity is a pending entity-targeted attack's victim, named
+	// by entity id (item 7, playtest batch 2) — 0 for none, or for a
+	// ground-targeted attack (see attackTarget). Resolution aims at this
+	// entity's PRE-MOVE hex (#104 — attacks resolve before moves), so a
 	// sidestepping or retreating victim is tracked by id rather than a stale
-	// hex: hits if still within the weapon's range from the shooter's own
-	// pre-move hex, else fizzles defensively (resolveEntityTargetedLocked).
+	// hex. If the victim is adjacent at resolution, this resolves as an
+	// EXCLUSIVE melee swing (#116, every held melee weapon); otherwise it
+	// hits if still within a held ranged/magic weapon's range from the
+	// shooter's own pre-move hex, else fizzles defensively
+	// (resolveEntityTargetedLocked).
 	attackTargetEntity int64
 	// bubbleID is the combat bubble this entity belongs to, or 0 for the world
 	// domain. Recomputed from positions every turn by recomputeBubblesLocked.
@@ -900,28 +903,39 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 	return nil
 }
 
-// queueAttackLocked validates a ranged attack intent and queues it: the
-// entity must have SOME ranged/magic weapon held (else ErrNoRangedWeapon,
-// checked via rangedDefFor — any-reach existence only, independent of this
-// shot's distance). A non-zero targetEntityID (item 7, playtest batch 2) is
-// ENTITY-targeted: the named entity must exist and be alive (else
-// ErrAttackTargetNotFound), be a hostile — opposing faction (else
-// ErrAttackTargetNotHostile) — and be within reach of AT LEAST ONE held
-// ranged/magic weapon from e's current hex at submit time (else
-// ErrOutOfRange); resolution (#104) runs against the victim's pre-move hex
-// (resolveEntityTargetedLocked) — the same position checked at submit, so a
-// sidestep or retreat is tracked by id rather than a stale hex. This routing
-// no longer keys off any single "best" weapon's aoeRadius (task 2,
-// dual-wield): a shooter dual-wielding a bow and a magic weapon still gets
-// the bow's entity-targeted hit AND the magic weapon's AoE around the
-// victim's hex, both from one entity-targeted intent — resolution
-// (resolveEntityTargetedLocked)
-// already fires every reaching def this way regardless of which one happens
-// to have the longest range. Anything else (targetEntityID 0 — e.g. a
-// defensive/legacy hex-only shot) is GROUND-targeted at target, checked the
-// same way against e's current hex. On success it records the target and
-// clears the route and any queued equip — a ranged attack replaces the move
-// AND the swap for this turn (the latest intent in the window wins).
+// queueAttackLocked validates an attack intent and queues it. A non-zero
+// targetEntityID (item 7, playtest batch 2) is ENTITY-targeted: the named
+// entity must exist and be alive (else ErrAttackTargetNotFound), be a
+// hostile — opposing faction (else ErrAttackTargetNotHostile) — and be in
+// REACH from e's current hex at submit time, else ErrOutOfRange. Reach
+// (#116) is unified: an ADJACENT victim (HexDistance == 1) is always
+// attackable as melee — every entity is melee-armed (meleeDefsFor falls back
+// to fists/claws), so there is no melee weapon gate here, only the ranged
+// gate (below) remains conditional. Beyond distance 1, at least one held
+// ranged/magic weapon must reach (rangedDefsFor — any-reach, not just best;
+// task 2, dual-wield). A melee-only attacker (e.g. a Fighter, who holds no
+// ranged weapon) naming a distant victim therefore rejects as ErrOutOfRange,
+// not the old ErrNoRangedWeapon — that sentinel now belongs to the
+// ground-targeted branch only (below), which has no melee equivalent (there
+// is no hex-targeted melee). Resolution (#104) runs against the victim's
+// pre-move hex (resolveEntityTargetedLocked/resolveRangedLocked) — the same
+// position checked at submit, so a sidestep or retreat is tracked by id
+// rather than a stale hex. Ranged routing no longer keys off any single
+// "best" weapon's aoeRadius (task 2, dual-wield): a shooter dual-wielding a
+// bow and a magic weapon still gets the bow's entity-targeted hit AND the
+// magic weapon's AoE around the victim's hex, both from one entity-targeted
+// intent — resolution already fires every reaching def this way regardless
+// of which one happens to have the longest range.
+//
+// Anything else (targetEntityID 0 — e.g. a defensive/legacy hex-only shot)
+// is GROUND-targeted at target, checked against e's current hex. There is no
+// hex-targeted melee, so this branch keeps the old ErrNoRangedWeapon
+// pre-gate (rangedDefFor(e) == nil — any-reach existence only, independent
+// of this shot's distance) ahead of the per-shot ErrOutOfRange check.
+//
+// Either branch clears the route and any queued equip on success — an
+// attack replaces the move AND the swap for this turn (the latest intent in
+// the window wins).
 //
 // INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
 // CombatRadius (validateMaxReach, run at content load by mustValidateContent),
@@ -931,10 +945,6 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 // kill-XP) — add an in-bubble/target-in-member-set guard here then. Callers
 // hold w.mu.
 func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID int64) error {
-	if rangedDefFor(e) == nil {
-		return ErrNoRangedWeapon
-	}
-
 	if targetEntityID != 0 {
 		victim, ok := w.entities[targetEntityID]
 		if !ok || victim.hp <= 0 {
@@ -945,10 +955,13 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 			return ErrAttackTargetNotHostile
 		}
 
-		// "is anything in range?" — any held ranged/magic weapon that reaches,
-		// not just best (task 2, dual-wield): a bow out of reach must not block
-		// a shorter-range weapon's own fizzle-free shot, and vice versa.
-		if len(rangedDefsFor(e, HexDistance(e.hex, victim.hex))) == 0 {
+		// Reach (#116): an ADJACENT victim is always attackable — melee, and
+		// every entity is melee-armed (meleeDefsFor falls back to fists/claws).
+		// Beyond that, at least one held ranged/magic weapon must reach
+		// (dual-wield: any, not best). A melee-only attacker naming a distant
+		// victim therefore rejects as out-of-range, not as weaponless.
+		dist := HexDistance(e.hex, victim.hex)
+		if dist != 1 && len(rangedDefsFor(e, dist)) == 0 {
 			return ErrOutOfRange
 		}
 
@@ -958,6 +971,12 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 		e.pending = pendingItemAction{}
 
 		return nil
+	}
+
+	// Ground-targeted (hex) attacks stay ranged-only: there is no hex-targeted
+	// melee, so the old weapon gate lives on in this branch.
+	if rangedDefFor(e) == nil {
+		return ErrNoRangedWeapon
 	}
 
 	if len(rangedDefsFor(e, HexDistance(e.hex, target))) == 0 {
@@ -1685,18 +1704,24 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	}
 }
 
-// resolveRangedLocked folds every pending ranged attack into the shared damage
-// map (against pre-attack HP, so a bow shot lands simultaneously with melee attacks).
-// Shooters are processed in id order so the seeded single-target victim pick is
-// reproducible regardless of map iteration order. An ENTITY-targeted attack
-// (item 7, playtest batch 2 — attackTargetEntity != 0, aimed at a specific
-// victim rather than a hex) delegates to resolveEntityTargetedLocked, which
-// aims at the victim's pre-move hex (#104 — attacks resolve before moves, so
-// entity/hex positions here are as-submitted). Everything else is
-// GROUND-targeted at attackTarget's hex, checked against pre-move positions
-// (#104 — attacks resolve before moves, so entity/hex positions here are
-// as-submitted) in byHex: a shot that is out of every held weapon's range
-// fizzles. Every ranged/magic weapon that still reaches the target (rangedDefsFor, task 2 dual-wield)
+// resolveRangedLocked folds every pending queued attack intent into the
+// shared damage map (against pre-attack HP, so a shot lands simultaneously
+// with monster-conversion melee attacks). Shooters are processed in id order
+// so the seeded single-target victim pick is reproducible regardless of map
+// iteration order. An ENTITY-targeted attack (item 7, playtest batch 2 —
+// attackTargetEntity != 0, aimed at a specific victim rather than a hex)
+// delegates to resolveEntityTargetedLocked BEFORE the unequipped-fizzle
+// check below: at distance 1 that function resolves an EXCLUSIVE melee swing
+// (#116) using meleeDefsFor's fists/claws fallback, so a melee-only attacker
+// (no ranged/magic weapon held at all — rangedDefFor(e) == nil) must not be
+// fizzled here as "unequipped" before its swing ever gets a chance to
+// resolve. The unequipped-fizzle check therefore only applies to
+// GROUND-targeted (hex) intents now — there is no hex-targeted melee, so a
+// weaponless ground shot is still a legitimate fizzle. A ground-targeted
+// intent is checked against pre-move positions (#104 — attacks resolve
+// before moves, so entity/hex positions here are as-submitted) in byHex: a
+// shot that is out of every held weapon's range fizzles. Every ranged/magic
+// weapon that still reaches the target (rangedDefsFor, task 2 dual-wield)
 // fires as its own hit, in hand order: a bow (aoeRadius 0) damages one
 // opposing occupant at the target hex — a stack picks one hostile with rng,
 // mirroring the melee victim pick (this is the legacy/defensive hex-only bow
@@ -1728,15 +1753,21 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		e.attackTarget = nil // resolved, whether it hits or fizzles
 		e.attackTargetEntity = 0
 
-		if rangedDefFor(e) == nil {
-			// unequipped mid-turn (equip intent, Task 4) → fizzle
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped", "attacker", e.id)
+		// #116: entity-targeted intents delegate FIRST — resolveEntityTargetedLocked
+		// resolves an adjacent victim as a melee swing (fists/claws fallback, no
+		// ranged weapon required), so a melee-only attacker must not hit the
+		// unequipped-fizzle check below before its swing gets a chance.
+		if targetEntityID != 0 {
+			w.resolveEntityTargetedLocked(rng, byHex, e, targetEntityID, damage)
 
 			continue
 		}
 
-		if targetEntityID != 0 {
-			w.resolveEntityTargetedLocked(rng, byHex, e, targetEntityID, damage)
+		// Ground-targeted (hex) intents have no melee equivalent, so the
+		// unequipped fizzle still applies here.
+		if rangedDefFor(e) == nil {
+			// unequipped mid-turn (equip intent, Task 4) → fizzle
+			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped", "attacker", e.id)
 
 			continue
 		}
@@ -1799,39 +1830,71 @@ func (w *World) resolveGroundTargetedLocked(
 	}
 }
 
-// resolveEntityTargetedLocked resolves one entity-targeted ranged attack
-// (item 7, playtest batch 2): aims at the victim's pre-move hex (#104 —
-// attacks resolve before moves, so entity/hex positions here are
-// as-submitted) rather than trusting the hex it happened to occupy at
-// submit time, so a sidestepping or retreating target is tracked the way a
-// hex-pinned shot never could. Every ranged/magic weapon the attacker holds
-// that still reaches the victim's pre-move hex (rangedDefsFor, task 2
-// dual-wield) fires as its own hit, in hand order: a bow (aoeRadius 0)
-// damages exactly the named victim; a magic weapon (aoeRadius > 0) AoEs
-// around the victim's hex (resolveAoELocked — no friendly fire, may also
-// catch other hostiles nearby). A single ranged weapon still fires exactly
-// one hit at exactly the named victim, so this is unchanged for every
-// pre-dual-wield board. Fizzles (reason out_of_range) if NO held weapon
-// reaches — same reason the ground-targeted path logs; this is now
-// defensive only (#104): nothing moves between submit validation and
+// resolveEntityTargetedLocked resolves one entity-targeted attack (item 7,
+// playtest batch 2): aims at the victim's pre-move hex (#104 — attacks
+// resolve before moves, so entity/hex positions here are as-submitted)
+// rather than trusting the hex it happened to occupy at submit time, so a
+// sidestepping or retreating target is tracked the way a hex-pinned shot
+// never could.
+//
+// If the victim is ADJACENT (#116, HexDistance == 1), this is a MELEE swing,
+// EXCLUSIVELY — the weapon-by-distance identity (a rogue swings the dagger
+// adjacent, shoots the bow at range), so ranged/magic defs never also fire
+// at distance 1. Every def in meleeDefsFor(attacker) lands its own hit on
+// the named victim (dual-wield parity with the monster conversion path in
+// attackLocked), each through rollDamageLocked, logged the same way. Melee
+// never fizzles for want of a weapon (meleeDefsFor falls back to
+// fists/claws) — adjacency alone is reach. Positions are pre-move (#104) and
+// nothing moves between submit validation and this phase, so adjacency here
+// matches adjacency at submit.
+//
+// At distance >= 2, resolution is unchanged: every ranged/magic weapon the
+// attacker holds that still reaches the victim's pre-move hex
+// (rangedDefsFor, task 2 dual-wield) fires as its own hit, in hand order: a
+// bow (aoeRadius 0) damages exactly the named victim; a magic weapon
+// (aoeRadius > 0) AoEs around the victim's hex (resolveAoELocked — no
+// friendly fire, may also catch other hostiles nearby). A single ranged
+// weapon still fires exactly one hit at exactly the named victim, so this is
+// unchanged for every pre-dual-wield board. Fizzles (reason out_of_range) if
+// NO held weapon reaches — same reason the ground-targeted path logs; this
+// is now defensive only (#104): nothing moves between submit validation and
 // attack resolution, so it is reachable only via the
-// SetAttackTargetEntityForTest bridge or a mid-turn unequip. A victim that
-// died or vanished this same turn — a simultaneous kill by another
-// attacker, resolved earlier in this same damage-accumulation pass — also
-// fizzles (reason target_gone) rather than panicking on a missing entity;
-// damage application happens all-at-once after every attack accumulates
-// (attackLocked), so "vanished" here really means removed by a PRIOR
-// resolution this turn (deaths, not this pass — resolveDeathsLocked runs
-// after this), i.e. any entity that already left w.entities entirely, which
-// resolveCombatLocked never does mid-attack-phase; this guard is therefore
-// mostly defensive, matching resolveBowLocked's own empty-hex no-op.
-// Callers hold w.mu.
+// SetAttackTargetEntityForTest bridge or a mid-turn unequip (a melee-only
+// attacker's distant intent is rejected at submit, queueAttackLocked, and
+// never reaches this function). A victim that died or vanished this same
+// turn — a simultaneous kill by another attacker, resolved earlier in this
+// same damage-accumulation pass — also fizzles (reason target_gone) rather
+// than panicking on a missing entity; damage application happens all-at-once
+// after every attack accumulates (attackLocked), so "vanished" here really
+// means removed by a PRIOR resolution this turn (deaths, not this pass —
+// resolveDeathsLocked runs after this), i.e. any entity that already left
+// w.entities entirely, which resolveCombatLocked never does mid-attack-phase;
+// this guard is therefore mostly defensive, matching resolveBowLocked's own
+// empty-hex no-op. Callers hold w.mu.
 func (w *World) resolveEntityTargetedLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacker *entity, targetEntityID int64, damage map[int64]int,
 ) {
 	victim, ok := w.entities[targetEntityID]
 	if !ok || victim.hp <= 0 {
 		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "target_gone", "attacker", attacker.id)
+
+		return
+	}
+
+	// #116: an adjacent victim means this intent is a MELEE swing,
+	// exclusively — ranged/magic defs never also fire at distance 1 (the
+	// weapon-by-distance identity). Every held melee weapon lands its own hit
+	// (dual-wield parity with attackLocked's monster-conversion loop), each
+	// through the full pipeline.
+	if HexDistance(attacker.hex, victim.hex) == 1 {
+		for _, weapon := range meleeDefsFor(attacker) {
+			base := itemDamage(weapon)
+			dealt := w.rollDamageLocked(rng, attacker, victim, weapon, base)
+			damage[victim.id] += dealt
+
+			w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
+				"weapon", weapon.id, "base", base, "dealt", dealt)
+		}
 
 		return
 	}
