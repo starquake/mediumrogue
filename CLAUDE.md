@@ -164,9 +164,12 @@ drift between calls; use absolute paths or `cd` to the repo root before
   filter was built and rejected post-hoc; a paper-doll inventory was approved
   from a mockup and built once). Screenshots live in the repo —
   `docs/mockups/`, dated filenames, committed on the work branch — and are
-  embedded in the design issue's Mockup section via the raw URL
-  (`raw.githubusercontent.com/...`); GitHub has no upload API for issue
-  attachments, so the repo is the image host.
+  **linked** (blob-page URL, not an inline `![image]` embed) in the design
+  issue's Mockup section. GitHub has no upload API for issue attachments,
+  so the repo is the image host; and because the repo is private, GitHub's
+  anonymous image proxy (Camo) cannot render its raw URLs inline — a plain
+  blob link, which renders for logged-in collaborators, is the working
+  form (verified 2026-07-16).
 - **AI-authored issue/PR comments are marked as such**: when Claude posts a
   GitHub comment on the maintainer's behalf (via
   `gh issue comment`/`gh pr comment --body-file`), it opens with a visible
