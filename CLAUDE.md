@@ -137,20 +137,23 @@ drift between calls; use absolute paths or `cd` to the repo root before
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and
   wait — adding it is the maintainer's signal.
-- **Milestone slices are designed before they're built**: write the spec, then
-  the implementation plan (`docs/superpowers/specs|plans/`), commit them, and
+- **Milestone slices are designed before they're built**: the spec and the
+  implementation plan live **in the GitHub issue** (the "Design slice" issue
+  template, `.github/ISSUE_TEMPLATE/design-slice.md`) — write the spec,
+  settle its decisions with the maintainer in the issue, then the plan, and
   **pause for review** before writing code — do not auto-proceed plan →
-  implementation.
-- **Issues track; specs design — match the tool to the ticket.** A GitHub issue
-  is the coordination layer (status, discussion, labels, milestones); the
-  `docs/superpowers/` spec+plan are the design layer. They compose — don't
-  duplicate. The deciding question for an issue is *"is there a design decision
-  with unexamined assumptions?"*:
+  implementation. The maintainer's OK on the issue is the build signal; the
+  implementation PR references the issue. (Spec/plan docs are no longer
+  committed to the repo — the old committed-doc tree was retired in #121;
+  shipped decisions graduate to `docs/design-decisions.md` and
+  `docs/FEATURES.md` in the implementation PR.)
+- **The issue is the single design record — match the tool to the ticket.**
+  Status, discussion, labels, milestones, *and* the spec+plan all live on
+  the issue — one copy, nowhere to drift. The deciding question for an issue
+  is *"is there a design decision with unexamined assumptions?"*:
   - **A new mechanic/feature** → design first: question the assumptions with
-    the maintainer, write the spec, then the implementation plan; commit both
-    and cross-link (issue body points at the spec path; the spec references
-    `#NN`). Keep the issue body a short pointer, not a third copy of the
-    design — three copies drift.
+    the maintainer, then fill the design-slice template (spec, then plan) in
+    the issue.
   - **A bug** → debug systematically (reproduce, root-cause, then fix — never
     patch a symptom), no spec.
   - **A tweak** (a tuning number, a config default, copy) → straight to a PR
