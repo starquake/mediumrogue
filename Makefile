@@ -22,7 +22,14 @@ TYGO_BIN := $(BIN_DIR)/tygo
 
 # Developer gate before committing. Mirrors the CI jobs.
 .PHONY: check
-check: lint protocol-check icons-check client-check test test-integration build
+check: lint docs-check protocol-check icons-check client-check test test-integration build
+
+# Dead-reference check over all tracked markdown: every repo path a doc
+# mentions (backtick-quoted or relatively linked) must exist. Runs in CI as
+# the `docs` job — the check that actually validates a docs-only PR (#125).
+.PHONY: docs-check
+docs-check:
+	./scripts/docs-check.sh
 
 ## ---- Go server ----
 
