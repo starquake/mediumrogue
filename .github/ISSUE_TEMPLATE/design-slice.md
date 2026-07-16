@@ -35,12 +35,12 @@ labels: enhancement
 <!-- Anything whose value is how it LOOKS gets a mockup approved here
      before the real UI is built: build an HTML mockup, screenshot it,
      commit the image under docs/mockups/ (dated filename, on the work
-     branch), and LINK the blob page in this section:
-     [mockup](https://github.com/starquake/mediumrogue/blob/<branch>/docs/mockups/<file>.png)
-     (A plain link, not an inline ![image] embed: the repo is private, so
-     GitHub's anonymous image proxy cannot render raw URLs inline — the
-     blob page renders fine for logged-in collaborators.) The maintainer's
-     approval of the screenshot is part of the spec OK. -->
+     branch), and embed it inline via the github.com /raw/ route:
+     ![mockup](https://github.com/starquake/mediumrogue/raw/<branch>/docs/mockups/<file>.png)
+     (Exactly this URL form — the repo is private, and only github.com
+     routes carry the viewer's session; a raw.githubusercontent.com URL
+     renders as a broken icon. Verified 2026-07-16 on PR #120.) The
+     maintainer's approval of the screenshot is part of the spec OK. -->
 
 ### Determinism & seeded tests
 
