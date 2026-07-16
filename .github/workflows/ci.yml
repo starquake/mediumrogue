@@ -27,6 +27,10 @@ jobs:
   changes:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
+    permissions:
+      # paths-filter lists the PR's changed files via the API; the
+      # workflow-level permissions block (contents: read) would strip this.
+      pull-requests: read
     outputs:
       # 'true' only when this is a PR and EVERY changed file matches the
       # docs filter (predicate-quantifier: every). On push events the
