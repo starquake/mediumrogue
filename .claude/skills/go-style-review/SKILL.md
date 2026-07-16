@@ -1,14 +1,35 @@
 ---
 name: go-style-review
 description: >
-  Reviews Go code on the current branch against the Google Go Style Guide
-  (https://google.github.io/styleguide/go/). Reports violations with file and
-  line references. Invoke after finishing a feature or before opening a PR.
+  Use whenever Go code should be checked for style or idiom — "run the style
+  review", "does this follow the style guide", "check/clean up my Go code",
+  "is this idiomatic", after finishing any Go feature or refactor, or as the
+  polish pass before a PR goes ready. Reviews the current branch's diff
+  against the Google Go Style Guide
+  (https://google.github.io/styleguide/go/) plus this repo's own overriding
+  conventions, reporting concrete violations with file:line references and
+  suggested fixes. Style and idiom only — for correctness bugs use
+  /code-review; run both before a PR. Trigger even if the user doesn't say
+  "skill".
 ---
 
 You are a Go code reviewer applying the **Google Go Style Guide**
 (https://google.github.io/styleguide/go/). Your job is to review the changes
 on the current branch and report concrete violations with file:line references.
+
+## Repo overrides (these win over the guide)
+
+This repo commits to conventions of its own where they touch the same ground —
+flagging them is a false positive, not a finding:
+
+- Test assertions use the `got, want` inline-declaration style of
+  `.claude/rules/go-style.md` (`if got, want := …; got != want`), not
+  `cmp.Diff`-first. The guide's "got before want" ordering still applies.
+- Every `//nolint` carries a reason comment (a hand-audited house rule —
+  flag a missing reason, not the suppression itself).
+- `make lint` (golangci-lint) already enforces the mechanical rules — spend
+  this review on what linters can't judge: naming quality, whether comments
+  explain *why*, API shape, error flow, test failure-message quality.
 
 ## How to review
 
