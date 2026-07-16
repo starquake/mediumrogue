@@ -43,7 +43,8 @@ const (
 // the player 10 below it so a potion's heal is visible.
 const invFighterMaxHP = protocol.FighterMaxHP
 
-// craftInventorySnapshot builds a v2 snapshot JSON literal: one fighter at
+// craftInventorySnapshot builds a current-version snapshot JSON literal
+// (bump the version below alongside snapshotVersion): one fighter at
 // the origin (the worldgen-forced clearing) with an equipped iron sword, a
 // FULL backpack — a 3-potion stack plus three warhammers — and one
 // venom-fang lying on the player's own hex.
@@ -59,7 +60,7 @@ func craftInventorySnapshot() []byte {
 	}
 
 	snapshot := map[string]any{
-		"version":      4,
+		"version":      5,
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,
@@ -337,7 +338,7 @@ func assertRestartRoundTrip(t *testing.T, pwA *persistWorld, preRestart protocol
 	}
 }
 
-// TestCraftedSnapshotVersionGate: the crafted v3 snapshot with its version
+// TestCraftedSnapshotVersionGate: the crafted snapshot with its version
 // field rewritten to 1 (the pre-inventory shape's version) is refused by
 // RestoreState — the world starts fresh instead of guessing at a migration
 // (the app layer then preserves the rejected file aside; that wiring is

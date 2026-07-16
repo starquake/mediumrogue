@@ -387,6 +387,21 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   shared default (`MonsterAggroRadius=10`, itself pipeline-hooked per
   player for future sneaky/loud gear). Spawn guards: players and monsters
   never spawn on/within 6 hexes of each other, with fallbacks for tiny maps.
+- **Home tile + leash** (#102): every monster remembers its spawn hex as its
+  **home tile**. A WORLD-domain monster that strays farther from home than
+  its **leash radius** — `MonsterLeashMultiplier=2` × its own aggro radius
+  by default, per-kind overridable via `monsterDef.leashRadius` (no kind
+  overrides it at launch) — drops the chase and paths back home,
+  **ignoring players until it arrives** (no re-aggro mid-return; walking
+  within `CombatRadius` of a player still forms a bubble, though — bubbles
+  are positional). **No heal** on return — a long pull leaves it wounded.
+  On arrival (its home hex, or adjacent to it while the home hex is at
+  `StackCap`) the flag clears and the same think pass re-runs the normal
+  aggro check. Monsters inside a combat bubble ignore the leash entirely —
+  a fight is a fight; the flag survives a bubble, so an interrupted return
+  resumes if the bubble dissolves. Leash trips are logged as `combat`
+  events (`event=leash`). Home + returning state persist in the snapshot
+  (v5).
 
 ### Quests, parties, chat
 - **Seeded 6-quest board** (3 kill, 3 reach), `/quest <id>` / `/abandon <id>`.
@@ -479,7 +494,9 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   **version 4** (the gear keystone, #55/#56) re-keys equipped weapon slots
   from class-shaped names to the hand slots `main-hand`/`off-hand` and
   collapses the five weapon item-types into one `weapon` type + tags/
-  twoHanded; a restored world keeps its identity, see the world-reset signal
+  twoHanded; **version 5** (#102) adds each monster's home tile + returning
+  flag — leash state is multi-turn behavior, not a per-turn transient;
+  a restored world keeps its identity, see the world-reset signal
   below). The map itself is **never** persisted —
   it regenerates deterministically from `WORLD_SEED`/`WORLD_RADIUS`.
 - **What stays transient**: queued move paths, a pending ranged-attack
@@ -563,7 +580,9 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
   `fizzle` (reasons: `out_of_range`, `unequipped`, `target_gone`,
   `pending_item_action`), `death`, `xp_award`, `pickup` (item defID, count),
-  `drop` (item defID, count, hex), `drink` (item defID, resulting hp) —
+  `drop` (item defID, count, hex), `drink` (item defID, resulting hp),
+  `leash` (#102 — a monster trips its leash and heads home: id, kind,
+  from, home) —
   filterable on the `"combat"` msg key or the
   `event` attribute. `World.SetLogger` installs the sink (defaults to
   `slog.Default()`, mirrors `SetAnnounce`); `cmd/rogue/app` wires the
@@ -616,6 +635,7 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 | `RogueGlanceChancePercent` / `GlanceDamagePercent` | 20 / 50 | Rogue class passive: chance an incoming hit is halved (never negated; floor 1 still applies) |
 | `RegenPerTurn` | 1 | out-of-combat HP per world turn |
 | `MonsterAggroRadius` | 10 | default world-monster notice distance (> CombatRadius, compile-guarded); per-kind `aggroRadius` overrides it |
+| `MonsterLeashMultiplier` | 2 | default leash radius = this × the kind's aggro radius (#102); per-kind `leashRadius` overrides the derived value |
 | `RingCount` | 3 | difficulty rings worldgen bands the map into |
 | `SanctuaryRadius` | 5 | no hostile spawn within this many hexes of the origin |
 | `DragonCount` | 1 | max dragons `SpawnMonsters` places per world |

@@ -44,6 +44,16 @@ export const CombatRadius = 6;
  */
 export const MonsterAggroRadius = 10;
 /**
+ * MonsterLeashMultiplier sizes a WORLD-domain monster's default leash
+ * radius (#102): a monster farther than MonsterLeashMultiplier × its own
+ * base aggro radius from its home (spawn) hex drops any chase and walks
+ * back home, ignoring players until it arrives. A monster kind can
+ * override the derived radius directly (monsterDef.leashRadius), the same
+ * way it overrides aggroRadius. Monsters inside a combat bubble ignore
+ * the leash entirely — a fight is a fight.
+ */
+export const MonsterLeashMultiplier = 2;
+/**
  * StackCap is the maximum number of friendly entities on one hex — sized
  * so a full party fits.
  */

@@ -39,7 +39,11 @@ import (
 // itemType, and every item's itemType values change (one weapon type plus
 // renamed armor/jewelry types). A v3 snapshot's equipped keys and item types
 // no longer mean what this build expects, so it is preserved-aside + fresh.
-const snapshotVersion = 4
+// v5 (monster home tile + leash, #102): entityDTO gains HomeHex and
+// ReturningHome. A v4 snapshot's monsters would all restore with home at the
+// origin (the Hex zero value) and leash-walk there en masse, so it is
+// preserved-aside + fresh.
+const snapshotVersion = 5
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -113,6 +117,12 @@ type entityDTO struct {
 	XP          int                        `json:"xp"`
 	Equipped    map[string]itemInstanceDTO `json:"equipped"`
 	Backpack    []backpackEntryDTO         `json:"backpack"`
+	// HomeHex/ReturningHome are the monster leash state (#102, v5). Unlike
+	// path, these are multi-turn behavioral state, not per-turn transients:
+	// a restart must not teleport a monster's home or make one forget it was
+	// walking back. Players persist the zero values.
+	HomeHex       protocol.Hex `json:"homeHex"`
+	ReturningHome bool         `json:"returningHome"`
 }
 
 // groundStackDTO mirrors groundStack: a dropped item instance plus its stack
@@ -364,6 +374,7 @@ func entityToDTO(e *entity) entityDTO {
 		Name: e.name, PartyID: e.partyID, Class: e.class, Species: e.species,
 		HP: e.hp, MaxHP: e.maxHP, XP: e.xp,
 		Equipped: equippedToDTO(e.equipped), Backpack: backpackToDTO(e.backpack),
+		HomeHex: e.homeHex, ReturningHome: e.returningHome,
 	}
 }
 
@@ -378,6 +389,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		name: ed.Name, partyID: ed.PartyID, class: ed.Class, species: ed.Species,
 		hp: ed.HP, maxHP: ed.MaxHP, xp: ed.XP,
 		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
+		homeHex: ed.HomeHex, returningHome: ed.ReturningHome,
 	}
 }
 

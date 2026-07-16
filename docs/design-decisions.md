@@ -80,6 +80,19 @@ spawn (Q9 first half).
   walks stop adjacent to a hostile destination; move-conversion is
   monster-only. Keyboard steps route through the click path so the
   roguelike step-into-enemy idiom survives.
+- **Monster home tile + leash** (#102, 2026-07-15; shipped 2026-07-16):
+  every monster's spawn hex is its **home tile**; a WORLD-domain monster
+  farther from home than its leash — default `MonsterLeashMultiplier=2` ×
+  its own aggro radius, per-kind overridable like `aggroRadius` — drops the
+  chase and paths home, **ignoring players until it arrives** (no re-aggro
+  mid-return), with **no heal** on return. Bubble monsters are exempt (a
+  fight is a fight); the returning flag survives a bubble and the return
+  resumes when it dissolves. Arrival = the home hex, or adjacent to it while
+  home is at `StackCap`; the flag clears on the arrival think pass, which
+  re-runs the normal aggro check immediately. The leash is a monster↔home
+  relation, so it uses the kind's **base** aggro radius — the per-player
+  `aggro-range` noticeability fold deliberately doesn't apply. Leash state
+  persists (snapshot v5).
 - **Shields v1** (#90, 2026-07-15; shipped): off-hand only (no dual-shield,
   no shield-in-main); two tiers (−1 common / −2 rare) as flat `take-damage`
   cards on the existing pipeline — no new event kind, no chance roll;
