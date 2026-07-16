@@ -33,5 +33,7 @@ func New(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	addRoutes(mux, deps)
 
-	return securityHeaders(mux)
+	// The origin guard sits inside securityHeaders so its 403s carry the
+	// baseline headers too.
+	return securityHeaders(requireSameOriginPosts(deps.Logger, mux))
 }

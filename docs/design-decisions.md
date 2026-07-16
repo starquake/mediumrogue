@@ -138,6 +138,17 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
   content entry plus one protocol constant. (A glanced 1-damage hit still
   floors at 1; glance is protection against real hits, not chip damage.)
 
+- **No server-side input-window cutoff — late intents are next-turn**
+  *(decided 2026-07-16, #99)*. Intent acceptance stays permissive by design:
+  the world mutex already serializes `SubmitIntent` against every resolution
+  pass (the control loop's, and the in-`SubmitIntent` bubble lock-in
+  resolution), so an intent can never mutate an already-resolving turn — it
+  blocks for the pass and queues for the next one. A hard rejection during
+  playback would punish clients that send late (and the ~2 s input window is
+  client pacing, not a wire contract) for zero integrity gain. Pinned by
+  `internal/game/intent_window_test.go`; revisit only if a bubble ever needs
+  a server-enforced lock-in *deadline* (a different feature than a cutoff).
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14)*. Bubbles trigger

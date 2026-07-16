@@ -20,7 +20,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 ### Time: WeGo turns & combat bubbles
 - One shared **world turn every 4 s** (2 s input window, ~2 s playback).
   No input = stand still; queued click-to-move paths auto-advance. Latency
-  and reflexes are irrelevant by design.
+  and reflexes are irrelevant by design. The input window is client pacing,
+  not a server deadline: an intent that arrives while a turn is resolving
+  is still accepted and simply applies to the **next** turn (#99).
 - **Combat time bubbles**: when a player and a hostile come within 6 hexes,
   a local bubble freezes — its turns are **action-gated** (advance when every
   player in it locks in an intent, or after a 30 s patience timeout — lowered
@@ -509,8 +511,8 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 
 - **Architecture**: single Go binary (authoritative simulation) embedding
   the built TS/PixiJS client via `go:embed`. `cmd/rogue` → `internal/server`
-  (HTTP/SSE, security headers; no same-origin/CSRF check yet — tracked as
-  debt in STATUS) → `internal/game` (world
+  (HTTP/SSE, security headers, same-origin guard on POSTs — see Wire) →
+  `internal/game` (world
   under one mutex; per-domain turn loops). Coalescing hub: a tick means
   "fetch latest state", never a delta.
 - **Wire**: POST `/api/join`, `/api/intent`
@@ -518,6 +520,17 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   GET `/api/map` (once), `/api/events` (SSE: full-snapshot turn bundles with
   turn-number ids, chat events, named heartbeats). Reconnect =
   resync-to-latest (`Last-Event-ID` as watermark only). JSON everywhere.
+  **Same-origin guard** (#97): every POST carrying a cross-origin `Origin`
+  or a cross-/same-site `Sec-Fetch-Site` header is rejected with 403 ("same
+  origin" is derived from the request's own `Host` — no configured origin).
+  Requests with neither header (curl, the Go tests, some same-origin
+  fetches) pass: this is defense-in-depth, the auth boundary stays the
+  bearer-token-in-body.
+  **Input-window semantics** (#99): intent acceptance is not clock-gated —
+  the world mutex serializes submission against resolution, so an intent
+  arriving while a turn resolves is accepted, never affects the resolving
+  turn, and applies to the next one. The client's 2 s input window is
+  pacing, not a server cutoff.
 - **World-reset signal** (item 4, playtest batch 3): every turn bundle
   carries `worldId` — a random hex string minted once at world creation and
   **persisted in the snapshot** (a restored world keeps its predecessor's
