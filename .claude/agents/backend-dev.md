@@ -215,7 +215,9 @@ them; don't invent parallel mechanisms.
   var, constant, pipeline vocabulary, or content updates the relevant
   FEATURES.md section **in the same PR** — table values come from
   `internal/protocol`/`internal/config`, never from memory.
-- **`docs/STATUS.md`** gets a session note at the end of a slice.
+- **`docs/design-decisions.md`** gets a dated entry when a slice decides a
+  design direction. (There is no session-status doc anymore — live status is
+  the GitHub issues/milestones.)
 
 ## Review loop
 
