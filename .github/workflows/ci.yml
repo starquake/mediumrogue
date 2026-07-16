@@ -32,24 +32,33 @@ jobs:
       # workflow-level permissions block (contents: read) would strip this.
       pull-requests: read
     outputs:
-      # 'true' only when this is a PR and EVERY changed file matches the
-      # docs filter (predicate-quantifier: every). On push events the
-      # filter step is skipped, its output is empty, and the || makes
-      # this 'false' — so push runs are never gated.
+      # 'true' only when this is a PR and EVERY changed file is
+      # documentation. On push events the filter step is skipped, its
+      # output is empty, and the || makes this 'false' — so push runs are
+      # never gated.
       docs_only: ${{ steps.filter.outputs.docs || 'false' }}
     steps:
-      - uses: dorny/paths-filter@v3
+      - name: Check whether the PR diff is docs-only
         id: filter
         if: github.event_name == 'pull_request'
-        with:
-          predicate-quantifier: every
-          filters: |
-            docs:
-              - '**.md'
-              - 'docs/**'
-              - '.github/ISSUE_TEMPLATE/**'
-              - '.claude/**'
-              - 'LICENSE'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files=$(gh api "repos/${REPO}/pulls/${PR}/files" --paginate --jq '.[].filename')
+          echo "changed files:"; echo "$files"
+          # Docs set: markdown anywhere, docs/, issue templates, .claude AI
+          # tooling, LICENSE. ANY file outside it => full pipeline.
+          non_docs=$(echo "$files" | grep -vE '\.md$|^docs/|^\.github/ISSUE_TEMPLATE/|^\.claude/|^LICENSE$' || true)
+          if [ -n "$non_docs" ]; then
+            echo "non-docs files present:"; echo "$non_docs"
+            echo "docs=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "diff is docs-only"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          fi
 
   lint:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
