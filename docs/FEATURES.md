@@ -667,3 +667,4 @@ Three environments run from one binary image, on one VPS, behind SWAG. See
   independent.
 - **No secrets:** the deploy `.env` carries only `IMAGE_NAME`/`IMAGE_DIGEST`.
 
+
