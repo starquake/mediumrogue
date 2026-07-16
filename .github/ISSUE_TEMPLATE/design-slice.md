@@ -21,7 +21,10 @@ labels: enhancement
 
 <!-- Numbered, settled with the maintainer, each with its why. Check every
      combat-adjacent idea against docs/game-identity.md — ARPG (decoupled
-     percentage stat-checks), never TTRPG (coupled rolls, to-hit, saves). -->
+     percentage stat-checks), never TTRPG (coupled rolls, to-hit, saves).
+     And no mechanic wildfire: never a new mechanic (pipeline kind, stat,
+     subsystem) for a single item — a mechanic earns its place by serving
+     multiple items, else use the existing card vocabulary. -->
 
 ### Design
 

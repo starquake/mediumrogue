@@ -36,6 +36,13 @@ build signal, and it must be explicit.
   in D&D idiom gets translated to the ARPG equivalent (5% miss → 5% glance;
   crit-on-die-face → crit%) or pushed back — always explaining why. The tell
   is coupling: attacker + defender stats folded into one roll.
+- **The no-mechanic-wildfire gate**: never introduce a mechanic (a new
+  pipeline event/condition/effect kind, a new stat, a new subsystem) for a
+  single item. A mechanic must be reusable by multiple items/content pieces
+  to earn its place — if only one weapon would ever use it, either express
+  the item with the existing card vocabulary or push back on the design.
+  (Precedent: shields added zero new kinds — two items rode the existing
+  take-damage fold.)
 - **Determinism & seeded tests**: state whether rng is consumed or
   reordered, and which pinned seeds/tables can move.
 - **Mockup**: if the slice's value is how it looks, produce the mockup NOW —
