@@ -666,3 +666,4 @@ Three environments run from one binary image, on one VPS, behind SWAG. See
   named volume (`SNAPSHOT_PATH=/data/world.json`); the three worlds are
   independent.
 - **No secrets:** the deploy `.env` carries only `IMAGE_NAME`/`IMAGE_DIGEST`.
+
