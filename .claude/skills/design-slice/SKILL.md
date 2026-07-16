@@ -43,6 +43,10 @@ build signal, and it must be explicit.
   the item with the existing card vocabulary or push back on the design.
   (Precedent: shields added zero new kinds — two items rode the existing
   take-damage fold.)
+- **Record both gate outcomes IN the issue** — a one-line audit note per
+  gate ("TTRPG gate: clean — every card is a single-side fold"; "wildfire
+  gate: the new condition kind serves N cards"), even when nothing was
+  flagged. A silent check is indistinguishable from a skipped one.
 - **Determinism & seeded tests**: state whether rng is consumed or
   reordered, and which pinned seeds/tables can move.
 - **Mockup**: if the slice's value is how it looks, produce the mockup NOW —
