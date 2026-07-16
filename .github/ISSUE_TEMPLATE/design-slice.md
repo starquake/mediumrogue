@@ -30,6 +30,15 @@ labels: enhancement
      them. Content is registry data + rule cards, never code at a combat
      site. -->
 
+### Mockup (visual/looks-driven slices only)
+
+<!-- Anything whose value is how it LOOKS gets a mockup approved here
+     before the real UI is built: build an HTML mockup, screenshot it,
+     commit the image under docs/mockups/ (dated filename, on the work
+     branch), and embed it in this section via its raw URL:
+     ![mockup](https://raw.githubusercontent.com/starquake/mediumrogue/<branch>/docs/mockups/<file>.png)
+     The maintainer's approval of the screenshot is part of the spec OK. -->
+
 ### Determinism & seeded tests
 
 <!-- Does anything consume rng, or reorder its consumption? Which pinned
