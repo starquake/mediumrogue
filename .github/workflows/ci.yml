@@ -16,6 +16,37 @@ permissions:
   contents: read
 
 jobs:
+  # Docs-only detection (#125): on PULL REQUESTS whose whole diff is
+  # documentation (markdown, docs/, issue templates, .claude/ AI tooling),
+  # the heavy jobs below skip — none of them could fail because of such a
+  # diff, and each docs push was burning ~8 minutes of e2e (and its flakes,
+  # #117). Deliberately scoped to pull_request events ONLY: push-event runs
+  # (main) always run everything, because deploy.yml consumes push-event CI
+  # runs and must never see a green run whose docker-build was skipped.
+  # lint stays unconditional as the cheap "CI is alive" signal.
+  changes:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    outputs:
+      # 'true' only when this is a PR and EVERY changed file matches the
+      # docs filter (predicate-quantifier: every). On push events the
+      # filter step is skipped, its output is empty, and the || makes
+      # this 'false' — so push runs are never gated.
+      docs_only: ${{ steps.filter.outputs.docs || 'false' }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          predicate-quantifier: every
+          filters: |
+            docs:
+              - '**.md'
+              - 'docs/**'
+              - '.github/ISSUE_TEMPLATE/**'
+              - '.claude/**'
+              - 'LICENSE'
+
   lint:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
@@ -30,7 +61,8 @@ jobs:
           version: v2.12.2
 
   test:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,7 +72,8 @@ jobs:
       - run: make test test-integration
 
   client:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -58,7 +91,8 @@ jobs:
       - run: make client
 
   e2e:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -76,6 +110,9 @@ jobs:
   # Build once, after the suite is green, so a published image always
   # implies the tests passed for that commit. Release tags do not build
   # here; the promote job retags this image instead.
+  # On a docs-only PR the needed jobs are skipped, which skips this one
+  # too (GitHub skips a job whose needs did not all succeed) — no image is
+  # built for a docs-only diff. Push-event runs never skip (see changes).
   docker-build:
     needs: [lint, test, client, e2e]
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
