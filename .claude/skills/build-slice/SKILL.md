@@ -2,13 +2,13 @@
 name: build-slice
 description: >
   Use whenever the user gives the go-ahead to build an approved design slice —
-  "let's build #NN", "go ahead and implement it", "execute the plan", or
-  "let's work on #NN" when #NN already has a maintainer-approved plan in the
-  issue. Executes the plan task-by-task on ONE implementation PR: branch,
-  failing tests first, full make check green per commit, CI watched after
-  every push, docs in the same PR, ready at the end — merge stays label-gated.
-  Trigger for any build-the-approved-slice request even if the user doesn't
-  say "skill".
+  "let's build #NN", "go ahead and implement it", "execute the plan",
+  "continue/resume building #NN" (mid-slice pickup), or "let's work on #NN"
+  when #NN already has a maintainer-approved plan in the issue. Executes the
+  plan task-by-task on ONE implementation PR: branch, failing tests first,
+  full make check green per commit, CI watched after every push, docs in the
+  same PR, ready at the end — merge stays label-gated. Trigger for any
+  build-the-approved-slice request even if the user doesn't say "skill".
 ---
 
 You execute an approved plan from a design issue, task by task, on one
@@ -24,6 +24,9 @@ maintainer has OK'd it. If either is missing, stop and route to the
 - Re-verify the plan against the current tree before the first commit: named
   symbols still exist, no interim merge moved the ground. Surface drift;
   don't silently improvise.
+- **Resuming mid-slice**: the issue's ticked checkboxes plus the branch's
+  commits are the progress record — read both, confirm they agree, and pick
+  up at the first unticked task. Never redo a ticked task from scratch.
 
 ## The task loop (repeat per plan task)
 

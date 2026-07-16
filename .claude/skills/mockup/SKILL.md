@@ -2,12 +2,15 @@
 name: mockup
 description: >
   Use whenever visual/looks-driven work needs its pre-approval mockup — "make
-  a mockup of X", "show me what it would look like", or from inside a design
-  slice whose value is how it LOOKS (new panel, HUD element, map styling,
-  filter). Builds an HTML mockup, screenshots it with the repo's Playwright,
-  commits the image under docs/mockups/, and embeds it inline in the design
-  issue with the exact URL form that renders on this PRIVATE repo. The
-  maintainer approves the screenshot BEFORE any real UI is built.
+  a mockup of X", "show me what it would look like", "can I see a preview",
+  "design the panel first", or from inside a design slice whose value is how
+  it LOOKS (new panel, HUD element, map styling, filter, tooltip layout).
+  Builds an HTML mockup, screenshots it with the repo's Playwright, commits
+  the image under docs/mockups/, and embeds it inline in the design issue
+  with the exact URL form that renders on this PRIVATE repo. The maintainer
+  approves the screenshot BEFORE any real UI is built — trigger this before
+  writing any UI code for looks-driven work, even if the user doesn't ask
+  for a mockup explicitly.
 ---
 
 Visual work gets a mockup approved **before** the real UI exists (a CRT
