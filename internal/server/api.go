@@ -32,6 +32,39 @@ func handleJoin(deps Deps) http.Handler {
 	})
 }
 
+// intentErrorStatus maps a SubmitIntent error to its HTTP status, reporting
+// false for an error it does not recognize (which handleIntent surfaces as a
+// 500). Split out of the handler so a test can drive every domain sentinel
+// through it directly — Deps.World is a concrete *game.World, so there is no
+// stub that could make SubmitIntent return an arbitrary error.
+//
+// The shape of the mapping: 401 for a bad token; **422 for every "your intent
+// no longer applies" rejection** — routine, client-caused conditions, not
+// server faults. The world moves between a player's click and their POST, so
+// a victim that died or stopped being hostile in that gap is as ordinary as a
+// blocked path (#133: those two attack sentinels were missed when
+// entity-targeted attacks landed and fell through to the 500 default, turning
+// a normal race into an internal error — and, incidentally, flaking the
+// suite).
+func intentErrorStatus(err error) (int, bool) {
+	switch {
+	case err == nil:
+		return http.StatusAccepted, true
+	case errors.Is(err, game.ErrUnauthorized):
+		return http.StatusUnauthorized, true
+	case errors.Is(err, game.ErrNotWalkable), errors.Is(err, game.ErrNoPath),
+		errors.Is(err, game.ErrNoRangedWeapon), errors.Is(err, game.ErrOutOfRange),
+		errors.Is(err, game.ErrAttackTargetNotFound), errors.Is(err, game.ErrAttackTargetNotHostile),
+		errors.Is(err, game.ErrInvalidIntentKind), errors.Is(err, game.ErrItemNotOwned),
+		errors.Is(err, game.ErrBackpackFull),
+		errors.Is(err, game.ErrItemNotEquipped), errors.Is(err, game.ErrNotDrinkable),
+		errors.Is(err, game.ErrNotEquippable), errors.Is(err, game.ErrNoSuchGroundItem):
+		return http.StatusUnprocessableEntity, true
+	default:
+		return http.StatusInternalServerError, false
+	}
+}
+
 // handleIntent queues a step for the next turn. The response only
 // acknowledges queueing — movement itself arrives via the turn bundle, which
 // is the single source of truth for entity positions.
@@ -43,21 +76,19 @@ func handleIntent(deps Deps) http.Handler {
 		}
 
 		err := deps.World.SubmitIntent(req)
+
+		status, known := intentErrorStatus(err)
 		switch {
-		case errors.Is(err, game.ErrUnauthorized):
-			respondError(w, deps.Logger, http.StatusUnauthorized, err.Error())
-		case errors.Is(err, game.ErrNotWalkable), errors.Is(err, game.ErrNoPath),
-			errors.Is(err, game.ErrNoRangedWeapon), errors.Is(err, game.ErrOutOfRange),
-			errors.Is(err, game.ErrInvalidIntentKind), errors.Is(err, game.ErrItemNotOwned),
-			errors.Is(err, game.ErrBackpackFull),
-			errors.Is(err, game.ErrItemNotEquipped), errors.Is(err, game.ErrNotDrinkable),
-			errors.Is(err, game.ErrNotEquippable), errors.Is(err, game.ErrNoSuchGroundItem):
-			respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
-		case err != nil:
+		case err == nil:
+			w.WriteHeader(http.StatusAccepted)
+		case known:
+			respondError(w, deps.Logger, status, err.Error())
+		default:
+			// An unmapped error is a genuine server fault — a domain sentinel
+			// landing here instead means someone added one without mapping it
+			// (#133), which TestEveryIntentSentinelIsMapped now catches.
 			deps.Logger.Error("submit intent", "err", err)
 			respondError(w, deps.Logger, http.StatusInternalServerError, "internal error")
-		default:
-			w.WriteHeader(http.StatusAccepted)
 		}
 	})
 }
