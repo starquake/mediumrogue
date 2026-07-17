@@ -866,19 +866,28 @@ async function start(): Promise<void> {
   };
 
   // #138: the committed indicator (attack crosshair + lit target tiles) stays
-  // lit through the resolving bundle's PLAYBACK, not just until that bundle
-  // arrives — the hit animates across the playback window, so clearing at
-  // arrival dropped the highlight ~2s before the attack visibly landed. onTurn
-  // arms this timer at bundle arrival to fire at playback end; a fresh commit
-  // in the next input window cancels it (cancelCommittedClear) so it isn't
-  // wiped mid-show.
-  let committedClearTimer: ReturnType<typeof setTimeout> | undefined;
-  const cancelCommittedClear = (): void => clearTimeout(committedClearTimer);
+  // lit through the resolving bundle's PLAYBACK, then clears — the hit animates
+  // across the playback window, so clearing the instant the bundle ARRIVES
+  // dropped the highlight ~2s before the attack visibly landed. The clear is a
+  // deadline (committedClearAtMs = the resolving bundle's playback-end time)
+  // that the render ticker watches, NOT a re-armable setTimeout: onTurn fires
+  // per bundle, and cancelling+rescheduling a timer each time could starve it
+  // forever (the bug that left the highlight stuck on). The deadline is set
+  // ONCE, on the first bundle after a commit, and never pushed later.
+  let committedClearAtMs: number | null = null;
+  const cancelCommittedClear = (): void => {
+    committedClearAtMs = null;
+  };
   const clearCommittedIndicator = (): void => {
     cancelCommittedClear();
     window.game.committedAction = null;
     feedbackLayer.setCommitted(null);
     setCommittedAttackTiles([]);
+  };
+  const tickCommittedClear = (): void => {
+    if (committedClearAtMs !== null && performance.now() >= committedClearAtMs) {
+      clearCommittedIndicator();
+    }
   };
 
   window.game.hoverTile = (q, r): void => setHoveredHex({ q, r });
@@ -923,6 +932,11 @@ async function start(): Promise<void> {
   };
   updateCamera();
   app.ticker.add(updateCamera);
+
+  // #138: clear the committed indicator the moment its resolving bundle's
+  // playback ends (committedClearAtMs), watched here per frame rather than via
+  // a timer that onTurn could keep rescheduling.
+  app.ticker.add(tickCommittedClear);
 
   const timer = new TurnTimer(app.ticker);
 
@@ -1424,13 +1438,14 @@ async function start(): Promise<void> {
       curPlaybackMs = playbackMs;
       turnStartedAtMs = performance.now();
 
-      // #138: keep the committed indicator lit through THIS bundle's playback,
-      // then clear it. A fresh commit in the next input window cancels this
-      // (cancelCommittedClear in the commit setters), and playbackMs <
-      // intervalMs guarantees it always fires before the next bundle arrives.
-      cancelCommittedClear();
-      if (window.game.committedAction !== null || committedAttackTiles.length > 0) {
-        committedClearTimer = setTimeout(clearCommittedIndicator, playbackMs);
+      // #138: on the FIRST bundle after a commit (deadline still unset), keep
+      // the indicator lit and schedule its clear for this bundle's playback
+      // end. Guarding on `=== null` is what makes it robust: later bundles
+      // never push the deadline out, so it can't be starved into never firing
+      // (the stuck-highlight bug). A fresh commit resets it via the setters'
+      // cancelCommittedClear; tickCommittedClear does the actual clearing.
+      if (committedClearAtMs === null && (window.game.committedAction !== null || committedAttackTiles.length > 0)) {
+        committedClearAtMs = turnStartedAtMs + playbackMs;
       }
 
       const mine = event.entities.find((e) => e.id === me.entityId);
