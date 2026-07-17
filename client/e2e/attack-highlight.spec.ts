@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import type { GameDebug } from "../src/main";
 import { ClassMage, ClassRogue, EntityMonster } from "../src/protocol.gen";
-import type { Hex } from "../src/protocol.gen";
+import type { Hex, HitView } from "../src/protocol.gen";
 
 declare global {
   interface Window {
@@ -182,15 +182,26 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps it 
 
   // #114: real hits ride the bundle once combat plays out (the wolf hitting
   // us, our blasts landing) — assert the wire shape through window.game.
+  // window.game.hits holds only the hits NEW in the latest bundle, so a
+  // quiet turn empties it again: capture the hit INSIDE the poll rather than
+  // re-reading it afterwards, or a quiet bundle landing in between yields
+  // undefined (a real race this spec hit under --repeat-each).
+  let hit: HitView | null = null;
   await expect
-    .poll(() => page.evaluate(() => window.game.hits.length), { timeout: 20_000, intervals: [200] })
-    .toBeGreaterThan(0);
+    .poll(
+      async () => {
+        hit = await page.evaluate(() => window.game.hits[0] ?? null);
 
-  const hit = await page.evaluate(() => window.game.hits[0]!);
-  expect(typeof hit.crit).toBe("boolean");
-  expect(typeof hit.glance).toBe("boolean");
-  expect(hit.amount).toBeGreaterThan(0);
-  expect(hit.turn).toBeGreaterThan(0);
+        return hit !== null;
+      },
+      { timeout: 20_000, intervals: [200] },
+    )
+    .toBe(true);
+
+  expect(typeof hit!.crit).toBe("boolean");
+  expect(typeof hit!.glance).toBe("boolean");
+  expect(hit!.amount).toBeGreaterThan(0);
+  expect(hit!.turn).toBeGreaterThan(0);
 });
 
 test("rogue: hovering a hostile in bow range highlights exactly its tile; a plain move tile highlights nothing", async ({
@@ -214,34 +225,67 @@ test("rogue: hovering a hostile in bow range highlights exactly its tile; a plai
   // hover, and read in ONE evaluate so the positions can't shift under us.
   // A single-target weapon (and the adjacent melee swing alike) lights
   // EXACTLY the victim's tile — never a disc.
+  //
+  // Entering a bubble only guarantees CombatRadius (6), not bow range (4),
+  // and a monster already busy fighting someone else may never close the
+  // gap on its own — so keep STEPPING toward the nearest one until it is in
+  // range, exactly as ranged.spec.ts does. Without this the poll waits
+  // passively and times out whenever the monster has another target
+  // (reproduced under --repeat-each=3 --workers=9).
+  const BOW_RANGE = 4;
   let single: { hex: Hex; tiles: Hex[] } | null = null;
   await expect
     .poll(
       async () => {
-        single = await page.evaluate((monsterKind) => {
-          const me = window.game.me;
-          if (me === null || !window.game.inCombat) {
-            return null;
-          }
+        single = await page.evaluate(
+          ({ monsterKind, bowRange }) => {
+            const me = window.game.me;
+            if (me === null || !window.game.inCombat) {
+              return null;
+            }
 
-          const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
-            const dq = a.q - b.q;
-            const dr = a.r - b.r;
+            const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
+              const dq = a.q - b.q;
+              const dr = a.r - b.r;
 
-            return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
-          };
+              return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
+            };
 
-          const target = window.game.positions.find(
-            (p) => p.kind === monsterKind && d(me.hex, p.hex) <= 4,
-          );
-          if (target === undefined) {
-            return null;
-          }
+            const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+            if (monsters.length === 0) {
+              return null;
+            }
 
-          window.game.hoverTile(target.hex.q, target.hex.r);
+            let nearest = monsters[0]!;
+            for (const m of monsters.slice(1)) {
+              if (d(me.hex, m.hex) < d(me.hex, nearest.hex)) {
+                nearest = m;
+              }
+            }
 
-          return { hex: target.hex, tiles: window.game.hoverAttackTiles };
-        }, EntityMonster);
+            // Still out of bow range: step onto the reachable tile that
+            // closes the most distance and try again next poll.
+            if (d(me.hex, nearest.hex) > bowRange) {
+              if (window.game.combatMoves.length > 0) {
+                let step = window.game.combatMoves[0]!;
+                for (const h of window.game.combatMoves.slice(1)) {
+                  if (d(h, nearest.hex) < d(step, nearest.hex)) {
+                    step = h;
+                  }
+                }
+
+                void window.game.tapHex(step.q, step.r);
+              }
+
+              return null;
+            }
+
+            window.game.hoverTile(nearest.hex.q, nearest.hex.r);
+
+            return { hex: nearest.hex, tiles: window.game.hoverAttackTiles };
+          },
+          { monsterKind: EntityMonster, bowRange: BOW_RANGE },
+        );
 
         return single !== null;
       },
