@@ -647,7 +647,9 @@ export interface ItemView {
  * up (IntentPickup). ID is the representative item instance id (stable client
  * key, and the id a pickup intent names). Type feeds the client's pickup
  * prompt (name + type); Count is the stack size (a consumable stack drops
- * whole — 1..ItemStackCap; always 1 for gear).
+ * whole — 1..ItemStackCap; always 1 for gear). The detail fields mirror
+ * ItemView so the pickup modal can show what an item IS before you take it
+ * (#139) — same meanings as on ItemView.
  */
 export interface GroundItemView {
   id: number /* int64 */;
@@ -656,6 +658,16 @@ export interface GroundItemView {
   name: string;
   type: string;
   count: number /* int */;
+  /**
+   * Detail fields (#139) — identical meanings to ItemView's.
+   */
+  tags: string[];
+  twoHanded: boolean;
+  damage: number /* int */;
+  rangeHex: number /* int */;
+  aoeRadius: number /* int */;
+  desc: string;
+  flavor: string;
 }
 /**
  * Entity is one thing standing on the map: a player or a monster.

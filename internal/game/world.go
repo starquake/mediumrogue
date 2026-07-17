@@ -1218,6 +1218,9 @@ func (w *World) Snapshot() protocol.TurnEvent {
 			def := itemDefByID[gs.inst.defID]
 			groundItems = append(groundItems, protocol.GroundItemView{
 				ID: gs.inst.id, Hex: hex, DefID: gs.inst.defID, Name: def.name, Type: def.itemType, Count: gs.count,
+				// Detail fields (#139), read straight off the def like itemViewOf.
+				Tags: def.tags, TwoHanded: def.twoHanded,
+				Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc, Flavor: def.flavor,
 			})
 		}
 	}

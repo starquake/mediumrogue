@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -45,11 +46,18 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 		},
 		GroundItems: []protocol.GroundItemView{
 			{
-				ID:    9,
-				Hex:   protocol.Hex{Q: 2, R: -1},
-				DefID: "bow",
-				Name:  "Bow",
-				Type:  protocol.ItemTypeWeapon,
+				ID:        9,
+				Hex:       protocol.Hex{Q: 2, R: -1},
+				DefID:     "bow",
+				Name:      "Bow",
+				Type:      protocol.ItemTypeWeapon,
+				Tags:      []string{protocol.WeaponTagRanged},
+				TwoHanded: true,
+				Damage:    3,
+				RangeHex:  4,
+				AoERadius: 0,
+				Desc:      "A ranged weapon.",
+				Flavor:    "Yew and sinew.",
 			},
 		},
 	}
@@ -149,6 +157,35 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 
 	if got, want := gotGround.Type, wantGround.Type; got != want {
 		t.Errorf("GroundItemView.Type = %q, want %q", got, want)
+	}
+
+	// Detail fields (#139) survive the round-trip too.
+	if got, want := gotGround.Damage, wantGround.Damage; got != want {
+		t.Errorf("GroundItemView.Damage = %d, want %d", got, want)
+	}
+
+	if got, want := gotGround.RangeHex, wantGround.RangeHex; got != want {
+		t.Errorf("GroundItemView.RangeHex = %d, want %d", got, want)
+	}
+
+	if got, want := gotGround.AoERadius, wantGround.AoERadius; got != want {
+		t.Errorf("GroundItemView.AoERadius = %d, want %d", got, want)
+	}
+
+	if got, want := gotGround.TwoHanded, wantGround.TwoHanded; got != want {
+		t.Errorf("GroundItemView.TwoHanded = %t, want %t", got, want)
+	}
+
+	if got, want := gotGround.Tags, wantGround.Tags; !slices.Equal(got, want) {
+		t.Errorf("GroundItemView.Tags = %v, want %v", got, want)
+	}
+
+	if got, want := gotGround.Desc, wantGround.Desc; got != want {
+		t.Errorf("GroundItemView.Desc = %q, want %q", got, want)
+	}
+
+	if got, want := gotGround.Flavor, wantGround.Flavor; got != want {
+		t.Errorf("GroundItemView.Flavor = %q, want %q", got, want)
 	}
 }
 
