@@ -102,6 +102,49 @@ func buildMonsterIndex() {
 	}
 }
 
+// newMonsterEntity builds a monster entity of kind k at hex h with id.
+// EVERY monster spawn path goes through it (SpawnMonsters,
+// SpawnMonsterKindAt, PlaceMonsterKindForTest) so a new one cannot silently
+// forget a field: a monster whose homeHex were left at the zero value would
+// take the origin for home and leash-walk the whole map back to it (#102).
+// The caller owns id allocation (w.nextID) and inserting into w.entities.
+func newMonsterEntity(id int64, h protocol.Hex, k *monsterDef) *entity {
+	return &entity{
+		id: id, hex: h, homeHex: h,
+		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
+	}
+}
+
+// defAggroRadius returns def's effective base aggro radius: its own
+// aggroRadius override if non-zero, else the shared
+// protocol.MonsterAggroRadius default. A nil def (a player, or a malformed
+// fixture whose monsterKind names no registered kind) also takes the
+// default. It is the ONE place the "0 means the default" rule lives —
+// baseAggroRadiusFor (the runtime, entity-level caller) and
+// validateMonsterLeashRadius (the init-time content check) both go through
+// it, so the validator can never check a stale formula the runtime no
+// longer uses.
+func defAggroRadius(def *monsterDef) int {
+	if def != nil && def.aggroRadius != 0 {
+		return def.aggroRadius
+	}
+
+	return protocol.MonsterAggroRadius
+}
+
+// defLeashRadius returns def's effective leash radius (#102): its own
+// leashRadius override if non-zero, else protocol.MonsterLeashMultiplier ×
+// defAggroRadius(def). Nil takes the derived default, mirroring
+// defAggroRadius. Same single-source-of-truth role as defAggroRadius:
+// leashRadiusFor is its entity-level wrapper.
+func defLeashRadius(def *monsterDef) int {
+	if def != nil && def.leashRadius != 0 {
+		return def.leashRadius
+	}
+
+	return protocol.MonsterLeashMultiplier * defAggroRadius(def)
+}
+
 // kindOf resolves e's monster-kind def (content.go's monsterDefs), or nil
 // for a player. A monster entity whose monsterKind names no registered kind
 // also resolves to nil (map miss) — every production spawn path sets a
@@ -259,12 +302,7 @@ func validateMonsterLeashRadius(def *monsterDef) {
 		return
 	}
 
-	aggro := def.aggroRadius
-	if aggro == 0 {
-		aggro = protocol.MonsterAggroRadius
-	}
-
-	if def.leashRadius <= aggro {
+	if def.leashRadius <= defAggroRadius(def) {
 		panic("game: monster " + def.id + " leashRadius must be 0 or > its aggro radius")
 	}
 }

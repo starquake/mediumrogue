@@ -159,10 +159,7 @@ func (w *World) PlaceMonsterKindForTest(hex protocol.Hex, kind string) int64 {
 	}
 
 	w.nextID++
-	w.entities[w.nextID] = &entity{
-		id: w.nextID, hex: hex, homeHex: hex,
-		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
-	}
+	w.entities[w.nextID] = newMonsterEntity(w.nextID, hex, k)
 
 	return w.nextID
 }
@@ -204,7 +201,9 @@ func (w *World) SetMonsterHomeForTest(id int64, hex protocol.Hex) {
 }
 
 // MonsterReturningForTest reports whether a monster is currently walking back
-// to its home hex (#102's returningHome flag).
+// to its home hex (#102's returningHome flag). Panics on an unknown id like
+// MonsterHomeForTest: a test asking about a monster that isn't there is
+// broken, and a silent false would read as "not returning" and pass.
 func (w *World) MonsterReturningForTest(id int64) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -213,7 +212,7 @@ func (w *World) MonsterReturningForTest(id int64) bool {
 		return e.returningHome
 	}
 
-	return false
+	panic("game: MonsterReturningForTest unknown entity")
 }
 
 // SetMonsterReturningForTest overwrites a monster's returningHome flag, so a

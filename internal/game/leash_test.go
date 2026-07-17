@@ -102,9 +102,15 @@ func TestMonsterBeyondLeashWalksHome(t *testing.T) {
 }
 
 // TestReturningMonsterIgnoresPlayers (#102): a monster walking home does not
-// re-aggro mid-return — even once it is back inside its leash range with a
-// player inside its aggro radius, it keeps stepping home, away from the
-// player it would otherwise chase.
+// re-aggro mid-return — once it is back INSIDE its leash range (so the leash
+// trigger no longer explains its behavior) with a player inside its aggro
+// radius, it keeps stepping home rather than chasing.
+//
+// The returning state is EARNED through a real beyond-leash turn rather than
+// injected, so the flag-flip and the ignore-players rule are covered by one
+// unbroken sequence: the rat starts exactly one hex beyond its leash, so its
+// first real leash step carries it back inside leash range — exactly the
+// hysteresis case (inside range, still returning) this test is about.
 func TestReturningMonsterIgnoresPlayers(t *testing.T) {
 	t.Parallel()
 
@@ -113,33 +119,56 @@ func TestReturningMonsterIgnoresPlayers(t *testing.T) {
 	me := joinNamed(t, w, "tester")
 	pinToOrigin(w, &me)
 
-	// Inside the rat's aggro radius (its exact boundary) but outside
-	// CombatRadius, so no bubble forms and — pre-#102 — the rat would step
-	// toward the player this turn.
 	aggro := game.MonsterAggroRadiusForTest("rat")
-	ratHex := walkableHexAtDistance(t, w, me.Hex, aggro, aggro)
+
+	// The rat starts outside its own aggro radius of the player, so turn 1
+	// is a pure leash trip with no chase in the picture.
+	ratHex := walkableHexAtDistance(t, w, me.Hex, aggro+1, ratLeash()-1)
 	ratID := w.PlaceMonsterKindForTest(ratHex, "rat")
 
-	// Home well WITHIN leash range, placed directly away from the player, so
-	// a step toward it is provably not a step toward the player.
-	home := walkableHexAwayFrom(t, w, ratHex, me.Hex, 4)
+	// Home exactly one hex beyond the leash: one step home lands the rat
+	// back inside leash range.
+	home := walkableHexAtDistance(t, w, ratHex, ratLeash()+1, ratLeash()+1)
 	w.SetMonsterHomeForTest(ratID, home)
-	w.SetMonsterReturningForTest(ratID, true)
 
+	// Turn 1: the real beyond-leash trip — the rat earns its returning flag.
+	step(t, w)
+
+	if got, want := w.MonsterReturningForTest(ratID), true; got != want {
+		t.Fatalf("MonsterReturning after the beyond-leash turn = %v, want %v", got, want)
+	}
+
+	midHex := entityHex(t, w, ratID)
+
+	// Precondition for the rule under test: the rat is now back INSIDE its
+	// leash range, so anything it does next is the returning flag's doing,
+	// not the leash trigger's.
+	if got, want := game.HexDistance(midHex, home), ratLeash(); got > want {
+		t.Fatalf("distance to home after the first step = %d, want <= %d (back inside leash range)", got, want)
+	}
+
+	// Put the player exactly at the rat's aggro boundary, directly AWAY from
+	// home: outside CombatRadius (no bubble), but close enough that a normal
+	// think pass would chase — and a step toward home is provably not a step
+	// toward the player.
+	lure := walkableHexAwayFrom(t, w, midHex, home, aggro)
+	w.SetHexForTest(me.EntityID, lure)
+
+	// Turn 2: inside leash range, player in aggro range, still returning.
 	step(t, w)
 
 	after := entityHex(t, w, ratID)
-	if after == ratHex {
-		t.Fatalf("returning rat stood still at %v, want a step toward home %v", ratHex, home)
+	if after == midHex {
+		t.Fatalf("returning rat stood still at %v, want a step toward home %v", midHex, home)
 	}
 
-	if got, want := game.HexDistance(after, home), game.HexDistance(ratHex, home); got >= want {
-		t.Errorf("distance to home after one turn = %d, want < %d", got, want)
+	if got, want := game.HexDistance(after, home), game.HexDistance(midHex, home); got >= want {
+		t.Errorf("distance to home after the lure turn = %d, want < %d (still walking home)", got, want)
 	}
 
-	// The chase step would have closed to aggro-1; ignoring the player means
-	// never getting nearer than the starting distance.
-	if got, want := game.HexDistance(after, me.Hex), game.HexDistance(ratHex, me.Hex); got < want {
+	// A chase step would have closed to aggro-1; ignoring the player means
+	// never getting nearer than the lure distance.
+	if got, want := game.HexDistance(after, lure), aggro; got < want {
 		t.Errorf("returning rat approached the player: distance %d, want >= %d", got, want)
 	}
 

@@ -2399,10 +2399,7 @@ func (w *World) SpawnMonsters(n int) {
 		k := monsterDefByID[kindID]
 
 		w.nextID++
-		w.entities[w.nextID] = &entity{
-			id: w.nextID, hex: h, homeHex: h,
-			kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
-		}
+		w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
 		placed++
 	}
 }
@@ -2551,10 +2548,7 @@ func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
 	}
 
 	w.nextID++
-	w.entities[w.nextID] = &entity{
-		id: w.nextID, hex: h, homeHex: h,
-		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
-	}
+	w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
 
 	return true
 }
@@ -2650,31 +2644,23 @@ func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, m *entity, players [
 }
 
 // baseAggroRadiusFor returns monster m's own base aggro radius before any
-// player-side noticeability fold: its kind's aggroRadius override
-// (monsterDef.aggroRadius) if non-zero, else the shared
-// protocol.MonsterAggroRadius default. m is assumed to be a monster (the
-// only caller, nearestAggroedPlayerLocked, only ever calls this for one);
-// kindOf(m) nil (a malformed fixture) falls back to the default too.
+// player-side noticeability fold: its kind's effective aggro radius
+// (defAggroRadius — the kind's override, else protocol.MonsterAggroRadius).
+// m is assumed to be a monster (the only caller,
+// nearestAggroedPlayerLocked, only ever calls this for one); kindOf(m) nil
+// (a malformed fixture) falls back to the default too.
 func baseAggroRadiusFor(m *entity) int {
-	if k := kindOf(m); k != nil && k.aggroRadius != 0 {
-		return k.aggroRadius
-	}
-
-	return protocol.MonsterAggroRadius
+	return defAggroRadius(kindOf(m))
 }
 
-// leashRadiusFor returns monster m's leash radius (#102): its kind's own
-// leashRadius override (monsterDef.leashRadius) if non-zero, else
-// protocol.MonsterLeashMultiplier × its base aggro radius
-// (baseAggroRadiusFor). The leash is a monster↔home relation with no player
-// in the equation, so the per-player evAggroRange noticeability fold
-// (aggroRadiusForLocked) deliberately does not apply here.
+// leashRadiusFor returns monster m's leash radius (#102): its kind's
+// effective leash radius (defLeashRadius — the kind's own leashRadius
+// override, else protocol.MonsterLeashMultiplier × its base aggro radius).
+// The leash is a monster↔home relation with no player in the equation, so
+// the per-player evAggroRange noticeability fold (aggroRadiusForLocked)
+// deliberately does not apply here.
 func leashRadiusFor(m *entity) int {
-	if k := kindOf(m); k != nil && k.leashRadius != 0 {
-		return k.leashRadius
-	}
-
-	return protocol.MonsterLeashMultiplier * baseAggroRadiusFor(m)
+	return defLeashRadius(kindOf(m))
 }
 
 // thinkReturnHomeLocked is the WORLD-domain leash check (#102), run for
