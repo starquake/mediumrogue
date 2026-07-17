@@ -179,6 +179,44 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
   `internal/game/intent_window_test.go`; revisit only if a bubble ever needs
   a server-enforced lock-in *deadline* (a different feature than a cutoff).
 
+- **A blocked walk detours, bounded by slack — and only for players**
+  *(decided 2026-07-17, #96)*. A queued click-to-move path whose next hex was
+  occupied used to wait there forever. Unattended auto-walk is a core
+  relaxation feature ("click somewhere and your character walks there on their
+  own, beat by beat, while you chat"), so a silent permanent stall was a
+  direct hit on it. Four calls worth keeping:
+  - **Only occupancy blocks, never terrain.** `w.terrain` is generated once
+    and never mutates, so a step that was walkable at submit time still is.
+    The issue was filed as "unwalkable/occupied"; the unwalkable half was
+    unreachable. Revisit only if destructible/dynamic terrain ever lands.
+  - **Players only.** A monster's wait-on-block is load-bearing — it is how a
+    standing intent becomes next turn's melee attack — and monsters already
+    re-path from a retained goal every turn, so a stale route is not
+    something they can have. The bug was always player-shaped.
+  - **The goal is the route's own end**, not a stored destination. That
+    preserves #116's stop-adjacent-to-a-hostile trim for free and keeps a
+    queued walk a pure transient — no entity field, no `snapshotVersion`
+    bump. Persisting a walk goal across restart stays unbuilt for lack of
+    demand.
+  - **Slack, not always-detour** (`RepathDetourSlack = 4`). Blockers are
+    **transient** — the monster in your way has usually moved on by next turn
+    — so an unbounded detour would send you around the map to dodge something
+    that a one-turn wait would have cleared. Refusing a detour (slack
+    exceeded, or none exists) simply restores the old wait; there is
+    deliberately **no give-up rule**, since the player can already cancel by
+    clicking elsewhere.
+
+  Two consequences worth knowing. The re-path's predicate **exempts the goal**
+  (`Pathfind` returns nil when the target is unwalkable, which would refuse
+  every detour toward an occupied goal), so the adopted route's first step is
+  re-checked — otherwise a blocked goal one hex away would be walked straight
+  into, breaking the very `StackCap`/hostile rules the block enforces. And the
+  hostile-blocked case is in practice **bubble-only**: in the world domain any
+  monster within `CombatRadius` forms a bubble, which hard-cancels a multi-hex
+  route (#103) before a hostile could ever occupy its next step — so the
+  world-domain trigger is the friendly-`StackCap` blob, and the hostile
+  trigger is a multi-hex flee path queued inside a fight.
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14)*. Bubbles trigger

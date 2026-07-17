@@ -154,7 +154,7 @@ The core of the design. Every 4 seconds, one world turn:
 
 **Grid & movement — DECIDED:**
 - **Flat-top hex grid, grid-locked movement,** axial coordinates. Each tile has N/S/NE/NW/SE/SW neighbors — six equidistant directions, no diagonal problem. Red Blob Games' hex guide is the reference for coordinates, distance, pathfinding, and line-of-sight.
-- **Primary input: click-to-move.** Click a hex → client sends the target → server pathfinds and the entity walks the path over subsequent turns (re-validated each turn; interrupted when hostiles appear).
+- **Primary input: click-to-move.** Click a hex → client sends the target → server pathfinds and the entity walks the path over subsequent turns (re-validated each turn; interrupted when hostiles appear). A player's walk **re-routes around anything standing in its way** rather than stalling (#96) — see `design-decisions.md` for the transient-blocker reasoning.
 - **Keyboard: QWE / ASD** mapping onto the six hex directions — two rows, no
   modifier states. There is no wait key: standing still is simply not sending
   an intent.
