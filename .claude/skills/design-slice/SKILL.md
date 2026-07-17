@@ -16,6 +16,15 @@ committed to the repo. The one rule that matters most: **never auto-proceed
 from plan to implementation** — the maintainer's OK on the issue is the
 build signal, and it must be explicit.
 
+**The handoff label.** Every issue carries at most one `needs:*` label naming
+the next action, so the maintainer can see at a glance what's waiting on them.
+This skill flips it at each pause. Whenever you set one, remove whatever
+`needs:*` label was there before (`gh issue edit <n> --add-label "<new>"
+--remove-label "<old>"`) — exactly one at a time. The amber ones
+(`needs: your input`, `needs: your sign-off`) are the maintainer's court; the
+blue ones (`needs: spec`, `needs: plan`) are yours. `ready to merge` is a
+PR-level gate you never set — see `merge-pr`.
+
 ## Step 1 — The issue
 
 - If the slice has no issue yet, create one from the design-slice template
@@ -25,6 +34,9 @@ build signal, and it must be explicit.
 - Read the codebase before writing: name real symbols (files, functions,
   consts). A spec that says `slotForType` beats one that says "the slot
   logic".
+- **Label**: while you're writing the spec, the issue is in your court — set
+  `needs: spec` (removing any other `needs:*`) so the maintainer knows it's
+  yours, not waiting on them.
 
 ## Step 2 — The Spec (top half of the template)
 
@@ -52,18 +64,24 @@ build signal, and it must be explicit.
 - **Mockup**: if the slice's value is how it looks, produce the mockup NOW —
   use the `mockup` skill — and embed the screenshot in the issue's Mockup
   section. Screenshot approval is part of the spec OK.
+- **Label — hand off**: once the spec is posted and its open Decisions are
+  questions FOR the maintainer, set `needs: your input` (removing
+  `needs: spec`). This is the first pause: you cannot settle direction
+  yourself, so the ball is theirs until they answer.
 
 ## Step 3 — Settle, then Plan (bottom half)
 
-Only fill the Plan once the Decisions are settled. Tasks in landing order,
-each one green commit (`set -o pipefail && make check 2>&1 | tail -15`);
-failing tests first where practical; isolate the seeded-surface task (drop
-tables, rng changes) so pin movement has exactly one cause; the last task is
-always docs (`FEATURES.md`, `design-decisions.md` if direction was decided)
-in the same PR.
+Only fill the Plan once the Decisions are settled. When you resume to write it,
+the issue is back in your court — set `needs: plan` (removing
+`needs: your input`). Tasks in landing order, each one green commit
+(`set -o pipefail && make check 2>&1 | tail -15`); failing tests first where
+practical; isolate the seeded-surface task (drop tables, rng changes) so pin
+movement has exactly one cause; the last task is always docs (`FEATURES.md`,
+`design-decisions.md` if direction was decided) in the same PR.
 
 ## Step 4 — STOP
 
-Tell the maintainer the issue is ready for design review and **end there**.
-The build belongs to the `build-slice` skill, and it starts only when the
-maintainer says go.
+Set `needs: your sign-off` (removing `needs: plan`) — the completed plan now
+awaits the maintainer's explicit OK to build. Tell the maintainer the issue is
+ready for design review and **end there**. The build belongs to the
+`build-slice` skill, and it starts only when the maintainer says go.
