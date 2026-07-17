@@ -58,6 +58,10 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // A private server plus autowalk's short patience keeps bubble turns
   // flowing (~700ms worst case) no matter what siblings do.
   { name: "melee-feedback", monsters: 3, env: { COMBAT_PATIENCE: "700ms" } },
+  // attack-highlight (#101/#114) abandons a player mid-bubble in each of its
+  // two tests (mage, then rogue) — melee-feedback's private-server + short
+  // patience reasoning applies verbatim.
+  { name: "attack-highlight", monsters: 3, env: { COMBAT_PATIENCE: "700ms" } },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },
   // kinds needs several distinct monster kinds actually spawned to prove
