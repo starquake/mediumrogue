@@ -60,6 +60,14 @@ type monsterDef struct {
 	// monster must notice a player before it can close into a combat
 	// bubble, or it sits frozen just outside its own aggro range forever.
 	aggroRadius int
+	// leashRadius overrides this kind's leash radius (#102 — how far from
+	// its home hex a WORLD-domain monster of this kind will chase before it
+	// drops the target and walks back home); 0 means "use the default",
+	// protocol.MonsterLeashMultiplier × the kind's base aggro radius
+	// (leashRadiusFor, world.go). Non-zero values must be strictly greater
+	// than the kind's base aggro radius (validateMonsterLeashRadius): a
+	// leash inside the aggro radius would drop a chase the moment it starts.
+	leashRadius int
 	dropChance  int // percent, this kind's own roll (protocol.DropChancePercent retired)
 	drops       []drop
 	rings       []int      // which difficulty rings (0..protocol.RingCount-1) this kind spawns in
@@ -92,6 +100,49 @@ func buildMonsterIndex() {
 			tags: []string{protocol.WeaponTagMelee}, damage: def.damage, rules: def.rules,
 		}
 	}
+}
+
+// newMonsterEntity builds a monster entity of kind k at hex h with id.
+// EVERY monster spawn path goes through it (SpawnMonsters,
+// SpawnMonsterKindAt, PlaceMonsterKindForTest) so a new one cannot silently
+// forget a field: a monster whose homeHex were left at the zero value would
+// take the origin for home and leash-walk the whole map back to it (#102).
+// The caller owns id allocation (w.nextID) and inserting into w.entities.
+func newMonsterEntity(id int64, h protocol.Hex, k *monsterDef) *entity {
+	return &entity{
+		id: id, hex: h, homeHex: h,
+		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
+	}
+}
+
+// defAggroRadius returns def's effective base aggro radius: its own
+// aggroRadius override if non-zero, else the shared
+// protocol.MonsterAggroRadius default. A nil def (a player, or a malformed
+// fixture whose monsterKind names no registered kind) also takes the
+// default. It is the ONE place the "0 means the default" rule lives —
+// baseAggroRadiusFor (the runtime, entity-level caller) and
+// validateMonsterLeashRadius (the init-time content check) both go through
+// it, so the validator can never check a stale formula the runtime no
+// longer uses.
+func defAggroRadius(def *monsterDef) int {
+	if def != nil && def.aggroRadius != 0 {
+		return def.aggroRadius
+	}
+
+	return protocol.MonsterAggroRadius
+}
+
+// defLeashRadius returns def's effective leash radius (#102): its own
+// leashRadius override if non-zero, else protocol.MonsterLeashMultiplier ×
+// defAggroRadius(def). Nil takes the derived default, mirroring
+// defAggroRadius. Same single-source-of-truth role as defAggroRadius:
+// leashRadiusFor is its entity-level wrapper.
+func defLeashRadius(def *monsterDef) int {
+	if def != nil && def.leashRadius != 0 {
+		return def.leashRadius
+	}
+
+	return protocol.MonsterLeashMultiplier * defAggroRadius(def)
 }
 
 // kindOf resolves e's monster-kind def (content.go's monsterDefs), or nil
@@ -218,6 +269,7 @@ func validateMonsterDefs(defs []*monsterDef) {
 		seen[def.id] = true
 
 		validateMonsterAggroRadius(def)
+		validateMonsterLeashRadius(def)
 		validateMonsterDrops(def)
 		validateMonsterRings(def, covered)
 		validateRuleCards(def.id, def.rules)
@@ -236,6 +288,22 @@ func validateMonsterDefs(defs []*monsterDef) {
 func validateMonsterAggroRadius(def *monsterDef) {
 	if def.aggroRadius != 0 && def.aggroRadius <= protocol.CombatRadius {
 		panic("game: monster " + def.id + " aggroRadius must be 0 or > CombatRadius")
+	}
+}
+
+// validateMonsterLeashRadius panics if def.leashRadius violates the
+// invariant documented on monsterDef.leashRadius: 0 (use the default,
+// protocol.MonsterLeashMultiplier × the base aggro radius) or strictly
+// greater than the kind's base aggro radius (def.aggroRadius if set, else
+// protocol.MonsterAggroRadius) — a leash at or inside the aggro radius
+// would drop every chase the moment it starts.
+func validateMonsterLeashRadius(def *monsterDef) {
+	if def.leashRadius == 0 {
+		return
+	}
+
+	if def.leashRadius <= defAggroRadius(def) {
+		panic("game: monster " + def.id + " leashRadius must be 0 or > its aggro radius")
 	}
 }
 

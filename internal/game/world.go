@@ -31,6 +31,7 @@ const combatLogMsg = "combat"
 const (
 	combatEventMove   = "move"
 	combatEventAttack = "attack"
+	combatEventLeash  = "leash"
 	combatEventFizzle = "fizzle"
 	combatEventDeath  = "death"
 	combatEventPickup = "pickup"
@@ -244,6 +245,22 @@ type entity struct {
 	// resolution paths that skip that pass (e.g. the ResolveCombatOnlyForTest
 	// test bridge).
 	pending pendingItemAction
+	// homeHex is a monster's home tile (#102): the hex it spawned on, stamped
+	// by every monster spawn path (SpawnMonsters, SpawnMonsterKindAt,
+	// PlaceMonsterKindForTest) and never re-stamped afterwards. A WORLD-domain
+	// monster farther than leashRadiusFor from it drops any chase and paths
+	// back (thinkReturnHomeLocked). Monsters only; players leave it zero — the
+	// zero value is the origin hex, which is fine because no player code path
+	// ever reads it.
+	homeHex protocol.Hex
+	// returningHome marks a monster walking back to homeHex after exceeding
+	// its leash (#102): while set, the WORLD-domain think pass ignores players
+	// entirely — no re-aggro mid-return — until arrivedHomeLocked clears it.
+	// Bubble membership overrides it (a bubbled monster chases
+	// unconditionally); the flag survives the bubble so an interrupted return
+	// resumes when the monster re-enters the world domain. Persisted (it is
+	// multi-turn behavioral state, not a per-turn transient like path).
+	returningHome bool
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -2391,10 +2408,7 @@ func (w *World) SpawnMonsters(n int) {
 		k := monsterDefByID[kindID]
 
 		w.nextID++
-		w.entities[w.nextID] = &entity{
-			id: w.nextID, hex: h,
-			kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
-		}
+		w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
 		placed++
 	}
 }
@@ -2543,10 +2557,7 @@ func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
 	}
 
 	w.nextID++
-	w.entities[w.nextID] = &entity{
-		id: w.nextID, hex: h,
-		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
-	}
+	w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
 
 	return true
 }
@@ -2569,16 +2580,26 @@ func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
 // unconditionally — a fight is a fight, aggro range does not apply once
 // you're already in one. Callers hold w.mu.
 //
+// The leash (#102) also only binds WORLD-domain monsters: one that has
+// strayed beyond leashRadiusFor of its home hex stops chasing and paths back
+// home, ignoring players until it arrives (thinkReturnHomeLocked) — checked
+// before the no-targets return below so a returning monster keeps walking
+// home even in a playerless world.
+//
 // When adjacent, path[0] is the player's own hex, so the move phase converts
 // this into a melee attack (6.3).
 func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, worldDomain bool) {
-	if len(targets) == 0 {
-		return
-	}
-
 	for _, m := range members {
 		if m.kind != protocol.EntityMonster {
 			continue
+		}
+
+		if worldDomain && w.thinkReturnHomeLocked(m) {
+			continue // beyond leash or already returning: this turn is a step home
+		}
+
+		if len(targets) == 0 {
+			continue // no players anywhere: paths stay untouched (pre-#102 behavior)
 		}
 
 		var target *entity
@@ -2632,17 +2653,87 @@ func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, m *entity, players [
 }
 
 // baseAggroRadiusFor returns monster m's own base aggro radius before any
-// player-side noticeability fold: its kind's aggroRadius override
-// (monsterDef.aggroRadius) if non-zero, else the shared
-// protocol.MonsterAggroRadius default. m is assumed to be a monster (the
-// only caller, nearestAggroedPlayerLocked, only ever calls this for one);
-// kindOf(m) nil (a malformed fixture) falls back to the default too.
+// player-side noticeability fold: its kind's effective aggro radius
+// (defAggroRadius — the kind's override, else protocol.MonsterAggroRadius).
+// m is assumed to be a monster (the only caller,
+// nearestAggroedPlayerLocked, only ever calls this for one); kindOf(m) nil
+// (a malformed fixture) falls back to the default too.
 func baseAggroRadiusFor(m *entity) int {
-	if k := kindOf(m); k != nil && k.aggroRadius != 0 {
-		return k.aggroRadius
+	return defAggroRadius(kindOf(m))
+}
+
+// leashRadiusFor returns monster m's leash radius (#102): its kind's
+// effective leash radius (defLeashRadius — the kind's own leashRadius
+// override, else protocol.MonsterLeashMultiplier × its base aggro radius).
+// The leash is a monster↔home relation with no player in the equation, so
+// the per-player evAggroRange noticeability fold (aggroRadiusForLocked)
+// deliberately does not apply here.
+func leashRadiusFor(m *entity) int {
+	return defLeashRadius(kindOf(m))
+}
+
+// thinkReturnHomeLocked is the WORLD-domain leash check (#102), run for
+// monster m before any aggro targeting. It reports whether m's think for
+// this turn was fully handled as a leash return — in which case the caller
+// (thinkMonstersLocked) must not run the normal chase logic for m.
+//
+//   - Not returning and within leashRadiusFor of homeHex: no-op, false.
+//   - Beyond the leash: flip returningHome (logged as a "leash" combat
+//     event) and fall into the returning case below.
+//   - Returning and arrived (arrivedHomeLocked): clear the flag and return
+//     false — this same think pass runs the normal aggro check, so a player
+//     camping just outside the home hex is noticed immediately, not one turn
+//     late.
+//   - Returning, not arrived: path one step toward homeHex, ignoring players
+//     entirely (no re-aggro mid-return, even once back within leash range).
+//
+// A returning monster can still be pulled into a combat bubble by walking
+// within CombatRadius of a player — bubble membership is positional
+// (recomputeBubblesLocked) and overrides world-domain thinking entirely; the
+// flag survives the fight so the return resumes if the bubble dissolves.
+// Consumes no rng. Callers hold w.mu.
+func (w *World) thinkReturnHomeLocked(m *entity) bool {
+	if !m.returningHome {
+		if HexDistance(m.hex, m.homeHex) <= leashRadiusFor(m) {
+			return false
+		}
+
+		m.returningHome = true
+		w.logger.Info(combatLogMsg, "event", combatEventLeash, "id", m.id,
+			"monster_kind", m.monsterKind, "from", m.hex, "home", m.homeHex)
 	}
 
-	return protocol.MonsterAggroRadius
+	if w.arrivedHomeLocked(m) {
+		m.returningHome = false
+
+		return false
+	}
+
+	path := Pathfind(m.hex, m.homeHex, w.walkableLocked)
+	if len(path) >= 1 {
+		m.path = []protocol.Hex{path[0]}
+	} else {
+		m.path = nil // home unreachable (cannot happen on static terrain): stand still
+	}
+
+	return true
+}
+
+// arrivedHomeLocked reports whether returning monster m counts as home
+// (#102): standing on its home hex, or adjacent to it while the home hex has
+// no room this turn (StackCap — e.g. a monster pile-up on the spawn hex).
+// Without the adjacent-and-full case, a returning monster whose home stays
+// full would wait one hex away with its flag stuck, passive forever. An
+// opposing-held home needs no case of its own: a player on or near the home
+// hex would have pulled the monster into a combat bubble (CombatRadius,
+// recomputeBubblesLocked) before this world-domain check could run. Callers
+// hold w.mu.
+func (w *World) arrivedHomeLocked(m *entity) bool {
+	if m.hex == m.homeHex {
+		return true
+	}
+
+	return HexDistance(m.hex, m.homeHex) == 1 && w.occupancyLocked(m.homeHex) >= protocol.StackCap
 }
 
 // aggroRadiusForLocked returns the hex radius at which a WORLD-domain

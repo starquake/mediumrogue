@@ -159,10 +159,7 @@ func (w *World) PlaceMonsterKindForTest(hex protocol.Hex, kind string) int64 {
 	}
 
 	w.nextID++
-	w.entities[w.nextID] = &entity{
-		id: w.nextID, hex: hex,
-		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
-	}
+	w.entities[w.nextID] = newMonsterEntity(w.nextID, hex, k)
 
 	return w.nextID
 }
@@ -177,6 +174,65 @@ func MonsterDamageForTest(kind string) int      { return monsterDefByID[kind].da
 func MonsterXPForTest(kind string) int          { return monsterDefByID[kind].xp }
 func MonsterDropChanceForTest(kind string) int  { return monsterDefByID[kind].dropChance }
 func MonsterAggroRadiusForTest(kind string) int { return monsterDefByID[kind].aggroRadius }
+
+// MonsterHomeForTest returns a monster's stamped home hex (#102), so spawn
+// tests can assert every spawn path stamps home = the spawn hex.
+func (w *World) MonsterHomeForTest(id int64) protocol.Hex {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.homeHex
+	}
+
+	panic("game: MonsterHomeForTest unknown entity")
+}
+
+// SetMonsterHomeForTest overwrites a monster's home hex, so a leash test can
+// put a monster beyond its leash radius directly instead of grinding out a
+// real 20-hex chase turn by turn.
+func (w *World) SetMonsterHomeForTest(id int64, hex protocol.Hex) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.homeHex = hex
+	}
+}
+
+// MonsterReturningForTest reports whether a monster is currently walking back
+// to its home hex (#102's returningHome flag). Panics on an unknown id like
+// MonsterHomeForTest: a test asking about a monster that isn't there is
+// broken, and a silent false would read as "not returning" and pass.
+func (w *World) MonsterReturningForTest(id int64) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		return e.returningHome
+	}
+
+	panic("game: MonsterReturningForTest unknown entity")
+}
+
+// SetMonsterReturningForTest overwrites a monster's returningHome flag, so a
+// test can start mid-return (e.g. the blocked-home arrival case) without
+// first staging a beyond-leash board.
+func (w *World) SetMonsterReturningForTest(id int64, returning bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.returningHome = returning
+	}
+}
+
+// LeashRadiusForTest exposes a registered kind's effective leash radius
+// (leashRadiusFor's kind-level inputs), so tests derive leash geometry from
+// the registry instead of duplicating the multiplier math inline.
+func LeashRadiusForTest(kind string) int {
+	return leashRadiusFor(&entity{kind: protocol.EntityMonster, monsterKind: kind})
+}
 
 // SetHexForTest overwrites an entity's position directly, so a quest test can
 // place an already-joined party member onto a reach quest's goal without

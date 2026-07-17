@@ -221,6 +221,52 @@ func TestValidateMonsterDefsAcceptsZeroAggroRadius(t *testing.T) {
 	})
 }
 
+// TestValidateMonsterDefsPanicsOnLeashInsideAggro (#102): a non-zero
+// leashRadius at or inside the kind's base aggro radius would drop every
+// chase the moment it starts — a content bug, caught at init.
+func TestValidateMonsterDefsPanicsOnLeashInsideAggro(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if recover() == nil {
+			t.Error("validateMonsterDefs did not panic on a leashRadius <= the aggro radius")
+		}
+	}()
+
+	validateMonsterDefs([]*monsterDef{
+		{id: "x", rings: []int{0, 1, 2}, aggroRadius: protocol.CombatRadius + 2, leashRadius: protocol.CombatRadius + 2},
+	})
+}
+
+// TestValidateMonsterDefsPanicsOnLeashInsideDefaultAggro (#102): with no
+// per-kind aggroRadius the leash override is checked against the shared
+// protocol.MonsterAggroRadius default.
+func TestValidateMonsterDefsPanicsOnLeashInsideDefaultAggro(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if recover() == nil {
+			t.Error("validateMonsterDefs did not panic on a leashRadius <= MonsterAggroRadius with default aggro")
+		}
+	}()
+
+	validateMonsterDefs([]*monsterDef{
+		{id: "x", rings: []int{0, 1, 2}, leashRadius: protocol.MonsterAggroRadius},
+	})
+}
+
+// TestValidateMonsterDefsAcceptsZeroAndValidLeashRadius (#102): 0 means "use
+// the default multiplier" and a value beyond the aggro radius is a real
+// override; neither may panic.
+func TestValidateMonsterDefsAcceptsZeroAndValidLeashRadius(t *testing.T) {
+	t.Parallel()
+
+	validateMonsterDefs([]*monsterDef{
+		{id: "x", rings: []int{0, 1, 2}, leashRadius: 0},
+		{id: "y", rings: []int{0, 1, 2}, aggroRadius: protocol.CombatRadius + 2, leashRadius: protocol.CombatRadius + 3},
+	})
+}
+
 // TestValidateMonsterDefsPanicsOnUnknownRuleEvent: the kind rules seam
 // reuses items.go's validateRuleCards, so an unknown event must still fail
 // at load.
