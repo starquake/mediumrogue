@@ -942,6 +942,37 @@
         color: #ffcc33;
         font-size: 0.68rem;
       }
+      /* #139: pre-pickup item detail — stat chips + desc/flavor. */
+      .grow .pickup-stats {
+        margin-top: 0.3rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+      }
+      .grow .pickup-stats .stat {
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 0.6rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .grow .pickup-stats .stat b {
+        color: var(--fg);
+        font-weight: normal;
+      }
+      .grow .pickup-desc {
+        margin-top: 0.3rem;
+        color: var(--fg);
+        font-size: 0.68rem;
+        line-height: 1.35;
+      }
+      .grow .pickup-flavor {
+        margin-top: 0.2rem;
+        color: var(--dim);
+        font-style: italic;
+        font-size: 0.66rem;
+        line-height: 1.35;
+      }
       .grow button {
         flex: none;
         width: 4.2rem;

@@ -228,7 +228,16 @@ export interface GameDebug {
    */
   pickupModal: {
     open: boolean;
-    rows: { id: number; name: string; type: string; count: number; rejected: boolean }[];
+    rows: {
+      id: number;
+      name: string;
+      type: string;
+      count: number;
+      rejected: boolean;
+      damage: number;
+      rangeHex: number;
+      aoeRadius: number;
+    }[];
   };
   /**
    * Test hook: mark a pickup-modal row rejected (the backpack-full feedback
@@ -539,7 +548,16 @@ window.game = {
     markPickupRejected(groundItemId);
     window.game.pickupModal = {
       open: modalOpen(),
-      rows: pickupRows().map((r) => ({ id: r.id, name: r.name, type: r.type, count: r.count, rejected: r.rejected })),
+      rows: pickupRows().map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        count: r.count,
+        rejected: r.rejected,
+        damage: r.damage,
+        rangeHex: r.rangeHex,
+        aoeRadius: r.aoeRadius,
+      })),
     };
   },
   groundItems: [],
@@ -1539,11 +1557,33 @@ async function start(): Promise<void> {
           ? []
           : event.groundItems
               .filter((gi) => gi.hex.q === myHex.q && gi.hex.r === myHex.r)
-              .map((gi: GroundItemView) => ({ id: gi.id, name: gi.name, type: gi.type, count: gi.count }));
+              .map((gi: GroundItemView) => ({
+                id: gi.id,
+                name: gi.name,
+                type: gi.type,
+                count: gi.count,
+                // Detail fields (#139) — what the item IS, shown before pickup.
+                damage: gi.damage,
+                rangeHex: gi.rangeHex,
+                aoeRadius: gi.aoeRadius,
+                desc: gi.desc,
+                flavor: gi.flavor,
+                tags: gi.tags,
+                twoHanded: gi.twoHanded,
+              }));
       refreshPickup(rowsHere, moved);
       window.game.pickupModal = {
         open: modalOpen(),
-        rows: pickupRows().map((r) => ({ id: r.id, name: r.name, type: r.type, count: r.count, rejected: r.rejected })),
+        rows: pickupRows().map((r) => ({
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          count: r.count,
+          rejected: r.rejected,
+          damage: r.damage,
+          rangeHex: r.rangeHex,
+          aoeRadius: r.aoeRadius,
+        })),
       };
       window.game.panelOpen = panelOpen();
 

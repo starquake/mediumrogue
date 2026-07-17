@@ -26,6 +26,35 @@ function PickupModal(props: { actions: PickupActions }): JSXElement {
                 <div>
                   <span class="itemline">{row().count > 1 ? `${row().name} ×${row().count}` : row().name}</span>
                   <span class="typeline"> · {typeLabel(row().type)}</span>
+                  {/* #139: what the item IS, before you take it. */}
+                  <Show when={row().damage > 0 || row().rangeHex > 0 || row().aoeRadius > 0 || row().twoHanded}>
+                    <div class="pickup-stats">
+                      <Show when={row().damage > 0}>
+                        <span class="stat">
+                          DMG <b>{row().damage}</b>
+                        </span>
+                      </Show>
+                      <Show when={row().rangeHex > 0}>
+                        <span class="stat">
+                          RNG <b>{row().rangeHex}</b>
+                        </span>
+                      </Show>
+                      <Show when={row().aoeRadius > 0}>
+                        <span class="stat">
+                          AOE <b>{row().aoeRadius}</b>
+                        </span>
+                      </Show>
+                      <Show when={row().twoHanded}>
+                        <span class="stat">2H</span>
+                      </Show>
+                    </div>
+                  </Show>
+                  <Show when={row().desc !== ""}>
+                    <div class="pickup-desc">{row().desc}</div>
+                  </Show>
+                  <Show when={row().flavor !== ""}>
+                    <div class="pickup-flavor">{row().flavor}</div>
+                  </Show>
                   <Show when={row().rejected}>
                     <div class="full">⚠ backpack full — drop something first</div>
                   </Show>
