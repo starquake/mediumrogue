@@ -144,6 +144,15 @@ export interface GameDebug {
    * before proceeding — callers that don't care are free to ignore it.
    */
   tapHex: (q: number, r: number) => Promise<void>;
+  /**
+   * Convert a hex to VIEWPORT pixel coordinates at its centre — the exact
+   * inverse of the canvas pointerdown mapping (client point − canvas rect −
+   * world offset → hex), computed from the live canvas rect and camera at
+   * call time. Lets an e2e drive a REAL page.mouse.click on the canvas
+   * (chat.spec.ts's pointer-events guard, #89) instead of tapHex's synthetic
+   * clickTarget path. Null until the renderer is on stage.
+   */
+  hexToScreen: ((q: number, r: number) => { x: number; y: number }) | null;
   /** This client's chosen display name (chat sender label). "" until joined. */
   name: string;
   /**
@@ -470,6 +479,7 @@ window.game = {
   inCombat: false,
   bubble: null,
   tapHex: (): Promise<void> => Promise.resolve(),
+  hexToScreen: null,
   name: "",
   identityLink: "",
   forceRejoin: null,
@@ -1138,6 +1148,16 @@ async function start(): Promise<void> {
   };
 
   window.game.tapHex = (q, r): Promise<void> => clickTarget({ q, r });
+
+  // The inverse of the pointerdown mapping below (hex → world pixel → canvas
+  // point → client point), reading the live rect/camera so a test's click
+  // lands wherever the hex is drawn RIGHT NOW. See GameDebug.hexToScreen.
+  window.game.hexToScreen = (q, r): { x: number; y: number } => {
+    const rect = app.canvas.getBoundingClientRect();
+    const p = hexToPixel({ q, r });
+
+    return { x: rect.left + world.position.x + p.x, y: rect.top + world.position.y + p.y };
+  };
 
   // World-reset signal (item 4, playtest feedback batch 3): remember the
   // first WorldID this session ever sees. A later bundle carrying a

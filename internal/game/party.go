@@ -65,6 +65,11 @@ func (w *World) PartyAccept(token string) (string, error) {
 
 	inviter, ok := w.entities[inviterID]
 	if !ok {
+		// Unreachable today, kept as a defensive guard: the disconnect sweep
+		// (sweepDisconnectedLocked, world.go) purges every invite whose
+		// inviter it removes in the same locked pass that deletes the entity,
+		// so an invite cannot outlive its inviter. Revisit only if a new
+		// entity-removal path lands that could orphan an invite (#89).
 		return "", ErrInviteExpired
 	}
 
