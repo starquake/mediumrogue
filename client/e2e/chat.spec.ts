@@ -161,16 +161,22 @@ test("chat: cross-client delivery, /here, readable command errors, and map click
   expect(await a.evaluate(() => window.game.me!.hex)).toEqual(hexBeforeTyping);
   await a.locator("#chat-input").fill(""); // don't pollute the map-click step below
 
-  // 5. Pointer-events guard: with the chat panel mounted, a "map click"
-  // (tapHex — the same clickTarget code path a real canvas pointerdown uses,
-  // see walk.spec.ts) still moves A. This proves #chat-root's click-through
-  // overlay isn't swallowing map interaction.
+  // 5. Pointer-events guard: with the chat panel mounted, a REAL mouse click
+  // on the canvas at the destination hex's screen coordinates still moves A.
+  // This proves #chat-root's click-through overlay isn't swallowing map
+  // interaction — the click must survive actual DOM hit-testing against the
+  // overlay's pointer-events CSS scoping, which the old window.game.tapHex
+  // drive (straight into clickTarget, no DOM involved) never exercised (#89).
+  // The camera centres on A, and A is verifiably stationary (section 4.5), so
+  // the neighbor hex's screen position is stable when the click lands.
   const map = await a.evaluate(() => fetch("/api/map").then((r) => r.json() as Promise<MapResponse>));
   const start = await a.evaluate(() => window.game.me!.hex);
   const dest = pickWalkableNeighbor(map, start);
   expect(dest, "expected a walkable neighbor from spawn on the static map").not.toBeNull();
 
-  await a.evaluate((d) => window.game.tapHex(d!.q, d!.r), dest);
+  expect(await a.evaluate(() => window.game.hexToScreen !== null)).toBe(true);
+  const screen = await a.evaluate((d) => window.game.hexToScreen!(d!.q, d!.r), dest);
+  await a.mouse.click(screen.x, screen.y);
   await expect
     .poll(
       () =>

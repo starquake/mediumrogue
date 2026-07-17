@@ -552,8 +552,12 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
   embedded-client binary (35 e2e tests across 21 spec files). The client exposes **`window.game`**
   (positions incl. `monsterKind`, hp, inventory, equipped, backpack,
-  panelOpen, pickupModal, combatMoves, damage events, tapHex, sendChat,
-  identityLink…) as the always-in-sync test/debug surface.
+  panelOpen, pickupModal, combatMoves, damage events, tapHex, hexToScreen,
+  sendChat, identityLink…) as the always-in-sync test/debug surface.
+  `hexToScreen(q, r)` returns a hex's live viewport coordinates — the inverse
+  of the canvas pointerdown mapping — so a spec can drive a REAL
+  `page.mouse.click` (and so exercise overlay `pointer-events` hit-testing)
+  rather than only `tapHex`'s synthetic path.
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
