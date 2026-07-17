@@ -21,6 +21,10 @@ maintainer has OK'd it. If either is missing, stop and route to the
 - Branch from up-to-date `main` (`git checkout main && git pull --ff-only`),
   named for the slice. Open the PR early (draft) referencing the issue —
   `Closes #NN` if the slice completes it.
+- **Label**: the maintainer's OK just moved the issue into your court — set
+  `needs: build` on it (removing `needs: your sign-off`:
+  `gh issue edit <n> --add-label "needs: build" --remove-label
+  "needs: your sign-off"`), so it reads as in-progress, not awaiting them.
 - Re-verify the plan against the current tree before the first commit: named
   symbols still exist, no interim merge moved the ground. Surface drift;
   don't silently improvise.
@@ -56,3 +60,9 @@ maintainer has OK'd it. If either is missing, stop and route to the
 - `gh pr ready <n>`, watch CI, then STOP. **Do not merge** — the
   `ready to merge` label is the maintainer's; the `merge-pr` skill handles
   the landing when they add it.
+- **Label**: the build is done and the ball is now on the PR's
+  `ready to merge` gate, so clear the issue's `needs: build`
+  (`gh issue edit <n> --remove-label "needs: build"`) — don't move it to a
+  `needs:*` maintainer label, because `ready to merge` on the PR is already
+  that signal and setting both double-counts. On merge the `Closes #NN` PR
+  auto-closes the issue.
