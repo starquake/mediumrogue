@@ -338,7 +338,11 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
     as a smaller stack; nothing fits → **reject** with a clear error the
     client surfaces ("backpack full — drop something first"). Items never
     auto-equip. The client modal shows a stack as one row ("Healing Potion
-    ×3 · consumable").
+    ×3 · consumable"), and — before you take it — **the item's details**
+    (#139): DMG / RNG / AOE / 2H stat chips plus its rule `desc` and `flavor`
+    line, so a pickup is an informed choice. `GroundItemView` carries the same
+    detail fields as `ItemView`; `window.game.pickupModal.rows` exposes
+    `damage`/`rangeHex`/`aoeRadius`.
   - **drink** — a consumable: applies its heal (clamped to max HP) and
     decrements the stack; an emptied stack frees its entry.
 - **Keybindings** — `C` or `I` toggles the character panel (either key,

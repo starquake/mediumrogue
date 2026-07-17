@@ -220,6 +220,15 @@ test("dropping a backpack item opens the pickup modal; taking a row returns the 
   expect(await page.evaluate((id) => window.game.pickupModal.rows.find((r) => r.id === id)?.count, shortbowId)).toBe(1);
   expect(await page.evaluate(() => window.game.backpack.every((e) => e === null))).toBe(true);
 
+  // #139: the row shows what the item IS before you take it — a shortbow is a
+  // ranged weapon, so damage and range surface (exact numbers live in the
+  // registry; assert they're present, not their tuning values).
+  const stats = await page.evaluate((id) => window.game.pickupModal.rows.find((r) => r.id === id), shortbowId);
+  expect(stats?.damage).toBeGreaterThan(0);
+  expect(stats?.rangeHex).toBeGreaterThan(0);
+  await expect(myRow.locator(".pickup-stats")).toContainText("DMG");
+  await expect(myRow.locator(".pickup-stats")).toContainText("RNG");
+
   // Take it back — the row leaves the modal, and it returns to the backpack
   // (unequipped: items never auto-equip on pickup).
   await myRow.locator("button.yes").click();
