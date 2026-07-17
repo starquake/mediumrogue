@@ -131,13 +131,20 @@ $(GOLANGCI_BIN):
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
 	    | sh -s -- -b $(ABS_BIN) $(GOLANGCI_VERSION)
 
+# `golangci-lint run` is the linter gate (it already runs the `modernize`
+# analyzer via `default: all`). `go fix -diff` adds go's own modernisers on top,
+# gated NON-mutatingly: -diff prints the patch and exits non-zero if anything is
+# left unfixed, so lint (and CI) fail WITHOUT editing the tree — a plain `go fix`
+# here would rewrite a dev's uncommitted files. `make lint-fix` applies both.
 .PHONY: lint
 lint: $(GOLANGCI_BIN)
 	$(GOLANGCI_BIN) run
+	$(GO) fix -diff ./...
 
 .PHONY: lint-fix
 lint-fix: $(GOLANGCI_BIN)
 	$(GOLANGCI_BIN) run --fix
+	$(GO) fix ./...
 
 # Advisory (from topbanana): flags server-implementation Go that names the
 # client layer ("frontend"/"client-side"). The server owns simulation, the
