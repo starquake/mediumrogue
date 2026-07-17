@@ -225,3 +225,39 @@ func TestIntentRequestItemIDRoundTrip(t *testing.T) {
 		t.Errorf("IntentRequest.ItemID = %d, want %d", got, want)
 	}
 }
+
+// TestHitViewRoundTripOnWire (#114) is the protocol contract test for the
+// turn bundle's per-hit combat moments: a TurnEvent's Hits survive a JSON
+// encode/decode cycle intact — the same encode the server performs over SSE
+// and the same decode shape the generated TS client relies on.
+func TestHitViewRoundTripOnWire(t *testing.T) {
+	t.Parallel()
+
+	want := protocol.TurnEvent{
+		Turn: 7,
+		Hits: []protocol.HitView{
+			{Turn: 7, AttackerID: 1, VictimID: 2, Amount: 8, Crit: true},
+			{Turn: 6, AttackerID: 2, VictimID: 1, Amount: 1, Glance: true},
+		},
+	}
+
+	raw, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("json.Marshal(TurnEvent) = %v, want nil error", err)
+	}
+
+	var got protocol.TurnEvent
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("json.Unmarshal(TurnEvent) = %v, want nil error", err)
+	}
+
+	if len(got.Hits) != len(want.Hits) {
+		t.Fatalf("Hits length = %d, want %d", len(got.Hits), len(want.Hits))
+	}
+
+	for i := range want.Hits {
+		if got, want := got.Hits[i], want.Hits[i]; got != want {
+			t.Errorf("Hits[%d] = %+v, want %+v", i, got, want)
+		}
+	}
+}

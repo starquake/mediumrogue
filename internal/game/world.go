@@ -364,7 +364,34 @@ type World struct {
 	// archived — that is session-scoped social state, not progression (see
 	// sweepDisconnectedLocked).
 	archive map[string]characterRecord
+	// recentHits is every hit landed in the last hitRetentionTurns turn
+	// resolutions (#114): appended by rollDamageLocked (the single choke
+	// point every damage number flows through), pruned by advanceTurnLocked,
+	// and carried on every bundle as TurnEvent.Hits so the client can render
+	// crit/glance moments. Transient cosmetics: deliberately NOT persisted in
+	// the snapshot (like entity.path), so no snapshot version bump.
+	recentHits []hitRecord
 }
+
+// hitRecord is one landed hit, kept for the turn bundle's Hits view (#114).
+// turn is the resolution that produced it — w.turn+1 at record time, since
+// hits resolve before advanceTurnLocked increments the counter, and the
+// bundle broadcast for that resolution carries the incremented number.
+type hitRecord struct {
+	turn     int64
+	attacker int64
+	victim   int64
+	amount   int
+	crit     bool
+	glance   bool
+}
+
+// hitRetentionTurns is how many turn resolutions a hitRecord rides bundles
+// for before advanceTurnLocked prunes it. More than one, because SSE ticks
+// coalesce (a slow client skips intermediate bundles yet should still see
+// the moments it missed — it dedupes on HitView.Turn); small, because stale
+// moments are dead wire weight.
+const hitRetentionTurns = 4
 
 // characterRecord is what the disconnect sweep archives from a player entity
 // before deleting it: identity, progression, and gear. Everything else about
@@ -1197,9 +1224,20 @@ func (w *World) Snapshot() protocol.TurnEvent {
 
 	slices.SortFunc(groundItems, func(a, b protocol.GroundItemView) int { return int(a.ID - b.ID) })
 
+	// Hits ride in append order — already deterministic (hits are recorded in
+	// resolution order under w.mu). Always non-nil, matching the generated TS
+	// type's non-optional HitView[] (the itemViewsLocked precedent).
+	hits := make([]protocol.HitView, 0, len(w.recentHits))
+	for _, h := range w.recentHits {
+		hits = append(hits, protocol.HitView{
+			Turn: h.turn, AttackerID: h.attacker, VictimID: h.victim,
+			Amount: h.amount, Crit: h.crit, Glance: h.glance,
+		})
+	}
+
 	return protocol.TurnEvent{
 		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
-		Quests: questViews, GroundItems: groundItems, WorldID: w.worldID,
+		Quests: questViews, GroundItems: groundItems, WorldID: w.worldID, Hits: hits,
 	}
 }
 
@@ -1325,7 +1363,18 @@ func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.regenPlayersLocked(members)
 	w.resolveCombatLocked(members, w.allPlayersLocked(), true)
 	w.checkReachQuestsLocked()
+	w.advanceTurnLocked()
+}
+
+// advanceTurnLocked increments the turn counter at the end of a resolution
+// (world-domain or bubble) and prunes hit records too old to ride any more
+// bundles (#114 — see hitRetentionTurns). The single owner of w.turn++, so
+// the prune can never be forgotten at one site. Callers hold w.mu.
+func (w *World) advanceTurnLocked() {
 	w.turn++
+	w.recentHits = slices.DeleteFunc(w.recentHits, func(h hitRecord) bool {
+		return h.turn <= w.turn-hitRetentionTurns
+	})
 }
 
 // regenPlayersLocked heals every out-of-combat player protocol.RegenPerTurn HP
@@ -1405,7 +1454,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 	b.deadline = now.Add(w.combatPatience)
 	b.lastResolvedAt = now
 
-	w.turn++
+	w.advanceTurnLocked()
 }
 
 // resolveCombatLocked runs the decided phased resolution over a given entity
@@ -1507,13 +1556,28 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	ctx := ruleCtx{attacker: attacker, victim: victim, allyInBubble: w.allyInBubbleLocked(attacker), rng: rng}
 
 	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
-	dealt := applyRules(evDealDamage, base, attackerCards, ctx)
+	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)
 
 	// Species, then class, then gear: chance conditions consume the turn rng
 	// in card order, so this concat order is contractual for determinism.
 	victimCards := slices.Concat(speciesCards(victim.species), classCards(victim.class), victimGearCards(victim))
 
-	return applyRules(evTakeDamage, dealt, victimCards, ctx)
+	taken, takeTrace := applyRulesTraced(evTakeDamage, dealt, victimCards, ctx)
+
+	// #114: record the hit for the turn bundle's Hits view. Crit is the
+	// ATTACKER-side moment (a chance-conditioned boost fired in the
+	// deal-damage fold: elf passive, Misericorde, Duelist's Saber); glance
+	// the DEFENDER-side one (a chance-conditioned reduction in the
+	// take-damage fold: the Rogue passive). The other two trace combinations
+	// (an attacker-side chance reduction, a defender-side chance boost) have
+	// no content and no vocabulary yet — deliberately not surfaced. Purely
+	// observational: appending here consumes no rng and changes no damage.
+	w.recentHits = append(w.recentHits, hitRecord{
+		turn: w.turn + 1, attacker: attacker.id, victim: victim.id, amount: taken,
+		crit: dealTrace.boostFired, glance: takeTrace.reduceFired,
+	})
+
+	return taken
 }
 
 // victimGearCards returns the rule cards an entity contributes to

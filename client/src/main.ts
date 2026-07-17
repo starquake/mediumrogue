@@ -44,7 +44,7 @@ import {
 } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
-import type { GroundItemView, Hex, ItemView, QuestView, TurnEvent } from "./protocol.gen";
+import type { GroundItemView, Hex, HitView, ItemView, QuestView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
 import { setQuests } from "./quest/store";
 import {
@@ -64,6 +64,8 @@ import {
   WeaponTagRanged,
   XPCurveBase,
 } from "./protocol.gen";
+import { AttackHighlightLayer } from "./render/attack";
+import type { HitStyle } from "./render/damage";
 import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
 import type { CommittedAction } from "./render/feedback";
@@ -239,11 +241,45 @@ export interface GameDebug {
   groundItems: { id: number; hex: Hex; count: number }[];
   /**
    * Damage inferred from the latest bundle by diffing HP against the previous
-   * one (the wire carries state, not hit events): one entry per entity that
-   * lost HP, plus one per monster that vanished (its killing blow, shown as
-   * the HP it had left). Drives the floating combat numbers; exposed for e2e.
+   * one (the wire carries state — the HP delta stays the authoritative
+   * number): one entry per entity that lost HP, plus one per monster that
+   * vanished (its killing blow, shown as the HP it had left). Since #114 each
+   * entry also carries crit/glance, derived from the bundle's per-hit Hits
+   * view (see `hits`), which styles the floating combat numbers. Exposed for
+   * e2e.
    */
-  damage: { id: number; amount: number }[];
+  damage: { id: number; amount: number; crit: boolean; glance: boolean }[];
+  /**
+   * The per-hit combat moments new in the latest bundle (#114): every
+   * TurnEvent.Hits entry whose turn is newer than the previously processed
+   * bundle (the wire keeps a few turns of hits for coalescing slack — see
+   * protocol.HitView). crit = an attacker-side chance boost fired (elf
+   * passive, Misericorde, Duelist's Saber); glance = the defender-side
+   * halving (Rogue passive). Purely cosmetic; exposed for e2e.
+   */
+  hits: HitView[];
+  /**
+   * The tiles the attack a click on the currently hovered hex would hit
+   * (#101): empty when the hover would not attack (out of combat, a move
+   * tile, out of range). A single-target attack (melee swing, bow shot)
+   * lights one tile; a ground-targeted AoE (weapon aoeRadius > 0) lights the
+   * full blast disc. Drives AttackHighlightLayer's hover state; exposed for
+   * e2e (the highlight itself is a canvas draw).
+   */
+  hoverAttackTiles: Hex[];
+  /**
+   * The tiles my committed attack will hit (#101), set the moment an attack
+   * intent is submitted and cleared when the next bundle resolves it (or a
+   * later intent supersedes it) — the on-map committed/pending indicator's
+   * tile set, same lifecycle as committedAction. Exposed for e2e.
+   */
+  committedAttackTiles: Hex[];
+  /**
+   * Report a pointer hover on a hex as if the mouse moved there (drives
+   * e2e — the same code path as the canvas pointermove handler's highlight
+   * computation). Synchronous: hoverAttackTiles is up to date on return.
+   */
+  hoverTile: (q: number, r: number) => void;
   /**
    * The hexes my entity can act on THIS combat turn (moves + melee attacks),
    * from the latest bundle. Empty outside a bubble — out there, click-anywhere
@@ -508,6 +544,10 @@ window.game = {
   },
   groundItems: [],
   damage: [],
+  hits: [],
+  hoverAttackTiles: [],
+  committedAttackTiles: [],
+  hoverTile: (): void => {},
   combatMoves: [],
   combatRanged: [],
   committedAction: null,
@@ -554,6 +594,20 @@ function aoeReaches(target: Hex): boolean {
 // on this tile" is the right rendering question even if not every weapon can.
 function maxRangedRange(): number {
   return myRangedWeapons.reduce((m, w) => Math.max(m, w.rangeHex), 0);
+}
+
+// hexesWithin enumerates every hex within `radius` of center (the axial-disc
+// loop from Red Blob's hex guide) — an AoE blast's footprint (#101). Small
+// radii only (weapon aoeRadius is 1 today), so no reason to scan map tiles.
+function hexesWithin(center: Hex, radius: number): Hex[] {
+  const out: Hex[] = [];
+  for (let dq = -radius; dq <= radius; dq++) {
+    for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
+      out.push({ q: center.q + dq, r: center.r + dr });
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -715,6 +769,104 @@ async function start(): Promise<void> {
     return { moves, melees };
   };
 
+  // lastReach mirrors the tactical overlay's move/melee split for click
+  // routing (window.game.combatMoves merges them for the e2e surface).
+  // Refreshed by onTurn alongside the overlay.
+  let lastReach: { moves: Hex[]; melees: Hex[] } = { moves: [], melees: [] };
+  const inList = (list: Hex[], h: Hex): boolean => list.some((x) => x.q === h.q && x.r === h.r);
+
+  // The attack-target highlight (#101) sits directly above the reachable-tile
+  // tint: same ground plane, but "what will this action hit" must read over
+  // "where can I act" where they overlap.
+  const attackHighlightLayer = new AttackHighlightLayer();
+  world.addChild(attackHighlightLayer.container);
+
+  // attackTilesFor mirrors clickTarget's move-vs-attack routing (below) tile
+  // for tile: the exact hexes an attack CLICK on target would hit, or empty
+  // when a click there would not attack (out of combat, own hex, a step, out
+  // of every weapon's range). One rule per branch of the server's resolution:
+  // an adjacent hostile without an AoE weapon in reach is a melee swing (one
+  // tile — the weapon-by-distance identity, #116); anything else fires every
+  // held ranged/magic weapon whose OWN range covers the target (the server's
+  // rangedDefsFor rule) — an AoE weapon (aoeRadius > 0) blasts every walkable
+  // hex within its radius of the target (entities only ever stand on walkable
+  // tiles, so unwalkable hexes in the disc can't be hit), a single-target
+  // weapon needs a hostile actually standing on the clicked hex. Purely a UX
+  // preview — the server independently re-checks everything on resolution.
+  const attackTilesFor = (target: Hex): Hex[] => {
+    const me = window.game.me;
+    if (!window.game.inCombat || me === null) {
+      return [];
+    }
+
+    if (me.hex.q === target.q && me.hex.r === target.r) {
+      return []; // own hex: wait/cancel, never an attack
+    }
+
+    if (inList(lastReach.moves, target)) {
+      return []; // a step, not an attack
+    }
+
+    const dist = hexDistance(me.hex, target);
+    if (inList(lastReach.melees, target) && !aoeReachesDist(dist)) {
+      return [target]; // melee swing: the one adjacent victim tile
+    }
+
+    const hostileAtTarget = window.game.positions.some(
+      (p) => p.kind === EntityMonster && p.hex.q === target.q && p.hex.r === target.r,
+    );
+    const tiles = new Map<string, Hex>();
+    for (const w of myRangedWeapons) {
+      if (dist > w.rangeHex) {
+        continue;
+      }
+
+      if (w.aoeRadius > 0) {
+        for (const h of hexesWithin(target, w.aoeRadius)) {
+          if (walkable.has(`${h.q},${h.r}`)) {
+            tiles.set(`${h.q},${h.r}`, h);
+          }
+        }
+      } else if (hostileAtTarget) {
+        tiles.set(`${target.q},${target.r}`, target);
+      }
+    }
+
+    return [...tiles.values()];
+  };
+
+  // Hover + committed highlight state (#101). The hover tiles are re-derived
+  // on every change of hovered hex AND every turn bundle (positions, reach,
+  // and weapons all shift per bundle); the committed tiles are captured at
+  // click time (attackAt/meleeAt) and live exactly as long as
+  // committedAction. Both mirror to window.game synchronously — the
+  // test-surface design rule.
+  let hoveredHex: Hex | null = null;
+  let committedAttackTiles: Hex[] = [];
+
+  const refreshAttackHighlight = (): void => {
+    const hoverTiles = hoveredHex === null ? [] : attackTilesFor(hoveredHex);
+    window.game.hoverAttackTiles = hoverTiles;
+    window.game.committedAttackTiles = committedAttackTiles;
+    attackHighlightLayer.update(hoverTiles, committedAttackTiles);
+  };
+
+  const setHoveredHex = (h: Hex | null): void => {
+    if (h !== null && hoveredHex !== null && h.q === hoveredHex.q && h.r === hoveredHex.r) {
+      return; // pointermove fires per pixel; recompute only on a hex change
+    }
+
+    hoveredHex = h;
+    refreshAttackHighlight();
+  };
+
+  const setCommittedAttackTiles = (tiles: Hex[]): void => {
+    committedAttackTiles = tiles;
+    refreshAttackHighlight();
+  };
+
+  window.game.hoverTile = (q, r): void => setHoveredHex({ q, r });
+
   // Ground-loot layer sits under the entity layer (added first) — a dropped
   // item never occludes a player/monster dot standing over it.
   const groundItemLayer = new GroundItemLayer();
@@ -868,6 +1020,7 @@ async function start(): Promise<void> {
   const supersedeCommitted = (): void => {
     window.game.committedAction = null;
     feedbackLayer.setCommitted(null);
+    setCommittedAttackTiles([]);
   };
 
   // A pending panel action (equip/unequip/drink/drop) gets the SAME feedback in
@@ -1028,6 +1181,7 @@ async function start(): Promise<void> {
       const committed: CommittedAction = { kind: self ? "wait" : "move", target };
       window.game.committedAction = committed;
       feedbackLayer.setCommitted(committed);
+      setCommittedAttackTiles([]); // a move/wait replaces any committed attack (#101)
     }
 
     return submitIntent(identity, target, IntentMove).then((accepted) => {
@@ -1064,10 +1218,12 @@ async function start(): Promise<void> {
     const targetEntityId = aoeReaches(target) ? 0 : (hostileIdAt(target) ?? 0);
 
     // Committed-action indicator (item 6): a persistent crosshair on the
-    // target, alongside the flashAttack one-shot ring above.
+    // target, alongside the flashAttack one-shot ring above — and the full
+    // target-tile set stays highlighted until the turn resolves (#101).
     const committed: CommittedAction = { kind: "attack", target };
     window.game.committedAction = committed;
     feedbackLayer.setCommitted(committed);
+    setCommittedAttackTiles(attackTilesFor(target));
 
     return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
@@ -1092,15 +1248,10 @@ async function start(): Promise<void> {
     const committed: CommittedAction = { kind: "attack", target };
     window.game.committedAction = committed;
     feedbackLayer.setCommitted(committed);
+    setCommittedAttackTiles([target]); // a melee swing hits exactly its victim's tile (#101)
 
     return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
   };
-
-  // lastReach mirrors the tactical overlay's move/melee split for click
-  // routing (window.game.combatMoves merges them for the e2e surface).
-  // Refreshed by onTurn alongside the overlay.
-  let lastReach: { moves: Hex[]; melees: Hex[] } = { moves: [], melees: [] };
-  const inList = (list: Hex[], h: Hex): boolean => list.some((x) => x.q === h.q && x.r === h.r);
 
   // clickTarget is the single decision point shared by canvas clicks and
   // window.game.tapHex, so tapHex genuinely mirrors "as if the hex were
@@ -1189,6 +1340,23 @@ async function start(): Promise<void> {
       // so its very next bundle IS that resolution).
       window.game.committedAction = null;
       feedbackLayer.setCommitted(null);
+      setCommittedAttackTiles([]);
+
+      // #114: per-hit combat moments. The bundle keeps a few turns of hits
+      // for coalescing slack (protocol.HitView's contract) — only those newer
+      // than the previously processed bundle are new this frame. They style
+      // the HP-diff numbers below; the HP delta stays the authoritative
+      // amount (a diff can sum several hits — crit styling wins when a
+      // victim took both kinds in one bundle).
+      const freshHits = event.hits.filter((h) => h.turn > window.game.turn);
+      const momentFor = new Map<number, { crit: boolean; glance: boolean }>();
+      for (const h of freshHits) {
+        const m = momentFor.get(h.victimId) ?? { crit: false, glance: false };
+        m.crit ||= h.crit;
+        m.glance ||= h.glance;
+        momentFor.set(h.victimId, m);
+      }
+      window.game.hits = freshHits;
 
       // Derive floating damage numbers by diffing this bundle's HP against the
       // previous one (still in window.game from the last onTurn): an entity
@@ -1196,20 +1364,27 @@ async function start(): Promise<void> {
       // blow shown as the HP it had left. First bundle diffs against nothing.
       const prevHp = window.game.hp;
       const prevPositions = window.game.positions;
-      const damage: { id: number; amount: number }[] = [];
+      const damage: { id: number; amount: number; crit: boolean; glance: boolean }[] = [];
       const present = new Set(event.entities.map((e) => e.id));
+      const styleFor = (id: number): HitStyle => {
+        const m = momentFor.get(id);
+
+        return m?.crit ? "crit" : m?.glance ? "glance" : "normal";
+      };
       for (const e of event.entities) {
         const before = prevHp[e.id];
         if (before !== undefined && e.hp < before) {
-          damage.push({ id: e.id, amount: before - e.hp });
-          damageLayer.spawn(e.hex, before - e.hp, e.kind === EntityPlayer);
+          const m = momentFor.get(e.id);
+          damage.push({ id: e.id, amount: before - e.hp, crit: m?.crit ?? false, glance: m?.glance ?? false });
+          damageLayer.spawn(e.hex, before - e.hp, e.kind === EntityPlayer, styleFor(e.id));
         }
       }
       for (const p of prevPositions) {
         const before = prevHp[p.id];
         if (!present.has(p.id) && p.kind === EntityMonster && before !== undefined && before > 0) {
-          damage.push({ id: p.id, amount: before });
-          damageLayer.spawn(p.hex, before, false);
+          const m = momentFor.get(p.id);
+          damage.push({ id: p.id, amount: before, crit: m?.crit ?? false, glance: m?.glance ?? false });
+          damageLayer.spawn(p.hex, before, false, styleFor(p.id));
         }
       }
       window.game.damage = damage;
@@ -1465,6 +1640,10 @@ async function start(): Promise<void> {
         window.game.combatRanged = [];
         moveRangeLayer.update([], [], []);
       }
+
+      // Re-derive the hover highlight (#101) from the state this handler just
+      // refreshed — the mouse hasn't moved, but reach/positions/weapons have.
+      refreshAttackHighlight();
     },
     onConnectionChange: (connected: boolean): void => {
       window.game.connected = connected;
@@ -1543,6 +1722,10 @@ async function start(): Promise<void> {
     const wouldAttack = isRangedAttackClick(hover) || inList(lastReach.melees, hover);
     app.canvas.style.cursor = wouldAttack ? "crosshair" : "default";
 
+    // Attack-target highlight (#101): light up the exact tile(s) a click on
+    // the hovered hex would hit (no-op when it wouldn't attack).
+    setHoveredHex(hover);
+
     // Enemy hover tooltip (item 13, playtest batch 2): kind display name +
     // "HP cur/max", near the cursor. pointer-events: none on the tooltip
     // itself (index.html) means it can never intercept the click it's
@@ -1579,6 +1762,7 @@ async function start(): Promise<void> {
 
   app.canvas.addEventListener("pointerleave", () => {
     hoverTooltipEl.hidden = true;
+    setHoveredHex(null);
   });
 }
 

@@ -350,6 +350,10 @@ type TurnEvent struct {
 	Quests []QuestView `json:"quests"`
 	// GroundItems is every dropped item currently lying on the map.
 	GroundItems []GroundItemView `json:"groundItems"`
+	// Hits is every hit landed in the last few turn resolutions (see
+	// HitView's doc for the coalescing/dedupe contract) — the per-hit
+	// crit/glance moments the HP deltas alone can't express (#114).
+	Hits []HitView `json:"hits"`
 	// WorldID identifies this running world instance — a random hex string
 	// minted once at world creation and persisted in the snapshot (so a
 	// restored world is still considered the SAME world). It never changes
@@ -360,6 +364,29 @@ type TurnEvent struct {
 	// first one this client ever saw, the world underneath it changed (item
 	// 4, playtest feedback batch 3).
 	WorldID string `json:"worldId"`
+}
+
+// HitView is one landed hit from a recent turn resolution, riding the turn
+// bundle so the client can render per-hit combat moments (#114) — most
+// importantly whether the hit was a crit (an attacker-side chance-conditioned
+// damage multiplier fired: elf passive, Misericorde, Duelist's Saber) or a
+// glance (a defender-side chance-conditioned reduction fired: the Rogue
+// passive — a halved hit, never a miss; see docs/game-identity.md for why the
+// vocabulary is crit/glance, never miss/dodge). Purely cosmetic: Amount is
+// the same damage already reflected in the entities' HP — the client must
+// never apply it again.
+//
+// Turn is the resolution that produced the hit. The server keeps hits from
+// the last few resolutions in every bundle (SSE ticks coalesce — a slow
+// client skips intermediate bundles), so a client renders only hits with
+// Turn greater than the last bundle it processed and ignores the rest.
+type HitView struct {
+	Turn       int64 `json:"turn"`
+	AttackerID int64 `json:"attackerId"`
+	VictimID   int64 `json:"victimId"`
+	Amount     int   `json:"amount"`
+	Crit       bool  `json:"crit"`
+	Glance     bool  `json:"glance"`
 }
 
 // QuestState is a quest's lifecycle stage on the board.

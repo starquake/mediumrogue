@@ -445,7 +445,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 	w.movePhaseLocked(rng, byHex, members, attacked)
 	w.resolveDeathsLocked(rng, members)
 
-	w.turn++
+	w.advanceTurnLocked()
 }
 
 // SetDisconnectGraceForTest overrides the disconnect grace so a presence test can
@@ -797,3 +797,7 @@ func KillSoloSummaryForTest(playerName string, kindIDs ...string) string {
 
 	return killSoloSummary(playerName, slain)
 }
+
+// HitRetentionTurnsForTest exposes hitRetentionTurns (#114) so a hits test
+// can assert the prune window without duplicating the constant inline.
+const HitRetentionTurnsForTest = hitRetentionTurns
