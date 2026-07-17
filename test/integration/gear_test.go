@@ -458,6 +458,15 @@ func postPickupIntent(t *testing.T, ts *httptest.Server, me protocol.JoinRespons
 // postAttackIntent's ground-targeted ranged shot. Attack intents are
 // one-shot: unlike a move onto a hostile hex (the old conversion path), this
 // must be resubmitted before every turn that should land a swing.
+//
+// Every caller drives the same fight-until-it-dies loop off a turn bundle, so
+// each carries an inherent race: the victim named by the bundle can die (to a
+// partymate's swing, or this player's own previous one) in the gap before the
+// POST lands, making 422 target-not-found a CORRECT answer, not a failure
+// (#133). Accepting 202-or-422 keeps that race from flaking the suite while
+// still pinning the mapping: a 500 here — the pre-#133 behavior, where those
+// sentinels fell through to the internal-error default — fails loudly, as
+// does any other status.
 func postEntityAttackIntent(t *testing.T, ts *httptest.Server, me protocol.JoinResponse, targetEntityID int64) {
 	t.Helper()
 
@@ -466,7 +475,7 @@ func postEntityAttackIntent(t *testing.T, ts *httptest.Server, me protocol.JoinR
 	}
 
 	resp := postJSON(t, ts, "/api/intent", intent)
-	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
-		t.Fatalf("entity attack intent status = %d, want 202", got)
+	if got := resp.StatusCode; got != http.StatusAccepted && got != http.StatusUnprocessableEntity {
+		t.Fatalf("entity attack intent status = %d, want 202 (accepted) or 422 (victim already gone)", got)
 	}
 }
