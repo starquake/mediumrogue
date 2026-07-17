@@ -96,6 +96,52 @@ func TestChatFansOutToOtherClient(t *testing.T) {
 	}
 }
 
+// TestChatDeliversSequentialMessagesInOrder: alice POSTs two lines back to
+// back; bob's stream delivers BOTH, in send order, with strictly increasing
+// Seq — end-to-end proof of chat ordering over real HTTP/SSE. The fan-out
+// test above sends a single message, and ordering was previously only
+// unit-covered in the broker (#89, from 8.1 / #26).
+func TestChatDeliversSequentialMessagesInOrder(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+
+	alice := joinNamed(t, ts, "alice")
+	bob := joinNamed(t, ts, "bob")
+
+	stream := get(t, ts, "/api/events?token="+bob.Token)
+	reader := bufio.NewReader(stream.Body)
+
+	texts := []string{"first message", "second message"}
+	for _, text := range texts {
+		resp := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: text})
+		if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+			t.Fatalf("chat %q status = %d, want %d", text, got, want)
+		}
+	}
+
+	var prevSeq int64
+
+	for i, wantText := range texts {
+		msg, ok := readChatWithin(t, reader, frameReadTimeout)
+		if !ok {
+			t.Fatalf("bob's stream never received chat frame %d of %d", i+1, len(texts))
+		}
+
+		if got, want := msg.Text, wantText; got != want {
+			t.Errorf("message %d text = %q, want %q (out of order?)", i, got, want)
+		}
+
+		if i > 0 {
+			if got, want := msg.Seq, prevSeq; got <= want {
+				t.Errorf("message %d seq = %d, want > %d", i, got, want)
+			}
+		}
+
+		prevSeq = msg.Seq
+	}
+}
+
 // TestHereCommandSharesLocation: alice POSTs "/here"; bob receives a message
 // whose text contains alice's server-authoritative coordinates.
 func TestHereCommandSharesLocation(t *testing.T) {
