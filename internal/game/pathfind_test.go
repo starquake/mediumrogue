@@ -103,3 +103,33 @@ func TestPathfindUnreachableIsNil(t *testing.T) {
 		t.Fatalf("unreachable destination must be nil, got %v", path)
 	}
 }
+
+// TestPathfindReachesAnExemptGoal pins the idiom #96's re-path is built on: the
+// predicate rejects OCCUPIED hexes but exempts the goal itself. Pathfind returns
+// nil whenever !walkable(to), so a goal that is itself occupied — a full stack, a
+// monster that wandered onto it — would otherwise kill every detour outright.
+func TestPathfindReachesAnExemptGoal(t *testing.T) {
+	t.Parallel()
+
+	from := protocol.Hex{Q: 0, R: 0}
+	goal := protocol.Hex{Q: 1, R: -2}
+	// The goal and one of its two shortest routes ({0,-1}) are both occupied;
+	// only the route through {1,-1} is open.
+	occupied := map[protocol.Hex]bool{{Q: 0, R: -1}: true, goal: true}
+	walkable := func(h protocol.Hex) bool { return h == goal || !occupied[h] }
+
+	path := game.Pathfind(from, goal, walkable)
+	if path == nil {
+		t.Fatal("expected a path to the exempt goal, got nil")
+	}
+
+	if got, want := path[len(path)-1], goal; got != want {
+		t.Errorf("path end = %v, want the goal %v", got, want)
+	}
+
+	for _, step := range path {
+		if step != goal && occupied[step] {
+			t.Errorf("path walked through occupied hex %v", step)
+		}
+	}
+}

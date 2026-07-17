@@ -44,6 +44,24 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   (server BFS pathfinding, one hex per turn, re-validated each turn) or
   **QWE/ASD** keys for single steps. Up to **5 friendly entities stack** per
   hex (a full party moves as one blob; count badge rendered).
+- **A blocked walk detours instead of stalling** (#96): when a queued path's
+  next hex is closed — hostile-held, or same-faction at `StackCap` — a
+  **player** re-routes around it and still advances that turn. Only occupancy
+  ever blocks a step: terrain is generated once and never mutates, so a hex
+  that was walkable when you clicked still is. The re-route aims at the
+  route's own last hex, so a walk already trimmed to stop adjacent to a
+  hostile keeps that endpoint. Two guards: a detour more than
+  `RepathDetourSlack` (**4**) hexes longer than the route it replaces is
+  refused — blockers are transient, and waiting a turn beats hiking around a
+  chokepoint — and a re-route whose own first step is blocked is refused too,
+  so a full or hostile-held hex is never walked into. Refused either way =
+  the old behavior: wait, path retained, no give-up. **Monsters never
+  detour** — their wait is how a standing intent becomes next turn's melee
+  attack, and they already re-path from a retained goal every turn.
+  In practice the hostile-blocked case is a **bubble** scenario (a multi-hex
+  flee path queued inside a fight): out in the world any monster within
+  `CombatRadius` forms a bubble, which hard-cancels a multi-hex route (#103)
+  before a hostile could stand on its next step.
 - **Movement keys are ignored while typing** (item 10, playtest batch 2, bug
   fix): a focused input/textarea/contenteditable (chat, in particular — w/a/
   s/d are ordinary letters too) or the start screen being visible suppresses

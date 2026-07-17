@@ -1315,6 +1315,20 @@ func hasOpposing(occs []*entity, m *entity) bool {
 	return false
 }
 
+// blockedFor reports whether hex h is closed to m on the evolving board (byHex):
+// held by an opposing entity, or already full at StackCap. Terrain is not its
+// business — w.terrain never mutates, so a step that was walkable when the route
+// was queued still is; only occupancy can turn a queued step away.
+//
+// This is the single definition of "blocked": movePhaseLocked's wait rule and
+// the #96 re-path predicate both read it, and they must agree — a re-route built
+// on a looser rule would hand back a first step the move phase then refuses.
+func blockedFor(m *entity, byHex map[protocol.Hex][]*entity, h protocol.Hex) bool {
+	occs := byHex[h]
+
+	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
+}
+
 func opposingOccupants(occs []*entity, m *entity) []*entity {
 	var out []*entity
 
@@ -1728,13 +1742,22 @@ func (w *World) collectMeleeAttacksLocked(
 // advance one hex from their path in seeded-shuffled order — skipping
 // entities that committed a melee attack this turn (attacked; a melee attack is the turn's
 // whole action) and entities killed in the attack phase (hp <= 0 — the dead
-// never move; deaths are removed later by resolveDeathsLocked). A
-// destination that is opposing-held on the evolving board (including a
-// hostile that arrived this same phase) blocks the mover — it waits, path
-// retained; next turn a MONSTER mover's standing intent becomes a melee
-// attack (collectMeleeAttacksLocked), while a blocked PLAYER simply keeps
-// waiting — player melee is an entity-targeted attack intent, never a move
-// (#116). A same-faction destination at StackCap also waits, path retained.
+// never move; deaths are removed later by resolveDeathsLocked).
+//
+// A blocked next step — opposing-held on the evolving board (including a
+// hostile that arrived this same phase), or same-faction at StackCap; see
+// blockedFor — splits by faction:
+//
+//   - a MONSTER waits, path retained. That wait is load-bearing: next turn its
+//     standing intent becomes a melee attack (collectMeleeAttacksLocked).
+//     Monsters also re-path from a retained goal every turn anyway
+//     (thinkMonstersLocked), so a stale route is not a thing they can have.
+//   - a PLAYER re-routes around the blocker (#96, repathBlockedLocked) and
+//     still advances this turn. Player melee is an entity-targeted attack
+//     intent, never a move (#116), so a waiting player was pure dead time —
+//     and unattended auto-walk is the point of click-to-move. It falls back to
+//     waiting, path retained, when no acceptable detour exists.
+//
 // Callers hold w.mu.
 func (w *World) movePhaseLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool,
@@ -1751,13 +1774,11 @@ func (w *World) movePhaseLocked(
 	rng.Shuffle(len(movers), func(i, j int) { movers[i], movers[j] = movers[j], movers[i] })
 
 	for _, m := range movers {
-		next := m.path[0]
-		occs := byHex[next]
-
-		if hasOpposing(occs, m) || len(occs) >= protocol.StackCap {
-			continue // blocked (hostile-held or full) → wait, path retained
+		if blockedFor(m, byHex, m.path[0]) && !w.repathBlockedLocked(m, byHex) {
+			continue // blocked, no acceptable detour → wait, path retained
 		}
 
+		next := m.path[0]
 		from := m.hex
 		byHex[m.hex] = removeEntity(byHex[m.hex], m)
 		byHex[next] = append(byHex[next], m)
@@ -1765,6 +1786,55 @@ func (w *World) movePhaseLocked(
 		m.path = m.path[1:]
 		w.logger.Info(combatLogMsg, "event", combatEventMove, "id", m.id, "kind", m.kind, "from", from, "to", next)
 	}
+}
+
+// repathBlockedLocked re-routes a PLAYER's queued walk around whatever is
+// standing in its way (#96) and reports whether it adopted a new route; false
+// means the caller waits, path retained, exactly as every mover did before #96.
+// Monsters always get false — see movePhaseLocked for why their wait is
+// deliberate.
+//
+// The goal is the route's own end: the walk's intended stopping point, already
+// trimmed by queueMoveLocked's #116 rule (a walk onto a hostile-held hex stops
+// adjacent), so re-routing toward it preserves that rule for free — no separate
+// destination has to be stored, which is also why a queued walk stays a
+// transient (it never reaches the snapshot).
+//
+// The goal is EXEMPT from the occupancy half of the predicate, because Pathfind
+// returns nil whenever !walkable(to) — an occupied goal would otherwise refuse
+// every detour outright, including the long approach that gives the goal time to
+// clear. The exemption is precisely why the adopted route's FIRST step is
+// re-checked: for a blocked goal one hex away the exempt route is [goal], and
+// stepping it would walk through the very StackCap/hostile rules the block
+// exists to enforce.
+//
+// Callers hold w.mu.
+func (w *World) repathBlockedLocked(m *entity, byHex map[protocol.Hex][]*entity) bool {
+	if m.kind != protocol.EntityPlayer {
+		return false
+	}
+
+	goal := m.path[len(m.path)-1]
+
+	route := Pathfind(m.hex, goal, func(h protocol.Hex) bool {
+		return w.walkableLocked(h) && (h == goal || !blockedFor(m, byHex, h))
+	})
+
+	// Blockers are transient — the monster in the way has usually moved on by
+	// next turn — so a detour that costs more than the slack loses to simply
+	// standing still (protocol.RepathDetourSlack). An unreachable goal
+	// (nil/empty route) waits for the same reason.
+	if len(route) == 0 || len(route) > len(m.path)+protocol.RepathDetourSlack {
+		return false
+	}
+
+	if blockedFor(m, byHex, route[0]) {
+		return false
+	}
+
+	m.path = route
+
+	return true
 }
 
 // attackLocked resolves the attack phase: each melee attack and each pending
