@@ -138,6 +138,23 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
   content entry plus one protocol constant. (A glanced 1-damage hit still
   floors at 1; glance is protection against real hits, not chip damage.)
 
+- **Same-origin guard on POSTs is defense-in-depth, not the auth boundary**
+  *(decided 2026-07-16, #97)*. Auth is a bearer token in the request body —
+  there are no ambient credentials for a cross-site form to ride — so the
+  guard rejects only requests that *positively declare* another origin
+  (`Origin` host ≠ request `Host`, or a `cross-site`/`same-site`
+  `Sec-Fetch-Site`); header-less requests (curl, the Go tests) pass. Three
+  calls worth keeping: `same-site` is rejected alongside `cross-site`
+  (nothing legitimate POSTs here from a sibling subdomain, so the stricter
+  read is free); "same origin" is derived from the request's own `Host`,
+  since the served origin is configured nowhere; and that derivation
+  knowingly accepts two gaps — the scheme is not compared (behind a
+  TLS-terminating proxy the server cannot know its public scheme, so this is
+  a same-HOST check) and a DNS-rebinding page is self-consistent and passes.
+  Both need a *configured* origin to close; revisit together if real
+  identity/cookies ever land, which is also when the guard would stop being
+  merely defense-in-depth.
+
 - **No server-side input-window cutoff — late intents are next-turn**
   *(decided 2026-07-16, #99)*. Intent acceptance stays permissive by design:
   the world mutex already serializes `SubmitIntent` against every resolution
