@@ -76,7 +76,7 @@ const chaseIntoCombat = async (page: import("@playwright/test").Page): Promise<v
     .toBe(true);
 };
 
-test("mage: hovering an AoE target highlights the blast disc; clicking keeps it lit until the turn resolves", async ({
+test("mage: hovering an AoE target highlights the blast disc; clicking keeps the disc lit with NO centre crosshair until the turn resolves", async ({
   page,
 }) => {
   // Join as mage (Ember Focus: aoeRadius > 0) — the identity-seeding
@@ -101,13 +101,18 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps it 
     .poll(() => page.evaluate(() => !window.game.inCombat || window.game.combatMoves.length > 0))
     .toBe(true);
 
-  // Hover a hex at distance 2 built as "a neighbor of a reachable move tile":
-  // distance 2 can never be a move/melee tile itself (those are distance 1),
-  // and the move tile it neighbors is walkable and within the blast radius
-  // (Ember Focus aoeRadius 1), so the disc is provably non-empty and must
-  // contain that tile. Everything — pick, hover, read — happens in ONE
-  // evaluate, so no turn bundle can shift positions in between.
-  const hover = await page.evaluate(() => {
+  // Pick the AoE target, hover it, AND commit it — all in ONE evaluate. A
+  // distance-2 hex is never a move/melee tile itself (those are distance 1),
+  // built as a neighbor of a reachable move tile so it's walkable and within
+  // Ember Focus's blast radius (aoeRadius 1) — the disc is provably non-empty
+  // and contains that tile, and clickTarget routes the tap as an AoE cast.
+  // Doing pick+hover+commit in one evaluate is load-bearing: split across two
+  // evaluates, a turn bundle can step `me` in between, turning the distance-2
+  // target into a distance-1 MOVE tile — which clickTarget walks to, not casts
+  // (the committedAction then reads {kind:"move"}, flaking under --repeat-each).
+  // The committed indicator is planted synchronously by tapHex (before the
+  // intent POST settles), so it reads back in the same evaluate.
+  const shot = await page.evaluate(() => {
     const me = window.game.me;
     if (me === null || !window.game.inCombat || window.game.combatMoves.length === 0) {
       return null;
@@ -140,39 +145,40 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps it 
       }
 
       window.game.hoverTile(target.q, target.r);
+      const hoverTiles = window.game.hoverAttackTiles;
 
-      return { target, anchor, tiles: window.game.hoverAttackTiles };
+      void window.game.tapHex(target.q, target.r);
+
+      return {
+        target,
+        anchor,
+        hoverTiles,
+        committedTiles: window.game.committedAttackTiles,
+        committedAction: window.game.committedAction,
+      };
     }
 
     return null;
   });
 
-  expect(hover).not.toBeNull();
-  const { target, anchor, tiles } = hover!;
-  expect(tiles.length).toBeGreaterThanOrEqual(1);
-  // The blast disc: every highlighted tile lies within the weapon's
-  // aoeRadius (1) of the hovered hex, and the walkable anchor tile is in it.
-  for (const t of tiles) {
+  expect(shot).not.toBeNull();
+  const { target, anchor, hoverTiles, committedTiles, committedAction } = shot!;
+
+  // Hover lights the blast disc: every tile within the weapon's aoeRadius (1)
+  // of the hovered hex, and the walkable anchor tile is provably in it.
+  expect(hoverTiles.length).toBeGreaterThanOrEqual(1);
+  for (const t of hoverTiles) {
     expect(dist(t, target)).toBeLessThanOrEqual(1);
   }
-  expect(tiles.some((t) => t.q === anchor.q && t.r === anchor.r)).toBe(true);
+  expect(hoverTiles.some((t) => t.q === anchor.q && t.r === anchor.r)).toBe(true);
 
-  // Commit the attack: tapHex on the same target. The committed tile set is
-  // planted synchronously (before the intent POST settles), so read it in
-  // the same evaluate — then poll for the next bundle clearing it (the
-  // committed/pending indicator's lifecycle).
-  const committed = await page.evaluate((t) => {
-    void window.game.tapHex(t.q, t.r);
-
-    return {
-      tiles: window.game.committedAttackTiles,
-      action: window.game.committedAction,
-    };
-  }, target);
-
-  expect(committed.action?.kind).toBe("attack");
-  expect(committed.tiles.length).toBeGreaterThanOrEqual(1);
-  for (const t of committed.tiles) {
+  // #138: committing an AoE plants NO single-target crosshair — committedAction
+  // is null — because the lit blast disc is the indicator; a centre mark would
+  // misread as "one victim here". The disc (committedTiles) stays lit, every
+  // tile within the weapon's aoeRadius of the target.
+  expect(committedAction).toBeNull();
+  expect(committedTiles.length).toBeGreaterThanOrEqual(1);
+  for (const t of committedTiles) {
     expect(dist(t, target)).toBeLessThanOrEqual(1);
   }
 
