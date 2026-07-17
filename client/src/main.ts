@@ -865,6 +865,22 @@ async function start(): Promise<void> {
     refreshAttackHighlight();
   };
 
+  // #138: the committed indicator (attack crosshair + lit target tiles) stays
+  // lit through the resolving bundle's PLAYBACK, not just until that bundle
+  // arrives — the hit animates across the playback window, so clearing at
+  // arrival dropped the highlight ~2s before the attack visibly landed. onTurn
+  // arms this timer at bundle arrival to fire at playback end; a fresh commit
+  // in the next input window cancels it (cancelCommittedClear) so it isn't
+  // wiped mid-show.
+  let committedClearTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelCommittedClear = (): void => clearTimeout(committedClearTimer);
+  const clearCommittedIndicator = (): void => {
+    cancelCommittedClear();
+    window.game.committedAction = null;
+    feedbackLayer.setCommitted(null);
+    setCommittedAttackTiles([]);
+  };
+
   window.game.hoverTile = (q, r): void => setHoveredHex({ q, r });
 
   // Ground-loot layer sits under the entity layer (added first) — a dropped
@@ -1017,11 +1033,7 @@ async function start(): Promise<void> {
   // until the next bundle answers. A pickup's target is a GROUND item id (not
   // owned), so it does not take a pending mark; a rejected pickup (backpack
   // full — the server 422s, submitPickup resolves false) marks its row.
-  const supersedeCommitted = (): void => {
-    window.game.committedAction = null;
-    feedbackLayer.setCommitted(null);
-    setCommittedAttackTiles([]);
-  };
+  const supersedeCommitted = (): void => clearCommittedIndicator();
 
   // A pending panel action (equip/unequip/drink/drop) gets the SAME feedback in
   // and out of combat — the pending state drives it, not the clock: the item's
@@ -1179,6 +1191,7 @@ async function start(): Promise<void> {
     if (window.game.inCombat) {
       const self = window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
       const committed: CommittedAction = { kind: self ? "wait" : "move", target };
+      cancelCommittedClear();
       window.game.committedAction = committed;
       feedbackLayer.setCommitted(committed);
       setCommittedAttackTiles([]); // a move/wait replaces any committed attack (#101)
@@ -1215,12 +1228,17 @@ async function start(): Promise<void> {
     feedbackLayer.flashAttack(target);
     window.game.lastAttackFlash = target;
 
-    const targetEntityId = aoeReaches(target) ? 0 : (hostileIdAt(target) ?? 0);
+    const isAoe = aoeReaches(target);
+    const targetEntityId = isAoe ? 0 : (hostileIdAt(target) ?? 0);
 
     // Committed-action indicator (item 6): a persistent crosshair on the
     // target, alongside the flashAttack one-shot ring above — and the full
-    // target-tile set stays highlighted until the turn resolves (#101).
-    const committed: CommittedAction = { kind: "attack", target };
+    // target-tile set stays highlighted until the turn resolves (#101). An
+    // AoE gets NO centre crosshair (#138): the lit blast disc IS the
+    // indicator, and a single-target mark on the disc's centre misreads as
+    // "one victim here". A single-target shot keeps its crosshair.
+    const committed: CommittedAction | null = isAoe ? null : { kind: "attack", target };
+    cancelCommittedClear();
     window.game.committedAction = committed;
     feedbackLayer.setCommitted(committed);
     setCommittedAttackTiles(attackTilesFor(target));
@@ -1246,6 +1264,7 @@ async function start(): Promise<void> {
     window.game.lastAttackFlash = target;
 
     const committed: CommittedAction = { kind: "attack", target };
+    cancelCommittedClear();
     window.game.committedAction = committed;
     feedbackLayer.setCommitted(committed);
     setCommittedAttackTiles([target]); // a melee swing hits exactly its victim's tile (#101)
@@ -1332,15 +1351,11 @@ async function start(): Promise<void> {
         return;
       }
 
-      // Committed-action indicator (item 6): clear on the next turn bundle,
-      // whether it resolved my action or not — a fresh bundle always means
-      // "no longer showing what I chose last time," the simplest rule that
-      // still reads as "shown until it resolves" in the common case (a solo
-      // or last-to-lock-in bubble resolves the instant this client submits,
-      // so its very next bundle IS that resolution).
-      window.game.committedAction = null;
-      feedbackLayer.setCommitted(null);
-      setCommittedAttackTiles([]);
+      // Committed-action indicator (item 6): this bundle resolves what I chose
+      // last input window, but the resolution PLAYS OUT over the playback
+      // window — so keep the indicator lit and schedule its clear at playback
+      // end below (#138), rather than dropping it the instant the bundle
+      // arrives (which cut the highlight ~2s before the attack visibly landed).
 
       // #114: per-hit combat moments. The bundle keeps a few turns of hits
       // for coalescing slack (protocol.HitView's contract) — only those newer
@@ -1408,6 +1423,15 @@ async function start(): Promise<void> {
       curIntervalMs = event.intervalMs;
       curPlaybackMs = playbackMs;
       turnStartedAtMs = performance.now();
+
+      // #138: keep the committed indicator lit through THIS bundle's playback,
+      // then clear it. A fresh commit in the next input window cancels this
+      // (cancelCommittedClear in the commit setters), and playbackMs <
+      // intervalMs guarantees it always fires before the next bundle arrives.
+      cancelCommittedClear();
+      if (window.game.committedAction !== null || committedAttackTiles.length > 0) {
+        committedClearTimer = setTimeout(clearCommittedIndicator, playbackMs);
+      }
 
       const mine = event.entities.find((e) => e.id === me.entityId);
       if (mine !== undefined && window.game.me !== null) {
