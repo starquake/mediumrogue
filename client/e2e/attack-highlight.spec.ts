@@ -95,6 +95,18 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
 
   await chaseIntoCombat(page);
 
+  // #135: the world hover highlight is OUT-of-combat only. Now that we're in
+  // combat, hovering any hex leaves window.game.hoverMoveTile null — the reach
+  // tints + #101 ember own the in-combat hover. (hover.spec.ts covers the
+  // walk/wait/rock routing out of combat on a monster-free server; this is the
+  // in-combat → null half, which needs a real bubble.)
+  const inCombatHover = await page.evaluate(() => {
+    const me = window.game.me!;
+    window.game.hoverTile(me.hex.q, me.hex.r);
+    return window.game.hoverMoveTile;
+  });
+  expect(inCombatHover).toBeNull();
+
   // A reachable move tile exists once in combat (the overlay's own e2e
   // covers it; here it anchors the hover target construction below).
   await expect
