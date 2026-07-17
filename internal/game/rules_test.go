@@ -321,3 +321,69 @@ func TestApplyRulesMulPctStackedDeltasClampAtZero(t *testing.T) {
 		t.Errorf("stacked deltas below -100%% on 10 = %d, want %d", got, want)
 	}
 }
+
+// TestApplyRulesTracedChanceMultipliers (#114): the traced fold reports
+// which CHANCE-conditioned multiplier cards fired — a boost (>100%: a crit
+// when the fold is deal-damage) and a reduction (<100%: a glance when the
+// fold is take-damage) — and stays silent for deterministic multipliers,
+// chance cards that do not fire, and chance-conditioned adds. Chance 100/0
+// makes the outcomes seed-independent; the traced value must always equal
+// the untraced fold's (applyRules is a thin wrapper over the traced fold).
+func TestApplyRulesTracedChanceMultipliers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		card       ruleCard
+		wantBoost  bool
+		wantReduce bool
+	}{
+		{
+			name: "chance boost fires",
+			card: ruleCard{event: evDealDamage, when: []condition{{kind: condChance, n: 100}},
+				then: effect{kind: effMulPct, n: 200}},
+			wantBoost: true,
+		},
+		{
+			name: "chance reduction fires",
+			card: ruleCard{event: evDealDamage, when: []condition{{kind: condChance, n: 100}},
+				then: effect{kind: effMulPct, n: 50}},
+			wantReduce: true,
+		},
+		{
+			name: "chance card that does not fire",
+			card: ruleCard{event: evDealDamage, when: []condition{{kind: condChance, n: 0}},
+				then: effect{kind: effMulPct, n: 200}},
+		},
+		{
+			name: "deterministic multiplier is not a moment",
+			card: ruleCard{event: evDealDamage, then: effect{kind: effMulPct, n: 200}},
+		},
+		{
+			name: "chance-conditioned add is not a moment",
+			card: ruleCard{event: evDealDamage, when: []condition{{kind: condChance, n: 100}},
+				then: effect{kind: effAdd, n: 3}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := ruleCtx{rng: testRNG(1)}
+			v, trace := applyRulesTraced(evDealDamage, 10, []ruleCard{tt.card}, ctx)
+
+			if got, want := trace.boostFired, tt.wantBoost; got != want {
+				t.Errorf("boostFired = %v, want %v", got, want)
+			}
+
+			if got, want := trace.reduceFired, tt.wantReduce; got != want {
+				t.Errorf("reduceFired = %v, want %v", got, want)
+			}
+
+			if got, want := v, applyRules(evDealDamage, 10, []ruleCard{tt.card}, ruleCtx{rng: testRNG(1)}); got != want {
+				t.Errorf("traced value = %d, want the untraced fold's %d", got, want)
+			}
+		})
+	}
+}

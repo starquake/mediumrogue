@@ -167,14 +167,60 @@ func targetKindHolds(ctx ruleCtx, s string) bool {
 	return k != nil && k.id == s
 }
 
+// ruleTrace reports which chance-conditioned multiplier cards fired during
+// one applyRules fold — the crit/glance combat moments (#114). boostFired is
+// a chance-conditioned mulPct > 100 firing (a crit when the fold is
+// deal-damage: elf passive, Misericorde, Duelist's Saber); reduceFired a
+// chance-conditioned mulPct < 100 firing (a glance when the fold is
+// take-damage: the Rogue passive). The trace records only the raw fold fact;
+// mapping to crit/glance semantics — which fold the flag came from — is
+// rollDamageLocked's job (world.go). Deterministic effects (an unconditional
+// mulPct, a targetKind gate) never set a flag: a moment is a chance roll
+// landing, not a rule doing its steady job. Purely observational: tracing
+// changes no arithmetic and consumes no rng.
+type ruleTrace struct {
+	boostFired  bool
+	reduceFired bool
+}
+
+// noteMul records a fired mulPct card into the trace: only chance-conditioned
+// multipliers count (see ruleTrace's doc — deterministic rules are not
+// moments).
+func (t *ruleTrace) noteMul(c ruleCard) {
+	if !hasChanceCondition(c.when) {
+		return
+	}
+
+	if c.then.n > percentBase {
+		t.boostFired = true
+	}
+
+	if c.then.n < percentBase {
+		t.reduceFired = true
+	}
+}
+
 // applyRules folds base through every card matching event whose conditions
 // hold: adds sum first, then multiplier deltas sum and apply once (percent
 // fold is additive, not compounding — #61 principle 14), then the
 // event-level clamp (a landed hit always costs ≥1; XP never goes negative).
 func applyRules(event string, base int, cards []ruleCard, ctx ruleCtx) int {
+	v, _ := applyRulesTraced(event, base, cards, ctx)
+
+	return v
+}
+
+// applyRulesTraced is applyRules plus a ruleTrace of the chance-conditioned
+// multiplier cards that fired (see ruleTrace). Card evaluation order — and
+// therefore rng consumption — is IDENTICAL to the untraced fold: determinism
+// is load-bearing, and this function must never move a seeded test.
+func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (int, ruleTrace) {
 	add := 0
 
-	var muls []int
+	var (
+		muls  []int
+		trace ruleTrace
+	)
 
 	for _, c := range cards {
 		if c.event != event || !holds(c.when, ctx) {
@@ -186,6 +232,7 @@ func applyRules(event string, base int, cards []ruleCard, ctx ruleCtx) int {
 			add += c.then.n
 		case effMulPct:
 			muls = append(muls, c.then.n)
+			trace.noteMul(c)
 		}
 	}
 
@@ -216,5 +263,18 @@ func applyRules(event string, base int, cards []ruleCard, ctx ruleCtx) int {
 		}
 	}
 
-	return v
+	return v, trace
+}
+
+// hasChanceCondition reports whether when carries a condChance condition —
+// the marker that a card is a per-hit gamble (crit%/glance%) rather than a
+// deterministic rule.
+func hasChanceCondition(when []condition) bool {
+	for _, c := range when {
+		if c.kind == condChance {
+			return true
+		}
+	}
+
+	return false
 }
