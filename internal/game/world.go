@@ -816,6 +816,15 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 // also counts as a lock-in for the bubble's action-gated turn, and once every
 // player member has locked in the bubble resolves immediately. The latest
 // submission in an input window replaces the entity's queued action.
+//
+// Acceptance is deliberately NOT clock-gated (#99): there is no server-side
+// input-window cutoff, because none is needed for integrity — w.mu
+// serializes every submission against the resolution passes (pollTick, and
+// the lock-in resolution below), so an intent can never land mid-pass. One
+// that arrives while a turn is resolving blocks until the pass completes,
+// then queues as normal and applies to the NEXT turn. Rejecting "late"
+// intents would punish clients that submit during playback for no gain.
+// Pinned by intent_window_test.go.
 func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
