@@ -20,6 +20,14 @@ const testerName = "tester"
 func postJSON(t *testing.T, ts *httptest.Server, path string, body any) *http.Response {
 	t.Helper()
 
+	return postJSONWithOrigin(t, ts, path, "", body)
+}
+
+// postJSONWithOrigin is postJSON plus an explicit Origin header ("" omits
+// it), for the #97 same-origin guard tests (origin_test.go).
+func postJSONWithOrigin(t *testing.T, ts *httptest.Server, path, origin string, body any) *http.Response {
+	t.Helper()
+
 	payload, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal body: %v", err)
@@ -31,6 +39,10 @@ func postJSON(t *testing.T, ts *httptest.Server, path string, body any) *http.Re
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
 
 	resp, err := ts.Client().Do(req)
 	if err != nil {

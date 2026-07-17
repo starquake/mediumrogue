@@ -3,6 +3,7 @@ package game_test
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 	"testing"
 
@@ -42,16 +43,34 @@ func (h *combatEventHook) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h *combatEventHook) WithGroup(string) slog.Handler      { return h }
 
 // submitMoveDuringResolution arms a goroutine that submits a move intent for
-// the entity the moment hookFired closes (i.e. mid-resolution), returning the
-// channel its SubmitIntent error will arrive on. The submission blocks on
-// World.mu until the resolving pass completes — the serialization under test.
+// the entity as soon as hookFired closes — a moment when the resolving pass
+// provably holds World.mu — and returns the channel its SubmitIntent error
+// arrives on.
+//
+// The RELEASE is pinned mid-resolution; the submission's exact landing is not:
+// the runtime may not schedule the goroutine until after the pass has already
+// released the mutex, in which case it lands just after instead of blocking on
+// it. Both interleavings must produce the same outcome (that IS the property
+// under test — an intent cannot influence a turn it did not precede), so the
+// assertions hold either way and the test can never fail spuriously; running
+// it under -race repeatedly exercises the blocking interleaving.
+//
+// Never calls t.Fatal (wrong goroutine): the error travels back over errCh.
+// It gives up on ctx (the test's) so a t.Fatal elsewhere in the fixture — one
+// that ends the test before the hook fires — retires the goroutine at
+// teardown instead of leaking it for the life of the test binary.
 func submitMoveDuringResolution(
-	w *game.World, hookFired <-chan struct{}, resp protocol.JoinResponse, target protocol.Hex,
+	ctx context.Context, w *game.World, hookFired <-chan struct{},
+	resp protocol.JoinResponse, target protocol.Hex,
 ) <-chan error {
 	errCh := make(chan error, 1)
 
 	go func() {
-		<-hookFired
+		select {
+		case <-hookFired:
+		case <-ctx.Done():
+			return
+		}
 
 		errCh <- w.SubmitIntent(protocol.IntentRequest{
 			EntityID: resp.EntityID, Token: resp.Token,
@@ -74,8 +93,8 @@ func requireHookFired(t *testing.T, hookFired <-chan struct{}) {
 	}
 }
 
-// TestIntentDuringWorldResolutionAppliesToNextTurn: a move intent submitted
-// at the exact moment a WORLD turn is resolving (hooked off the pass's own
+// TestIntentDuringWorldResolutionAppliesToNextTurn verifies that a move
+// intent submitted as a WORLD turn resolves (released off the pass's own
 // combat "move" log event, emitted with World.mu held) is accepted, does not
 // deflect the resolving turn — the entity steps along its ORIGINAL path —
 // and stands queued as the next turn's route.
@@ -104,7 +123,7 @@ func TestIntentDuringWorldResolutionAppliesToNextTurn(t *testing.T) {
 	hookFired := make(chan struct{})
 
 	w.SetLogger(slog.New(&combatEventHook{fn: func() { close(hookFired) }}))
-	lateErr := submitMoveDuringResolution(w, hookFired, alice, lateTarget)
+	lateErr := submitMoveDuringResolution(t.Context(), w, hookFired, alice, lateTarget)
 
 	w.ResolveTurnForTest()
 
@@ -130,7 +149,6 @@ func TestIntentDuringWorldResolutionAppliesToNextTurn(t *testing.T) {
 		t.Errorf("queued path ends at %v, want %v (the late intent's target)", got, want)
 	}
 
-	w.SetLogger(slog.New(slog.DiscardHandler))
 	w.ResolveTurnForTest()
 
 	if got, want := entityHex(t, w, alice.EntityID), latePath[0]; got != want {
@@ -167,7 +185,7 @@ func TestIntentDuringBubbleResolutionQueuesForNextBubbleTurn(t *testing.T) {
 	hookFired := make(chan struct{})
 
 	w.SetLogger(slog.New(&combatEventHook{fn: func() { close(hookFired) }}))
-	lateErr := submitMoveDuringResolution(w, hookFired, alice, lateTarget)
+	lateErr := submitMoveDuringResolution(t.Context(), w, hookFired, alice, lateTarget)
 
 	// The lock-in: solo bubble + open floor resolves the bubble turn inside
 	// this call, with World.mu held throughout.
@@ -186,7 +204,7 @@ func TestIntentDuringBubbleResolutionQueuesForNextBubbleTurn(t *testing.T) {
 
 	// The resolving bubble turn was the attack: the melee swing landed and
 	// alice did not also take the late intent's step.
-	if got, want := monsterHP(t, w, monsterID), game.MonsterMaxHPForTest("wolf"); got >= want {
+	if got, want := entityHP(t, w.Snapshot(), monsterID), game.MonsterMaxHPForTest("wolf"); got >= want {
 		t.Errorf("monster HP after attack turn = %d, want < %d (the swing landed)", got, want)
 	}
 
@@ -195,23 +213,7 @@ func TestIntentDuringBubbleResolutionQueuesForNextBubbleTurn(t *testing.T) {
 	}
 
 	// The late move is queued as the NEXT bubble turn's action.
-	latePath := w.PathForTest(alice.EntityID)
-	if len(latePath) != 1 || latePath[0] != lateTarget {
-		t.Errorf("queued path = %v, want exactly [%v] (the late intent, held for the next bubble turn)", latePath, lateTarget)
+	if got, want := w.PathForTest(alice.EntityID), []protocol.Hex{lateTarget}; !slices.Equal(got, want) {
+		t.Errorf("queued path = %v, want %v (the late intent, held for the next bubble turn)", got, want)
 	}
-}
-
-// monsterHP reads an entity's current HP off the snapshot.
-func monsterHP(t *testing.T, w *game.World, id int64) int {
-	t.Helper()
-
-	for _, e := range w.Snapshot().Entities {
-		if e.ID == id {
-			return e.HP
-		}
-	}
-
-	t.Fatalf("entity %d not in snapshot", id)
-
-	return 0
 }

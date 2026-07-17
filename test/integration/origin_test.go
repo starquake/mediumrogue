@@ -1,43 +1,13 @@
 package integration_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
-
-// postJSONWithOrigin is postJSON plus an explicit Origin header, for the #97
-// same-origin guard tests.
-func postJSONWithOrigin(t *testing.T, ts *httptest.Server, path, origin string, body any) *http.Response {
-	t.Helper()
-
-	payload, err := json.Marshal(body)
-	if err != nil {
-		t.Fatalf("marshal body: %v", err)
-	}
-
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, ts.URL+path, bytes.NewReader(payload))
-	if err != nil {
-		t.Fatalf("build request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Origin", origin)
-
-	resp, err := ts.Client().Do(req)
-	if err != nil {
-		t.Fatalf("POST %s: %v", path, err)
-	}
-
-	t.Cleanup(func() { _ = resp.Body.Close() })
-
-	return resp
-}
 
 // TestCrossOriginPostRejected drives the #97 guard over real HTTP: a POST
 // declaring a foreign Origin is rejected with 403 on every mutating route,
