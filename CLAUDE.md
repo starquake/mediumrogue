@@ -61,6 +61,21 @@ drift between calls; use absolute paths or `cd` to the repo root before
   handler tree over real HTTP; `client/e2e` drives the real binary in a real
   browser. The client exposes `window.game` for Playwright — keep it in sync
   when adding client state.
+- **A flaky test is a bug — land a test change, never just a re-run.** A
+  re-run is how you unblock a PR, never how the flake ends: whenever a test
+  flakes, **update an existing test or write a new one** so the race is
+  closed at its cause (raising a timeout is not a fix — see the e2e de-race
+  rule below). Sequence that actually works: **reproduce first**
+  (`--repeat-each=6 --workers=9` for e2e; `-count=N -race` for Go), then
+  root-cause, then fix, then **prove** with the same command. **Distrust the
+  stated hypothesis** — #117 was filed as "test-fixture death" and was
+  really the test's own un-awaited straggler tap (2026-07-17); an unverified
+  theory in a ticket is a lead, not a diagnosis. If a flake can't be
+  reproduced, say so plainly rather than claiming a fix. If it turns out to
+  be a *product* bug (e.g. #130 found stale attack targets returning 500
+  instead of 422), file that separately — don't bury it in a test tweak.
+  Recurrences on someone else's flake get logged on its issue with the run
+  link, so the next person inherits evidence instead of folklore.
 - Timing knobs (`TURN_INTERVAL`, `HEARTBEAT_INTERVAL`) are env-configurable
   precisely so tests can shrink them — thread new intervals the same way.
 - Game-rule constants (turn cadence, combat radius, stack cap) live in
