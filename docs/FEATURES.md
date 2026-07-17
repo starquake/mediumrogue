@@ -63,6 +63,19 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   when a hostile is there; anywhere for AoE); clicking your own hex
   waits/cancels. Reach is a BFS with `COMBAT_MOVE_RANGE = 1` (client),
   structured for future run/jump.
+- **Attack-target highlights** (#101): hovering a tile a click would attack
+  lights up — in **ember orange**, its own layer above the reach tints — the
+  tile(s) that attack would actually hit: the single victim tile for a melee
+  swing or a bow shot, the **full blast disc** (every walkable hex within the
+  weapon's `aoeRadius`) for a ground-targeted AoE like the mage's Ember Focus.
+  Clicking keeps the same tiles lit, stronger, **until the turn resolves** —
+  the on-map half of the committed/pending indicator, alongside the crosshair.
+  Mirrors the click routing exactly (an adjacent hostile is a melee swing
+  unless an AoE weapon reaches; otherwise every held weapon whose own range
+  covers the target fires), and answers "what will THIS action hit" where the
+  reach tints answer "where can I act". A preview only — the server re-checks
+  on resolution. `window.game.hoverAttackTiles` / `.committedAttackTiles` /
+  `.hoverTile(q, r)`.
 - **Entering a combat bubble hard-cancels a queued auto-walk** (#103): the
   server clears a remaining **multi-hex** route on the world→bubble
   transition, and the client drops the walk goal and its destination ring on
@@ -118,7 +131,13 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   hex) shows from a ground-item take until the next bundle resolves it, plus a
   spinner on that row's "take" button in the pickup modal
   (`window.game.pickupPending`, `FeedbackLayer.setPickup`), Diablo-style **floating damage numbers** (white over hostiles, red over players; killing blows shown as
-  remaining HP — derived client-side by diffing bundles), **committed-action
+  remaining HP — derived client-side by diffing bundles), **crit and glance
+  moments** (#114 — a crit rises bigger, **gold**, with a "!" and a one-shot
+  burst ring on the victim; a glance rises smaller, **pale steel** and italic;
+  styled from the bundle's per-hit `Hits` view, since an HP delta alone can't
+  tell a crit from a big hit. The delta stays the authoritative number — crit
+  styling wins when a victim took both kinds in one bundle. Purely cosmetic;
+  `window.game.hits`, `window.game.damage[].crit/.glance`), **committed-action
   indicator** (item 6, playtest batch 2 — a solid step marker for a queued
   move, a persistent crosshair for a queued attack, **ranged or melee** (#113),
   a small hourglass on my
@@ -548,6 +567,19 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   arriving while a turn resolves is accepted, never affects the resolving
   turn, and applies to the next one. The client's 2 s input window is
   pacing, not a server cutoff.
+- **Per-hit combat moments on the bundle** (#114): `TurnEvent.Hits` is a
+  `HitView[]` — `turn`, `attackerId`, `victimId`, `amount`, `crit`, `glance`
+  — the crit/glance facts an HP delta alone can't express. Recorded in
+  `rollDamageLocked` (the one choke point every damage number flows through)
+  from the rule-pipeline fold's own trace: a **chance**-conditioned `mulPct`
+  firing is the moment — a boost in the `deal-damage` fold is a crit, a
+  reduction in the `take-damage` fold a glance (a *deterministic* multiplier
+  is never a moment). Bundles retain hits for `hitRetentionTurns` (4)
+  resolutions because SSE ticks **coalesce** — a slow client skips bundles
+  and dedupes on `HitView.Turn`. Cosmetic only: `amount` is the damage
+  already reflected in HP, never applied twice; records are transient (like
+  `entity.path`), so the snapshot shape — and `snapshotVersion` — is
+  unchanged.
 - **World-reset signal** (item 4, playtest batch 3): every turn bundle
   carries `worldId` — a random hex string minted once at world creation and
   **persisted in the snapshot** (a restored world keeps its predecessor's
@@ -574,13 +606,17 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   Sources: species cards + acting/equipped item cards — weapon **damage
   itself carries no level scaling** (content-data base + cards only, #60
   XP3). Content validated at process start (fail-loud). Every damage and XP
-  number in the game flows through it.
+  number in the game flows through it. The fold is also **traceable**
+  (`applyRulesTraced`, #114): it reports which **chance**-conditioned `mulPct`
+  cards fired, which is how crit/glance reach the wire (see §2's per-hit
+  combat moments). `applyRules` is a thin wrapper over it; tracing is
+  observational — same card order, same rng draws, no arithmetic change.
 - **Determinism**: per-resolution PCG rng seeded (worldSeed, turn); map
   iteration sorted before any rng draw; spawn randomness on separate
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (35 e2e tests across 21 spec files). The client exposes **`window.game`**
+  embedded-client binary (42 e2e tests across 25 spec files). The client exposes **`window.game`**
   (positions incl. `monsterKind`, hp, inventory, equipped, backpack,
   panelOpen, pickupModal, combatMoves, damage events, tapHex, hexToScreen,
   sendChat, identityLink…) as the always-in-sync test/debug surface.
