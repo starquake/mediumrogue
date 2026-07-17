@@ -59,6 +59,19 @@ export const MonsterLeashMultiplier = 2;
  */
 export const StackCap = 5;
 /**
+ * RepathDetourSlack bounds how far out of its way a PLAYER's queued walk
+ * will go around something standing in it (#96): when the next step is
+ * blocked, the re-routed path is taken only if it is at most this many
+ * hexes longer than the route it replaces — otherwise the walker waits
+ * where it is, path retained, exactly as it did before #96.
+ * The guard exists because blockers are TRANSIENT: the monster in your way
+ * has usually moved on by next turn. Rounding a single blocker on open hex
+ * terrain costs about +2, a full StackCap blob about +4; a detour that
+ * costs more than that means a real chokepoint, where standing still for a
+ * turn beats hiking around the map.
+ */
+export const RepathDetourSlack = 4;
+/**
  * RingCount is the number of distance-based difficulty rings worldgen
  * bands the map into (milestone 6c): ring 0 (home) through RingCount-1
  * (frontier). Monster-kind registry validation requires every ring to
