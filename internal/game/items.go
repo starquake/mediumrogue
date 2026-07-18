@@ -106,6 +106,18 @@ var fistsDef = &itemDef{
 	damageType: protocol.DamageTypeBlunt,
 }
 
+// validWeaponTag reports whether t is one of the three weapon tags. Shared by
+// the def validator and condWeaponTagged's card validator (#124), so the two
+// can never disagree about what a tag is.
+func validWeaponTag(t string) bool {
+	switch t {
+	case protocol.WeaponTagMelee, protocol.WeaponTagRanged, protocol.WeaponTagMagic:
+		return true
+	default:
+		return false
+	}
+}
+
 // validDamageType reports whether t is one of the six damage types (#92).
 func validDamageType(t string) bool {
 	switch t {
@@ -725,9 +737,7 @@ func validateWeaponTags(def *itemDef) {
 	seen := make(map[string]bool, len(def.tags))
 
 	for _, tag := range def.tags {
-		switch tag {
-		case protocol.WeaponTagMelee, protocol.WeaponTagRanged, protocol.WeaponTagMagic:
-		default:
+		if !validWeaponTag(tag) {
 			panic("game: weapon " + def.id + " has unknown tag " + tag)
 		}
 
@@ -839,6 +849,14 @@ func validateRuleCondition(owner, event string, cond condition) {
 		// silently never hold — a content typo, caught at load (#92).
 		if !validDamageType(cond.s) {
 			panic("game: " + owner + " damageType rule card names unknown damage type " + cond.s)
+		}
+	case condShieldEquipped:
+		// No parameter to validate: it reads the entity's own off-hand.
+	case condWeaponTagged:
+		// A tag gate on a tag that can't exist would silently never hold —
+		// a content typo, caught at load (#124).
+		if !validWeaponTag(cond.s) {
+			panic("game: " + owner + " weaponTagged rule card names unknown weapon tag " + cond.s)
 		}
 	case condTargetKind:
 		// A kind gate on an unregistered monster id would silently never

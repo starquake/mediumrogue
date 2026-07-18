@@ -1,6 +1,10 @@
 package game
 
-import mrand "math/rand/v2"
+import (
+	mrand "math/rand/v2"
+
+	"github.com/starquake/mediumrogue/internal/protocol"
+)
 
 // The modifier pipeline (spec: docs/superpowers/specs/2026-07-10-m6b.4-gear-pipeline-design.md).
 // Combat exposes events; species and gear carry rule cards — pure serializable
@@ -78,6 +82,30 @@ const (
 	// DECOUPLED, never a roll: it asks what type is landing, not whether
 	// attacker beats defender.
 	condDamageType = "damageType"
+	// condWeaponTagged (s = a protocol.WeaponTag* value) gates on the weapon
+	// being SWUNG carrying that tag — "+10% with melee weapons" (#124's
+	// Combat Training, the maintainer's chosen scope over damage type). It
+	// reads ctx.weapon, which only rollDamageLocked fills; every other fold
+	// leaves it nil and the condition fails closed.
+	//
+	// Deliberately distinct from condDamageType: a tag is how a weapon is
+	// USED (which attack fires it), a damage type is what it DEALS. A mace
+	// and a fire staff are both "not melee-tagged vs melee-tagged" questions
+	// that no damage type can answer.
+	condWeaponTagged = "weaponTagged"
+	// condShieldEquipped (no parameter) gates on the DEFENDER holding a
+	// shield in its off-hand — #124's Shield Wall. Defender-side is not a
+	// convention here but a requirement: in rollDamageLocked the victim's
+	// own cards fold under a ctx whose .attacker is still the SWINGER, so a
+	// take-damage card asking "do I have a shield" must read ctx.victim.
+	// (condAttackerSpecies is the mirror case — a deal-damage card, so it
+	// reads ctx.attacker.) An attacker-side "while holding a shield" card
+	// would need its own kind; nothing wants one.
+	//
+	// Narrow by the maintainer's call (#124 O2) rather than a general
+	// "equippedType" condition; #57's shield-skill backlog is its rider
+	// queue, so it is not a one-off.
+	condShieldEquipped = "shieldEquipped"
 )
 
 // Effect kinds. All adds apply before all multipliers (fold phases), so card
@@ -119,7 +147,13 @@ type ruleCtx struct {
 	// by condDamageType. Empty for folds with no attack in flight
 	// (earn-XP, aggro-range), where a condDamageType card simply never
 	// holds.
-	damageType   string
+	damageType string
+	// weapon is the itemDef being SWUNG in this fold (#124) — read by
+	// condWeaponTagged. Only rollDamageLocked fills it; every other fold
+	// leaves it nil, where a weapon-tag card simply never holds. Kept as the
+	// def (not just its tags) so a future condition can read damage, range,
+	// or two-handedness without another ctx field.
+	weapon       *itemDef
 	allyInBubble bool
 	rng          *mrand.Rand
 }
@@ -152,6 +186,10 @@ func conditionHolds(c condition, ctx ruleCtx) bool {
 		return targetKindHolds(ctx, c.s)
 	case condDamageType:
 		return ctx.damageType == c.s
+	case condWeaponTagged:
+		return ctx.weapon != nil && ctx.weapon.hasTag(c.s)
+	case condShieldEquipped:
+		return shieldEquippedHolds(ctx)
 	default:
 		return false // unknown condition never holds — content bugs fail closed
 	}
@@ -176,6 +214,20 @@ func targetHPConditionHolds(c condition, ctx ruleCtx) bool {
 	default:
 		return false
 	}
+}
+
+// shieldEquippedHolds is condShieldEquipped's body: the VICTIM — the entity
+// taking the hit, whose take-damage cards are folding — holds a shield in its
+// off-hand. See the const's doc comment for why this is the victim and not
+// "whoever's cards are running".
+func shieldEquippedHolds(ctx ruleCtx) bool {
+	if ctx.victim == nil {
+		return false
+	}
+
+	def := ctx.victim.equippedDefIn(protocol.SlotOffHand)
+
+	return def != nil && def.itemType == protocol.ItemTypeShield
 }
 
 // targetKindHolds is condTargetKind's condition body, split out of
