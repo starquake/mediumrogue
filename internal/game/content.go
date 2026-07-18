@@ -264,6 +264,37 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: percentBase + 100}},
 		},
 	},
+
+	// Noticeability gear (#88, the last Gear 1 slice): the first content to
+	// use evAggroRange — the player-side fold over protocol.MonsterAggroRadius
+	// that decides how far off a WORLD-domain monster notices its wearer
+	// (aggroRadiusForLocked, world.go). Noticeability is deliberately
+	// GEAR-ONLY, not a species trait: it is a choice you make in the
+	// inventory, not one you're born into. Multiplicative, so it scales with
+	// each monster kind's own radius instead of flattening them — over wolf's
+	// 10 the boots read 7 and the plate 12; applyRules' event-level clamp
+	// keeps any radius ≥1.
+	{
+		id: idPaddedBoots, name: "Padded Boots", itemType: protocol.ItemTypeBoots,
+		desc:   "monsters notice you 25% later",
+		flavor: "Rag-wrapped soles. You hear yourself think, and nothing hears you.",
+		rules: []ruleCard{
+			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase - 25}},
+		},
+	},
+	{
+		// The game's first TRADEOFF item: a strict upgrade on Leather Armor's
+		// mitigation (−2 vs −1) bought with a real cost — you are noticed 25%
+		// sooner. Gear that is only ever better makes the inventory a sorting
+		// exercise; a cost makes it a decision.
+		id: idIronPlateArmor, name: "Iron Plate Armor", itemType: protocol.ItemTypeChest,
+		desc:   "take 2 less from every hit; monsters notice you 25% sooner",
+		flavor: "It turns blades. It also announces you, one clank at a time.",
+		rules: []ruleCard{
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -2}},
+			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase + 25}},
+		},
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
