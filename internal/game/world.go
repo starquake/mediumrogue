@@ -2878,10 +2878,10 @@ func (w *World) arrivedHomeLocked(m *entity) bool {
 // 6c) notices player p: base folded through p's own noticeability rule
 // cards (species + every equipped item's rules, in canonicalSlotOrder —
 // mirroring rollDamageLocked's victimCards fold: any gear on the entity can
-// contribute, not just the "acting" slot) via the evAggroRange event. No
-// content defines an evAggroRange card yet, so this is a no-op fold today —
-// the hook exists so a future sneaky/loud item can shrink or grow it
-// without touching this call site. Callers hold w.mu.
+// contribute, not just the "acting" slot) via the evAggroRange event. Live
+// content since #88: Padded Boots (×0.75) and Iron Plate Armor (×1.25) shrink
+// or grow the radius without touching this call site. Noticeability is
+// gear-only by design — no species card feeds this event. Callers hold w.mu.
 func aggroRadiusForLocked(rng *mrand.Rand, base int, p *entity) int {
 	cards := slices.Concat(speciesCards(p.species), equippedRuleCards(p))
 
