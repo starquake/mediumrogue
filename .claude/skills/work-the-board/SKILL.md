@@ -37,6 +37,13 @@ The `needs:*` labels are the state machine; this skill just drives it.
 1. **Enumerate.** `gh issue list --state open`, `gh pr list --state open`, and a
    recently-closed sweep for comments that landed after close. Drop anything
    carrying `hold`.
+   **Labels are NOT enough — read the comments too.** For every item at an amber
+   gate, fetch its comments (`gh api repos/:owner/:repo/issues/<n>/comments`) and
+   look for the maintainer's answer or go-signal *after* your last comment. A
+   go-signal (`go` / `build` / `approved` / "Build!") arrives as a **comment**
+   and does **not** change the label — so a label-only pass reports "waiting on
+   you" when they already answered. (This exact miss happened 2026-07-18: "Build!"
+   sat on #88 and #92 through a whole pass.)
 2. **Classify + act**, cheapest-and-most-reversible first, then merges, then the
    one build. For each item, **hand off to the skill that owns that step** rather
    than improvising:
