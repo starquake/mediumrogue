@@ -46,6 +46,20 @@ func TestApplyRulesTakeDamageFloorsAtOne(t *testing.T) {
 	}
 }
 
+// TestApplyRulesAggroRangeFloorsAtOne (#88): the aggro-range fold carries the
+// same ≥1 floor take-damage does. Every noticeability card shipped today is
+// multiplicative and cannot go negative, but a future negative-`add` card
+// could fold a radius to 0 or below — a monster that never notices anyone,
+// discovered mid-playtest. One clamp now, no surprise later.
+func TestApplyRulesAggroRangeFloorsAtOne(t *testing.T) {
+	t.Parallel()
+
+	cards := []ruleCard{{event: evAggroRange, then: effect{kind: effAdd, n: -999}}}
+	if got, want := applyRules(evAggroRange, 10, cards, ruleCtx{}), 1; got != want {
+		t.Errorf("applyRules aggro-range = %d, want floor %d", got, want)
+	}
+}
+
 func TestSpeciesCardsMatchOldPassives(t *testing.T) {
 	t.Parallel()
 
@@ -383,6 +397,43 @@ func TestApplyRulesTracedChanceMultipliers(t *testing.T) {
 
 			if got, want := v, applyRules(evDealDamage, 10, []ruleCard{tt.card}, ruleCtx{rng: testRNG(1)}); got != want {
 				t.Errorf("traced value = %d, want the untraced fold's %d", got, want)
+			}
+		})
+	}
+}
+
+// TestAggroRadiusForNoticeabilityGear (#88): the two noticeability items fold
+// over a monster kind's OWN radius, white-box through the same function the
+// AI's notice check calls. Wolf's protocol.MonsterAggroRadius (10) is the
+// base: Padded Boots (×0.75) read 7, Iron Plate Armor (×1.25) read 12. The
+// fold is multiplicative precisely so a rat's short radius and a dragon's
+// long one both move by a quarter instead of being flattened to one number.
+func TestAggroRadiusForNoticeabilityGear(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		slot  string
+		defID string
+		want  int
+	}{
+		{name: "bare", want: protocol.MonsterAggroRadius},
+		{name: "padded boots", slot: protocol.ItemTypeBoots, defID: idPaddedBoots, want: 7},
+		{name: "iron plate armor", slot: protocol.ItemTypeChest, defID: idIronPlateArmor, want: 12},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := &entity{species: protocol.SpeciesHuman, equipped: map[string]itemInstance{}}
+			if tt.defID != "" {
+				p.equipped[tt.slot] = itemInstance{id: 1, defID: tt.defID}
+			}
+
+			got := aggroRadiusForLocked(testRNG(1), protocol.MonsterAggroRadius, p)
+			if want := tt.want; got != want {
+				t.Errorf("aggroRadiusForLocked = %d, want %d", got, want)
 			}
 		})
 	}

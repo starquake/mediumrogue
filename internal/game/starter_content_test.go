@@ -14,11 +14,21 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// meleeDamageTaken places a fighter at origin (optionally wearing
-// leather-armor), a monster of the given kind adjacent, resolves one turn
-// (the adjacent monster strikes the nearest player), and returns how much HP
-// the player lost to that attack.
-func meleeDamageTaken(t *testing.T, kind string, wearArmor bool) int {
+// Registry def ids used by the live-pipeline tests in this package. The
+// registry names them as unexported consts (items.go); these are the
+// black-box mirror, so a rename fails loudly here instead of silently
+// granting nothing.
+const (
+	leatherArmorID   = "leather-armor"
+	paddedBootsID    = "padded-boots"
+	ironPlateArmorID = "iron-plate-armor"
+)
+
+// meleeDamageTaken places a fighter at origin (wearing the chest item with
+// def id armorID, or nothing if it is ""), a monster of the given kind
+// adjacent, resolves one turn (the adjacent monster strikes the nearest
+// player), and returns how much HP the player lost to that attack.
+func meleeDamageTaken(t *testing.T, kind, armorID string) int {
 	t.Helper()
 
 	w := newWorld()
@@ -30,12 +40,12 @@ func meleeDamageTaken(t *testing.T, kind string, wearArmor bool) int {
 
 	id, token := w.PlaceEntityForTest(target)
 
-	if wearArmor {
-		instID := w.GrantItemForTest(id, "leather-armor")
+	if armorID != "" {
+		instID := w.GrantItemForTest(id, armorID)
 		if err := w.SubmitIntent(protocol.IntentRequest{
 			EntityID: id, Token: token, Kind: protocol.IntentEquip, ItemID: instID,
 		}); err != nil {
-			t.Fatalf("SubmitIntent equip leather-armor: %v", err)
+			t.Fatalf("SubmitIntent equip %s: %v", armorID, err)
 		}
 
 		if got, want := w.EquippedInSlotForTest(id, protocol.ItemTypeChest), instID; got != want {
@@ -63,12 +73,12 @@ func meleeDamageTaken(t *testing.T, kind string, wearArmor bool) int {
 func TestLeatherArmorReducesDamageThroughLivePipeline(t *testing.T) {
 	t.Parallel()
 
-	bare := meleeDamageTaken(t, "wolf", false)
+	bare := meleeDamageTaken(t, "wolf", "")
 	if got, want := bare, game.MonsterDamageForTest("wolf"); got != want {
 		t.Fatalf("bare fighter lost %d HP to a wolf melee attack, want %d", got, want)
 	}
 
-	armored := meleeDamageTaken(t, "wolf", true)
+	armored := meleeDamageTaken(t, "wolf", leatherArmorID)
 	if got, want := armored, bare-1; got != want {
 		t.Errorf("armored fighter lost %d HP, want %d (take-damage -1)", got, want)
 	}
@@ -84,7 +94,7 @@ func TestLeatherArmorFloorsAtOne(t *testing.T) {
 		t.Fatalf("rat damage = %d, want %d (this test's floor premise)", got, want)
 	}
 
-	if got, want := meleeDamageTaken(t, "rat", true), 1; got != want {
+	if got, want := meleeDamageTaken(t, "rat", leatherArmorID), 1; got != want {
 		t.Errorf("armored fighter lost %d HP to a rat melee attack, want %d (floor 1)", got, want)
 	}
 }
@@ -166,5 +176,23 @@ func TestLeatherArmorEquipsForEveryClass(t *testing.T) {
 		}); err != nil {
 			t.Errorf("%s equip leather-armor = %v, want nil (gates dropped, #56)", class, err)
 		}
+	}
+}
+
+// TestIronPlateArmorReducesDamageThroughLivePipeline (#88): the plate's
+// take-damage −2 lands at the live combat site, one better than leather's −1
+// — the mitigation half of the game's first tradeoff item (its aggro-range
+// cost is covered by the noticeability tests in monster_test.go).
+func TestIronPlateArmorReducesDamageThroughLivePipeline(t *testing.T) {
+	t.Parallel()
+
+	bare := meleeDamageTaken(t, "wolf", "")
+	if got, want := bare, game.MonsterDamageForTest("wolf"); got != want {
+		t.Fatalf("bare fighter lost %d HP to a wolf melee attack, want %d", got, want)
+	}
+
+	plated := meleeDamageTaken(t, "wolf", ironPlateArmorID)
+	if got, want := plated, bare-2; got != want {
+		t.Errorf("plated fighter lost %d HP, want %d (take-damage -2)", got, want)
 	}
 }

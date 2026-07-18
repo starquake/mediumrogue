@@ -320,15 +320,34 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   | Wooden Buckler | shield | take-damage −1 | rat (w1) / wolf (w4) drop |
   | Iron Kite Shield | shield | take-damage −2 | troll (w4) / dragon (w1) drop |
 
-- **Non-weapon items**: Leather Armor (chest: take-damage −1, floor 1),
-  Headband of Learning (helmet: earn-XP ×1.05), Healing Potion (consumable:
-  drink +5 HP, stacks to 5), and the two shields above (off-hand:
-  take-damage −1/−2).
+- **Noticeability gear (#88)** — the first content to use the pipeline's
+  `aggro-range` event: gear that changes how far off a world monster notices
+  you. The fold is **multiplicative**, applied to each monster **kind's own**
+  radius (so a rat's 7 and a dragon's 12 both move by a quarter rather than
+  flattening to one number), and clamped **≥1** by `applyRules` — a monster
+  can always eventually notice you. Noticeability is **gear-only** by design:
+  a choice you make in the inventory, not a species you're born into.
+
+  | Item | Type | Card(s) | Reach vs a wolf (10) | Source |
+  |---|---|---|---|---|
+  | Padded Boots | boots | aggro-range ×0.75 | 7 | rat (w1) / wolf (w4) drop |
+  | Iron Plate Armor | chest | take-damage −2, aggro-range ×1.25 | 12 | troll (w4) / dragon (w1) drop |
+
+  Iron Plate Armor is the game's **first tradeoff item**: strictly better
+  mitigation than Leather Armor (−2 vs −1) bought with a real cost — you are
+  noticed sooner. Gear that is only ever better makes the inventory a sorting
+  exercise; a cost makes it a decision.
+- **Non-weapon items**: Leather Armor (chest: take-damage −1, floor 1), Iron
+  Plate Armor (chest: take-damage −2 + aggro-range ×1.25), Padded Boots
+  (boots: aggro-range ×0.75), Headband of Learning (helmet: earn-XP ×1.05),
+  Healing Potion (consumable: drink +5 HP, stacks to 5), and the two shields
+  above (off-hand: take-damage −1/−2).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride
   the rat/wolf tables at low weight; the Wooden Buckler rides rat w1 / wolf
-  w4, the Iron Kite Shield troll w4 / dragon w1 — the ghoul table is
+  w4, the Iron Kite Shield troll w4 / dragon w1, the Padded Boots rat w1 /
+  wolf w4 and the Iron Plate Armor troll w4 / dragon w1 — the ghoul table is
   untouched by design, its identity is venom-fang/misericorde). Items land
   on the death hex and render as map markers.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
@@ -632,7 +651,8 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 - **Modifier pipeline** (`internal/game/rules.go`): combat values fold
   through **rule cards** (pure serializable data — no closures; the SQLite
   prerequisite). Events live: `deal-damage`, `take-damage`, `earn-xp`,
-  `aggro-range` (per-kind aggro radius folds through it since 6c).
+  `aggro-range` (per-kind aggro radius folds through it since 6c; live
+  content since #88 — the noticeability gear above; clamped ≥1).
   Conditions: `chance`, `targetHPBelowPct`, `targetHPBelowFlat`,
   `targetHPFull`, `allyInBubble`, `targetAdjacent`, `attackerSpecies`,
   `targetKind` (victim is a monster of a specific registered kind — 6c,

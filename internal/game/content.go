@@ -264,6 +264,37 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: percentBase + 100}},
 		},
 	},
+
+	// Noticeability gear (#88, the last Gear 1 slice): the first content to
+	// use evAggroRange — the player-side fold over protocol.MonsterAggroRadius
+	// that decides how far off a WORLD-domain monster notices its wearer
+	// (aggroRadiusForLocked, world.go). Noticeability is deliberately
+	// GEAR-ONLY, not a species trait: it is a choice you make in the
+	// inventory, not one you're born into. Multiplicative, so it scales with
+	// each monster kind's own radius instead of flattening them — over wolf's
+	// 10 the boots read 7 and the plate 12; applyRules' event-level clamp
+	// keeps any radius ≥1.
+	{
+		id: idPaddedBoots, name: "Padded Boots", itemType: protocol.ItemTypeBoots,
+		desc:   "monsters notice you 25% later",
+		flavor: "Rag-wrapped soles. You hear yourself think, and nothing hears you.",
+		rules: []ruleCard{
+			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase - 25}},
+		},
+	},
+	{
+		// The game's first TRADEOFF item: a strict upgrade on Leather Armor's
+		// mitigation (−2 vs −1) bought with a real cost — you are noticed 25%
+		// sooner. Gear that is only ever better makes the inventory a sorting
+		// exercise; a cost makes it a decision.
+		id: idIronPlateArmor, name: "Iron Plate Armor", itemType: protocol.ItemTypeChest,
+		desc:   "take 2 less from every hit; monsters notice you 25% sooner",
+		flavor: "It turns blades. It also announces you, one clank at a time.",
+		rules: []ruleCard{
+			{event: evTakeDamage, then: effect{kind: effAdd, n: -2}},
+			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase + 25}},
+		},
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -300,6 +331,11 @@ var monsterDefs = []*monsterDef{
 			// its cumulative-weight position. Rare here (weight 1) — the wolf
 			// table is its common source.
 			{defID: idWoodenBuckler, weight: 1},
+			// Padded Boots (#88): appended LAST so every earlier entry keeps
+			// its cumulative-weight position. Rare here (weight 1) — the wolf
+			// table is the common source, so the first pair of boots reads as
+			// a wolf-country find.
+			{defID: idPaddedBoots, weight: 1},
 		},
 		rings: []int{0, 1},
 	},
@@ -330,6 +366,11 @@ var monsterDefs = []*monsterDef{
 			// its cumulative-weight position (killDropSeed/killMissSeed
 			// re-derived if the new total weight moves them).
 			{defID: idWoodenBuckler, weight: 4},
+			// Padded Boots (#88): appended LAST for the same reason — common
+			// here (weight 4), so noticeability gear is reachable early
+			// (killDropSeed/killMissSeed re-derived if the new total weight
+			// moves them).
+			{defID: idPaddedBoots, weight: 4},
 		},
 		rings: []int{1},
 	},
@@ -370,6 +411,11 @@ var monsterDefs = []*monsterDef{
 			// keeps its cumulative-weight position — frontier loot, common on
 			// the troll.
 			{defID: idIronKiteShield, weight: 4},
+			// Iron Plate Armor (#88): appended LAST so every earlier entry
+			// keeps its cumulative-weight position — frontier loot, common on
+			// the troll, the tier where taking 2 less per hit is worth being
+			// noticed sooner.
+			{defID: idIronPlateArmor, weight: 4},
 		},
 		rings: []int{2},
 	},
@@ -387,6 +433,9 @@ var monsterDefs = []*monsterDef{
 			// keeps its cumulative-weight position — rare here (weight 1),
 			// the troll table is its common source.
 			{defID: idIronKiteShield, weight: 1},
+			// Iron Plate Armor (#88): appended LAST — rare here (weight 1),
+			// the troll table is its common source.
+			{defID: idIronPlateArmor, weight: 1},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},

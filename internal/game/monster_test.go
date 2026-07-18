@@ -377,3 +377,81 @@ func TestMonsterWithinAggroRangeHunts(t *testing.T) {
 			beforeDist, afterDist)
 	}
 }
+
+// noticedByWolfAt reports whether a wolf placed dist hexes from a fighter at
+// origin notices that fighter and steps toward them within one turn — the
+// live evAggroRange fold (#88). gearID, when non-empty, is a registry def the
+// fighter equips first (free equip: the player is well outside any bubble at
+// these distances). "Noticed" is asserted as "the wolf moved at all", not as
+// a strictly closing distance: generated terrain can force an approach step
+// to detour sideways, but an UNAWARE world monster never steps at all.
+func noticedByWolfAt(t *testing.T, dist int, gearID string) bool {
+	t.Helper()
+
+	w := newWorld()
+
+	origin := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, origin) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	id, token := w.PlaceEntityForTest(origin)
+
+	if gearID != "" {
+		instID := w.GrantItemForTest(id, gearID)
+		if err := w.SubmitIntent(protocol.IntentRequest{
+			EntityID: id, Token: token, Kind: protocol.IntentEquip, ItemID: instID,
+		}); err != nil {
+			t.Fatalf("SubmitIntent equip %s: %v", gearID, err)
+		}
+	}
+
+	at := walkableHexAtDistance(t, w, origin, dist, dist)
+	monsterID := w.PlaceMonsterKindForTest(at, "wolf")
+
+	return hexOfSnap(step(t, w), monsterID) != at
+}
+
+// TestNoticeabilityGearMovesTheAggroBoundary (#88): the same wolf, at the same
+// distance 8, notices a bare fighter (its radius is protocol.MonsterAggroRadius
+// = 10) but NOT one in Padded Boots (×0.75 → 7). One distance, one variable —
+// the gear — proving the fold reaches the live AI notice check and not just
+// applyRules.
+func TestNoticeabilityGearMovesTheAggroBoundary(t *testing.T) {
+	t.Parallel()
+
+	const dist = 8 // inside a bare fighter's 10, outside a booted one's 7
+
+	if got, want := protocol.MonsterAggroRadius, 10; got != want {
+		t.Fatalf("MonsterAggroRadius = %d, want %d (this test's boundary premise)", got, want)
+	}
+
+	if got, want := noticedByWolfAt(t, dist, ""), true; got != want {
+		t.Errorf("bare fighter noticed at %d hexes = %v, want %v (inside the wolf's %d)",
+			dist, got, want, protocol.MonsterAggroRadius)
+	}
+
+	if got, want := noticedByWolfAt(t, dist, paddedBootsID), false; got != want {
+		t.Errorf("booted fighter noticed at %d hexes = %v, want %v (boots shrink the wolf's reach to 7)",
+			dist, got, want)
+	}
+}
+
+// TestIronPlateArmorWidensTheAggroBoundary (#88): the tradeoff's cost half —
+// the plate (×1.25 → 12) gets its wearer noticed at 11 hexes, where a bare
+// fighter is still invisible to the same wolf.
+func TestIronPlateArmorWidensTheAggroBoundary(t *testing.T) {
+	t.Parallel()
+
+	const dist = 11 // outside a bare fighter's 10, inside a plated one's 12
+
+	if got, want := noticedByWolfAt(t, dist, ""), false; got != want {
+		t.Errorf("bare fighter noticed at %d hexes = %v, want %v (beyond the wolf's %d)",
+			dist, got, want, protocol.MonsterAggroRadius)
+	}
+
+	if got, want := noticedByWolfAt(t, dist, ironPlateArmorID), true; got != want {
+		t.Errorf("plated fighter noticed at %d hexes = %v, want %v (plate widens the wolf's reach to 12)",
+			dist, got, want)
+	}
+}

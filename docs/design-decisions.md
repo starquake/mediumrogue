@@ -230,6 +230,34 @@ Kept as open issues, not green-lit; revisit when nearer work clears.
   world-domain trigger is the friendly-`StackCap` blob, and the hostile
   trigger is a multi-hex flee path queued inside a fight.
 
+## Noticeability is gear, and gear can cost you something *(decided 2026-07-18, #88)*
+
+The pipeline has carried an `aggro-range` event since 6c with no content
+behind it. #88 gives it its first cards, and settles three things.
+
+- **Noticeability is gear-only, not a species trait.** How far off a monster
+  notices you is a *choice you make in the inventory* — swap the boots on
+  before the sneak, swap them off before the brawl — not a number you're born
+  with and can never change. Species passives stay what they are (a small
+  permanent flavour bonus); a permanent stealth species would also quietly
+  re-tier every monster's aggro table for one third of the roster.
+- **The fold is multiplicative, over each kind's OWN radius.** Padded Boots
+  read ×0.75 and Iron Plate Armor ×1.25, applied to `monsterDef.aggroRadius`
+  — so a rat's 7 and a dragon's 12 each move by a quarter and keep their
+  relative reach. A flat ±N would have flattened the per-kind table that 6c
+  deliberately introduced, and would have zeroed the short-radius kinds
+  outright. `applyRules` clamps the result **≥1**: today's cards are
+  multiplicative and can't go negative, but a future negative-`add` card
+  could otherwise fold a radius to 0 — a monster that never notices anyone,
+  which is not a design anyone will ask for on purpose.
+- **Tradeoff gear is a direction, not a one-off.** Iron Plate Armor is
+  strictly better than Leather Armor at its job (take-damage −2 vs −1) and
+  charges for it: you are noticed 25% sooner. Gear that is only ever better
+  turns the inventory into a sorting exercise — the "best" item is
+  computable, so there is no decision. A real cost makes equipping a
+  judgement about the situation you're walking into. Expect later gear to
+  follow this shape rather than the strict-upgrade ladder.
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14)*. Bubbles trigger

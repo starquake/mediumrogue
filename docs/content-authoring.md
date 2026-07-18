@@ -93,7 +93,7 @@ These are the moments the engine will expose. Every rule must name one:
 | **deal-damage** | yes | …your hit's damage number is computed | weapon enchantments, **"bonus vs undead"** (shipped as **Wyrmslayer Greatsword**, ×1.5 vs dragons — see `targetKind` below), damage buffs, **elf's crit** (a chance-conditioned ×2 — see the note below) |
 | **take-damage** | yes | …an incoming hit's damage is applied to you | dwarf toughness, armor, shields, vulnerabilities |
 | **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
-| **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards; no card uses this yet — future sneaky/loud gear |
+| **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards. Live content since #88: Padded Boots (×0.75), Iron Plate Armor (×1.25). Gear-only — no species card feeds it. The fold is clamped ≥1 |
 | **crit-check** | not yet | …an attacker's chance to land a **critical hit** is computed | `crit%` weapon stats, elf precision (today a `deal-damage` chance card — see note) |
 | **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
 
@@ -113,9 +113,8 @@ the one thing the pipeline couldn't express, and glance deliberately avoids
 needing it. It also never wastes an attacker's whole 4-second turn on a
 total miss.)*
 
-This list will grow (likely candidates: `aggro-range` for the backlogged
-"monster aggro radius via the pipeline" idea, *turn-start / turn-end* for
-poison and regeneration, *on-move*, *on-death*, *on-level-up*). Growing it
+This list will grow (likely candidates: *turn-start / turn-end* for poison
+and regeneration, *on-move*, *on-death*, *on-level-up*). Growing it
 is engine work — see §7 on what's cheap vs. expensive.
 
 ---

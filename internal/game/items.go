@@ -554,6 +554,16 @@ const (
 	idDuelistsSaber = "duelists-saber"
 )
 
+// Noticeability item ids (#88, the last Gear 1 slice): the first gear to
+// carry an evAggroRange card — how far away a WORLD-domain monster picks the
+// wearer up. Named here for the same reason as every id block above: the
+// registry entry (content.go), the rat/wolf/troll/dragon drop tables (also
+// content.go) and their pinning tests can't drift on a typo.
+const (
+	idPaddedBoots    = "padded-boots"
+	idIronPlateArmor = "iron-plate-armor"
+)
+
 // Shield ids (#90, S4 of #55): the first shield-type items — referenced
 // from the registry, the rat/wolf/troll/dragon drop tables (both
 // content.go), and their pinning tests.
