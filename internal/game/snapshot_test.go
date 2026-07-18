@@ -653,3 +653,47 @@ func TestRestoreRecomputesDerivedHP(t *testing.T) {
 		t.Errorf("restored HP = %d, want %d (clamped down from the stale stored 66)", got, want)
 	}
 }
+
+// TestSnapshotRoundTripSkillState (#124 task 3): all three skill fields
+// survive a save/load. PointsGrantedLevel is the one that matters most — it
+// is what stops a reload from re-paying every level the player has ever
+// earned, and it is invisible in play, so only a test catches its loss.
+func TestSnapshotRoundTripSkillState(t *testing.T) {
+	t.Parallel()
+
+	w, _ := newSnapshotWorld(t)
+
+	me, err := w.Join("", "scholar", protocol.ClassMage, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.StreamOpened(me.Token)
+
+	learned := []string{"combat-training", "weak-spot"}
+	w.SetSkillStateForTest(me.EntityID, learned, 4, 3)
+
+	data, err := w.MarshalState()
+	if err != nil {
+		t.Fatalf("MarshalState: %v", err)
+	}
+
+	restored, _ := newSnapshotWorld(t)
+	if err := restored.RestoreState(data); err != nil {
+		t.Fatalf("RestoreState: %v", err)
+	}
+
+	gotLearned, gotPoints, gotGranted := restored.SkillStateForTest(me.EntityID)
+
+	if got, want := strings.Join(gotLearned, ","), strings.Join(learned, ","); got != want {
+		t.Errorf("learned skills = %q, want %q", got, want)
+	}
+
+	if got, want := gotPoints, 4; got != want {
+		t.Errorf("skill points = %d, want %d", got, want)
+	}
+
+	if got, want := gotGranted, 3; got != want {
+		t.Errorf("pointsGrantedLevel = %d, want %d (else a reload re-pays every level)", got, want)
+	}
+}

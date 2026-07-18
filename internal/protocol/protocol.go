@@ -307,6 +307,13 @@ const (
 	ElfCritMultiplier = 2
 	// DwarfDamageReduction is the flat damage reduction per attack for Dwarf species.
 	DwarfDamageReduction = 1
+	// SkillPointsPerLevel is the skill-point bank grant every player earns per
+	// level gained (#124).
+	SkillPointsPerLevel = 2
+	// HumanBonusSkillPoints is the EXTRA point a Human earns per level — the
+	// species perk that replaces the XP multiplier (#123/#124 task 8). Not a
+	// rule card: a per-level bank grant is not a fold over a combat value.
+	HumanBonusSkillPoints = 1
 )
 
 // Per-class passive bonuses (tunable). The Rogue's glance is the first
