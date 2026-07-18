@@ -118,18 +118,25 @@ test("entering a combat bubble hard-cancels the auto-walk goal and path", async 
         .toBeGreaterThan(turnBefore);
     }
   }
-  expect(inCombat, `walk never reached a combat bubble within ${maxWalkTurns} turns`).toBe(true);
-
-  // The test only proves something if this client actually queued a walk
-  // before combat. Zero taps means the spawn landed inside the tap cutoff —
-  // either bad spawn luck (monster placement is random per server boot, and
-  // with equal move speeds a too-close spawn can never reopen the gap: #98)
-  // or a dirty --repeat-each rerun whose abandoned fight churned around the
+  // Classify BEFORE asserting (#117 recurrence, 2026-07-18): this skip used to
+  // sit *below* the inCombat assertion, so a run whose precondition was never
+  // met failed red — "walk never reached a combat bubble within 90 turns" —
+  // instead of skipping. Zero taps means the walk never even started: the
+  // spawn landed inside the tap cutoff (bad spawn luck — monster placement is
+  // random per server boot, and with equal move speeds a too-close spawn can
+  // never reopen the gap: #98), or a dirty --repeat-each rerun churned the
   // sanctuary (e2e entities persist for the server session). Both are unmet
-  // preconditions, not product bugs — skip rather than fail. MONSTER_COUNT=1
-  // (playwright.config.ts) keeps the bad-luck case rare; an occasional skip
-  // is expected, a consistently-skipping spec is the signal to investigate.
+  // preconditions, not product bugs. MONSTER_COUNT=1 (playwright.config.ts)
+  // keeps the bad-luck case rare; an occasional skip is expected, a
+  // consistently-skipping spec is the signal to investigate.
+  //
+  // Order matters for DIAGNOSIS too: with the skip first, any surviving red on
+  // this assertion now proves taps > 0 — the walk really was queued and really
+  // did fail to arrive, which is a product signal worth chasing rather than
+  // spawn luck.
   test.skip(taps === 0, "spawned too close to a monster (or dirty rerun server) — no walk to cancel");
+
+  expect(inCombat, `walk never reached a combat bubble within ${maxWalkTurns} turns`).toBe(true);
 
   // The same bundle that flips inCombat clears the walk goal and its ring —
   // no waiting: the onTurn handler does both synchronously.

@@ -148,10 +148,34 @@ drift between calls; use absolute paths or `cd` to the repo root before
 ## How work lands
 
 - **Everything lands via a pull request**, never a direct push to `main`.
+- **Merges outrank builds.** In any pass that both merges and builds, land the
+  merges first and branch the build off the freshly-merged `main` — work built
+  on a stale base has to rebase. When two open PRs touch the same files, note
+  it in the second PR's body: whoever merges second owns the rebase.
 - **Merge gate:** only merge a PR carrying the **`ready to merge`** label —
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and
   wait — adding it is the maintainer's signal.
+- **The `needs:*` labels are the handoff baton** — exactly one per issue names
+  the next action and whose court it's in: amber (`needs: your input` /
+  `needs: your sign-off`) is the maintainer's, blue (`needs: spec` /
+  `needs: plan` / `needs: build`) is Claude's, and `ready to merge` is the
+  PR-level gate above. The design/mockup/build skills flip it at each pause.
+  **The whole board can be driven async through comments + labels**: the
+  `work-the-board` skill runs one triage-and-advance pass — replying to
+  comments, doing the blue work, building slices the maintainer authorised (a
+  `go`/`build`/`approved` comment or a flip to `needs: build`), and merging PRs
+  that carry `ready to merge` — while **stopping at every maintainer gate**, at
+  most **one build per pass**, and skipping anything labelled **`hold`**.
+  Design direction and `ready to merge` are never Claude's to decide/grant.
+  Every open ticket also carries an auto-maintained `> 🤖 **Next steps**`
+  comment stating its state and the actions available to move it, so a
+  commenter can always see the next step without knowing the workflow, and —
+  when it's waiting on the maintainer — a **copy-paste answer block** they can
+  fill in instead of writing prose. **Post a NEW one whenever the state changes
+  — never edit the previous in place**: the thread is the ticket's history, and
+  appending keeps it readable in order. Nothing changed since the last one? Post
+  nothing.
 - **Milestone slices are designed before they're built**: the spec and the
   implementation plan live **in the GitHub issue** (the "Design slice" issue
   template, `.github/ISSUE_TEMPLATE/design-slice.md`) — write the spec,
