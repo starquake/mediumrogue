@@ -72,8 +72,9 @@ The `needs:*` labels are the state machine; this skill just drives it.
 | PR with new maintainer comments | address them, re-push | rework |
 | PR carrying `ready to merge` | **merge it** (label + green CI + rebase-if-behind + squash) | `merge-pr` |
 
-3. **Refresh each ticket's Next-steps reminder** (post if missing, edit in place
-   if stale) so its state + available actions are always current — see below.
+3. **Post a Next-steps reminder on every ticket whose state you just moved** —
+   a new comment each time, never an edit of the previous one, so the thread
+   reads chronologically. Unchanged state → no comment. See below.
 4. **The build cap: one build per pass.** Cheap advancement, replies, and merges
    are unlimited; but do only the **single** highest-priority build (an approved
    slice, else a bug fix), then leave the rest labelled for the next pass. This
@@ -82,15 +83,23 @@ The `needs:*` labels are the state machine; this skill just drives it.
 5. **Looks-driven** design steps still get their mockup first (`mockup` skill) —
    never build UI a pass hasn't previewed for the maintainer.
 
-## The Next-steps reminder — keep it fresh on every ticket
+## The Next-steps reminder — append one whenever the state moves
 
-Every open ticket carries **one** auto-maintained comment, headed
+Every open ticket carries an auto-maintained comment, headed
 `> 🤖 **Next steps**`, that states where the ticket is and what actions are
 available — so the maintainer *and* any commenter can move it without knowing the
-workflow. **One comment per ticket, edited in place** (find it by its header and
-update it — never post a second). A pass refreshes it wherever it no longer
-matches the ticket's state, and — the general convention (CLAUDE.md) — it is
-refreshed whenever *any* skill flips a `needs:*` label.
+workflow.
+
+**Post a NEW comment each time the state changes — never edit the previous one
+in place.** The thread is the ticket's history: editing rewrites it, so a
+reader who saw the old state can't tell what changed or when. Appending keeps
+the issue readable top-to-bottom, in order. The older reminders simply stand as
+the record of where the ticket has been.
+
+Post one whenever the state actually moves (a `needs:*` flip, a plan landing, a
+PR opening or merging) — not on every pass. If nothing changed since the last
+reminder, say nothing: an unchanged state re-posted is noise, and the previous
+comment is still accurate.
 
 Content by state (state line + a "Next:" line naming the action and who does it):
 
