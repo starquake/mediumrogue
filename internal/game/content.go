@@ -72,33 +72,39 @@ var itemDefs = []*itemDef{
 	{
 		id: idIronSword, name: "Iron Sword", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, damage: 4,
+		damageType: protocol.DamageTypeSharp,
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 7 -> 4, §4's "1H ≈ ½ 2H"
 		// pass — the dagger no longer out-damages the fighter's sword).
 		id: idDagger, name: "Dagger", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, damage: 4,
+		damageType: protocol.DamageTypeSharp,
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 6 -> 4).
 		id: idShortbow, name: "Shortbow", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagRanged}, damage: 4, rangeHex: 4,
+		damageType: protocol.DamageTypeSharp,
 	},
 	{
 		id: idOakWand, name: "Oak Wand", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, damage: 2,
+		damageType: protocol.DamageTypeBlunt,
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 4 -> 3).
 		id: idEmberFocus, name: "Ember Focus", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, damage: 3, rangeHex: 4, aoeRadius: 1,
+		damageType: protocol.DamageTypeFire,
 	},
 
 	// Starter drop set.
 	{
 		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 3, desc: "+3 damage vs targets below half HP",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, desc: "+3 damage vs targets below half HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowPct, n: 50}}, then: effect{kind: effAdd, n: 3}},
 		},
@@ -106,14 +112,16 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 6 -> 5).
 		id: idIronWarhammer, name: "Iron Warhammer", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 5, desc: "a flat upgrade over the iron sword — rare",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeBlunt,
+		damage:     5, desc: "a flat upgrade over the iron sword — rare",
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 3).
 		id: idVenomFang, name: "Venom Fang", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 3, desc: "+4 damage vs targets at full HP",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, desc: "+4 damage vs targets at full HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}}, then: effect{kind: effAdd, n: 4}},
 		},
@@ -121,8 +129,9 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 3).
 		id: idPackBow, name: "Pack Bow", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagRanged},
-		damage: 3, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
+		tags:       []string{protocol.WeaponTagRanged},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAllyInBubble}}, then: effect{kind: effAdd, n: 3}},
 		},
@@ -131,7 +140,8 @@ var itemDefs = []*itemDef{
 		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
 		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
-		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
+		damageType: protocol.DamageTypeFire,
+		damage:     6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
@@ -142,8 +152,9 @@ var itemDefs = []*itemDef{
 	// content designer — ids/names/numbers are his cards, transcribed.
 	{
 		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 4, desc: "+3 damage in a dwarf's hands",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeBlunt,
+		damage:     4, desc: "+3 damage in a dwarf's hands",
 		flavor: "This ancient mattock still holds a razor-sharp edge.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
@@ -154,7 +165,8 @@ var itemDefs = []*itemDef{
 		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
 		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
-		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		damageType: protocol.DamageTypeFire,
+		damage:     6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
 		flavor: "Tuned to eliminate the weakest enemies.",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
@@ -174,7 +186,8 @@ var itemDefs = []*itemDef{
 		// keystone spec's "1H ≈ ½ 2H" anchor: a 2H roughly doubles a 1H).
 		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, twoHanded: true,
-		damage: 9, desc: "×1.5 damage vs dragons",
+		damageType: protocol.DamageTypeHoly,
+		damage:     9, desc: "×1.5 damage vs dragons",
 		flavor: "Forged by a legendary hero to slay the evil dragon Werdmullerix.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
@@ -245,8 +258,9 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 6 -> 4).
 		id: idMisericorde, name: "Misericorde", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 4, desc: "15% chance to strike true for double damage",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     4, desc: "15% chance to strike true for double damage",
 		flavor: "A blade thin enough to find the gap between any two plates.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 15}},
@@ -256,8 +270,9 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 4).
 		id: idDuelistsSaber, name: "Duelist's Saber", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 4, desc: "10% chance to land a perfect riposte for double",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     4, desc: "10% chance to land a perfect riposte for double",
 		flavor: "Its balance rewards patience; its edge rewards timing.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
@@ -295,6 +310,69 @@ var itemDefs = []*itemDef{
 			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase + 25}},
 		},
 	},
+	// Damage-type content wave (#92, DT1): types must be FELT on day one, so
+	// the wave ships one resist armor per FAMILY (physical / elemental /
+	// metaphysical) plus a weapon for each type that had no representative.
+	// A resist is an ordinary take-damage card gated on the incoming type
+	// (condIncomingType) — no resist subsystem, no new machinery.
+	//
+	// Numbers below are first-draft knobs anchored on the shipped armor
+	// ladder (Leather -1, Iron Plate -2 flat): a resist is a HALVING, but
+	// only against one of six types, so it is situational where flat
+	// mitigation is always-on. Designer rewording and retuning welcome.
+	{
+		// The parked P2 designer card, unparked (#92).
+		id: idInfernalChainMail, name: "Infernal Chain Mail", itemType: protocol.ItemTypeChest,
+		desc:   "take half damage from fire",
+		flavor: "Forged in a place where fire was the weather.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeFire}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// Physical-family resist: sharp only. Blunt is deliberately NOT
+		// covered — a single card that answered both physical types would be
+		// strictly better than either elemental resist, since almost every
+		// early monster is sharp or blunt.
+		id: idWardedGambeson, name: "Warded Gambeson", itemType: protocol.ItemTypeChest,
+		desc:   "take half damage from sharp weapons",
+		flavor: "Layered linen, quilted thick. Blades slide; hammers do not care.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeSharp}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// Metaphysical-family resist: chaos only, the ghoul-tier answer.
+		id: idPilgrimsMantle, name: "Pilgrim's Mantle", itemType: protocol.ItemTypeChest,
+		desc:   "take half damage from chaos",
+		flavor: "Worn thin by a road no map admits to.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeChaos}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// Ice had no representative at all (#92's assignment table). Damage
+		// sits at the shipped 1H melee anchor (4), so the type is the whole
+		// point of the weapon rather than a stat upgrade riding along.
+		id: idFrostbrand, name: "Frostbrand", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeIce,
+		damage:     4, desc: "a blade of standing cold",
+		flavor: "The scabbard frosts over between fights.",
+	},
+	{
+		// Holy had exactly one representative, the dragon-only Wyrmslayer —
+		// so the type was unreachable for most of the game. A 1H blunt-tier
+		// mace at the same anchor makes it obtainable.
+		id: idConsecratedMace, name: "Consecrated Mace", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeHoly,
+		damage:     4, desc: "blessed iron — ghouls fear it",
+		flavor: "Every dent in it was somebody's bad night.",
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -323,6 +401,7 @@ var monsterDefs = []*monsterDef{
 		// (a monster must notice a player before it can close into a combat
 		// bubble, or it sits frozen just outside its own aggro range forever).
 		maxHP: 4, damage: 1, xp: 8, aggroRadius: protocol.CombatRadius + 1, dropChance: 10,
+		damageType: protocol.DamageTypeSharp,
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 1},
 			// Low-weight potion (inventory-slots task 3): recovery layer 2.
@@ -342,6 +421,7 @@ var monsterDefs = []*monsterDef{
 	{
 		id: idKindWolf, name: "Wolf",
 		maxHP: 10, damage: 3, xp: 20, aggroRadius: protocol.MonsterAggroRadius, dropChance: 30,
+		damageType: protocol.DamageTypeSharp,
 		// The current starter drop set, same order/weights as the pre-6c
 		// global dropTable — pins killDropSeed/killMissSeed (drops_test.go).
 		drops: []drop{
@@ -371,12 +451,25 @@ var monsterDefs = []*monsterDef{
 			// (killDropSeed/killMissSeed re-derived if the new total weight
 			// moves them).
 			{defID: idPaddedBoots, weight: 4},
+			// Damage-type wave (#92): appended LAST for the same reason. The
+			// Warded Gambeson (sharp resist) belongs on the sharp-clawed
+			// kind a player meets first.
+			{defID: idWardedGambeson, weight: 3},
 		},
 		rings: []int{1},
 	},
 	{
 		id: idKindGhoul, name: "Ghoul",
 		maxHP: 16, damage: 4, xp: 35, aggroRadius: 8, dropChance: 35,
+		damageType: protocol.DamageTypeChaos,
+		// Opposition as an AUTHORING CONVENTION (#92), not machinery: a
+		// Chaos-aligned monster is written with a Holy vulnerability, and
+		// nothing in the engine knows the two are paired. +50% from Holy —
+		// the Wyrmslayer Greatsword was forged for exactly this.
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeHoly}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
 		// The starter set with venom-fang weighted up (a ghoul's signature drop).
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 4},
@@ -391,12 +484,25 @@ var monsterDefs = []*monsterDef{
 			// kind is not pinned by drops_test.go today, but the rule holds
 			// regardless).
 			{defID: idMisericorde, weight: 4},
+			// Damage-type wave (#92): appended LAST so every earlier entry
+			// keeps its cumulative-weight position. The Pilgrim's Mantle
+			// (chaos resist) and the Consecrated Mace answer this kind
+			// specifically — the ghoul is where a player first WANTS a type.
+			{defID: idPilgrimsMantle, weight: 3},
+			{defID: idConsecratedMace, weight: 3},
 		},
 		rings: []int{1, 2},
 	},
 	{
 		id: idKindTroll, name: "Troll",
 		maxHP: 30, damage: 6, xp: 60, aggroRadius: 8, dropChance: 50,
+		damageType: protocol.DamageTypeBlunt,
+		// "Trolls fear fire" — the identity the whole damage-type arc was
+		// pitched on (#92). +50% from Fire.
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeFire}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
 		// The starter set with the warhammer/pack-bow/war-mage-staff weighted
 		// up — a troll's frontier-tier signature drops.
 		drops: []drop{
@@ -416,12 +522,16 @@ var monsterDefs = []*monsterDef{
 			// the troll, the tier where taking 2 less per hit is worth being
 			// noticed sooner.
 			{defID: idIronPlateArmor, weight: 4},
+			// Damage-type wave (#92): appended LAST. The Frostbrand is the
+			// game's only Ice weapon, frontier-tier loot.
+			{defID: idFrostbrand, weight: 3},
 		},
 		rings: []int{2},
 	},
 	{
 		id: idKindDragon, name: "Dragon",
 		maxHP: 60, damage: 9, xp: 150, aggroRadius: 12, dropChance: 100,
+		damageType: protocol.DamageTypeFire,
 		// The Wyrmslayer Greatsword (weight 2 — the headline drop, roughly as
 		// likely as the whole rest of the rare pool combined) plus a small
 		// rare pool.
@@ -436,6 +546,9 @@ var monsterDefs = []*monsterDef{
 			// Iron Plate Armor (#88): appended LAST — rare here (weight 1),
 			// the troll table is its common source.
 			{defID: idIronPlateArmor, weight: 1},
+			// Damage-type wave (#92): appended LAST. Infernal Chain Mail —
+			// fire resistance, dropped by the one kind whose claws are fire.
+			{defID: idInfernalChainMail, weight: 2},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},

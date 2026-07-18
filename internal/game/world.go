@@ -1219,7 +1219,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 			groundItems = append(groundItems, protocol.GroundItemView{
 				ID: gs.inst.id, Hex: hex, DefID: gs.inst.defID, Name: def.name, Type: def.itemType, Count: gs.count,
 				// Detail fields (#139), read straight off the def like itemViewOf.
-				Tags: def.tags, TwoHanded: def.twoHanded,
+				Tags: def.tags, DamageType: def.damageType, TwoHanded: def.twoHanded,
 				Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc, Flavor: def.flavor,
 			})
 		}
@@ -1297,7 +1297,7 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 
 	return protocol.ItemView{
 		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
-		Tags: def.tags, TwoHanded: def.twoHanded,
+		Tags: def.tags, DamageType: def.damageType, TwoHanded: def.twoHanded,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
@@ -1570,7 +1570,10 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 // list never reaches here — see queueAttackLocked/resolveRangedLocked). Every
 // damage number in the game flows through here. Callers hold w.mu.
 func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weapon *itemDef, base int) int {
-	ctx := ruleCtx{attacker: attacker, victim: victim, allyInBubble: w.allyInBubbleLocked(attacker), rng: rng}
+	ctx := ruleCtx{
+		attacker: attacker, victim: victim, incomingType: weapon.damageType,
+		allyInBubble: w.allyInBubbleLocked(attacker), rng: rng,
+	}
 
 	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
 	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)

@@ -257,6 +257,36 @@ behind it. #88 gives it its first cards, and settles three things.
   computable, so there is no decision. A real cost makes equipping a
   judgement about the situation you're walking into. Expect later gear to
   follow this shape rather than the strict-upgrade ladder.
+## Damage types: six flat types, opposition as convention *(decided 2026-07-16, built 2026-07-18, #92)*
+
+The damage-type arc (DT1) is the single highest-leverage step toward ARPG
+gear feel: it unlocks resist gear, elemental weapons, and monster identities
+at once. Four things were settled.
+
+- **Six types in three families**: Sharp/Blunt (physical), Fire/Ice
+  (elemental), Holy/Chaos (metaphysical). Every attack carries exactly one,
+  every weapon and monster kind must declare one, and content load panics if
+  either is missing — an untyped weapon would silently dodge every resist
+  card ever written and surface only as odd numbers mid-fight.
+- **Resists are cards, not a subsystem.** A resistance or vulnerability is a
+  `take-damage` card gated on one new condition, `incomingType` — the single
+  condition kind that serves every such card ever written. This clears the
+  no-mechanic-wildfire gate by construction, and it keeps the ARPG rule: the
+  check is **decoupled** (what type is landing?), never a coupled roll
+  folding attacker and defender into one number.
+- **Opposition is an authoring convention, not machinery.** Holy↔Chaos and
+  Fire↔Ice pair only in the content: the Chaos-aligned ghoul is *written*
+  with a Holy vulnerability, and nothing in the engine knows the two are
+  related. Full authoring freedom now; promotable to a real axis later if
+  content always ends up mirrored — but not before, since an axis is far
+  harder to remove than to add.
+- **Types must be felt on day one**, so the first content wave ships with the
+  machinery rather than after it: one resist armor per family, plus a weapon
+  for each type that had no representative (Ice had none at all; Holy had
+  only the dragon-only Wyrmslayer, which made the type effectively
+  unobtainable). Blunt deliberately gets **no** resist — a card answering both
+  physical types would be strictly better than either elemental resist, since
+  nearly every early monster is sharp or blunt.
 
 ## Open flags (doc vs implementation)
 

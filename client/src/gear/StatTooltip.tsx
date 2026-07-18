@@ -32,6 +32,16 @@ export function hideHover(): void {
   setHover(null);
 }
 
+// A text stat line (the damage type, #92) — StatLine renders numbers.
+function StatText(props: { label: string; value: string }): JSXElement {
+  return (
+    <div class="tt-row">
+      <span class="tt-label">{props.label}</span>
+      <span class="tt-val">{props.value}</span>
+    </div>
+  );
+}
+
 function StatLine(props: { label: string; value: number }): JSXElement {
   return (
     <div class="tt-row">
@@ -61,6 +71,9 @@ function StatBlock(props: { item: ItemStats & { name: string }; slot?: string })
         }
       >
         <StatLine label="Damage" value={it().damage} />
+        <Show when={it().damageType !== ""}>
+          <StatText label="Type" value={it().damageType} />
+        </Show>
         <Show when={it().rangeHex > 0}>
           <StatLine label="Range" value={it().rangeHex} />
         </Show>

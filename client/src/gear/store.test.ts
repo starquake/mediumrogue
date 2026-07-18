@@ -20,6 +20,7 @@ function itemView(overrides: Partial<ItemView>): ItemView {
     name: "",
     type: ItemTypeWeapon,
     tags: [],
+    damageType: "",
     twoHanded: false,
     damage: 0,
     rangeHex: 0,

@@ -72,6 +72,10 @@ type monsterDef struct {
 	drops       []drop
 	rings       []int      // which difficulty rings (0..protocol.RingCount-1) this kind spawns in
 	rules       []ruleCard // future kind passives; empty at launch
+	// damageType is the protocol.DamageType* this kind's claws deal (#92),
+	// carried onto the built claws profile below — REQUIRED on every kind
+	// (validateMonsterDefs), since claws are a weapon like any other.
+	damageType string
 
 	// claws is the built-in close-slot profile closeDefFor returns for an
 	// entity of this kind: damage + rules from the fields above, mirroring
@@ -98,6 +102,7 @@ func buildMonsterIndex() {
 		def.claws = &itemDef{
 			id: "claws", name: "Claws", itemType: protocol.ItemTypeWeapon,
 			tags: []string{protocol.WeaponTagMelee}, damage: def.damage, rules: def.rules,
+			damageType: def.damageType,
 		}
 	}
 }
@@ -268,6 +273,7 @@ func validateMonsterDefs(defs []*monsterDef) {
 
 		seen[def.id] = true
 
+		validateMonsterDamageType(def)
 		validateMonsterAggroRadius(def)
 		validateMonsterLeashRadius(def)
 		validateMonsterDrops(def)
@@ -279,6 +285,15 @@ func validateMonsterDefs(defs []*monsterDef) {
 		if !covered[r] {
 			panic("game: no monster kind covers ring " + strconv.Itoa(r))
 		}
+	}
+}
+
+// validateMonsterDamageType panics if def carries no valid damage type
+// (#92): its claws are a weapon like any other, and an untyped one would
+// dodge every resistance and vulnerability card ever written.
+func validateMonsterDamageType(def *monsterDef) {
+	if !validDamageType(def.damageType) {
+		panic("game: monster " + def.id + " has unknown or missing damage type " + def.damageType)
 	}
 }
 

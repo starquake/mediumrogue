@@ -1616,6 +1616,7 @@ async function start(): Promise<void> {
                 desc: gi.desc,
                 flavor: gi.flavor,
                 tags: gi.tags,
+                damageType: gi.damageType,
                 twoHanded: gi.twoHanded,
               }));
       refreshPickup(rowsHere, moved);

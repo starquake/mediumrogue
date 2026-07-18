@@ -61,6 +61,8 @@ export interface ItemStats {
   flavor: string;
   tags: string[];
   twoHanded: boolean;
+  /** The damage type a weapon deals (#92); "" for a non-weapon. */
+  damageType: string;
 }
 
 /**
@@ -236,6 +238,7 @@ export function setInventory(items: ItemView[]): void {
       desc: it.desc,
       flavor: it.flavor,
       tags: it.tags,
+      damageType: it.damageType,
       twoHanded: it.twoHanded,
     };
     if (it.equipped) {

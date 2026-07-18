@@ -184,6 +184,26 @@ const (
 	WeaponTagMagic  = "magic"
 )
 
+// Damage types (#92, DT1): every attack carries exactly one, and resistances
+// and vulnerabilities are take-damage rule cards conditioned on it — one
+// vocabulary shared by the engine, content, and the client tooltip. Three
+// families of two: physical (Sharp/Blunt), elemental (Fire/Ice), and
+// metaphysical (Holy/Chaos).
+//
+// The families and the Holy↔Chaos / Fire↔Ice oppositions are an AUTHORING
+// CONVENTION, not machinery: all six types are mechanically flat, and a
+// "Chaos monster fears Holy" is a vulnerability card someone wrote, not an
+// axis the engine knows about. Promotable to a real axis later if content
+// always ends up mirrored.
+const (
+	DamageTypeSharp = "sharp"
+	DamageTypeBlunt = "blunt"
+	DamageTypeFire  = "fire"
+	DamageTypeIce   = "ice"
+	DamageTypeHoly  = "holy"
+	DamageTypeChaos = "chaos"
+)
+
 // Equip-slot names. Armor slots equal their item type; weapons go to a
 // hand (main first, then off; two-handed locks both).
 const (
@@ -444,6 +464,9 @@ type ItemView struct {
 	// Tags names which attacks fire a weapon (WeaponTagMelee/Ranged/Magic);
 	// empty for a non-weapon item.
 	Tags []string `json:"tags"`
+	// DamageType is the DamageType* a weapon deals (#92) — what resistances
+	// and vulnerabilities key on; empty for a non-weapon item.
+	DamageType string `json:"damageType"`
 	// TwoHanded is true for a weapon that occupies main-hand AND locks
 	// off-hand; always false for a non-weapon item.
 	TwoHanded bool `json:"twoHanded"`
@@ -477,13 +500,14 @@ type GroundItemView struct {
 	Type  string `json:"type"`
 	Count int    `json:"count"`
 	// Detail fields (#139) — identical meanings to ItemView's.
-	Tags      []string `json:"tags"`
-	TwoHanded bool     `json:"twoHanded"`
-	Damage    int      `json:"damage"`
-	RangeHex  int      `json:"rangeHex"`
-	AoERadius int      `json:"aoeRadius"`
-	Desc      string   `json:"desc"`
-	Flavor    string   `json:"flavor"`
+	Tags       []string `json:"tags"`
+	DamageType string   `json:"damageType"`
+	TwoHanded  bool     `json:"twoHanded"`
+	Damage     int      `json:"damage"`
+	RangeHex   int      `json:"rangeHex"`
+	AoERadius  int      `json:"aoeRadius"`
+	Desc       string   `json:"desc"`
+	Flavor     string   `json:"flavor"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.
