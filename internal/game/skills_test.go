@@ -278,3 +278,104 @@ func TestSkillLessEntityFoldsExactlyAsBefore(t *testing.T) {
 		t.Errorf("skillCards for an entity with no skills = %+v, want nil", got)
 	}
 }
+
+// TestV1SkillContentFoldsThroughThePipeline (#124 task 5) measures each
+// shipped skill through applyRules rather than asserting its card literal —
+// a card that validated but folded to nothing would pass a shape test and
+// fail here.
+func TestV1SkillContentFoldsThroughThePipeline(t *testing.T) {
+	t.Parallel()
+
+	melee := &itemDef{id: "sword", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee}}
+	bow := &itemDef{id: "bow", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagRanged}}
+
+	cardsOf := func(id string) []ruleCard {
+		def, ok := skillDefByID[id]
+		if !ok {
+			t.Fatalf("skill %s is not registered", id)
+		}
+
+		return def.rules
+	}
+
+	t.Run("combat training scopes by weapon tag", func(t *testing.T) {
+		t.Parallel()
+
+		cards := cardsOf(skillCombatTraining)
+
+		if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{weapon: melee}), 11; got != want {
+			t.Errorf("melee swing of 10 = %d, want %d", got, want)
+		}
+
+		if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{weapon: bow}), 10; got != want {
+			t.Errorf("bow shot of 10 = %d, want %d (melee-only)", got, want)
+		}
+	})
+
+	t.Run("weak spot only against a full-health target", func(t *testing.T) {
+		t.Parallel()
+
+		cards := cardsOf(skillWeakSpot)
+		full := &entity{hp: 10, maxHP: 10}
+		hurt := &entity{hp: 4, maxHP: 10}
+
+		if got, want := applyRules(evDealDamage, 5, cards, ruleCtx{victim: full}), 9; got != want {
+			t.Errorf("hit on a full-health target = %d, want %d", got, want)
+		}
+
+		if got, want := applyRules(evDealDamage, 5, cards, ruleCtx{victim: hurt}), 5; got != want {
+			t.Errorf("hit on a wounded target = %d, want %d (inert)", got, want)
+		}
+	})
+
+	t.Run("scouting shrinks the notice radius", func(t *testing.T) {
+		t.Parallel()
+
+		cards := cardsOf(skillScouting)
+		if got, want := applyRules(evAggroRange, 10, cards, ruleCtx{}), 8; got != want {
+			t.Errorf("aggro radius 10 with scouting = %d, want %d", got, want)
+		}
+	})
+}
+
+// TestShieldWallNeedsBothTheShieldAndTheRoll (#124 task 5): the only v1 skill
+// with two conditions, and the first that consumes rng. Both halves have to
+// hold — a shield with an unlucky roll and a lucky roll without a shield must
+// each leave the hit whole.
+//
+//nolint:paralleltest // drives a seeded rng whose consumption order matters.
+func TestShieldWallNeedsBothTheShieldAndTheRoll(t *testing.T) {
+	cards := skillDefByID[skillShieldWall].rules
+
+	shielded := &entity{equipped: map[string]itemInstance{
+		protocol.SlotOffHand: {id: 1, defID: idWoodenBuckler},
+	}}
+	bare := &entity{equipped: map[string]itemInstance{}}
+
+	// A 15% card fires on a roll below 15; testRNG(seed) is deterministic, so
+	// scan seeds until one rolls each way rather than pinning a magic seed.
+	glanced, whole := false, false
+
+	for seed := uint64(1); seed <= 40 && (!glanced || !whole); seed++ {
+		got := applyRules(evTakeDamage, 10, cards, ruleCtx{victim: shielded, rng: testRNG(seed)})
+		switch got {
+		case 5:
+			glanced = true
+		case 10:
+			whole = true
+		default:
+			t.Fatalf("shielded hit of 10 = %d, want 5 (glance) or 10 (no proc)", got)
+		}
+	}
+
+	if !glanced || !whole {
+		t.Fatalf("scan found glanced=%v whole=%v over 40 seeds — expected both", glanced, whole)
+	}
+
+	// No shield: the card can never fire, whatever the roll.
+	for seed := uint64(1); seed <= 40; seed++ {
+		if got, want := applyRules(evTakeDamage, 10, cards, ruleCtx{victim: bare, rng: testRNG(seed)}), 10; got != want {
+			t.Fatalf("unshielded hit of 10 at seed %d = %d, want %d", seed, got, want)
+		}
+	}
+}

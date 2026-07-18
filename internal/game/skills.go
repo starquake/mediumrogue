@@ -1,6 +1,10 @@
 package game
 
-import "slices"
+import (
+	"slices"
+
+	"github.com/starquake/mediumrogue/internal/protocol"
+)
 
 // skills.go: the skill-system registry (#124). A skill is the same pure-data
 // rule card every other content type uses — species passives, gear, monster
@@ -21,6 +25,16 @@ const (
 	treeSurvival  = "survival"
 )
 
+// Skill ids: named for the same reason item ids are (items.go) — the
+// registry, the prerequisite links, and the pinning tests all reference
+// them, so a typo is a compile error rather than a silent miss.
+const (
+	skillCombatTraining = "combat-training"
+	skillWeakSpot       = "weak-spot"
+	skillShieldWall     = "shield-wall"
+	skillScouting       = "scouting"
+)
+
 // skillDef is one entry in the skill registry: what it is, which tree it
 // hangs on, what must be learned first, and the cards it contributes once
 // learned. Mirrors itemDef's shape deliberately — the pipeline cannot tell
@@ -39,19 +53,78 @@ type skillDef struct {
 	rules []ruleCard
 	// desc is the authored mechanical line ("+10% damage with melee
 	// weapons"); flavor is the optional lore line. Same split as itemDef.
-	// flavor has no reader until the panel renders it (task 9) and no writer
-	// until content lands (task 5) — declared here so the shape is settled
-	// before either is written.
+	// flavor is authored (task 5) but has no reader until the panel renders
+	// it (task 9).
 	desc   string
-	flavor string //nolint:unused // authored in task 5, rendered in task 9; see the comment above.
+	flavor string
 }
 
-// skillDefs is the registry. EMPTY until task 5 — this task ships the
-// machinery and its load-time panics, so a content bug fails at process
-// start rather than mid-fight.
+// skillDefs is the skill registry — the v1 content batch (#124 task 5).
+// Numbers are first-draft knobs; the shapes are what matter.
 //
-//nolint:gochecknoglobals // fixed content registry, effectively const; validated at init.
-var skillDefs []*skillDef
+// Every card here uses vocabulary that already exists. Two conditions were
+// added for this batch (weaponTagged, shieldEquipped, task 1); nothing else
+// is new, which is the point — a skill is content, not machinery.
+//
+//nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init.
+var skillDefs = []*skillDef{
+	// --- Class tree -------------------------------------------------------
+	{
+		id: skillCombatTraining, name: "Combat Training", tree: treeClass,
+		desc:   "+10% damage with melee weapons",
+		flavor: "Hours on the practice yard, and it finally shows.",
+		rules: []ruleCard{
+			// Scoped by weapon TAG rather than damage type (@starquake's
+			// call, #124): a tag is how a weapon is USED, which is what
+			// "with melee weapons" means — a blunt-scoped version would also
+			// have caught a thrown mace.
+			{event: evDealDamage, when: []condition{{kind: condWeaponTagged, s: protocol.WeaponTagMelee}},
+				then: effect{kind: effMulPct, n: percentBase + 10}},
+		},
+	},
+	{
+		id: skillWeakSpot, name: "Weak Spot", tree: treeClass,
+		prereqs: []string{skillCombatTraining},
+		desc:    "+4 damage against a target at full health",
+		flavor:  "The first cut is the one you plan.",
+		rules: []ruleCard{
+			// Zero new vocabulary: condTargetHPFull has shipped since the
+			// Venom Fang. The prereq on Combat Training is what proves
+			// in-tree gating works end to end.
+			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}},
+				then: effect{kind: effAdd, n: 4}},
+		},
+	},
+	{
+		id: skillShieldWall, name: "Shield Wall", tree: treeClass,
+		desc:   "while holding a shield, 15% chance an incoming hit only glances",
+		flavor: "Set your feet. Let it come.",
+		rules: []ruleCard{
+			// A glance% bump, NOT flat mitigation (@starquake's call, #124;
+			// and after #154 flat -N would be the only subtractive card left
+			// besides the dwarf passive). This is the shipped Rogue-passive
+			// shape: a chance-conditioned take-damage multiplier.
+			//
+			// DETERMINISM: this is the first v1 skill carrying a chance
+			// condition, so it CONSUMES rng from the turn stream whenever a
+			// shield-bearing entity is hit.
+			{event: evTakeDamage, when: []condition{{kind: condChance, n: 15}, {kind: condShieldEquipped}},
+				then: effect{kind: effMulPct, n: protocol.GlanceDamagePercent}},
+		},
+	},
+
+	// --- Adventure tree ---------------------------------------------------
+	{
+		id: skillScouting, name: "Scouting", tree: treeAdventure,
+		desc:   "monsters notice you 20% later",
+		flavor: "You read the ground before you walk it.",
+		rules: []ruleCard{
+			// The second rider #88 promised for evAggroRange (Padded Boots
+			// was the first). applyRules' >=1 clamp already guards the floor.
+			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase - 20}},
+		},
+	},
+}
 
 // skillDefByID is the derived lookup, built once at init alongside the item
 // and monster indexes.
