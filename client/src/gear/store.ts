@@ -90,7 +90,7 @@ export interface BackpackEntry extends ItemStats {
 }
 
 /** One row of the per-hex pickup modal. */
-export interface PickupRow {
+export interface PickupRow extends ItemStats {
   id: number;
   name: string;
   type: string;
@@ -307,7 +307,7 @@ export function togglePanel(): void {
  * present and the modal is not dismissed for this hex, it opens; when the hex
  * is empty of items, it closes.
  */
-export function refreshPickup(rows: { id: number; name: string; type: string; count: number }[], moved: boolean): void {
+export function refreshPickup(rows: Omit<PickupRow, "rejected">[], moved: boolean): void {
   if (moved) {
     dismissed = false;
   }

@@ -777,11 +777,18 @@
       /* Hover stat tooltip: an item's stats plus the delta vs the item equipped
          in the same slot. Fixed-positioned beside the hovered hex/cell (see
          showHover); pointer-events off so it never eats a click. */
-      .stat-tip {
+      /* The tooltip stack: the hovered item's block + one per equipped weapon
+         it's compared against (#139), fixed beside the anchor. */
+      .stat-tip-stack {
         position: fixed;
         z-index: 60;
-        width: 14rem;
         pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .stat-tip {
+        width: 14rem;
         background: #0d140d;
         border: 1px solid var(--accent);
         padding: 0.5rem 0.6rem;
@@ -813,12 +820,6 @@
       }
       .stat-tip .tt-val {
         font-variant-numeric: tabular-nums;
-      }
-      .stat-tip .tt-delta.up {
-        color: #7cd66c;
-      }
-      .stat-tip .tt-delta.down {
-        color: #e06c6c;
       }
       .stat-tip .tt-effect {
         margin-top: 0.4rem;
@@ -1018,6 +1019,7 @@
     </div>
     <div id="character-root"></div>
     <div id="pickup-root"></div>
+    <div id="tooltip-root"></div>
     <div id="start-screen" hidden>
       <div id="start-panel">
         <h1>Medium Rogue</h1>

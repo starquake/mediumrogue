@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -45,11 +46,18 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 		},
 		GroundItems: []protocol.GroundItemView{
 			{
-				ID:    9,
-				Hex:   protocol.Hex{Q: 2, R: -1},
-				DefID: "bow",
-				Name:  "Bow",
-				Type:  protocol.ItemTypeWeapon,
+				ID:        9,
+				Hex:       protocol.Hex{Q: 2, R: -1},
+				DefID:     "bow",
+				Name:      "Bow",
+				Type:      protocol.ItemTypeWeapon,
+				Tags:      []string{protocol.WeaponTagRanged},
+				TwoHanded: true,
+				Damage:    3,
+				RangeHex:  4,
+				AoERadius: 0,
+				Desc:      "A ranged weapon.",
+				Flavor:    "Yew and sinew.",
 			},
 		},
 	}
@@ -130,25 +138,61 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 		t.Fatalf("len(got.GroundItems) = %d, want %d", got, want)
 	}
 
-	gotGround, wantGround := got.GroundItems[0], want.GroundItems[0]
-	if got, want := gotGround.ID, wantGround.ID; got != want {
+	assertGroundItemRoundTrip(t, got.GroundItems[0], want.GroundItems[0])
+}
+
+// assertGroundItemRoundTrip checks every GroundItemView field survives the wire,
+// including the #139 detail fields. Split out of the round-trip test so its
+// cyclomatic complexity stays under the linter's ceiling.
+func assertGroundItemRoundTrip(t *testing.T, got, want protocol.GroundItemView) {
+	t.Helper()
+
+	if got, want := got.ID, want.ID; got != want {
 		t.Errorf("GroundItemView.ID = %d, want %d", got, want)
 	}
 
-	if got, want := gotGround.Hex, wantGround.Hex; got != want {
+	if got, want := got.Hex, want.Hex; got != want {
 		t.Errorf("GroundItemView.Hex = %+v, want %+v", got, want)
 	}
 
-	if got, want := gotGround.DefID, wantGround.DefID; got != want {
+	if got, want := got.DefID, want.DefID; got != want {
 		t.Errorf("GroundItemView.DefID = %q, want %q", got, want)
 	}
 
-	if got, want := gotGround.Name, wantGround.Name; got != want {
+	if got, want := got.Name, want.Name; got != want {
 		t.Errorf("GroundItemView.Name = %q, want %q", got, want)
 	}
 
-	if got, want := gotGround.Type, wantGround.Type; got != want {
+	if got, want := got.Type, want.Type; got != want {
 		t.Errorf("GroundItemView.Type = %q, want %q", got, want)
+	}
+
+	if got, want := got.Damage, want.Damage; got != want {
+		t.Errorf("GroundItemView.Damage = %d, want %d", got, want)
+	}
+
+	if got, want := got.RangeHex, want.RangeHex; got != want {
+		t.Errorf("GroundItemView.RangeHex = %d, want %d", got, want)
+	}
+
+	if got, want := got.AoERadius, want.AoERadius; got != want {
+		t.Errorf("GroundItemView.AoERadius = %d, want %d", got, want)
+	}
+
+	if got, want := got.TwoHanded, want.TwoHanded; got != want {
+		t.Errorf("GroundItemView.TwoHanded = %t, want %t", got, want)
+	}
+
+	if got, want := got.Tags, want.Tags; !slices.Equal(got, want) {
+		t.Errorf("GroundItemView.Tags = %v, want %v", got, want)
+	}
+
+	if got, want := got.Desc, want.Desc; got != want {
+		t.Errorf("GroundItemView.Desc = %q, want %q", got, want)
+	}
+
+	if got, want := got.Flavor, want.Flavor; got != want {
+		t.Errorf("GroundItemView.Flavor = %q, want %q", got, want)
 	}
 }
 

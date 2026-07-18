@@ -466,7 +466,9 @@ type ItemView struct {
 // up (IntentPickup). ID is the representative item instance id (stable client
 // key, and the id a pickup intent names). Type feeds the client's pickup
 // prompt (name + type); Count is the stack size (a consumable stack drops
-// whole — 1..ItemStackCap; always 1 for gear).
+// whole — 1..ItemStackCap; always 1 for gear). The detail fields mirror
+// ItemView so the pickup modal can show what an item IS before you take it
+// (#139) — same meanings as on ItemView.
 type GroundItemView struct {
 	ID    int64  `json:"id"`
 	Hex   Hex    `json:"hex"`
@@ -474,6 +476,14 @@ type GroundItemView struct {
 	Name  string `json:"name"`
 	Type  string `json:"type"`
 	Count int    `json:"count"`
+	// Detail fields (#139) — identical meanings to ItemView's.
+	Tags      []string `json:"tags"`
+	TwoHanded bool     `json:"twoHanded"`
+	Damage    int      `json:"damage"`
+	RangeHex  int      `json:"rangeHex"`
+	AoERadius int      `json:"aoeRadius"`
+	Desc      string   `json:"desc"`
+	Flavor    string   `json:"flavor"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.

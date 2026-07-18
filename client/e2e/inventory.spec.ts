@@ -220,9 +220,31 @@ test("dropping a backpack item opens the pickup modal; taking a row returns the 
   expect(await page.evaluate((id) => window.game.pickupModal.rows.find((r) => r.id === id)?.count, shortbowId)).toBe(1);
   expect(await page.evaluate(() => window.game.backpack.every((e) => e === null))).toBe(true);
 
+  // #139: the row carries what the item IS before you take it — a shortbow is a
+  // ranged weapon, so damage and range surface (exact numbers live in the
+  // registry; assert they're present, not their tuning values).
+  const stats = await page.evaluate((id) => window.game.pickupModal.rows.find((r) => r.id === id), shortbowId);
+  expect(stats?.damage).toBeGreaterThan(0);
+  expect(stats?.rangeHex).toBeGreaterThan(0);
+  // Hovering the row reveals the shared stat tooltip — the same one the
+  // inventory uses (extracted to gear/StatTooltip). A weapon shows its own
+  // block plus one per equipped hand it's weighed against (here the rogue's
+  // main-hand weapon), so assert the stack, not a single .stat-tip.
+  // pointer-events:none means the hover doesn't block the take click below.
+  await myRow.hover();
+  const stack = page.locator(".stat-tip-stack");
+  await expect(stack).toBeVisible();
+  await expect(stack).toContainText("Shortbow");
+  await expect(stack).toContainText("Damage");
+  // The candidate + at least one equipped weapon it's compared against.
+  expect(await stack.locator(".stat-tip").count()).toBeGreaterThanOrEqual(2);
+
   // Take it back — the row leaves the modal, and it returns to the backpack
   // (unequipped: items never auto-equip on pickup).
   await myRow.locator("button.yes").click();
+  // #139: taking removes the hovered row without a mouse-leave — the tooltip
+  // must not outlive it (a global overlay would otherwise linger).
+  await expect(stack).toBeHidden();
   await expect
     .poll(() => page.evaluate((id) => window.game.pickupModal.rows.some((r) => r.id === id), shortbowId), TURN_GATED)
     .toBe(false);
