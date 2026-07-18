@@ -222,9 +222,44 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 
 | Species | Passive (pipeline rule card) |
 |---|---|
-| **Human** | +50% XP on every award |
+| **Human** | +1 skill point per level (#124 — was +50% XP until then; see below) |
 | **Elf** | 20% chance any hit crits ×2 |
 | **Dwarf** | −1 damage taken per hit (floor 1) |
+
+### Skills (#124)
+
+Three trees — **Class** (per class), **Adventure** and **Survival** (shared) —
+built on the same pure-data rule cards as gear and species passives. A skill
+is content, not machinery: learning one adds its cards to your folds, and the
+pipeline cannot tell them apart from a sword's.
+
+| Skill | Tree | Card |
+|---|---|---|
+| Combat Training | Class | `deal-damage` ×1.10 with a **melee-tagged** weapon |
+| Weak Spot | Class | `deal-damage` +4 vs a full-health target (requires Combat Training) |
+| Shield Wall | Class | while a shield is in the off-hand, **15% chance** an incoming hit only glances |
+| Scouting | Adventure | `aggro-range` ×0.8 — monsters notice you 20% later |
+
+- **Points**: `SkillPointsPerLevel = 2` per level, `HumanBonusSkillPoints = 1`
+  extra for Humans. The grant works off a persisted high-water mark, not a
+  level-up event (the engine has none — level is derived from XP), so dying
+  and re-earning a level never re-pays.
+- **Learning is out-of-combat only.** Unlike the five inventory actions it is
+  *not* queued as a bubble turn — it's rejected in combat (422). Learning is a
+  between-fights decision.
+- **Near-sighted (#61's proposal, settled in #124)**: you see what you have
+  learned and what you can learn **next** — never the whole tree, never a
+  locked capstone. This is enforced **server-side**: a locked skill is not
+  hidden by the client, it is never sent. Stumbling onto a capstone is the
+  intended experience; planning a build from a rendered graph is the thing
+  designed out.
+- **Own-only on the wire**: your skills and unspent points reach your own
+  client and nobody else's (`SnapshotFor` renders a bundle per viewer).
+- **No respec in v1.** Points are permanent once spent.
+- Prerequisites are **same-tree only** — one tree's progression may never gate
+  another's (#61 principle 5), enforced at content load.
+- Panel: `k` (not `s` — that's south), default closed, toggles independently
+  of the character panel.
 
 ### Progression, XP & death
 - XP from kills: **every player in the bubble gets the full amount per kill
@@ -237,7 +272,8 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   falling to a floor of 1 XP per level forever. **Damage no longer scales
   with level at all** (#60 XP3, `DamagePerLevel` cut): a weapon's damage is
   its content-data base plus any rule-card modifiers, full stop — levels
-  give HP only (skill points are a later, unbuilt slice).
+  give HP only — **plus skill points** since #124 (`SkillPointsPerLevel = 2`,
+  and a Human banks `HumanBonusSkillPoints = 1` more).
 - **Death**: XP falls to the start of the current level (levels never
   lost — the "level start" floor is level-aware under the quadratic curve
   too), respawn at full HP with the **same identity and all gear** (gear
@@ -821,7 +857,8 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 | `HPGainBase` / `HPGainMin` | 8 / 1 | front-loaded HP curve: gain advancing FROM level n = `max(HPGainMin, HPGainBase-(n-1))` — 8,7,6,…,1 then +1 forever (#60 XP2) |
 | `XPCurveBase` / `QuestKillRewardPerTarget` | 100 / 20 | quadratic XP curve: total XP to **reach** level L = `XPCurveBase*(L-1)^2` (#60 XP1) & flat per-target kill-quest reward |
 | `MonsterMaxHP` / `FistsDamage` | 10 / 1 | pre-6c monster baseline (wolf's HP) & unarmed profile |
-| `HumanXPBonusPercent` / `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 50 / 20 / 2 / 1 | species knobs |
+| `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 20 / 2 / 1 | species knobs (`HumanXPBonusPercent` retired in #124 — the Human perk is skill points now) |
+| `SkillPointsPerLevel` / `HumanBonusSkillPoints` | 2 / 1 | skill points banked per level, and the Human's extra (#124) |
 | `RogueGlanceChancePercent` / `GlanceDamagePercent` | 20 / 50 | Rogue class passive: chance an incoming hit is halved (never negated; floor 1 still applies) |
 | `RegenPerTurn` | 1 | out-of-combat HP per world turn |
 | `ForestSightCost` | 2 | hexes of effective sight range one forest hex between two entities costs (#95); rock hard-blocks, water is transparent |
@@ -841,9 +878,10 @@ values are unchanged (20 / 3 / 30%).*
 ## 5. Decided but not yet built
 
 Recorded in `design.md` §0/§8/§9, `design-decisions.md` (Q1–Q11
-all decided 2026-07-13), and issue #36: the **3-tree
-skill system** (Class/Adventure/Survival; level-up = one bankable skill
-point; First Aid & Make Camp seed the Survival/Adventure trees), downed
+all decided 2026-07-13), and issue #36: the **rest of the skill trees**
+(#124 shipped the system with four v1 skills; First Aid & Make Camp still
+seed the Survival/Adventure trees), **active skills** (#161 — cut in
+2026-07-14's action-economy prune, reopened for teleport), downed
 state & revive, further recovery layers (rests, the sanctuary
 **trade hub** — the 6c sanctuary zone is only the monster-free ground, not
 the hub itself; healing potions + the backpack-cap layer now ship with the

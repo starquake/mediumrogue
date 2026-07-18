@@ -18,7 +18,7 @@ Built for a ~15-friend group who hop on together for an evening.
 
 *For someone who knows games but doesn't care about the tech. The gist of every decision in this document, described as the game you'd actually experience.*
 
-**Getting in.** There's nothing to install. You get a link in the group chat, open it in your browser, claim your character — picking one of three classes (**rogue, fighter, or mage**) and one of three species (**human** learns faster, **elf** lands critical hits more often, **dwarf** shrugs off part of every hit) — and you're standing in the world. When the game gets updated, you just refresh — everyone is always on the same version.
+**Getting in.** There's nothing to install. You get a link in the group chat, open it in your browser, claim your character — picking one of three classes (**rogue, fighter, or mage**) and one of three species (**human** earns an extra skill point every level, **elf** lands critical hits more often, **dwarf** shrugs off part of every hit) — and you're standing in the world. When the game gets updated, you just refresh — everyone is always on the same version.
 
 **The world.** A shared fantasy world built on hexagon tiles, with deliberately simple, chunky retro graphics under a CRT-style filter — think old-school roguelike charm rather than modern polish. All ~15 of us are in the same world at the same time, each with our own character.
 
@@ -94,6 +94,14 @@ keeps 15 players in one world from waiting on each other.
   15-player no-waiting premise).
 - **A coupled to-hit roll / Armor-Rating / AC / `d20`** → we chose decoupled
   `glance%` / `crit%` on purpose (see `design.md`).
+- **Flat `−N` damage reduction** → the TTRPG armour shape. Subtractive
+  mitigation stacks into the ≥1 clamp and stops meaning anything; gear
+  mitigation is a **percentage** (#154). The dwarf passive's −1 is the one
+  deliberate exception — a species trait that cannot stack with itself.
+- **Stances, modes, or "block"** → a mode economy this game doesn't have
+  (one action per turn), and hit-negation was rejected when `evasion%` became
+  `glance%`: a defensive proc HALVES a hit, never cancels it. A defensive
+  skill is a `glance%` bump (#124's Shield Wall).
 - **Random-affix loot, rarity tiers, crafting, currency, a market economy** →
   loot is authored rule-cards; the chase is *designed*, not rolled. *(Simple
   friend-to-friend trading and the decided sanctuary trade-hub / merchant NPC
