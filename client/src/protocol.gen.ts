@@ -696,6 +696,11 @@ export interface ItemView {
    */
   tags: string[];
   /**
+   * DamageType is the DamageType* a weapon deals (#92) — what resistances
+   * and vulnerabilities key on; empty for a non-weapon item.
+   */
+  damageType: string;
+  /**
    * TwoHanded is true for a weapon that occupies main-hand AND locks
    * off-hand; always false for a non-weapon item.
    */
@@ -740,6 +745,7 @@ export interface GroundItemView {
    * Detail fields (#139) — identical meanings to ItemView's.
    */
   tags: string[];
+  damageType: string;
   twoHanded: boolean;
   damage: number /* int */;
   rangeHex: number /* int */;

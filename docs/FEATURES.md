@@ -337,18 +337,64 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   mitigation than Leather Armor (−2 vs −1) bought with a real cost — you are
   noticed sooner. Gear that is only ever better makes the inventory a sorting
   exercise; a cost makes it a decision.
+- **Damage types (#92, DT1)** — every attack carries exactly **one** of six
+  types, and resistances and vulnerabilities are ordinary `take-damage` rule
+  cards gated on it (`incomingType`). There is no resist subsystem: one
+  condition kind serves every resist and vulnerability card ever written.
+  Every weapon and every monster kind must carry a type, enforced at content
+  load — an untyped weapon would silently dodge every resist card.
+
+  | Family | Types | Carried by |
+  |---|---|---|
+  | Physical | **Sharp** | swords, daggers, bows, cleaver, venom fang, misericorde, saber; rat + wolf claws |
+  | Physical | **Blunt** | fists, oak wand, warhammer, mattock; troll claws |
+  | Elemental | **Fire** | ember focus, ember staff, war-mage staff; dragon claws |
+  | Elemental | **Ice** | Frostbrand |
+  | Metaphysical | **Holy** | Wyrmslayer Greatsword, Consecrated Mace |
+  | Metaphysical | **Chaos** | ghoul claws |
+
+  The families, and the Holy↔Chaos / Fire↔Ice **oppositions, are an
+  authoring convention — not machinery**. All six types are mechanically
+  flat; "a Chaos ghoul fears Holy" is a vulnerability card someone wrote,
+  and the engine does not know the pair exists. Promotable to a real axis
+  later only if content always ends up mirrored.
+
+  **Monster vulnerabilities**: ghoul takes **+50% from Holy**, troll **+50%
+  from Fire** ("trolls fear fire" — the identity the arc was pitched on).
+
+  **Resist gear** (each halves exactly one type — situational where flat
+  mitigation is always-on):
+
+  | Item | Type | Card | Source |
+  |---|---|---|---|
+  | Infernal Chain Mail | chest | fire ×0.5 | dragon (w2) drop |
+  | Warded Gambeson | chest | sharp ×0.5 | wolf (w3) drop |
+  | Pilgrim's Mantle | chest | chaos ×0.5 | ghoul (w3) drop |
+
+  Blunt deliberately has **no** resist: one card answering both physical
+  types would be strictly better than either elemental resist, since nearly
+  every early monster is sharp or blunt. New weapons: **Frostbrand** (ice,
+  damage 4, troll w3) and **Consecrated Mace** (holy, damage 4, ghoul w3) —
+  both sit at the shipped 1H anchor so the *type* is the point, not a stat
+  upgrade riding along. A weapon's type shows as a **Type** line in the stat
+  tooltip (character panel and pickup modal alike).
 - **Non-weapon items**: Leather Armor (chest: take-damage −1, floor 1), Iron
   Plate Armor (chest: take-damage −2 + aggro-range ×1.25), Padded Boots
-  (boots: aggro-range ×0.75), Headband of Learning (helmet: earn-XP ×1.05),
-  Healing Potion (consumable: drink +5 HP, stacks to 5), and the two shields
-  above (off-hand: take-damage −1/−2).
+  (boots: aggro-range ×0.75), the three resist armors above (chest: one type
+  halved each), Headband of Learning (helmet: earn-XP ×1.05), Healing Potion
+  (consumable: drink +5 HP, stacks to 5), and the two shields above
+  (off-hand: take-damage −1/−2).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride
   the rat/wolf tables at low weight; the Wooden Buckler rides rat w1 / wolf
   w4, the Iron Kite Shield troll w4 / dragon w1, the Padded Boots rat w1 /
-  wolf w4 and the Iron Plate Armor troll w4 / dragon w1 — the ghoul table is
-  untouched by design, its identity is venom-fang/misericorde). Items land
+  wolf w4 and the Iron Plate Armor troll w4 / dragon w1; the damage-type wave
+  (#92) puts the Warded Gambeson on the wolf, the Frostbrand on the troll,
+  Infernal Chain Mail on the dragon (the one kind whose claws are fire), and
+  the Pilgrim's Mantle and Consecrated Mace on the ghoul — which **ends** the
+  ghoul table's long-untouched streak, by design: the ghoul is where a player
+  first *wants* a damage type). Items land
   on the death hex and render as map markers.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
@@ -656,7 +702,9 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   Conditions: `chance`, `targetHPBelowPct`, `targetHPBelowFlat`,
   `targetHPFull`, `allyInBubble`, `targetAdjacent`, `attackerSpecies`,
   `targetKind` (victim is a monster of a specific registered kind — 6c,
-  validated against the monster registry). Effects: `add`, `mulPct`. Fold
+  validated against the monster registry), `incomingType` (the damage type
+  of the attack being folded — #92, validated against the six types; every
+  resist and vulnerability card uses it). Effects: `add`, `mulPct`. Fold
   order: all adds → **percentages add within the fold** (every `mulPct`
   card's delta from 100% sums into one combined percentage, applied with a
   single truncation — #61 principle 14, roadmap Q8, fast-lane batch) → event

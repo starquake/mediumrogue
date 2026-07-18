@@ -1219,7 +1219,7 @@ func (w *World) Snapshot() protocol.TurnEvent {
 			groundItems = append(groundItems, protocol.GroundItemView{
 				ID: gs.inst.id, Hex: hex, DefID: gs.inst.defID, Name: def.name, Type: def.itemType, Count: gs.count,
 				// Detail fields (#139), read straight off the def like itemViewOf.
-				Tags: def.tags, TwoHanded: def.twoHanded,
+				Tags: def.tags, DamageType: def.damageType, TwoHanded: def.twoHanded,
 				Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc, Flavor: def.flavor,
 			})
 		}
@@ -1297,7 +1297,7 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 
 	return protocol.ItemView{
 		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
-		Tags: def.tags, TwoHanded: def.twoHanded,
+		Tags: def.tags, DamageType: def.damageType, TwoHanded: def.twoHanded,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,

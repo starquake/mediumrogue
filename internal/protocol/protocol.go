@@ -464,6 +464,9 @@ type ItemView struct {
 	// Tags names which attacks fire a weapon (WeaponTagMelee/Ranged/Magic);
 	// empty for a non-weapon item.
 	Tags []string `json:"tags"`
+	// DamageType is the DamageType* a weapon deals (#92) — what resistances
+	// and vulnerabilities key on; empty for a non-weapon item.
+	DamageType string `json:"damageType"`
 	// TwoHanded is true for a weapon that occupies main-hand AND locks
 	// off-hand; always false for a non-weapon item.
 	TwoHanded bool `json:"twoHanded"`
@@ -497,13 +500,14 @@ type GroundItemView struct {
 	Type  string `json:"type"`
 	Count int    `json:"count"`
 	// Detail fields (#139) — identical meanings to ItemView's.
-	Tags      []string `json:"tags"`
-	TwoHanded bool     `json:"twoHanded"`
-	Damage    int      `json:"damage"`
-	RangeHex  int      `json:"rangeHex"`
-	AoERadius int      `json:"aoeRadius"`
-	Desc      string   `json:"desc"`
-	Flavor    string   `json:"flavor"`
+	Tags       []string `json:"tags"`
+	DamageType string   `json:"damageType"`
+	TwoHanded  bool     `json:"twoHanded"`
+	Damage     int      `json:"damage"`
+	RangeHex   int      `json:"rangeHex"`
+	AoERadius  int      `json:"aoeRadius"`
+	Desc       string   `json:"desc"`
+	Flavor     string   `json:"flavor"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.
