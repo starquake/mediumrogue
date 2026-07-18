@@ -41,6 +41,13 @@ var intentSentinelStatus = map[error]int{
 	game.ErrNotDrinkable:           http.StatusUnprocessableEntity,
 	game.ErrNotEquippable:          http.StatusUnprocessableEntity,
 	game.ErrNoSuchGroundItem:       http.StatusUnprocessableEntity,
+	// Learn-skill rejections (#124): all well-formed requests the world says
+	// no to, so 422 rather than 500.
+	game.ErrNoSuchSkill:         http.StatusUnprocessableEntity,
+	game.ErrSkillAlreadyLearned: http.StatusUnprocessableEntity,
+	game.ErrSkillPrereqUnmet:    http.StatusUnprocessableEntity,
+	game.ErrNoSkillPoints:       http.StatusUnprocessableEntity,
+	game.ErrLearnInCombat:       http.StatusUnprocessableEntity,
 }
 
 // handledElsewhere are the sentinels SubmitIntent can never return, each with

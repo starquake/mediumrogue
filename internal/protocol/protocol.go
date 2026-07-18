@@ -155,6 +155,12 @@ const (
 	// neither exists. Items never auto-equip on pickup. Replaces walk-over
 	// auto-pickup (the inventory-slots milestone).
 	IntentPickup = "pickup"
+	// IntentLearnSkill spends a banked skill point on a learnable skill
+	// (IntentRequest.SkillID) — #124. Unlike every other inventory-ish
+	// action this is NOT queueable inside a combat bubble: learning is a
+	// between-fights decision, so it is rejected outright in combat rather
+	// than costing a bubble turn.
+	IntentLearnSkill = "learn-skill"
 	// IntentDrink drinks one unit of an owned consumable stack
 	// (IntentRequest.ItemID): applies the def's heal (clamped to max HP) and
 	// decrements the stack; an emptied stack frees its backpack entry.
@@ -464,6 +470,22 @@ type QuestView struct {
 	HolderPartyID  int64 `json:"holderPartyId"`
 }
 
+// SkillView is one skill as the wire shows it (#124) — NEAR-SIGHTED by
+// construction: the server sends only skills the viewer has LEARNED or can
+// learn right now, so a locked skill never reaches the client and the tree
+// cannot leak even by accident.
+type SkillView struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Tree is one of the three tree names ("class"/"adventure"/"survival").
+	Tree string `json:"tree"`
+	// Desc is the authored mechanical line; Flavor the optional lore line.
+	Desc   string `json:"desc"`
+	Flavor string `json:"flavor"`
+	// Learned distinguishes an owned skill from one currently learnable.
+	Learned bool `json:"learned"`
+}
+
 // ItemView is one owned item as the client sees it: display stats plus
 // whether it currently sits in its slot. The numbers ride the wire so the
 // client never compiles against item content.
@@ -548,6 +570,11 @@ type Entity struct {
 	PartyID int64 `json:"partyId"`
 	// Items is the entity's owned items. Players only; monsters send none.
 	Items []ItemView `json:"items"`
+	// Skills is the viewer's OWN learned + currently-learnable skills (#124);
+	// empty on every other entity, since skills are own-only on the wire.
+	Skills []SkillView `json:"skills"`
+	// SkillPoints is the viewer's own unspent bank; zero on other entities.
+	SkillPoints int `json:"skillPoints"`
 	// MonsterKind is the monster-kind registry id ("wolf", "dragon", ...);
 	// empty for players. Drives per-kind client rendering (color/glyph).
 	MonsterKind string `json:"monsterKind"`
@@ -598,6 +625,8 @@ type IntentRequest struct {
 	// ItemID names the OWNED item an inventory action targets. Equip,
 	// unequip, drop, and drink intents only.
 	ItemID int64 `json:"itemId"`
+	// SkillID names the skill a learn-skill intent spends a point on (#124).
+	SkillID string `json:"skillId"`
 	// GroundItemID names the GROUND item a pickup targets (GroundItemView.ID;
 	// it must lie on the player's own hex). Pickup intents only.
 	GroundItemID int64 `json:"groundItemId"`

@@ -265,3 +265,84 @@ func skillCards(e *entity) []ruleCard {
 
 	return cards
 }
+
+// learnableFor reports whether e can learn def right now: not already known,
+// and every prerequisite learned. It does NOT check the point bank — the
+// wire uses this to decide what to OFFER (near-sightedness), and an offer
+// the player can't yet afford is still worth showing.
+func learnableFor(e *entity, def *skillDef) bool {
+	if slices.Contains(e.learned, def.id) {
+		return false
+	}
+
+	for _, req := range def.prereqs {
+		if !slices.Contains(e.learned, req) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// learnSkillLocked spends one banked point on id. Free and immediate OUT of
+// combat and rejected inside a bubble (#124 Decision 4): learning is a
+// between-fights decision, so unlike equip/drop/drink it is never queued as a
+// turn's action. Callers hold w.mu.
+func (w *World) learnSkillLocked(e *entity, id string) error {
+	if e.bubbleID != 0 {
+		return ErrLearnInCombat
+	}
+
+	def, ok := skillDefByID[id]
+	if !ok {
+		return ErrNoSuchSkill
+	}
+
+	if slices.Contains(e.learned, id) {
+		return ErrSkillAlreadyLearned
+	}
+
+	if !learnableFor(e, def) {
+		return ErrSkillPrereqUnmet
+	}
+
+	if e.skillPoints < 1 {
+		return ErrNoSkillPoints
+	}
+
+	e.skillPoints--
+	// Insert in sorted position: skillCards folds in registry order, but
+	// `learned` itself is kept sorted so two players who learned the same
+	// skills in different orders are byte-identical on disk and on the wire.
+	e.learned = append(e.learned, id)
+	slices.Sort(e.learned)
+
+	return nil
+}
+
+// skillViewsLocked renders the NEAR-SIGHTED skill list for e: everything
+// learned, plus everything learnable right now — and nothing else. A locked
+// skill never reaches the wire, so the client cannot leak the tree even by
+// accident (#124 Q7, enforced server-side by design rather than by client
+// discipline). Registry order, so the panel is stable between turns.
+func skillViewsLocked(e *entity) []protocol.SkillView {
+	if e.kind != protocol.EntityPlayer {
+		return nil
+	}
+
+	views := make([]protocol.SkillView, 0, len(skillDefs))
+
+	for _, def := range skillDefs {
+		learned := slices.Contains(e.learned, def.id)
+		if !learned && !learnableFor(e, def) {
+			continue
+		}
+
+		views = append(views, protocol.SkillView{
+			ID: def.id, Name: def.name, Tree: def.tree,
+			Desc: def.desc, Flavor: def.flavor, Learned: learned,
+		})
+	}
+
+	return views
+}

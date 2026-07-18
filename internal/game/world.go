@@ -132,6 +132,25 @@ var (
 	// ErrNoSuchGroundItem rejects a pickup intent naming a ground item that
 	// is not lying on the player's own hex (stale id, or an item elsewhere).
 	ErrNoSuchGroundItem = errors.New("no such item here")
+	// ErrNoSuchSkill rejects a learn intent naming an unregistered skill.
+	// It and the four sentinels below are the learn-skill rejections (#124);
+	// all five are 422s — the request was well-formed and the world simply
+	// says no.
+	ErrNoSuchSkill = errors.New("no such skill")
+	// ErrSkillAlreadyLearned rejects re-learning — points are spent once and
+	// there is no respec in v1.
+	ErrSkillAlreadyLearned = errors.New("skill already learned")
+	// ErrSkillPrereqUnmet rejects a skill whose prerequisites are not all
+	// learned. Near-sightedness means the client should never OFFER such a
+	// skill, so this fires on a stale or hand-made request.
+	ErrSkillPrereqUnmet = errors.New("prerequisite not learned")
+	// ErrNoSkillPoints rejects learning with an empty bank.
+	ErrNoSkillPoints = errors.New("no skill points to spend")
+	// ErrLearnInCombat rejects learning inside a combat bubble. Deliberately
+	// NOT queued like the inventory actions: learning is a between-fights
+	// decision, not a turn's action, so it costs no bubble turn and needs no
+	// pending-action plumbing.
+	ErrLearnInCombat = errors.New("can't learn a skill in combat")
 )
 
 // tokenBytes sizes the bearer token: 16 random bytes = 128 bits.
@@ -941,6 +960,8 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 		return w.queuePickupLocked(e, req.GroundItemID)
 	case protocol.IntentDrink:
 		return w.queueDrinkLocked(e, req.ItemID)
+	case protocol.IntentLearnSkill:
+		return w.learnSkillLocked(e, req.SkillID)
 	default:
 		return ErrInvalidIntentKind
 	}
@@ -1200,7 +1221,8 @@ func (w *World) Snapshot() protocol.TurnEvent {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
 			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
-			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
+			Items: itemViewsLocked(e), Skills: skillViewsLocked(e), SkillPoints: e.skillPoints,
+			MonsterKind: e.monsterKind,
 		})
 	}
 

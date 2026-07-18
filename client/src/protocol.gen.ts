@@ -212,6 +212,14 @@ export const IntentDrop = "drop";
  */
 export const IntentPickup = "pickup";
 /**
+ * IntentLearnSkill spends a banked skill point on a learnable skill
+ * (IntentRequest.SkillID) — #124. Unlike every other inventory-ish
+ * action this is NOT queueable inside a combat bubble: learning is a
+ * between-fights decision, so it is rejected outright in combat rather
+ * than costing a bubble turn.
+ */
+export const IntentLearnSkill = "learn-skill";
+/**
  * IntentDrink drinks one unit of an owned consumable stack
  * (IntentRequest.ItemID): applies the def's heal (clamped to max HP) and
  * decrements the stack; an emptied stack frees its backpack entry.
@@ -695,6 +703,29 @@ export interface QuestView {
   holderPartyId: number /* int64 */;
 }
 /**
+ * SkillView is one skill as the wire shows it (#124) — NEAR-SIGHTED by
+ * construction: the server sends only skills the viewer has LEARNED or can
+ * learn right now, so a locked skill never reaches the client and the tree
+ * cannot leak even by accident.
+ */
+export interface SkillView {
+  id: string;
+  name: string;
+  /**
+   * Tree is one of the three tree names ("class"/"adventure"/"survival").
+   */
+  tree: string;
+  /**
+   * Desc is the authored mechanical line; Flavor the optional lore line.
+   */
+  desc: string;
+  flavor: string;
+  /**
+   * Learned distinguishes an owned skill from one currently learnable.
+   */
+  learned: boolean;
+}
+/**
  * ItemView is one owned item as the client sees it: display stats plus
  * whether it currently sits in its slot. The numbers ride the wire so the
  * client never compiles against item content.
@@ -809,6 +840,15 @@ export interface Entity {
    */
   items: ItemView[];
   /**
+   * Skills is the viewer's OWN learned + currently-learnable skills (#124);
+   * empty on every other entity, since skills are own-only on the wire.
+   */
+  skills: SkillView[];
+  /**
+   * SkillPoints is the viewer's own unspent bank; zero on other entities.
+   */
+  skillPoints: number /* int */;
+  /**
    * MonsterKind is the monster-kind registry id ("wolf", "dragon", ...);
    * empty for players. Drives per-kind client rendering (color/glyph).
    */
@@ -873,6 +913,10 @@ export interface IntentRequest {
    * unequip, drop, and drink intents only.
    */
   itemId: number /* int64 */;
+  /**
+   * SkillID names the skill a learn-skill intent spends a point on (#124).
+   */
+  skillId: string;
   /**
    * GroundItemID names the GROUND item a pickup targets (GroundItemView.ID;
    * it must lie on the player's own hex). Pickup intents only.

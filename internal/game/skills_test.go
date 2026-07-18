@@ -1,10 +1,20 @@
 package game //nolint:testpackage // white-box: exercises unexported registry validation; see rules_test.go's file doc.
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
+
+// newWorldForSkillTest builds a bare world for the learn-intent tests, which
+// need a *World receiver but none of its clock or map machinery.
+func newWorldForSkillTest(t *testing.T) *World {
+	t.Helper()
+
+	return &World{}
+}
 
 // withSkillRegistry swaps in a synthetic registry (and its index) for one
 // test, restoring the real one afterwards. The validators read skillDefByID
@@ -377,5 +387,128 @@ func TestShieldWallNeedsBothTheShieldAndTheRoll(t *testing.T) {
 		if got, want := applyRules(evTakeDamage, 10, cards, ruleCtx{victim: bare, rng: testRNG(seed)}), 10; got != want {
 			t.Fatalf("unshielded hit of 10 at seed %d = %d, want %d", seed, got, want)
 		}
+	}
+}
+
+// TestLearnSkillRejections (#124 task 6) covers all five 422 paths. Each is a
+// well-formed request the world says no to — the handler maps every one to
+// 422 rather than 500.
+//
+//nolint:paralleltest // mutates entity state.
+func TestLearnSkillRejections(t *testing.T) {
+	w := newWorldForSkillTest(t)
+
+	tests := []struct {
+		name    string
+		setup   func(e *entity)
+		skillID string
+		want    error
+	}{
+		{
+			name:    "unknown skill",
+			setup:   func(e *entity) { e.skillPoints = 1 },
+			skillID: "telekinesis",
+			want:    ErrNoSuchSkill,
+		},
+		{
+			name:    "already learned",
+			setup:   func(e *entity) { e.skillPoints = 1; e.learned = []string{skillCombatTraining} },
+			skillID: skillCombatTraining,
+			want:    ErrSkillAlreadyLearned,
+		},
+		{
+			name:    "prerequisite unmet",
+			setup:   func(e *entity) { e.skillPoints = 1 },
+			skillID: skillWeakSpot, // gated behind Combat Training
+			want:    ErrSkillPrereqUnmet,
+		},
+		{
+			name:    "empty bank",
+			setup:   func(e *entity) { e.skillPoints = 0 },
+			skillID: skillCombatTraining,
+			want:    ErrNoSkillPoints,
+		},
+		{
+			name:    "in combat",
+			setup:   func(e *entity) { e.skillPoints = 1; e.bubbleID = 7 },
+			skillID: skillCombatTraining,
+			want:    ErrLearnInCombat,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // shares the world above.
+			e := &entity{kind: protocol.EntityPlayer, equipped: map[string]itemInstance{}}
+			tt.setup(e)
+
+			if got, want := w.learnSkillLocked(e, tt.skillID), tt.want; !errors.Is(got, want) {
+				t.Errorf("learnSkillLocked = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// TestLearnSkillSpendsAPointAndUnlocksTheNext (#124 task 6): the happy path,
+// and the prerequisite opening up as a result — the whole point of a tree.
+//
+//nolint:paralleltest // mutates entity state.
+func TestLearnSkillSpendsAPointAndUnlocksTheNext(t *testing.T) {
+	w := newWorldForSkillTest(t)
+	e := &entity{kind: protocol.EntityPlayer, skillPoints: 2, equipped: map[string]itemInstance{}}
+
+	if err := w.learnSkillLocked(e, skillCombatTraining); err != nil {
+		t.Fatalf("learn combat-training: %v", err)
+	}
+
+	if got, want := e.skillPoints, 1; got != want {
+		t.Errorf("bank after learning = %d, want %d", got, want)
+	}
+
+	// Weak Spot was prereq-locked a moment ago; now it isn't.
+	if err := w.learnSkillLocked(e, skillWeakSpot); err != nil {
+		t.Fatalf("learn weak-spot after its prereq: %v", err)
+	}
+
+	if got, want := strings.Join(e.learned, ","), skillCombatTraining+","+skillWeakSpot; got != want {
+		t.Errorf("learned = %q, want %q (sorted)", got, want)
+	}
+}
+
+// TestSkillViewsAreNearSighted (#124 Q7): the wire carries learned skills and
+// currently-learnable ones — never a locked skill. This is enforced
+// server-side precisely so the client cannot leak the tree by accident.
+//
+//nolint:paralleltest // mutates entity state.
+func TestSkillViewsAreNearSighted(t *testing.T) {
+	fresh := &entity{kind: protocol.EntityPlayer}
+
+	ids := func(views []protocol.SkillView) string {
+		out := make([]string, 0, len(views))
+		for _, v := range views {
+			out = append(out, v.ID)
+		}
+
+		return strings.Join(out, ",")
+	}
+
+	got := ids(skillViewsLocked(fresh))
+	if strings.Contains(got, skillWeakSpot) {
+		t.Errorf("a fresh player's skill views = %q — must NOT include the prereq-locked %s", got, skillWeakSpot)
+	}
+
+	if !strings.Contains(got, skillCombatTraining) || !strings.Contains(got, skillScouting) {
+		t.Errorf("a fresh player's skill views = %q, want the unlocked roots", got)
+	}
+
+	// Learning the root reveals exactly one more.
+	trained := &entity{kind: protocol.EntityPlayer, learned: []string{skillCombatTraining}}
+	if !strings.Contains(ids(skillViewsLocked(trained)), skillWeakSpot) {
+		t.Errorf("after learning %s, views = %q — want %s revealed",
+			skillCombatTraining, ids(skillViewsLocked(trained)), skillWeakSpot)
+	}
+
+	// Monsters have no skills on the wire at all.
+	if got := skillViewsLocked(&entity{kind: protocol.EntityMonster}); got != nil {
+		t.Errorf("monster skill views = %+v, want nil", got)
 	}
 }
