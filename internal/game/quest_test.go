@@ -544,7 +544,9 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 		t.Fatalf("state after first kill = %q, want %q", got, want)
 	}
 
-	wantPerKill := game.MonsterXPForTest("wolf") * (100 + protocol.HumanXPBonusPercent) / 100
+	// re-derived (#124 task 8): the Human XP multiplier is retired, so a
+	// human is paid the kind's plain kill XP.
+	wantPerKill := game.MonsterXPForTest("wolf")
 
 	if got, want := w.XPForTest(alice.EntityID), wantPerKill; got != want {
 		t.Errorf("alice XP after first kill = %d, want %d", got, want)
@@ -566,7 +568,7 @@ func TestKillQuestTicksOncePerPartyAndCompletes(t *testing.T) {
 		t.Fatalf("state after final kill = %q, want %q", got, want)
 	}
 
-	wantReward := qv.RewardXP * (100 + protocol.HumanXPBonusPercent) / 100
+	wantReward := qv.RewardXP // re-derived (#124 task 8): no species multiplier
 	wantTotal := 2*wantPerKill + wantReward
 
 	if got, want := w.XPForTest(alice.EntityID), wantTotal; got != want {
@@ -641,8 +643,10 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 		t.Fatalf("state after final kill = %q, want %q", got, want)
 	}
 
-	wantPerKill := game.MonsterXPForTest("wolf") * (100 + protocol.HumanXPBonusPercent) / 100
-	wantReward := qv.RewardXP * (100 + protocol.HumanXPBonusPercent) / 100
+	// re-derived (#124 task 8): the Human XP multiplier is retired, so a
+	// human is paid the kind's plain kill XP.
+	wantPerKill := game.MonsterXPForTest("wolf")
+	wantReward := qv.RewardXP           // re-derived (#124 task 8): no species multiplier
 	wantBob := wantPerKill + wantReward // bob only stood for the final kill
 
 	if got, want := w.XPForTest(bob.EntityID), wantBob; got != want {

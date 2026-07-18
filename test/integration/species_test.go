@@ -77,8 +77,9 @@ func TestSpeciesOnWire(t *testing.T) {
 // only difference between the two players' final XP is the species passive —
 // the human ends up with exactly MonsterXP*(100+HumanXPBonusPercent)/100 (1.5x
 // at +50%) while the dwarf gets the flat MonsterXP. This is the HTTP-level
-// analogue of internal/game's TestHumanKillXPBonus, proving the passive lands
-// on the wire and not just at the unit level.
+// analogue of internal/game's TestHumanAndNonHumanEarnTheSameKillXP, proving
+// over the wire that neither species scales a shared kill's XP (#124 task 8
+// retired the Human multiplier).
 //
 // The monster is seeded one hex from the origin (where both players spawn), so
 // the shared kill lands within a handful of bubble-turns resolved on the
@@ -89,7 +90,7 @@ func TestSpeciesOnWire(t *testing.T) {
 // tick loop is not starved by sibling servers.
 //
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
-func TestHumanEarnsMoreXPThanDwarfOverHTTP(t *testing.T) {
+func TestSharedKillPaysBothSpeciesTheSameOverHTTP(t *testing.T) {
 	ts := startServerWithMonstersAt(t, protocol.Hex{Q: 1, R: 0})
 
 	human := joinSpecies(t, ts, protocol.SpeciesHuman)
@@ -98,7 +99,12 @@ func TestHumanEarnsMoreXPThanDwarfOverHTTP(t *testing.T) {
 	events := get(t, ts, "/api/events")
 	reader := bufio.NewReader(events.Body)
 
-	wantHumanXP := wolfKillXP * (100 + protocol.HumanXPBonusPercent) / 100
+	// re-derived (#124 task 8): the Human XP multiplier is retired — the perk
+	// is now +1 skill point per level — so a shared kill pays both species
+	// the kind's plain XP. This test now proves the ABSENCE of a species
+	// multiplier on the wire, which is what would silently return if an
+	// earn-xp card ever came back to humanCards.
+	wantHumanXP := wolfKillXP
 	wantDwarfXP := wolfKillXP
 
 	deadline := time.Now().Add(10 * time.Second)
@@ -125,7 +131,7 @@ func TestHumanEarnsMoreXPThanDwarfOverHTTP(t *testing.T) {
 		// ANY award should already show BOTH, at their exact final values.
 		if humanEntity.XP > 0 || dwarfEntity.XP > 0 {
 			if got, want := humanEntity.XP, wantHumanXP; got != want {
-				t.Fatalf("human XP = %d, want %d (MonsterXP +%d%%)", got, want, protocol.HumanXPBonusPercent)
+				t.Fatalf("human XP = %d, want the flat %d (no species multiplier)", got, want)
 			}
 
 			if got, want := dwarfEntity.XP, wantDwarfXP; got != want {

@@ -8,10 +8,18 @@ import "github.com/starquake/mediumrogue/internal/protocol"
 //
 //nolint:gochecknoglobals // fixed rule-card tables, effectively const.
 var (
-	humanCards = []ruleCard{
-		{event: evEarnXP, then: effect{kind: effMulPct, n: percentBase + protocol.HumanXPBonusPercent}},
-	}
-	elfCards = []ruleCard{
+	// humanCards is deliberately EMPTY since #124 task 8: the Human perk is
+	// no longer an XP multiplier but a +1 skill point per level, granted in
+	// grantSkillPointsLocked (world.go). A per-level BANK grant is not a fold
+	// over a combat value, so it is a species check rather than a rule card —
+	// and inventing an evLevelUp event for a single rider would trip the
+	// no-mechanic-wildfire gate.
+	//
+	// The old +50% XP was invisible in play: levels grant HP only, so it
+	// bought "reach the same HP slightly sooner" while the elf and dwarf
+	// perks paid off in every fight (#123).
+	humanCards = []ruleCard{}
+	elfCards   = []ruleCard{
 		{event: evDealDamage, when: []condition{{kind: condChance, n: protocol.ElfCritChancePercent}},
 			then: effect{kind: effMulPct, n: percentBase * protocol.ElfCritMultiplier}},
 	}

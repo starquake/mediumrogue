@@ -146,7 +146,9 @@ func TestHeadbandBoostsXPThroughLivePipeline(t *testing.T) {
 	// species cards first, then equipped gear (earnXPCards): base * 1.5
 	// (human), then * 1.05 (headband), integer math at each step.
 	base := game.MonsterXPForTest("wolf")
-	afterHuman := base * (100 + protocol.HumanXPBonusPercent) / 100
+	// re-derived (#124 task 8): with the Human multiplier retired the species
+	// fold is the identity, so the headband's +5% applies to the plain base.
+	afterHuman := base
 	want := afterHuman * 105 / 100
 
 	e, ok := entityOfSnap(snap, me.EntityID)

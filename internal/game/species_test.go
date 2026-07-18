@@ -36,18 +36,21 @@ const (
 	bowMissSeed   = 0 // elf bow shot misses (base damage) at this seed
 )
 
-// TestHumanKillXPBonus: on the same shared kill, a Human is paid
-// killXP * (100+HumanXPBonusPercent)/100 (i.e. 1.5x at +50%, over the slain
-// kind's own XP — wolf's here) while a non-Human (Dwarf here) earns the
-// unmodified kill XP. Both survive the fight, so both are credited —
-// isolating the species multiplier as the only difference.
-func TestHumanKillXPBonus(t *testing.T) {
+// TestHumanAndNonHumanEarnTheSameKillXP: re-derived for #124 task 8. The
+// Human perk USED to be a +50% XP multiplier; it is now +1 skill point per
+// level (grantSkillPointsLocked), so on a shared kill both species are paid
+// exactly the same XP. The perk's replacement is asserted in skills_test.go
+// (TestHumanEarnsTheBonusSkillPoint) — this test now pins the absence of the
+// old multiplier, which is what would silently come back if humanCards ever
+// regrew an earn-xp card.
+func TestHumanAndNonHumanEarnTheSameKillXP(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
 	w.SetSeedForTest(11)
 
 	center := protocol.Hex{Q: 0, R: 0}
+
 	if !isWalkable(w, center) {
 		t.Skip("origin is not walkable on this map")
 	}
@@ -82,9 +85,9 @@ func TestHumanKillXPBonus(t *testing.T) {
 		t.Fatalf("monster %d should have died to the shared melee attacks", monsterID)
 	}
 
-	wantHuman := game.MonsterXPForTest("wolf") * (100 + protocol.HumanXPBonusPercent) / 100
+	wantHuman := game.MonsterXPForTest("wolf")
 	if got, want := w.XPForTest(human), wantHuman; got != want {
-		t.Errorf("Human XP = %d, want %d (wolf's kill XP +%d%%)", got, want, protocol.HumanXPBonusPercent)
+		t.Errorf("Human XP = %d, want %d (no species multiplier since #124 task 8)", got, want)
 	}
 
 	if got, want := w.XPForTest(dwarf), game.MonsterXPForTest("wolf"); got != want {

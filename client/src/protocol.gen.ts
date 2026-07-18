@@ -494,10 +494,6 @@ export const HPGainBase = 8;
  */
 export const HPGainMin = 1;
 /**
- * HumanXPBonusPercent is the XP gain multiplier for Human species (e.g. +50%).
- */
-export const HumanXPBonusPercent = 50;
-/**
  * ElfCritChancePercent is the percent base crit chance for Elf species.
  */
 export const ElfCritChancePercent = 20;

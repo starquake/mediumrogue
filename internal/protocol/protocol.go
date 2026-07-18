@@ -305,8 +305,6 @@ const (
 
 // Per-species passive bonuses (tunable, applied per-species in 6b.3+).
 const (
-	// HumanXPBonusPercent is the XP gain multiplier for Human species (e.g. +50%).
-	HumanXPBonusPercent = 50
 	// ElfCritChancePercent is the percent base crit chance for Elf species.
 	ElfCritChancePercent = 20
 	// ElfCritMultiplier is the damage multiplier for Elf crits.
