@@ -38,7 +38,7 @@ type bubble struct {
 func (w *World) recomputeBubblesLocked(now time.Time) {
 	var comps [][]*entity
 
-	for _, comp := range connectedComponents(w.entitiesSlice()) {
+	for _, comp := range connectedComponents(w.entitiesSlice(), w.seesLocked) {
 		if hasOpposingPair(comp) {
 			comps = append(comps, comp)
 
@@ -125,15 +125,18 @@ func (w *World) entitiesSlice() []*entity {
 // fight monsters, and player↔monster domain scoping is unaffected because any
 // monster adjacent to a bubble player is still linked in via a player↔monster
 // edge.
-func connectedComponents(ents []*entity) [][]*entity {
+func connectedComponents(ents []*entity, sees func(a, b protocol.Hex) bool) [][]*entity {
 	uf := newUnionFind(len(ents))
 
 	for i := range ents {
 		for j := i + 1; j < len(ents); j++ {
 			// Only players extend a bubble's reach: require a player endpoint, so
 			// monster↔monster proximity never links two entities.
+			// Distance stays the CHEAP PRE-FILTER: only pairs already within
+			// reach pay for a raycast (#95).
 			if HexDistance(ents[i].hex, ents[j].hex) <= protocol.CombatRadius &&
-				(ents[i].kind == protocol.EntityPlayer || ents[j].kind == protocol.EntityPlayer) {
+				(ents[i].kind == protocol.EntityPlayer || ents[j].kind == protocol.EntityPlayer) &&
+				sees(ents[i].hex, ents[j].hex) {
 				uf.union(i, j)
 			}
 		}

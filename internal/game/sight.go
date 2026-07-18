@@ -107,3 +107,10 @@ func sightBlocked(a, b protocol.Hex, radius int, terrainAt func(protocol.Hex) pr
 
 	return cost > radius
 }
+
+// seesLocked reports whether an entity at a can spot one at b: within
+// CombatRadius is the caller's business (the cheap pre-filter), this is the
+// terrain half. Callers hold w.mu.
+func (w *World) seesLocked(a, b protocol.Hex) bool {
+	return !sightBlocked(a, b, protocol.CombatRadius, func(h protocol.Hex) protocol.Terrain { return w.terrain[h] })
+}
