@@ -460,6 +460,136 @@
       #quest-root {
         pointer-events: none;
       }
+      /* Skills panel (#124) — the near-sighted list: learned + learnable
+         only, never the whole tree. Sits under the quest panel in the same
+         fixed flex column. */
+      #skills-panel {
+        pointer-events: auto;
+        width: 23rem;
+        margin-top: 0.4rem;
+        background: rgba(11, 15, 11, 0.92);
+        border: 1px solid var(--dim);
+        padding: 0.45rem 0.6rem 0.6rem;
+        text-shadow: 0 1px 2px #000;
+      }
+      .skills-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-bottom: 1px solid #2a3d2b;
+        padding-bottom: 0.3rem;
+        margin-bottom: 0.4rem;
+      }
+      .skills-title {
+        color: var(--dim);
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      .skills-points {
+        font-size: 0.72rem;
+        font-weight: bold;
+        color: #0b0f0b;
+        background: var(--accent);
+        padding: 0.1rem 0.4rem;
+      }
+      .skills-points.none {
+        background: transparent;
+        color: var(--dim);
+      }
+      .skill-tree {
+        margin-bottom: 0.5rem;
+      }
+      .skill-tree-name {
+        color: var(--dim);
+        font-size: 0.66rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin: 0.3rem 0 0.25rem;
+      }
+      .skill-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        padding: 0.3rem 0.4rem;
+        margin-bottom: 0.2rem;
+        background: #16201a;
+        border: 1px solid #2a3d2b;
+      }
+      .skill-row.learned {
+        background: #101710;
+        border-color: #1d2a1e;
+      }
+      .skill-mark {
+        width: 0.9rem;
+        flex: none;
+        text-align: center;
+        font-weight: bold;
+        color: var(--dim);
+      }
+      .skill-row.learned .skill-mark {
+        color: var(--accent);
+      }
+      .skill-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .skill-name {
+        display: block;
+        font-size: 0.78rem;
+      }
+      .skill-desc {
+        display: block;
+        font-size: 0.66rem;
+        color: var(--dim);
+        line-height: 1.35;
+        margin-top: 0.1rem;
+      }
+      .skill-learn {
+        flex: none;
+        align-self: center;
+        font-family: inherit;
+        font-size: 0.64rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: bold;
+        color: #0b0f0b;
+        background: var(--accent);
+        border: 1px solid var(--accent);
+        padding: 0.2rem 0.45rem;
+        cursor: pointer;
+      }
+      .skill-learn:hover:enabled {
+        background: #8fce53;
+      }
+      .skill-learn:disabled {
+        background: transparent;
+        color: var(--dim);
+        border-color: #2a3d2b;
+        cursor: default;
+      }
+      .skill-tag {
+        flex: none;
+        align-self: center;
+        font-size: 0.62rem;
+        color: var(--dim);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .skill-empty {
+        font-size: 0.65rem;
+        color: #3f5a41;
+        font-style: italic;
+        padding: 0.1rem 0.4rem;
+      }
+      .skills-foot {
+        margin-top: 0.5rem;
+        padding-top: 0.35rem;
+        border-top: 1px solid #1d2a1e;
+        font-size: 0.62rem;
+        color: var(--dim);
+        line-height: 1.45;
+      }
       #quest-panel {
         pointer-events: auto;
         /* 23rem (was 20rem, item 5 playtest feedback batch 3): wide enough
@@ -1015,6 +1145,7 @@
       </header>
       <div id="left-panels">
         <div id="quest-root"></div>
+        <div id="skills-root"></div>
       </div>
     </div>
     <div id="character-root"></div>

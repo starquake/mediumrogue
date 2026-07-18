@@ -40,13 +40,16 @@ import {
   submitDrop,
   submitEquip,
   submitIntent,
+  submitLearnSkill,
   submitPickup,
   submitUnequip,
 } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
-import type { GroundItemView, Hex, HitView, ItemView, QuestView, TurnEvent } from "./protocol.gen";
+import type { GroundItemView, Hex, HitView, ItemView, QuestView, SkillView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
+import { mountSkills } from "./skills/SkillsPanel";
+import { panelOpen as skillsPanelOpen, setSkills, toggleSkillsPanel } from "./skills/store";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
@@ -105,6 +108,16 @@ export interface GameDebug {
    * by the enemy hover tooltip, item 13).
    */
   positions: { id: number; hex: Hex; kind: string; monsterKind: string; name: string }[];
+  /**
+   * The viewer's OWN skills from the latest bundle (#124) — id, tree, and
+   * whether it is learned. Near-sighted by construction: a locked skill is
+   * never sent, so a missing id here means "not learnable yet", not "hidden".
+   */
+  skills: { id: string; tree: string; learned: boolean }[];
+  /** The viewer's unspent skill-point bank. */
+  skillPoints: number;
+  /** Whether the skills panel is open (the S key / HUD toggle). */
+  skillsPanelOpen: boolean;
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;
   /**
@@ -552,6 +565,9 @@ window.game = {
   equipped: {},
   backpack: [],
   panelOpen: false,
+  skills: [],
+  skillPoints: 0,
+  skillsPanelOpen: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
     markPickupRejected(groundItemId);
@@ -1144,6 +1160,18 @@ async function start(): Promise<void> {
   };
   const toggleInventory = (): void => applyPanelOpen(!panelOpen());
 
+  // The skills panel (#124) toggles independently of the inventory: they are
+  // different questions ("what am I carrying" vs "what can I become"), and a
+  // player comparing a new skill against their gear wants both open.
+  const applySkillsPanel = (): void => {
+    toggleSkillsPanel();
+    window.game.skillsPanelOpen = skillsPanelOpen();
+  };
+
+  mountSkills(mustGet("skills-root"), (skillId: string): void => {
+    void submitLearnSkill(identity, skillId);
+  });
+
   const characterActions = {
     equip: (itemId: number): void => {
       beginItemAction(itemId);
@@ -1554,6 +1582,17 @@ async function start(): Promise<void> {
         // tag means it fires the ranged/AoE attack path regardless of which
         // hand holds it).
         setInventory(mine.items);
+        // Skills ride the same per-turn rebuild as gear (#124). The server
+        // sends only this viewer's own rows (own-only) and only the learned
+        // + currently-learnable ones (near-sighted), so the client stores
+        // exactly what it renders.
+        setSkills(mine.skills ?? [], mine.skillPoints ?? 0);
+        window.game.skills = (mine.skills ?? []).map((s: SkillView) => ({
+          id: s.id,
+          tree: s.tree,
+          learned: s.learned,
+        }));
+        window.game.skillPoints = mine.skillPoints ?? 0;
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
           defId: it.defId,
@@ -1820,6 +1859,7 @@ async function start(): Promise<void> {
     // start-screen block below. Escape's isPanelOpen gate lives in
     // keys.ts (a no-op while already closed, never a toggle).
     onToggleInventory: toggleInventory,
+    onToggleSkills: applySkillsPanel,
     onClosePanel: (): void => applyPanelOpen(false),
     isPanelOpen: (): boolean => panelOpen(),
     isBlocked: (): boolean => !startScreenEl.hidden,
