@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { GameDebug } from "../src/main";
+import type { MapResponse } from "../src/protocol.gen";
 
 declare global {
   interface Window {
@@ -29,18 +30,39 @@ test("two clients share one world and see each other move", async ({ browser }) 
   await expect.poll(() => a.evaluate(() => window.game.entities)).toBeGreaterThanOrEqual(2);
   await expect.poll(() => b.evaluate(() => window.game.entities)).toBeGreaterThanOrEqual(2);
 
-  // A walks one step (whichever direction is walkable from its spawn).
+  // A walks EXACTLY one step: pick the one walkable direction from A's spawn and
+  // press only that key. The old version pressed all six direction keys, which
+  // under load queues several steps across turns — A then walks PAST the hex we
+  // captured before B observes it, and B's poll times out (#144). One step to a
+  // known target hex is stable regardless of timing.
   const startA = await a.evaluate(() => window.game.me!.hex);
-  for (const key of ["KeyW", "KeyE", "KeyD", "KeyS", "KeyA", "KeyQ"]) {
-    await a.keyboard.press(key);
+  const map = await a.evaluate(() => fetch("/api/map").then((r) => r.json() as Promise<MapResponse>));
+  const walkable = new Set<string>();
+  for (const tile of map.tiles) {
+    if (tile.terrain === "grass" || tile.terrain === "forest") {
+      walkable.add(`${tile.hex.q},${tile.hex.r}`);
+    }
   }
+  // Key → hex offset, mirroring client/src/input/keys.ts + render/hex.ts.
+  const steps = [
+    { key: "KeyW", dq: 0, dr: -1 }, // n
+    { key: "KeyE", dq: 1, dr: -1 }, // ne
+    { key: "KeyD", dq: 1, dr: 0 }, // se
+    { key: "KeyS", dq: 0, dr: 1 }, // s
+    { key: "KeyA", dq: -1, dr: 1 }, // sw
+    { key: "KeyQ", dq: -1, dr: 0 }, // nw
+  ];
+  const step = steps.find((s) => walkable.has(`${startA.q + s.dq},${startA.r + s.dr}`));
+  expect(step, "expected a walkable neighbour of A's spawn").toBeTruthy();
+  const movedA = { q: startA.q + step!.dq, r: startA.r + step!.dr };
+
+  await a.keyboard.press(step!.key);
   await expect
     .poll(
-      () => a.evaluate((s) => { const h = window.game.me!.hex; return h.q !== s.q || h.r !== s.r; }, startA),
+      () => a.evaluate((h) => { const m = window.game.me!.hex; return m.q === h.q && m.r === h.r; }, movedA),
       { timeout: 10_000 },
     )
     .toBe(true);
-  const movedA = await a.evaluate(() => window.game.me!.hex);
 
   // B observes A's entity at the moved hex — two clients, one shared world.
   await expect
