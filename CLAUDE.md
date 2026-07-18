@@ -148,6 +148,10 @@ drift between calls; use absolute paths or `cd` to the repo root before
 ## How work lands
 
 - **Everything lands via a pull request**, never a direct push to `main`.
+- **Merges outrank builds.** In any pass that both merges and builds, land the
+  merges first and branch the build off the freshly-merged `main` — work built
+  on a stale base has to rebase. When two open PRs touch the same files, note
+  it in the second PR's body: whoever merges second owns the rebase.
 - **Merge gate:** only merge a PR carrying the **`ready to merge`** label —
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and

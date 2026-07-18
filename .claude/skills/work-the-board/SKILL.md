@@ -44,9 +44,20 @@ The `needs:*` labels are the state machine; this skill just drives it.
    and does **not** change the label — so a label-only pass reports "waiting on
    you" when they already answered. (This exact miss happened 2026-07-18: "Build!"
    sat on #88 and #92 through a whole pass.)
-2. **Classify + act**, cheapest-and-most-reversible first, then merges, then the
-   one build. For each item, **hand off to the skill that owns that step** rather
-   than improvising:
+2. **Classify + act** in this order — **merges always before builds**. Anything
+   built before a pending merge lands on a stale base and has to rebase, so a
+   `ready to merge` PR is the first real action of a pass, not the last:
+
+   1. cheap advancement (replies, labels, specs, plans, reminders)
+   2. **every PR carrying `ready to merge`** — merge them all, then re-pull
+   3. **then** the pass's one build, branched off the freshly-merged `main`
+
+   When two open PRs touch the same files (registries, drop tables, protocol),
+   say so in the second one's body — whoever merges second owns the rebase, and
+   they should know before review, not after.
+
+   For each item, **hand off to the skill that owns that step** rather than
+   improvising:
 
 | State | Action | Owner |
 |---|---|---|
