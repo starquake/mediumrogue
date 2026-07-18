@@ -310,6 +310,69 @@ var itemDefs = []*itemDef{
 			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase + 25}},
 		},
 	},
+	// Damage-type content wave (#92, DT1): types must be FELT on day one, so
+	// the wave ships one resist armor per FAMILY (physical / elemental /
+	// metaphysical) plus a weapon for each type that had no representative.
+	// A resist is an ordinary take-damage card gated on the incoming type
+	// (condIncomingType) — no resist subsystem, no new machinery.
+	//
+	// Numbers below are first-draft knobs anchored on the shipped armor
+	// ladder (Leather -1, Iron Plate -2 flat): a resist is a HALVING, but
+	// only against one of six types, so it is situational where flat
+	// mitigation is always-on. Designer rewording and retuning welcome.
+	{
+		// The parked P2 designer card, unparked (#92).
+		id: idInfernalChainMail, name: "Infernal Chain Mail", itemType: protocol.ItemTypeChest,
+		desc:   "take half damage from fire",
+		flavor: "Forged in a place where fire was the weather.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeFire}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// Physical-family resist: sharp only. Blunt is deliberately NOT
+		// covered — a single card that answered both physical types would be
+		// strictly better than either elemental resist, since almost every
+		// early monster is sharp or blunt.
+		id: idWardedGambeson, name: "Warded Gambeson", itemType: protocol.ItemTypeChest,
+		desc:   "take half damage from sharp weapons",
+		flavor: "Layered linen, quilted thick. Blades slide; hammers do not care.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeSharp}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// Metaphysical-family resist: chaos only, the ghoul-tier answer.
+		id: idPilgrimsMantle, name: "Pilgrim's Mantle", itemType: protocol.ItemTypeChest,
+		desc:   "take half damage from chaos",
+		flavor: "Worn thin by a road no map admits to.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeChaos}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// Ice had no representative at all (#92's assignment table). Damage
+		// sits at the shipped 1H melee anchor (4), so the type is the whole
+		// point of the weapon rather than a stat upgrade riding along.
+		id: idFrostbrand, name: "Frostbrand", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeIce,
+		damage:     4, desc: "a blade of standing cold",
+		flavor: "The scabbard frosts over between fights.",
+	},
+	{
+		// Holy had exactly one representative, the dragon-only Wyrmslayer —
+		// so the type was unreachable for most of the game. A 1H blunt-tier
+		// mace at the same anchor makes it obtainable.
+		id: idConsecratedMace, name: "Consecrated Mace", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeHoly,
+		damage:     4, desc: "blessed iron — ghouls fear it",
+		flavor: "Every dent in it was somebody's bad night.",
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -388,6 +451,10 @@ var monsterDefs = []*monsterDef{
 			// (killDropSeed/killMissSeed re-derived if the new total weight
 			// moves them).
 			{defID: idPaddedBoots, weight: 4},
+			// Damage-type wave (#92): appended LAST for the same reason. The
+			// Warded Gambeson (sharp resist) belongs on the sharp-clawed
+			// kind a player meets first.
+			{defID: idWardedGambeson, weight: 3},
 		},
 		rings: []int{1},
 	},
@@ -417,6 +484,12 @@ var monsterDefs = []*monsterDef{
 			// kind is not pinned by drops_test.go today, but the rule holds
 			// regardless).
 			{defID: idMisericorde, weight: 4},
+			// Damage-type wave (#92): appended LAST so every earlier entry
+			// keeps its cumulative-weight position. The Pilgrim's Mantle
+			// (chaos resist) and the Consecrated Mace answer this kind
+			// specifically — the ghoul is where a player first WANTS a type.
+			{defID: idPilgrimsMantle, weight: 3},
+			{defID: idConsecratedMace, weight: 3},
 		},
 		rings: []int{1, 2},
 	},
@@ -449,6 +522,9 @@ var monsterDefs = []*monsterDef{
 			// the troll, the tier where taking 2 less per hit is worth being
 			// noticed sooner.
 			{defID: idIronPlateArmor, weight: 4},
+			// Damage-type wave (#92): appended LAST. The Frostbrand is the
+			// game's only Ice weapon, frontier-tier loot.
+			{defID: idFrostbrand, weight: 3},
 		},
 		rings: []int{2},
 	},
@@ -470,6 +546,9 @@ var monsterDefs = []*monsterDef{
 			// Iron Plate Armor (#88): appended LAST — rare here (weight 1),
 			// the troll table is its common source.
 			{defID: idIronPlateArmor, weight: 1},
+			// Damage-type wave (#92): appended LAST. Infernal Chain Mail —
+			// fire resistance, dropped by the one kind whose claws are fire.
+			{defID: idInfernalChainMail, weight: 2},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},

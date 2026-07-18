@@ -563,6 +563,19 @@ const (
 	idHealingPotion      = "healing-potion"
 )
 
+// Damage-type content-wave ids (#92, DT1): the first resist armors and the
+// first Ice and Holy weapons — types have to be FELT on day one, so the
+// wave ships one resist per family plus a representative for the two types
+// that had none. Named here for the usual reason: registry entry, drop
+// tables, and pinning tests can't drift on a typo.
+const (
+	idInfernalChainMail = "infernal-chain-mail"
+	idWardedGambeson    = "warded-gambeson"
+	idPilgrimsMantle    = "pilgrims-mantle"
+	idFrostbrand        = "frostbrand"
+	idConsecratedMace   = "consecrated-mace"
+)
+
 // Crit%-weapon ids (fast-lane batch task 6, #69 Q5): the first weapons to
 // carry a per-hit crit-chance card (the elf-crit card pattern applied to an
 // item instead of a species), so a typo in content.go's registry entries or

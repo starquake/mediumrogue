@@ -87,6 +87,10 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		// the wolf so the reach-shrinking option is reachable early. Appended
 		// LAST for the same reason.
 		{defID: idPaddedBoots, weight: 4},
+		// Appended by the damage-type wave (#92): the Warded Gambeson, the
+		// sharp resist, on the sharp-clawed kind a player meets first.
+		// Appended LAST for the same reason.
+		{defID: idWardedGambeson, weight: 3},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {

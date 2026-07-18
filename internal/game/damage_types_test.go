@@ -103,3 +103,66 @@ func TestVulnerabilityIsTypeGatedNotUniversal(t *testing.T) {
 		t.Errorf("blunt swing vs troll dealt %d, want %d (same as vs ghoul — neither card is a blunt card)", got, want)
 	}
 }
+
+// fireDamageTaken places a fighter at origin — optionally wearing the chest
+// item with def id armorID — with a dragon adjacent, resolves one turn, and
+// returns the HP lost to the dragon's (fire) claws.
+func fireDamageTaken(t *testing.T, armorID string) int {
+	t.Helper()
+
+	w := newWorld()
+
+	origin := protocol.Hex{Q: 0, R: 0}
+	if !isWalkable(w, origin) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	id, token := w.PlaceEntityForTest(origin)
+
+	if armorID != "" {
+		instID := w.GrantItemForTest(id, armorID)
+		if err := w.SubmitIntent(protocol.IntentRequest{
+			EntityID: id, Token: token, Kind: protocol.IntentEquip, ItemID: instID,
+		}); err != nil {
+			t.Fatalf("SubmitIntent equip %s: %v", armorID, err)
+		}
+
+		if got, want := w.EquippedInSlotForTest(id, protocol.ItemTypeChest), instID; got != want {
+			t.Fatalf("chest slot = %d, want %d (armor equipped)", got, want)
+		}
+	}
+
+	w.PlaceMonsterKindForTest(walkableNeighbor(t, w, origin), "dragon")
+
+	before := game.MaxHPForTest(protocol.ClassFighter, 1)
+
+	return before - entityHP(t, step(t, w), id)
+}
+
+// TestInfernalChainMailHalvesFire (#92): the wave's headline resist through
+// the live pipeline — a dragon's fire claws land for half against it. A
+// resist is an ordinary take-damage card gated on the incoming type; there
+// is no resist subsystem to test.
+func TestInfernalChainMailHalvesFire(t *testing.T) {
+	t.Parallel()
+
+	bare := fireDamageTaken(t, "")
+	if got, want := bare, game.MonsterDamageForTest("dragon"); got != want {
+		t.Fatalf("bare fighter lost %d HP to dragon claws, want %d", got, want)
+	}
+
+	if got, want := fireDamageTaken(t, "infernal-chain-mail"), bare/2; got != want {
+		t.Errorf("fire-resisted fighter lost %d HP, want %d (half)", got, want)
+	}
+}
+
+// TestResistIsTypeGated (#92): the sharp resist is inert against fire — the
+// same swing, a different armor, proving each resist answers exactly one of
+// the six types and none of them is general mitigation in disguise.
+func TestResistIsTypeGated(t *testing.T) {
+	t.Parallel()
+
+	if got, want := fireDamageTaken(t, "warded-gambeson"), fireDamageTaken(t, ""); got != want {
+		t.Errorf("sharp-resisted fighter lost %d HP to FIRE claws, want %d (unchanged)", got, want)
+	}
+}
