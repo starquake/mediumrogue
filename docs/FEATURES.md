@@ -340,10 +340,12 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
     auto-equip. The client modal shows a stack as one row ("Healing Potion
     ×3 · consumable"); **hovering a row reveals the item's details** (#139) in
     the **same stat tooltip the inventory uses** (`gear/StatTooltip`, extracted
-    so the character panel and the pickup modal share one component) — damage /
-    range / AoE, the rule `desc` and `flavor`, and the **"vs equipped"
-    comparison** against whatever you'd be replacing, so a pickup is an
-    informed choice. `GroundItemView` carries the same detail fields as
+    so the character panel and the pickup modal share one component) — name,
+    damage / range / AoE, the rule `desc` and `flavor`. Alongside the candidate,
+    the tooltip **also shows a block for each equipped item it would be weighed
+    against** — for a weapon that's **both hands** (you can dual-wield two 1H
+    weapons; a 2H weapon replaces both), each labelled by slot — so you read the
+    raw stats side by side. `GroundItemView` carries the same detail fields as
     `ItemView`; `window.game.pickupModal.rows` exposes `damage`/`rangeHex`/
     `aoeRadius`.
   - **drink** — a consumable: applies its heal (clamped to max HP) and

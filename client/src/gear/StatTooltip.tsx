@@ -4,7 +4,7 @@ import { render } from "solid-js/web";
 
 import { ItemTypeWeapon, SlotMainHand, SlotOffHand } from "../protocol.gen";
 import type { ItemStats, SlotItem } from "./store";
-import { equipped, targetSlotFor } from "./store";
+import { equipped, SLOT_LABELS, targetSlotFor } from "./store";
 
 // A hovered item is anything with an id/name/type carrying combat stats — an
 // equipped slot item, a backpack entry, or a ground item in the pickup modal
@@ -22,7 +22,8 @@ export function showHover(item: HoverItem, el: HTMLElement): void {
   const r = el.getBoundingClientRect();
   const width = 224; // matches .stat-tip; flip to the anchor's left near the edge
   const x = r.right + 10 + width > window.innerWidth ? r.left - 10 - width : r.right + 10;
-  const y = Math.min(r.top, window.innerHeight - 240);
+  // Leave room for a comparison stack (candidate + up to two equipped weapons).
+  const y = Math.min(r.top, Math.max(8, window.innerHeight - 380));
   setHover({ item, x, y });
 }
 
@@ -31,27 +32,49 @@ export function hideHover(): void {
   setHover(null);
 }
 
-function StatRow(props: { label: string; value: number; delta: number | undefined }): JSXElement {
+function StatLine(props: { label: string; value: number }): JSXElement {
   return (
     <div class="tt-row">
       <span class="tt-label">{props.label}</span>
-      <span class="tt-val">
-        {props.value}
-        <Show when={props.delta !== undefined && props.delta !== 0}>
-          <span class="tt-delta" classList={{ up: props.delta! > 0, down: props.delta! < 0 }}>
-            {` (${props.delta! > 0 ? "+" : ""}${props.delta})`}
-          </span>
-        </Show>
-      </span>
+      <span class="tt-val">{props.value}</span>
     </div>
   );
 }
 
-function CmpDelta(props: { label: string; value: number }): JSXElement {
+// One item's own stat block — the hovered candidate, or an equipped weapon shown
+// beside it for comparison (slot set → labelled "equipped · Main Hand").
+function StatBlock(props: { item: ItemStats & { name: string }; slot?: string }): JSXElement {
+  const it = (): ItemStats & { name: string } => props.item;
+  const hasCombat = (): boolean => it().damage > 0 || it().rangeHex > 0 || it().aoeRadius > 0;
   return (
-    <span class="tt-cmp-delta" classList={{ up: props.value > 0, down: props.value < 0 }}>
-      {`${props.value > 0 ? "+" : ""}${props.value} ${props.label}`}
-    </span>
+    <div class="stat-tip">
+      <div class="tt-name">{it().name}</div>
+      <Show when={props.slot !== undefined}>
+        <div class="tt-cmp">equipped · {SLOT_LABELS[props.slot!]}</div>
+      </Show>
+      <Show
+        when={hasCombat()}
+        fallback={
+          <Show when={it().desc === ""}>
+            <div class="tt-none">No combat stats.</div>
+          </Show>
+        }
+      >
+        <StatLine label="Damage" value={it().damage} />
+        <Show when={it().rangeHex > 0}>
+          <StatLine label="Range" value={it().rangeHex} />
+        </Show>
+        <Show when={it().aoeRadius > 0}>
+          <StatLine label="AoE" value={it().aoeRadius} />
+        </Show>
+      </Show>
+      <Show when={it().desc !== ""}>
+        <div class="tt-effect">{it().desc}</div>
+      </Show>
+      <Show when={it().flavor !== ""}>
+        <div class="tt-flavor">{it().flavor}</div>
+      </Show>
+    </div>
   );
 }
 
@@ -60,82 +83,31 @@ function StatTooltip(): JSXElement {
     <Show when={hover()}>
       {(h) => {
         const item = (): HoverItem => h().item;
-        // What this item would be weighed against. A WEAPON compares against
-        // BOTH hands — you can dual-wield two 1H weapons, and a 2H weapon
-        // replaces both — while a shield/armor/jewelry compares against its one
-        // slot (targetSlotFor). Never against itself (hovering an equipped hex).
-        const targets = (): SlotItem[] => {
+        const isEquipped = (): boolean => Object.values(equipped()).some((c) => c.id === item().id);
+        // A candidate weapon is shown alongside BOTH equipped hands (dual-wield —
+        // two 1H weapons, or a 2H weapon that replaces both); other gear alongside
+        // its one target slot. Skipped when hovering something already equipped
+        // (you're inspecting your own gear, not weighing a swap).
+        const compares = (): { item: SlotItem; slot: string }[] => {
+          if (isEquipped()) {
+            return [];
+          }
           const it = item();
           const slots = it.type === ItemTypeWeapon ? [SlotMainHand, SlotOffHand] : [targetSlotFor(it)];
           const eq = equipped();
-          const out: SlotItem[] = [];
+          const out: { item: SlotItem; slot: string }[] = [];
           for (const s of slots) {
             const c = eq[s];
             if (c !== undefined && c.id !== it.id) {
-              out.push(c);
+              out.push({ item: c, slot: s });
             }
           }
           return out;
         };
-        const hasCombat = (): boolean =>
-          item().damage > 0 || item().rangeHex > 0 || item().aoeRadius > 0 || targets().some((c) => c.damage > 0);
-        const showRange = (): boolean => item().rangeHex > 0 || targets().some((c) => c.rangeHex > 0);
-        const showAoe = (): boolean => item().aoeRadius > 0 || targets().some((c) => c.aoeRadius > 0);
-        // With ONE thing to compare against, keep the inline (+delta) format;
-        // with two (dual-wield), the deltas move to a per-weapon block below the
-        // plain stats — you can't put two deltas on one stat row.
-        const solo = (): SlotItem | undefined => (targets().length === 1 ? targets()[0] : undefined);
-        const delta = (pick: (s: ItemStats) => number): number | undefined => {
-          const c = solo();
-          return c !== undefined ? pick(item()) - pick(c) : undefined;
-        };
         return (
-          <div class="stat-tip" style={{ left: `${h().x}px`, top: `${h().y}px` }}>
-            <div class="tt-name">{item().name}</div>
-            <Show when={solo() !== undefined}>
-              <div class="tt-cmp">vs equipped: {solo()!.name}</div>
-            </Show>
-            <Show
-              when={hasCombat()}
-              fallback={
-                <Show when={item().desc === ""}>
-                  <div class="tt-none">No combat stats.</div>
-                </Show>
-              }
-            >
-              <StatRow label="Damage" value={item().damage} delta={delta((s) => s.damage)} />
-              <Show when={showRange()}>
-                <StatRow label="Range" value={item().rangeHex} delta={delta((s) => s.rangeHex)} />
-              </Show>
-              <Show when={showAoe()}>
-                <StatRow label="AoE" value={item().aoeRadius} delta={delta((s) => s.aoeRadius)} />
-              </Show>
-              <Show when={targets().length > 1}>
-                <div class="tt-cmp">vs equipped</div>
-                <For each={targets()}>
-                  {(c) => (
-                    <div class="tt-cmp-row">
-                      <span class="tt-cmp-name">{c.name}</span>
-                      <span class="tt-cmp-deltas">
-                        <CmpDelta label="dmg" value={item().damage - c.damage} />
-                        <Show when={showRange()}>
-                          <CmpDelta label="rng" value={item().rangeHex - c.rangeHex} />
-                        </Show>
-                        <Show when={showAoe()}>
-                          <CmpDelta label="aoe" value={item().aoeRadius - c.aoeRadius} />
-                        </Show>
-                      </span>
-                    </div>
-                  )}
-                </For>
-              </Show>
-            </Show>
-            <Show when={item().desc !== ""}>
-              <div class="tt-effect">{item().desc}</div>
-            </Show>
-            <Show when={item().flavor !== ""}>
-              <div class="tt-flavor">{item().flavor}</div>
-            </Show>
+          <div class="stat-tip-stack" style={{ left: `${h().x}px`, top: `${h().y}px` }}>
+            <StatBlock item={item()} />
+            <For each={compares()}>{(c) => <StatBlock item={c.item} slot={c.slot} />}</For>
           </div>
         );
       }}

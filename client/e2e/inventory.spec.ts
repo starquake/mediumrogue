@@ -227,12 +227,17 @@ test("dropping a backpack item opens the pickup modal; taking a row returns the 
   expect(stats?.damage).toBeGreaterThan(0);
   expect(stats?.rangeHex).toBeGreaterThan(0);
   // Hovering the row reveals the shared stat tooltip — the same one the
-  // inventory uses (extracted to gear/StatTooltip). pointer-events:none on the
-  // tip means this hover doesn't block the take click below.
+  // inventory uses (extracted to gear/StatTooltip). A weapon shows its own
+  // block plus one per equipped hand it's weighed against (here the rogue's
+  // main-hand weapon), so assert the stack, not a single .stat-tip.
+  // pointer-events:none means the hover doesn't block the take click below.
   await myRow.hover();
-  await expect(page.locator(".stat-tip")).toBeVisible();
-  await expect(page.locator(".stat-tip")).toContainText("Shortbow");
-  await expect(page.locator(".stat-tip")).toContainText("Damage");
+  const stack = page.locator(".stat-tip-stack");
+  await expect(stack).toBeVisible();
+  await expect(stack).toContainText("Shortbow");
+  await expect(stack).toContainText("Damage");
+  // The candidate + at least one equipped weapon it's compared against.
+  expect(await stack.locator(".stat-tip").count()).toBeGreaterThanOrEqual(2);
 
   // Take it back — the row leaves the modal, and it returns to the backpack
   // (unequipped: items never auto-equip on pickup).
