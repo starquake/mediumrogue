@@ -568,6 +568,7 @@ func init() {
 	}
 
 	buildMonsterIndex()
+	buildSkillIndex()
 
 	mustValidateContent()
 }

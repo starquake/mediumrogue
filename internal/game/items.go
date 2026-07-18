@@ -899,6 +899,7 @@ func mustValidateContent() {
 	validateItemDefs(itemDefs)
 	validateMaxReach(itemDefs)
 	validateMonsterDefs(monsterDefs)
+	validateSkillDefs(skillDefs)
 
 	// Class passives ride the same card vocabulary as items/monsters —
 	// validate them at init so a bad kind panics at process start, not
