@@ -177,7 +177,27 @@ schedule — same contract, same one-build cap. Locally that's `/loop`;
 unattended/away it's a `/schedule` cloud agent (headless: `gh`/GitHub works,
 interactive-auth MCP does not). "stop the board" ends it.
 
-**When the whole board is at the maintainer's gate, say so and offer to pause.**
-A loop whose every pass finds nothing authorised is burning turns to re-read the
-same labels. Stretch the interval or stop and let them restart it — the queue
-being long is information *for them*, not a reason to keep spinning.
+### Pacing: back off when quiet, speed up when active
+
+A fixed interval is wrong in both directions — too slow while work is in
+flight, too fast when the board is parked on the maintainer. In dynamic mode
+(`/loop` with no interval), pick the next delay from **what this pass actually
+found**:
+
+| This pass… | Next delay |
+|---|---|
+| merged, built, or is watching CI it just pushed | **~5 min** — something is in flight and the next step is yours |
+| folded in answers, replied, advanced a ticket | **~10 min** — the maintainer is at the keyboard; more may land |
+| found new maintainer comments but nothing to do yet | **~15 min** |
+| found nothing new (1st quiet pass) | **~20 min** |
+| found nothing new (2nd) | **~40 min** |
+| found nothing new (3rd or later) | **60 min** (the ceiling) |
+
+**Any activity resets to the top of the table** — one answered question means
+they're back, and the next pass should be prompt. The runtime clamps to
+[60, 3600] seconds, so 60 min is the practical ceiling.
+
+**After three consecutive quiet passes, say so and offer to stop.** A loop
+whose every pass re-reads the same labels is burning turns; the queue being
+long is information *for them*, not a reason to keep spinning. They can
+restart it in one word.
