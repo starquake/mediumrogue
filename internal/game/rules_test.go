@@ -46,6 +46,20 @@ func TestApplyRulesTakeDamageFloorsAtOne(t *testing.T) {
 	}
 }
 
+// TestApplyRulesAggroRangeFloorsAtOne (#88): the aggro-range fold carries the
+// same ≥1 floor take-damage does. Every noticeability card shipped today is
+// multiplicative and cannot go negative, but a future negative-`add` card
+// could fold a radius to 0 or below — a monster that never notices anyone,
+// discovered mid-playtest. One clamp now, no surprise later.
+func TestApplyRulesAggroRangeFloorsAtOne(t *testing.T) {
+	t.Parallel()
+
+	cards := []ruleCard{{event: evAggroRange, then: effect{kind: effAdd, n: -999}}}
+	if got, want := applyRules(evAggroRange, 10, cards, ruleCtx{}), 1; got != want {
+		t.Errorf("applyRules aggro-range = %d, want floor %d", got, want)
+	}
+}
+
 func TestSpeciesCardsMatchOldPassives(t *testing.T) {
 	t.Parallel()
 

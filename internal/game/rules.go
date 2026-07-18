@@ -203,7 +203,8 @@ func (t *ruleTrace) noteMul(c ruleCard) {
 // applyRules folds base through every card matching event whose conditions
 // hold: adds sum first, then multiplier deltas sum and apply once (percent
 // fold is additive, not compounding — #61 principle 14), then the
-// event-level clamp (a landed hit always costs ≥1; XP never goes negative).
+// event-level clamp (a landed hit always costs ≥1; a noticeability radius
+// stays ≥1; XP never goes negative).
 func applyRules(event string, base int, cards []ruleCard, ctx ruleCtx) int {
 	v, _ := applyRulesTraced(event, base, cards, ctx)
 
@@ -254,6 +255,13 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 
 	switch event {
 	case evTakeDamage:
+		if v < 1 {
+			v = 1
+		}
+	case evAggroRange:
+		// A noticeability radius stays ≥1 (#88): shipped cards are
+		// multiplicative and cannot go negative, but a future negative-`add`
+		// card could fold it to 0 — a monster that never notices anyone.
 		if v < 1 {
 			v = 1
 		}
