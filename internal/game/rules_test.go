@@ -547,3 +547,90 @@ func TestPercentMitigationStacksWithoutFlattening(t *testing.T) {
 		t.Errorf("troll hit %d is not greater than wolf hit %d — mitigation is flattening again", troll, wolf)
 	}
 }
+
+// TestCondWeaponTagged (#124): the tag gate reads the weapon being SWUNG, and
+// fails closed in every fold that has no weapon in flight (earn-XP,
+// aggro-range, take-damage against a monster's claws are all folds where a
+// caller may leave ctx.weapon nil).
+func TestCondWeaponTagged(t *testing.T) {
+	t.Parallel()
+
+	melee := &itemDef{id: "sword", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee}}
+	bow := &itemDef{id: "bow", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagRanged}}
+
+	tests := []struct {
+		name   string
+		weapon *itemDef
+		tag    string
+		want   bool
+	}{
+		{name: "matching tag", weapon: melee, tag: protocol.WeaponTagMelee, want: true},
+		{name: "different tag", weapon: bow, tag: protocol.WeaponTagMelee},
+		{name: "no weapon in flight", tag: protocol.WeaponTagMelee},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := ruleCtx{weapon: tt.weapon}
+			if got, want := conditionHolds(condition{kind: condWeaponTagged, s: tt.tag}, ctx), tt.want; got != want {
+				t.Errorf("condWeaponTagged holds = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// TestCondShieldEquippedReadsTheVICTIM (#124) pins the thing that is easy to
+// get backwards, and was: Shield Wall is a TAKE-DAMAGE card, and in
+// rollDamageLocked the victim's own cards fold under a ctx whose .attacker is
+// still the swinger. So the condition must read ctx.victim — an attacker
+// holding a shield must NOT satisfy the defender's card.
+func TestCondShieldEquippedReadsTheVICTIM(t *testing.T) {
+	t.Parallel()
+
+	withShield := func() *entity {
+		return &entity{equipped: map[string]itemInstance{
+			protocol.SlotOffHand: {id: 1, defID: idWoodenBuckler},
+		}}
+	}
+	bare := func() *entity { return &entity{equipped: map[string]itemInstance{}} }
+
+	tests := []struct {
+		name             string
+		attacker, victim *entity
+		want             bool
+	}{
+		{name: "victim has a shield", attacker: bare(), victim: withShield(), want: true},
+		{name: "only the ATTACKER has a shield", attacker: withShield(), victim: bare()},
+		{name: "neither", attacker: bare(), victim: bare()},
+		{name: "no victim in flight", attacker: withShield()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := ruleCtx{attacker: tt.attacker, victim: tt.victim}
+			if got, want := conditionHolds(condition{kind: condShieldEquipped}, ctx), tt.want; got != want {
+				t.Errorf("condShieldEquipped holds = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// TestCondShieldEquippedRejectsANonShieldOffHand (#124): the off-hand also
+// holds dual-wielded WEAPONS, so the condition must check the item type and
+// not merely that the slot is full.
+func TestCondShieldEquippedRejectsANonShieldOffHand(t *testing.T) {
+	t.Parallel()
+
+	dualWielder := &entity{equipped: map[string]itemInstance{
+		protocol.SlotOffHand: {id: 1, defID: idDagger},
+	}}
+
+	ctx := ruleCtx{victim: dualWielder}
+	if got, want := conditionHolds(condition{kind: condShieldEquipped}, ctx), false; got != want {
+		t.Errorf("condShieldEquipped with a dagger in the off-hand = %v, want %v", got, want)
+	}
+}

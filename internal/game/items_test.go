@@ -1470,3 +1470,41 @@ func TestEveryWeaponAndKindCarriesADamageType(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateRuleCardsPanicsOnUnknownWeaponTag (#124): a tag gate naming a
+// tag that can't exist would silently never hold — the same fail-loud
+// treatment attackerSpecies, targetKind and damageType already get.
+func TestValidateRuleCardsPanicsOnUnknownWeaponTag(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("validateRuleCards did not panic on a card naming an unknown weapon tag")
+		}
+	}()
+
+	validateRuleCards("x", []ruleCard{{
+		event: evDealDamage,
+		when:  []condition{{kind: condWeaponTagged, s: "polearm"}},
+		then:  effect{kind: effMulPct, n: percentBase + 10},
+	}})
+}
+
+// TestValidateRuleCardsAcceptsTheNewSkillConditions (#124): both kinds are
+// known to the validator — the third of the three places that must agree.
+func TestValidateRuleCardsAcceptsTheNewSkillConditions(t *testing.T) {
+	t.Parallel()
+
+	validateRuleCards("x", []ruleCard{
+		{
+			event: evDealDamage,
+			when:  []condition{{kind: condWeaponTagged, s: protocol.WeaponTagMelee}},
+			then:  effect{kind: effMulPct, n: percentBase + 10},
+		},
+		{
+			event: evTakeDamage,
+			when:  []condition{{kind: condShieldEquipped}},
+			then:  effect{kind: effMulPct, n: protocol.GlanceDamagePercent},
+		},
+	})
+}
