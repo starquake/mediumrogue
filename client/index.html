@@ -798,6 +798,33 @@
         font-size: 0.62rem;
         margin-bottom: 0.35rem;
       }
+      /* #139: per-weapon comparison rows (dual-wield — compare vs both hands). */
+      .stat-tip .tt-cmp-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        line-height: 1.55;
+      }
+      .stat-tip .tt-cmp-name {
+        color: var(--fg);
+        font-size: 0.66rem;
+      }
+      .stat-tip .tt-cmp-deltas {
+        display: flex;
+        gap: 0.5rem;
+        font-size: 0.62rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .stat-tip .tt-cmp-delta {
+        color: var(--dim);
+      }
+      .stat-tip .tt-cmp-delta.up {
+        color: #7cd66c;
+      }
+      .stat-tip .tt-cmp-delta.down {
+        color: #e06c6c;
+      }
       .stat-tip .tt-row {
         display: flex;
         justify-content: space-between;

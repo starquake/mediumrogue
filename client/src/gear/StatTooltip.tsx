@@ -1,7 +1,8 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
+import { ItemTypeWeapon, SlotMainHand, SlotOffHand } from "../protocol.gen";
 import type { ItemStats, SlotItem } from "./store";
 import { equipped, targetSlotFor } from "./store";
 
@@ -46,33 +47,53 @@ function StatRow(props: { label: string; value: number; delta: number | undefine
   );
 }
 
+function CmpDelta(props: { label: string; value: number }): JSXElement {
+  return (
+    <span class="tt-cmp-delta" classList={{ up: props.value > 0, down: props.value < 0 }}>
+      {`${props.value > 0 ? "+" : ""}${props.value} ${props.label}`}
+    </span>
+  );
+}
+
 function StatTooltip(): JSXElement {
   return (
     <Show when={hover()}>
       {(h) => {
         const item = (): HoverItem => h().item;
-        // The item in the slot this item occupies OR WOULD occupy — a
-        // backpack/ground weapon compares against the hand targetSlotFor picks
-        // (main if free/two-handed, else off if free, else main), mirroring
-        // the server's weaponTargetSlot placement — unless that IS the
-        // hovered item (hovering the equipped hex itself → nothing to
-        // compare against). A ground item's id never matches an equipped one,
-        // so for the pickup modal this is always the "vs what I'm holding".
-        const current = (): SlotItem | undefined => {
-          const c = equipped()[targetSlotFor(item())];
-          return c !== undefined && c.id !== item().id ? c : undefined;
-        };
-        const delta = (pick: (s: ItemStats) => number): number | undefined => {
-          const c = current();
-          return c !== undefined ? pick(item()) - pick(c) : undefined;
+        // What this item would be weighed against. A WEAPON compares against
+        // BOTH hands — you can dual-wield two 1H weapons, and a 2H weapon
+        // replaces both — while a shield/armor/jewelry compares against its one
+        // slot (targetSlotFor). Never against itself (hovering an equipped hex).
+        const targets = (): SlotItem[] => {
+          const it = item();
+          const slots = it.type === ItemTypeWeapon ? [SlotMainHand, SlotOffHand] : [targetSlotFor(it)];
+          const eq = equipped();
+          const out: SlotItem[] = [];
+          for (const s of slots) {
+            const c = eq[s];
+            if (c !== undefined && c.id !== it.id) {
+              out.push(c);
+            }
+          }
+          return out;
         };
         const hasCombat = (): boolean =>
-          item().damage > 0 || item().rangeHex > 0 || item().aoeRadius > 0 || (current()?.damage ?? 0) > 0;
+          item().damage > 0 || item().rangeHex > 0 || item().aoeRadius > 0 || targets().some((c) => c.damage > 0);
+        const showRange = (): boolean => item().rangeHex > 0 || targets().some((c) => c.rangeHex > 0);
+        const showAoe = (): boolean => item().aoeRadius > 0 || targets().some((c) => c.aoeRadius > 0);
+        // With ONE thing to compare against, keep the inline (+delta) format;
+        // with two (dual-wield), the deltas move to a per-weapon block below the
+        // plain stats — you can't put two deltas on one stat row.
+        const solo = (): SlotItem | undefined => (targets().length === 1 ? targets()[0] : undefined);
+        const delta = (pick: (s: ItemStats) => number): number | undefined => {
+          const c = solo();
+          return c !== undefined ? pick(item()) - pick(c) : undefined;
+        };
         return (
           <div class="stat-tip" style={{ left: `${h().x}px`, top: `${h().y}px` }}>
             <div class="tt-name">{item().name}</div>
-            <Show when={current() !== undefined}>
-              <div class="tt-cmp">vs equipped: {current()!.name}</div>
+            <Show when={solo() !== undefined}>
+              <div class="tt-cmp">vs equipped: {solo()!.name}</div>
             </Show>
             <Show
               when={hasCombat()}
@@ -83,11 +104,30 @@ function StatTooltip(): JSXElement {
               }
             >
               <StatRow label="Damage" value={item().damage} delta={delta((s) => s.damage)} />
-              <Show when={item().rangeHex > 0 || (current()?.rangeHex ?? 0) > 0}>
+              <Show when={showRange()}>
                 <StatRow label="Range" value={item().rangeHex} delta={delta((s) => s.rangeHex)} />
               </Show>
-              <Show when={item().aoeRadius > 0 || (current()?.aoeRadius ?? 0) > 0}>
+              <Show when={showAoe()}>
                 <StatRow label="AoE" value={item().aoeRadius} delta={delta((s) => s.aoeRadius)} />
+              </Show>
+              <Show when={targets().length > 1}>
+                <div class="tt-cmp">vs equipped</div>
+                <For each={targets()}>
+                  {(c) => (
+                    <div class="tt-cmp-row">
+                      <span class="tt-cmp-name">{c.name}</span>
+                      <span class="tt-cmp-deltas">
+                        <CmpDelta label="dmg" value={item().damage - c.damage} />
+                        <Show when={showRange()}>
+                          <CmpDelta label="rng" value={item().rangeHex - c.rangeHex} />
+                        </Show>
+                        <Show when={showAoe()}>
+                          <CmpDelta label="aoe" value={item().aoeRadius - c.aoeRadius} />
+                        </Show>
+                      </span>
+                    </div>
+                  )}
+                </For>
               </Show>
             </Show>
             <Show when={item().desc !== ""}>
