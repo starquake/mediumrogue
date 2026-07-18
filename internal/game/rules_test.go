@@ -7,6 +7,7 @@ package game
 
 import (
 	mrand "math/rand/v2"
+	"slices"
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -489,5 +490,60 @@ func TestFireResistCardHalvesOnlyFire(t *testing.T) {
 	sharp := ruleCtx{damageType: protocol.DamageTypeSharp}
 	if got, want := applyRules(evTakeDamage, 10, resist, sharp), 10; got != want {
 		t.Errorf("sharp hit through fire resist = %d, want %d (inert)", got, want)
+	}
+}
+
+// TestPercentMitigationStacksWithoutFlattening (#154) is the regression guard
+// for the reason mitigation went percentage at all. Flat −N reductions summed
+// straight into applyRules' ≥1 clamp: a dwarf in Iron Plate with an Iron Kite
+// Shield took −5, which flattened EVERY monster up to a troll (6 damage) to
+// the floor of 1, and made each extra piece of armour worth less than the
+// last. Percentages scale with the hit instead, so a big hit stays big.
+//
+// The dwarf's flat −1 deliberately survives (@starquake, #154: "dwarf passive
+// changes too = no") — a species trait is the one place a small always-on
+// flat effect is defensible, and it is folded in the ADD phase before the
+// percentages, exactly as the pipeline documents.
+func TestPercentMitigationStacksWithoutFlattening(t *testing.T) {
+	t.Parallel()
+
+	cards := slices.Concat(
+		speciesCards(protocol.SpeciesDwarf),
+		itemDefByID[idIronPlateArmor].rules,
+		itemDefByID[idIronKiteShield].rules,
+	)
+
+	// (raw − 1) × (1 − 0.20 − 0.20), truncated, floored at 1 — percent deltas
+	// ADD within one fold (#61 principle 14), never compound.
+	tests := []struct {
+		kind string
+		want int
+	}{
+		{kind: idKindRat, want: 1},    // 1 → floor
+		{kind: idKindWolf, want: 1},   // (3−1)×0.6 = 1
+		{kind: idKindGhoul, want: 1},  // (4−1)×0.6 = 1
+		{kind: idKindTroll, want: 3},  // (6−1)×0.6 = 3 — was 1 under flat −5
+		{kind: idKindDragon, want: 4}, // (9−1)×0.6 = 4
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.kind, func(t *testing.T) {
+			t.Parallel()
+
+			raw := monsterDefByID[tt.kind].damage
+			if got, want := applyRules(evTakeDamage, raw, cards, ruleCtx{}), tt.want; got != want {
+				t.Errorf("%s hit of %d through dwarf+plate+kite = %d, want %d", tt.kind, raw, got, want)
+			}
+		})
+	}
+
+	// The point, stated as an assertion rather than a comment: a troll still
+	// hurts more than a wolf through the same armour. Under flat mitigation
+	// both landed for exactly 1.
+	wolf := applyRules(evTakeDamage, monsterDefByID[idKindWolf].damage, cards, ruleCtx{})
+	troll := applyRules(evTakeDamage, monsterDefByID[idKindTroll].damage, cards, ruleCtx{})
+
+	if troll <= wolf {
+		t.Errorf("troll hit %d is not greater than wolf hit %d — mitigation is flattening again", troll, wolf)
 	}
 }

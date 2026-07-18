@@ -18,6 +18,10 @@ import (
 // registry names them as unexported consts (items.go); these are the
 // black-box mirror, so a rename fails loudly here instead of silently
 // granting nothing.
+// percentBaseForTest mirrors the engine's percent denominator (rules.go's
+// unexported percentBase) for the black-box tests in this package.
+const percentBaseForTest = 100
+
 const (
 	leatherArmorID   = "leather-armor"
 	paddedBootsID    = "padded-boots"
@@ -191,8 +195,12 @@ func TestIronPlateArmorReducesDamageThroughLivePipeline(t *testing.T) {
 		t.Fatalf("bare fighter lost %d HP to a wolf melee attack, want %d", got, want)
 	}
 
+	// re-derived for percentage mitigation (#154): plate is ×0.8, so a wolf's
+	// 3 lands for 2 (integer truncation), not 3−2. The assertion is now
+	// expressed as the percentage itself rather than a flat difference, so it
+	// stays honest if the wolf's damage is ever retuned.
 	plated := meleeDamageTaken(t, "wolf", ironPlateArmorID)
-	if got, want := plated, bare-2; got != want {
-		t.Errorf("plated fighter lost %d HP, want %d (take-damage -2)", got, want)
+	if got, want := plated, bare*(percentBaseForTest-20)/percentBaseForTest; got != want {
+		t.Errorf("plated fighter lost %d HP, want %d (take-damage ×0.8)", got, want)
 	}
 }
