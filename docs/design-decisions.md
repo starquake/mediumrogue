@@ -288,10 +288,41 @@ at once. Four things were settled.
   physical types would be strictly better than either elemental resist, since
   nearly every early monster is sharp or blunt.
 
+## Terrain blocks spotting: rock hard-blocks, forest softens *(decided 2026-07-18, #95)*
+
+Bubbles triggered on pure distance since the beginning; LOS was always the
+target. Four decisions made it real.
+
+- **Rock hard-blocks, forest softens, water is transparent.** `walkableLocked`
+  is deliberately *not* the predicate — water stops you walking, not seeing.
+  Forest doesn't block either; it *costs* `ForestSightCost = 2` hexes of
+  effective range per hex on the line, so you see a long way over open grass
+  and a short way into trees. A hard forest block would have made woodland
+  fights impossible to start; a free pass would have made forest cosmetic.
+- **Sight gates monster aggro too, not just bubbles.** Otherwise a monster
+  charges you *through* a rock wall and the bubble snaps the moment it rounds
+  the corner — technically consistent, obviously silly. It gates over the
+  monster kind's **own** reach, not `CombatRadius`, or every long-range kind
+  goes blind.
+- **Losing sight dissolves an existing bubble.** Ducking behind a rock ends
+  the fight — matching `design.md`'s "break line of sight *or* get far enough
+  away". This needed no code: bubbles are rebuilt from connected components
+  every tick, so an edge that stops passing simply doesn't re-form. Emergent
+  rather than written, which is why it carries a test that names the decision.
+- **Symmetric, and endpoints don't count.** One ray, cost summed, so there is
+  never "it sees you but you don't see it"; and only what lies strictly
+  between two entities counts, so adjacent entities always see each other and
+  standing in forest never hides you from something already next to you.
+
+**Consequence worth knowing:** effective spotting range over forest is now
+much shorter than the raw aggro radius. That is the feature, but it moved six
+existing tests, each re-derived by making its terrain explicit rather than by
+weakening an assertion. Ranged **attacks** stay distance-only by design —
+giving them LOS is its own slice.
+
 ## Open flags (doc vs implementation)
 
-- **Bubble trigger — LOS vs distance** *(decided 2026-07-14)*. Bubbles trigger
-  on **pure distance** (`≤ CombatRadius`) today; the plan keeps **mutual
-  line-of-sight** as the design target (terrain blocks spotting), now tracked as
-  a planned future addition in **#95**. Not a contradiction — distance-only is
-  shipped, LOS is future.
+- **Bubble trigger — LOS vs distance** *(decided 2026-07-14, **shipped
+  2026-07-18** — #95)*. Bubbles triggered on pure distance as a placeholder;
+  mutual line of sight was always the design target. **This flag is now
+  closed** — see the LOS entry above.
