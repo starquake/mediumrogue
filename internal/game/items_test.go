@@ -1428,7 +1428,7 @@ func TestValidateRuleCardsPanicsOnUnknownDamageType(t *testing.T) {
 
 	validateRuleCards("x", []ruleCard{{
 		event: evTakeDamage,
-		when:  []condition{{kind: condIncomingType, s: "psychic"}},
+		when:  []condition{{kind: condDamageType, s: "psychic"}},
 		then:  effect{kind: effMulPct, n: 50},
 	}})
 }

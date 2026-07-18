@@ -63,14 +63,21 @@ const (
 	// kind — a boss-specific spike (the Wyrmslayer Greatsword vs dragons).
 	// Never holds for a player victim (kindOf returns nil).
 	condTargetKind = "targetKind"
-	// condIncomingType (s = a protocol.DamageType* value) gates on the type
-	// of the attack being folded — the one condition every resistance and
-	// vulnerability card ever written uses (#92). Defender-side by
-	// convention (a take-damage card), but mechanically it just reads
-	// ctx.incomingType, so an attacker-side "extra vs fire" card would work
-	// the same way. DECOUPLED, never a roll: it asks what type is landing,
-	// not whether attacker beats defender.
-	condIncomingType = "incomingType"
+	// condDamageType (s = a protocol.DamageType* value) gates on the damage
+	// type of the hit being folded, and works in BOTH directions off the
+	// same ruleCtx field (#92, renamed from condIncomingType in #155):
+	//   - in a take-damage fold it is the type LANDING on you — every
+	//     resistance and vulnerability card ever written;
+	//   - in a deal-damage fold it is the type of the weapon YOU are
+	//     swinging (rollDamageLocked builds one ctx per hit from the firing
+	//     weapon) — "+10% blunt damage", the ARPG idiom for weapon-flavoured
+	//     passives (#124's Combat Training, #57's Crusher).
+	// The old name said "incoming", which is accurate on defence and exactly
+	// backwards on offence; the rename happened before offensive cards
+	// became common, not after.
+	// DECOUPLED, never a roll: it asks what type is landing, not whether
+	// attacker beats defender.
+	condDamageType = "damageType"
 )
 
 // Effect kinds. All adds apply before all multipliers (fold phases), so card
@@ -107,12 +114,12 @@ type ruleCard struct {
 type ruleCtx struct {
 	attacker *entity
 	victim   *entity
-	// incomingType is the protocol.DamageType* of the attack being folded
+	// damageType is the protocol.DamageType* of the attack being folded
 	// (#92) — threaded from the firing weapon by rollDamageLocked and read
-	// by condIncomingType. Empty for folds with no attack in flight
-	// (earn-XP, aggro-range), where a condIncomingType card simply never
+	// by condDamageType. Empty for folds with no attack in flight
+	// (earn-XP, aggro-range), where a condDamageType card simply never
 	// holds.
-	incomingType string
+	damageType   string
 	allyInBubble bool
 	rng          *mrand.Rand
 }
@@ -143,8 +150,8 @@ func conditionHolds(c condition, ctx ruleCtx) bool {
 		return ctx.attacker != nil && ctx.victim != nil && HexDistance(ctx.attacker.hex, ctx.victim.hex) == 1
 	case condTargetKind:
 		return targetKindHolds(ctx, c.s)
-	case condIncomingType:
-		return ctx.incomingType == c.s
+	case condDamageType:
+		return ctx.damageType == c.s
 	default:
 		return false // unknown condition never holds — content bugs fail closed
 	}
