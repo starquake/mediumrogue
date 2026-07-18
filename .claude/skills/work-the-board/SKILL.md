@@ -70,18 +70,27 @@ The `needs:*` labels are the state machine; this skill just drives it.
 | `needs: your sign-off` | **stop** — UNLESS the maintainer signalled **go** (a `go`/`build`/`approved` comment, OR they flipped it to `needs: build`) → build | `build-slice` |
 | `needs: build` | build the approved slice → **green draft PR** (never ready, never merge) | `build-slice` |
 | PR with new maintainer comments | address them, re-push | rework |
-| PR carrying `ready to merge` | **merge it** (label + green CI + rebase-if-behind + squash) | `merge-pr` |
+| PR carrying `ready to merge` | **merge it** (label + green CI + rebase-if-behind + squash), then **close the milestone if that was its last open issue** | `merge-pr` |
+| **latent breakage you trip over while sweeping** (a dangling reference, a stale doc claim, an asset something embeds but that never reached `main`) | fix it → **green draft PR** | debug → PR |
 
 3. **Post a Next-steps reminder on every ticket whose state you just moved** —
    a new comment each time, never an edit of the previous one, so the thread
    reads chronologically. Unchanged state → no comment. See below.
-4. **The build cap: one build per pass.** Cheap advancement, replies, and merges
-   are unlimited; but do only the **single** highest-priority build (an approved
-   slice, else a bug fix), then leave the rest labelled for the next pass. This
-   bounds cost and blast radius so the maintainer sees each build before the next
-   starts.
+4. **The build cap: at most one build per pass — and ZERO is a valid pass.**
+   Cheap advancement, replies, and merges are unlimited; but do only the
+   **single** highest-priority build (an approved slice, else a bug fix, else a
+   latent breakage), then leave the rest labelled for the next pass. This bounds
+   cost and blast radius so the maintainer sees each build before the next
+   starts. **If nothing is authorised, build nothing and say so** — never
+   manufacture a design slice, a refactor, or a "while I'm here" change to fill
+   the slot. An empty pass that reports "everything is at your gate" is doing its
+   job.
 5. **Looks-driven** design steps still get their mockup first (`mockup` skill) —
    never build UI a pass hasn't previewed for the maintainer.
+6. **A ticket a pass FILES gets the same treatment as one it finds**: a
+   `needs:*` label naming whose court it lands in (a finding with open
+   directions is `needs: your input`, not a silent backlog entry) and a
+   Next-steps reminder. A filed-and-unlabelled issue is invisible.
 
 ## The Next-steps reminder — append one whenever the state moves
 
@@ -101,6 +110,10 @@ comment, you comment back, and the thread reads in order. So a reminder
 answers *what just happened* — "folded your answers in, plan's in the body,
 one thing I didn't decide for you" — rather than re-stating the whole ticket
 from scratch. Assume the reader has the comment above it.
+
+A reminder that no longer matches the ticket is **history, not an error** — it
+was true when posted. Supersede it with a new one; never edit or delete it to
+make the past tidy.
 
 Post one whenever the state actually moves (a `needs:*` flip, a plan landing, a
 PR opening or merging) — not on every pass. If nothing changed since the last
@@ -138,9 +151,19 @@ built or merged**, and — most important — **what's now waiting on the
 maintainer** (the amber `needs: your input` / `needs: your sign-off` queue). In a
 loop this becomes a push notification ONLY when something needs them.
 
-## Loop form (later)
+Report what a pass *chose not to do* as plainly as what it did: a build it
+declined for lack of authorisation, a decision it refused to make on their
+behalf, a flake it could not reproduce. Silence on those reads as "nothing
+happened", which is a different and false claim.
+
+## Loop form
 
 "work the board every `<interval>`" / "…in a loop" runs this same pass on a
 schedule — same contract, same one-build cap. Locally that's `/loop`;
 unattended/away it's a `/schedule` cloud agent (headless: `gh`/GitHub works,
 interactive-auth MCP does not). "stop the board" ends it.
+
+**When the whole board is at the maintainer's gate, say so and offer to pause.**
+A loop whose every pass finds nothing authorised is burning turns to re-read the
+same labels. Stretch the interval or stop and let them restart it — the queue
+being long is information *for them*, not a reason to keep spinning.

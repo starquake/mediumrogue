@@ -170,10 +170,12 @@ drift between calls; use absolute paths or `cd` to the repo root before
   Design direction and `ready to merge` are never Claude's to decide/grant.
   Every open ticket also carries an auto-maintained `> 🤖 **Next steps**`
   comment stating its state and the actions available to move it, so a
-  commenter can always see the next step without knowing the workflow. **Post
-  a NEW one whenever the state changes — never edit the previous in place**:
-  the thread is the ticket's history, and appending keeps it readable in
-  order. Nothing changed since the last one? Post nothing.
+  commenter can always see the next step without knowing the workflow, and —
+  when it's waiting on the maintainer — a **copy-paste answer block** they can
+  fill in instead of writing prose. **Post a NEW one whenever the state changes
+  — never edit the previous in place**: the thread is the ticket's history, and
+  appending keeps it readable in order. Nothing changed since the last one? Post
+  nothing.
 - **Milestone slices are designed before they're built**: the spec and the
   implementation plan live **in the GitHub issue** (the "Design slice" issue
   template, `.github/ISSUE_TEMPLATE/design-slice.md`) — write the spec,
