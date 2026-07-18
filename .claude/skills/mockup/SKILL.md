@@ -50,6 +50,16 @@ View the PNG yourself before shipping it — catch a blank render.
 `main`). Screenshots of mockups are small; the repo is the image host
 because GitHub has no upload API for issue attachments.
 
+**The image MUST reach `main` eventually, and the embed must be repointed at
+`main` once it does.** An embed pointing at a work branch is a dangling
+dependency: delete the branch and the picture on that ticket breaks forever.
+This already happened in slow motion — `2026-07-17-hover-highlight-variants.png`
+lived only on `design/hover-highlight-mockup` while #135 embedded it from
+there, long after #135's feature shipped. So either let the image ride the
+implementation PR to `main`, or land it in its own docs PR; then edit the
+issue's embed from `raw/<branch>/…` to `raw/main/…` and the branch becomes
+disposable.
+
 ## Step 4 — Embed with EXACTLY this URL form
 
 ```markdown
