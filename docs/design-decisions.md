@@ -101,6 +101,19 @@ spawn (Q9 first half).
   shield evicts it, room-checked). Active block/evasion stays deferred to
   #69, shield skills to #57.
 
+- **World hover highlight — world-only, terrain-only** (#135, 2026-07-17;
+  shipped): out of combat, hovering the tile a click would act on lights it
+  (pale ice = walk, parchment = own-hex wait; nothing on rock/water) — the walk
+  click's equivalent of #101's attack ember. Two calls worth keeping. **Only
+  out of combat**: in combat the blue/red reach tints + the #101 ember already
+  answer "is this click live?", so a third layer there is redundant — the
+  highlight is suppressed while `inCombat`. **Terrain-only walkability**: the
+  client does *not* re-run reachability on hover; a walled-off walkable island
+  lights and the click then fails gracefully server-side (`ErrNoPath`, the ring
+  clears) — the same failure as today. Duplicating the server's pathfinding on
+  every `pointermove` wasn't worth eliminating a rare, self-correcting false
+  positive. Client-only, no wire change.
+
 ## Cut — won't build (and why)
 
 - **Throwables** — G4 (stacking throwables), G5 (multi-mode melee+thrown), Q1

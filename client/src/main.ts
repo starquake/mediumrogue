@@ -72,6 +72,7 @@ import { EntityLayer } from "./render/entities";
 import type { CommittedAction } from "./render/feedback";
 import { FeedbackLayer } from "./render/feedback";
 import { DIRECTIONS, hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
+import { HoverHighlightLayer, type HoverMoveTile } from "./render/hover";
 import { GroundItemLayer } from "./render/items";
 import { MoveRangeLayer } from "./render/range";
 import { buildMapLayer } from "./render/map";
@@ -277,6 +278,13 @@ export interface GameDebug {
    * e2e (the highlight itself is a canvas draw).
    */
   hoverAttackTiles: Hex[];
+  /**
+   * The world (out-of-combat) hover highlight (#135): the single tile a click
+   * on the currently hovered hex would act on — `"walk"` for a walkable hex,
+   * `"wait"` for my own hex (a wait/cancel) — or null in combat, on unwalkable
+   * ground, or with no hover. Drives HoverHighlightLayer; exposed for e2e.
+   */
+  hoverMoveTile: HoverMoveTile | null;
   /**
    * The tiles my committed attack will hit (#101), set the moment an attack
    * intent is submitted and cleared when the next bundle resolves it (or a
@@ -566,6 +574,7 @@ window.game = {
   hits: [],
   hoverAttackTiles: [],
   committedAttackTiles: [],
+  hoverMoveTile: null,
   hoverTile: (): void => {},
   combatMoves: [],
   combatRanged: [],
@@ -794,6 +803,13 @@ async function start(): Promise<void> {
   let lastReach: { moves: Hex[]; melees: Hex[] } = { moves: [], melees: [] };
   const inList = (list: Hex[], h: Hex): boolean => list.some((x) => x.q === h.q && x.r === h.r);
 
+  // The world hover highlight (#135) is a ground tint like the reach tints;
+  // added BELOW the attack layer so #101's ember always reads over it where
+  // they would ever coincide (they never do — it's world-only, the ember is
+  // combat-only — but draw order keeps it honest).
+  const hoverHighlightLayer = new HoverHighlightLayer();
+  world.addChild(hoverHighlightLayer.container);
+
   // The attack-target highlight (#101) sits directly above the reachable-tile
   // tint: same ground plane, but "what will this action hit" must read over
   // "where can I act" where they overlap.
@@ -870,6 +886,34 @@ async function start(): Promise<void> {
     attackHighlightLayer.update(hoverTiles, committedAttackTiles);
   };
 
+  // hoverMoveTileFor mirrors clickTarget's OUT-of-combat routing (#135): what
+  // a click on `h` would do, as the tile to light. World-only — in combat the
+  // reach tints + #101 ember already answer it, so it returns null there. The
+  // walkable check is terrain-only (the static `walkable` Set); a walkable but
+  // unreachable island still lights and the click fails gracefully server-side
+  // (accepted false positive, decision 6).
+  const hoverMoveTileFor = (h: Hex | null): HoverMoveTile | null => {
+    if (h === null || window.game.inCombat) {
+      return null;
+    }
+
+    const me = window.game.me;
+    if (me !== null && h.q === me.hex.q && h.r === me.hex.r) {
+      return { hex: h, kind: "wait" }; // own hex = wait/cancel (decision 5)
+    }
+
+    if (walkable.has(`${h.q},${h.r}`)) {
+      return { hex: h, kind: "walk" };
+    }
+
+    return null; // rock / water / off-map (decision 3)
+  };
+
+  const refreshHoverMove = (): void => {
+    window.game.hoverMoveTile = hoverMoveTileFor(hoveredHex);
+    hoverHighlightLayer.update(window.game.hoverMoveTile);
+  };
+
   const setHoveredHex = (h: Hex | null): void => {
     if (h !== null && hoveredHex !== null && h.q === hoveredHex.q && h.r === hoveredHex.r) {
       return; // pointermove fires per pixel; recompute only on a hex change
@@ -877,6 +921,7 @@ async function start(): Promise<void> {
 
     hoveredHex = h;
     refreshAttackHighlight();
+    refreshHoverMove();
   };
 
   const setCommittedAttackTiles = (tiles: Hex[]): void => {
@@ -1722,9 +1767,11 @@ async function start(): Promise<void> {
         moveRangeLayer.update([], [], []);
       }
 
-      // Re-derive the hover highlight (#101) from the state this handler just
-      // refreshed — the mouse hasn't moved, but reach/positions/weapons have.
+      // Re-derive the hover highlights from the state this handler just
+      // refreshed — the mouse hasn't moved, but reach/positions/weapons have
+      // (#101), and inCombat / my own hex may have flipped (#135).
       refreshAttackHighlight();
+      refreshHoverMove();
     },
     onConnectionChange: (connected: boolean): void => {
       window.game.connected = connected;

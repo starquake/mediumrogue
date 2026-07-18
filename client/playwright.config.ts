@@ -26,6 +26,12 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   { name: "turn" },
   { name: "move" },
   { name: "walk" },
+  // hover (#135) asserts the world hover highlight, which is OUT-of-combat only
+  // — a monster-free server guarantees inCombat stays false, so walk/wait/rock
+  // routing is deterministic. The in-combat→null half rides attack-highlight's
+  // already-in-combat context instead (a monster server can't also guarantee
+  // out-of-combat).
+  { name: "hover" },
   { name: "heartbeat" },
   { name: "multiplayer" },
   { name: "class" },

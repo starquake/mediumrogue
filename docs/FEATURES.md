@@ -94,6 +94,18 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   reach tints answer "where can I act". A preview only — the server re-checks
   on resolution. `window.game.hoverAttackTiles` / `.committedAttackTiles` /
   `.hoverTile(q, r)`.
+- **World hover highlight** (#135): **out of combat**, hovering a hex a click
+  would act on lights up **that single tile** — **pale ice** for "walk here",
+  **parchment** (the committed-wait colour) for your own hex, whose click is a
+  wait/cancel; **rock and water light nothing**. It's the same "if a click does
+  something, hovering shows it" affordance the #101 ember gives attacks, for the
+  walk click that had no hover feedback before. **World-only**: in combat the
+  blue/red reach tints and the #101 ember already answer it, so the highlight is
+  suppressed there. Walkability is **terrain-only** (no reachability BFS) — a
+  walled-off walkable island still lights, and the click then fails gracefully
+  server-side like any unreachable target (accepted false positive). Drawn under
+  the attack layer; `window.game.hoverMoveTile` (`{ hex, kind: "walk" | "wait" }`
+  or null) / `.hoverTile(q, r)`.
 - **Entering a combat bubble hard-cancels a queued auto-walk** (#103): the
   server clears a remaining **multi-hex** route on the world→bubble
   transition, and the client drops the walk goal and its destination ring on
