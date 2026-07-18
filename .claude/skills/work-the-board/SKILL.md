@@ -78,6 +78,12 @@ Content by state (state line + a "Next:" line naming the action and who does it)
 
 - `needs: your input` — waiting on the maintainer. *Next: answer the open
   questions in a comment; the next pass folds them in and writes the plan.*
+  **Always include a copy-paste answer block**: a fenced code block listing each
+  open question as one line with its shorthand options (`Q3 scope = world-only |
+  also-in-combat`), headed `# keep your pick, delete the rest`, plus a free-text
+  `notes =` line. The maintainer answers by pasting one filled-in block — no
+  prose required, and a pass can read the answers unambiguously. Free-form
+  questions get a labelled blank instead of options.
 - `needs: your sign-off` — settled, waiting on the maintainer's OK. *Next:
   comment `go` / `build` / `approved` (or flip the label to `needs: build`); the
   next pass builds it into a draft PR.*
