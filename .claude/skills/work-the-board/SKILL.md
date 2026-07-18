@@ -44,6 +44,20 @@ The `needs:*` labels are the state machine; this skill just drives it.
    and does **not** change the label — so a label-only pass reports "waiting on
    you" when they already answered. (This exact miss happened 2026-07-18: "Build!"
    sat on #88 and #92 through a whole pass.)
+
+   **Scope that read by YOUR LAST COMMENT on that ticket — never by a wall-clock
+   window.** `select(.created_at > "<some time>")` feels equivalent and isn't:
+   an answer written before the cutoff is invisible, and the cutoff is always a
+   guess about when you last looked. Find your own most recent comment on the
+   ticket and read everything after it; if you have never commented, read the
+   lot. (Second miss, same day: an answer on #155 sat 40 minutes outside a
+   19:20 cutoff, so a pass asked the maintainer a question they had already
+   answered — twice.)
+
+   **A label REMOVED without a comment is a signal, not noise.** The maintainer
+   answering in prose and then clearing the `needs:*` label is a normal way to
+   say "done, over to you" — so a label that vanished since your last pass means
+   go and re-read the thread, not "they tidied up".
 2. **Classify + act** in this order — **merges always before builds**. Anything
    built before a pending merge lands on a stale base and has to rebase, so a
    `ready to merge` PR is the first real action of a pass, not the last:
