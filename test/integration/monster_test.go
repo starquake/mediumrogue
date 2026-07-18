@@ -100,22 +100,54 @@ func TestMonsterHuntsPlayer(t *testing.T) {
 
 	me := join(t, ts, "")
 
-	offsets := []protocol.Hex{{Q: -9}, {Q: 9}, {R: -9}, {R: 9}, {Q: -9, R: 9}, {Q: 9, R: -9}}
+	// Spawn the monster where it can actually SEE the player (#95/#153): line
+	// of sight now gates aggro, so a monster that cannot see anyone stands
+	// still and this test's premise evaporates. The old fixed 9-hex offsets
+	// were tuned for distance-only aggro (9 <= the wolf's reach of 10), which
+	// post-LOS leaves ONE hex of slack — and a single forest hex on the line
+	// costs ForestSightCost (2), so any trees in the way blocked the notice
+	// and no monster ever moved. That left this test ~50% red on a real
+	// generated map (3 of 6 local runs on main, 2026-07-18).
+	//
+	// So: require an ALL-GRASS line between the two. That is stricter than the
+	// engine's own rule (water is transparent, forest merely costs), so it
+	// cannot drift with it and duplicates no sight arithmetic. Distances stay
+	// above CombatRadius so the pair never bubbles, which would freeze the
+	// monster into attacking instead of stepping.
+	terrain := make(map[protocol.Hex]protocol.Terrain)
+	for _, tile := range world.Map().Tiles {
+		terrain[tile.Hex] = tile.Terrain
+	}
+
+	grassBetween := func(a, b protocol.Hex) bool {
+		line := game.HexLine(a, b)
+		for _, h := range line[1 : len(line)-1] {
+			if terrain[h] != protocol.TerrainGrass {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	dirs := []protocol.Hex{{Q: -1}, {Q: 1}, {R: -1}, {R: 1}, {Q: -1, R: 1}, {Q: 1, R: -1}}
 
 	placed := false
 
-	for _, off := range offsets {
-		h := protocol.Hex{Q: me.Hex.Q + off.Q, R: me.Hex.R + off.R}
-		if world.SpawnMonsterAt(h) {
-			placed = true
+	for dist := protocol.CombatRadius + 1; dist <= 9 && !placed; dist++ {
+		for _, d := range dirs {
+			h := protocol.Hex{Q: me.Hex.Q + d.Q*dist, R: me.Hex.R + d.R*dist}
+			if grassBetween(me.Hex, h) && world.SpawnMonsterAt(h) {
+				placed = true
 
-			break
+				break
+			}
 		}
 	}
 
 	if !placed {
-		t.Fatal("SpawnMonsterAt refused every offset direction near the player's spawn " +
-			"(water/rock/StackCap) — widen the offset set")
+		t.Fatal("no spawnable hex 7-9 from the player with a clear grass line " +
+			"(water/rock/forest/StackCap in every direction) — widen the search")
 	}
 
 	events := get(t, ts, "/api/events")
