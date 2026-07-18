@@ -1,10 +1,11 @@
-import { createSignal, For, Index, Show } from "solid-js";
+import { For, Index, Show } from "solid-js";
 import type { Accessor, JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
 import { ItemTypeConsumable, SlotOffHand } from "../protocol.gen";
-import type { BackpackEntry, ItemStats, SlotItem } from "./store";
-import { backpack, equipped, offHandLocked, panelOpen, pending, SLOT_LABELS, SLOT_ORDER, targetSlotFor } from "./store";
+import { hideHover, showHover } from "./StatTooltip";
+import type { BackpackEntry, SlotItem } from "./store";
+import { backpack, equipped, offHandLocked, panelOpen, pending, SLOT_LABELS, SLOT_ORDER } from "./store";
 
 /** Callbacks the panel needs — each posts the matching inventory intent. */
 export interface CharacterActions {
@@ -32,92 +33,6 @@ function isPending(id: number): boolean {
   return pending().has(id);
 }
 
-// --- Hover stat tooltip -----------------------------------------------------
-// Hovering an item (an equipped hex or a backpack cell) shows its stats and,
-// when a DIFFERENT item is equipped in the same slot, the delta against it —
-// so you can weigh a pickup before equipping it.
-type HoverItem = SlotItem | BackpackEntry;
-const [hover, setHover] = createSignal<{ item: HoverItem; x: number; y: number } | null>(null);
-
-function showHover(item: HoverItem, el: HTMLElement): void {
-  const r = el.getBoundingClientRect();
-  const width = 224; // matches .stat-tip; flip to the anchor's left near the edge
-  const x = r.right + 10 + width > window.innerWidth ? r.left - 10 - width : r.right + 10;
-  const y = Math.min(r.top, window.innerHeight - 240);
-  setHover({ item, x, y });
-}
-
-function StatRow(props: { label: string; value: number; delta: number | undefined }): JSXElement {
-  return (
-    <div class="tt-row">
-      <span class="tt-label">{props.label}</span>
-      <span class="tt-val">
-        {props.value}
-        <Show when={props.delta !== undefined && props.delta !== 0}>
-          <span class="tt-delta" classList={{ up: props.delta! > 0, down: props.delta! < 0 }}>
-            {` (${props.delta! > 0 ? "+" : ""}${props.delta})`}
-          </span>
-        </Show>
-      </span>
-    </div>
-  );
-}
-
-function StatTooltip(): JSXElement {
-  return (
-    <Show when={hover()}>
-      {(h) => {
-        const item = (): HoverItem => h().item;
-        // The item in the slot this item occupies OR WOULD occupy — a
-        // backpack weapon compares against the hand targetSlotFor picks
-        // (main if free/two-handed, else off if free, else main), mirroring
-        // the server's weaponTargetSlot placement — unless that IS the
-        // hovered item (hovering the equipped hex itself → nothing to
-        // compare against).
-        const current = (): SlotItem | undefined => {
-          const c = equipped()[targetSlotFor(item())];
-          return c !== undefined && c.id !== item().id ? c : undefined;
-        };
-        const delta = (pick: (s: ItemStats) => number): number | undefined => {
-          const c = current();
-          return c !== undefined ? pick(item()) - pick(c) : undefined;
-        };
-        const hasCombat = (): boolean =>
-          item().damage > 0 || item().rangeHex > 0 || item().aoeRadius > 0 || (current()?.damage ?? 0) > 0;
-        return (
-          <div class="stat-tip" style={{ left: `${h().x}px`, top: `${h().y}px` }}>
-            <div class="tt-name">{item().name}</div>
-            <Show when={current() !== undefined}>
-              <div class="tt-cmp">vs equipped: {current()!.name}</div>
-            </Show>
-            <Show
-              when={hasCombat()}
-              fallback={
-                <Show when={item().desc === ""}>
-                  <div class="tt-none">No combat stats.</div>
-                </Show>
-              }
-            >
-              <StatRow label="Damage" value={item().damage} delta={delta((s) => s.damage)} />
-              <Show when={item().rangeHex > 0 || (current()?.rangeHex ?? 0) > 0}>
-                <StatRow label="Range" value={item().rangeHex} delta={delta((s) => s.rangeHex)} />
-              </Show>
-              <Show when={item().aoeRadius > 0 || (current()?.aoeRadius ?? 0) > 0}>
-                <StatRow label="AoE" value={item().aoeRadius} delta={delta((s) => s.aoeRadius)} />
-              </Show>
-            </Show>
-            <Show when={item().desc !== ""}>
-              <div class="tt-effect">{item().desc}</div>
-            </Show>
-            <Show when={item().flavor !== ""}>
-              <div class="tt-flavor">{item().flavor}</div>
-            </Show>
-          </div>
-        );
-      }}
-    </Show>
-  );
-}
 
 // HexSlot renders one of the eight paper-doll slots. The off-hand hex greys
 // out and shows "two-handed grip" (the approved mockup) while offHandLocked()
@@ -144,7 +59,7 @@ function HexSlot(props: { slot: string; cls: string; actions: CharacterActions }
         const it = item();
         if (it !== undefined) showHover(it, e.currentTarget);
       }}
-      onMouseLeave={() => setHover(null)}
+      onMouseLeave={() => hideHover()}
     >
       <span class="slotname">{SLOT_LABELS[props.slot]}</span>
       <Show
@@ -188,7 +103,7 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
         const en = entry();
         if (en !== null) showHover(en, e.currentTarget);
       }}
-      onMouseLeave={() => setHover(null)}
+      onMouseLeave={() => hideHover()}
     >
       <Show when={entry() !== null} fallback={<span class="empty">—</span>}>
         <button
@@ -242,7 +157,6 @@ function CharacterPanel(props: { actions: CharacterActions }): JSXElement {
         <div class="backpack">
           <Index each={backpack()}>{(entry) => <BackpackCell entry={entry} actions={props.actions} />}</Index>
         </div>
-        <StatTooltip />
       </div>
     </Show>
   );

@@ -8,6 +8,7 @@ import { mountChat } from "./chat/ChatPanel";
 import { appendChat, messages as chatMessages, sendChat as storeSendChat, setChatToken } from "./chat/store";
 import { mountCharacter } from "./gear/CharacterPanel";
 import { mountPickup } from "./gear/PickupModal";
+import { mountStatTooltip } from "./gear/StatTooltip";
 import {
   backpack as backpackSignal,
   clearPending,
@@ -1118,6 +1119,7 @@ async function start(): Promise<void> {
     close: (): void => applyPanelOpen(false),
   };
 
+  mountStatTooltip(mustGet("tooltip-root"));
   mountCharacter(mustGet("character-root"), characterActions);
   mountPickup(mustGet("pickup-root"), {
     take: (groundItemId: number): void => {

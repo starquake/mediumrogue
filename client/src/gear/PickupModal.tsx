@@ -2,6 +2,7 @@ import { Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
+import { hideHover, showHover } from "./StatTooltip";
 import { dismissPickup, modalOpen, pickupRows, taking, typeLabel } from "./store";
 
 /** Callbacks the pickup modal needs. */
@@ -22,39 +23,18 @@ function PickupModal(props: { actions: PickupActions }): JSXElement {
               accessor. */}
           <Index each={pickupRows()}>
             {(row) => (
-              <div class="grow" classList={{ rejected: row().rejected }} data-ground={row().id}>
+              <div
+                class="grow"
+                classList={{ rejected: row().rejected }}
+                data-ground={row().id}
+                // #139: hovering a row reveals the item's details in the shared
+                // stat tooltip — same as the inventory, including "vs equipped".
+                onMouseEnter={(e) => showHover(row(), e.currentTarget)}
+                onMouseLeave={() => hideHover()}
+              >
                 <div>
                   <span class="itemline">{row().count > 1 ? `${row().name} ×${row().count}` : row().name}</span>
                   <span class="typeline"> · {typeLabel(row().type)}</span>
-                  {/* #139: what the item IS, before you take it. */}
-                  <Show when={row().damage > 0 || row().rangeHex > 0 || row().aoeRadius > 0 || row().twoHanded}>
-                    <div class="pickup-stats">
-                      <Show when={row().damage > 0}>
-                        <span class="stat">
-                          DMG <b>{row().damage}</b>
-                        </span>
-                      </Show>
-                      <Show when={row().rangeHex > 0}>
-                        <span class="stat">
-                          RNG <b>{row().rangeHex}</b>
-                        </span>
-                      </Show>
-                      <Show when={row().aoeRadius > 0}>
-                        <span class="stat">
-                          AOE <b>{row().aoeRadius}</b>
-                        </span>
-                      </Show>
-                      <Show when={row().twoHanded}>
-                        <span class="stat">2H</span>
-                      </Show>
-                    </div>
-                  </Show>
-                  <Show when={row().desc !== ""}>
-                    <div class="pickup-desc">{row().desc}</div>
-                  </Show>
-                  <Show when={row().flavor !== ""}>
-                    <div class="pickup-flavor">{row().flavor}</div>
-                  </Show>
                   <Show when={row().rejected}>
                     <div class="full">⚠ backpack full — drop something first</div>
                   </Show>
