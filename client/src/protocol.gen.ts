@@ -502,6 +502,17 @@ export const ElfCritMultiplier = 2;
  */
 export const DwarfDamageReduction = 1;
 /**
+ * SkillPointsPerLevel is the skill-point bank grant every player earns per
+ * level gained (#124).
+ */
+export const SkillPointsPerLevel = 2;
+/**
+ * HumanBonusSkillPoints is the EXTRA point a Human earns per level — the
+ * species perk that replaces the XP multiplier (#123/#124 task 8). Not a
+ * rule card: a per-level bank grant is not a fold over a combat value.
+ */
+export const HumanBonusSkillPoints = 1;
+/**
  * RogueGlanceChancePercent is the percent chance an incoming hit on a
  * Rogue only glances (GlanceDamagePercent applies).
  */

@@ -820,3 +820,30 @@ func (w *World) SeesForTest(a, b protocol.Hex) bool {
 
 	return w.seesLocked(a, b)
 }
+
+// SetSkillStateForTest seeds an entity's skill state (#124) so a snapshot
+// round-trip can prove all three fields survive — learned ids, the unspent
+// bank, and the high-water mark that keeps the per-level grant idempotent.
+func (w *World) SetSkillStateForTest(id int64, learned []string, points, grantedLevel int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.learned = learned
+		e.skillPoints = points
+		e.pointsGrantedLevel = grantedLevel
+	}
+}
+
+// SkillStateForTest reads back what SetSkillStateForTest wrote.
+func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e, ok := w.entities[id]
+	if !ok {
+		return nil, 0, 0
+	}
+
+	return e.learned, e.skillPoints, e.pointsGrantedLevel
+}

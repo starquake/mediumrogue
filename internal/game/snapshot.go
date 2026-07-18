@@ -43,7 +43,7 @@ import (
 // ReturningHome. A v4 snapshot's monsters would all restore with home at the
 // origin (the Hex zero value) and leash-walk there en masse, so it is
 // preserved-aside + fresh.
-const snapshotVersion = 5
+const snapshotVersion = 6
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -123,6 +123,13 @@ type entityDTO struct {
 	// walking back. Players persist the zero values.
 	HomeHex       protocol.Hex `json:"homeHex"`
 	ReturningHome bool         `json:"returningHome"`
+	// Skill state (#124, v6): learned ids, the unspent bank, and the
+	// high-water mark that makes the per-level grant idempotent across a
+	// restart. Without PointsGrantedLevel a reload would re-pay every level
+	// the player has ever earned.
+	Learned            []string `json:"learned"`
+	SkillPoints        int      `json:"skillPoints"`
+	PointsGrantedLevel int      `json:"pointsGrantedLevel"`
 }
 
 // groundStackDTO mirrors groundStack: a dropped item instance plus its stack
@@ -375,6 +382,7 @@ func entityToDTO(e *entity) entityDTO {
 		HP: e.hp, MaxHP: e.maxHP, XP: e.xp,
 		Equipped: equippedToDTO(e.equipped), Backpack: backpackToDTO(e.backpack),
 		HomeHex: e.homeHex, ReturningHome: e.returningHome,
+		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
 	}
 }
 
@@ -390,6 +398,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		hp: ed.HP, maxHP: ed.MaxHP, xp: ed.XP,
 		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
 		homeHex: ed.HomeHex, returningHome: ed.ReturningHome,
+		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,
 	}
 }
 

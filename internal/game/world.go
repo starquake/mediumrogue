@@ -188,6 +188,19 @@ type entity struct {
 	// Level is derived from it via levelFor; on death it falls to the current
 	// level's floor (levelFloorXP).
 	xp int
+	// learned is the ids of this player's learned skills (#124), kept SORTED
+	// so skillCards folds them in a stable order no matter what order they
+	// were learned in — determinism is load-bearing and a map-derived or
+	// insertion-ordered slice would leak into the pipeline.
+	learned []string
+	// skillPoints is the unspent bank. Earned per level (grantSkillPointsLocked).
+	skillPoints int
+	// pointsGrantedLevel is the highest level this player has ALREADY been
+	// paid for — the high-water mark that makes the award idempotent. There
+	// is no level-up event in the engine (level is derived from xp via
+	// levelFor), and death floors xp to levelFloorXP, so re-earning the same
+	// level must not re-grant. Never decreases.
+	pointsGrantedLevel int
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
@@ -1442,6 +1455,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 				award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
+				grantSkillPointsLocked(e)
 
 				w.logger.Info(combatLogMsg, "event", combatEventXP, "id", e.id, "base", totalXP, "awarded", award)
 			}
@@ -1575,12 +1589,19 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 		allyInBubble: w.allyInBubbleLocked(attacker), rng: rng,
 	}
 
-	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
+	// Order is CONTRACTUAL for determinism: species -> gear -> skills, with
+	// skills appended LAST (#124 task 4) so every card that existed before
+	// this slice keeps its position in the rng stream. A chance-conditioned
+	// skill card consumes rng; putting skills anywhere but last would shift
+	// every pinned seed in the repo.
+	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules, skillCards(attacker))
 	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)
 
 	// Species, then class, then gear: chance conditions consume the turn rng
 	// in card order, so this concat order is contractual for determinism.
-	victimCards := slices.Concat(speciesCards(victim.species), classCards(victim.class), victimGearCards(victim))
+	victimCards := slices.Concat(
+		speciesCards(victim.species), classCards(victim.class), victimGearCards(victim), skillCards(victim),
+	)
 
 	taken, takeTrace := applyRulesTraced(evTakeDamage, dealt, victimCards, ctx)
 
@@ -1619,7 +1640,7 @@ func victimGearCards(e *entity) []ruleCard {
 // way species passives do. Shared by the kill award
 // (resolveBubbleTurnLocked) and quest completion payouts (quest.go).
 func earnXPCards(e *entity) []ruleCard {
-	return slices.Concat(speciesCards(e.species), equippedRuleCards(e))
+	return slices.Concat(speciesCards(e.species), equippedRuleCards(e), skillCards(e))
 }
 
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
@@ -2312,6 +2333,35 @@ func isqrt(n int) int {
 	return s
 }
 
+// grantSkillPointsLocked pays a player for every level crossed since the last
+// time it was paid, and banks the new high-water mark (#124). Idempotent by
+// construction: it pays for levels ABOVE pointsGrantedLevel and never below,
+// so calling it twice on the same XP is a no-op, and re-earning XP lost to
+// death (levelFloorXP) grants nothing a second time.
+//
+// This is a species check rather than a rule card on purpose: a per-level
+// BANK grant is not a fold over a combat value, and inventing an evLevelUp
+// event for a single rider would trip the no-mechanic-wildfire gate.
+// Callers hold w.mu.
+func grantSkillPointsLocked(e *entity) {
+	if e.kind != protocol.EntityPlayer {
+		return
+	}
+
+	level := levelFor(e.xp)
+	if level <= e.pointsGrantedLevel {
+		return
+	}
+
+	per := protocol.SkillPointsPerLevel
+	if e.species == protocol.SpeciesHuman {
+		per += protocol.HumanBonusSkillPoints
+	}
+
+	e.skillPoints += (level - e.pointsGrantedLevel) * per
+	e.pointsGrantedLevel = level
+}
+
 // syncMaxHPLocked recalibrates a player's maxHP to its class and current level
 // (via maxHPFor) after an XP change, clamping current HP to the new max. It does
 // not heal: a level-up raises the ceiling but keeps current HP (respawn resets
@@ -2902,7 +2952,7 @@ func (w *World) arrivedHomeLocked(m *entity) bool {
 // or grow the radius without touching this call site. Noticeability is
 // gear-only by design — no species card feeds this event. Callers hold w.mu.
 func aggroRadiusForLocked(rng *mrand.Rand, base int, p *entity) int {
-	cards := slices.Concat(speciesCards(p.species), equippedRuleCards(p))
+	cards := slices.Concat(speciesCards(p.species), equippedRuleCards(p), skillCards(p))
 
 	return applyRules(evAggroRange, base, cards, ruleCtx{attacker: p, rng: rng})
 }
