@@ -35,7 +35,7 @@ type itemDef struct {
 	itemType string
 	// damageType (weapon-type items only, REQUIRED on every weapon) is the
 	// protocol.DamageType* an attack with this weapon deals — what
-	// resistance and vulnerability cards key on (condIncomingType, #92).
+	// resistance and vulnerability cards key on (condDamageType, #92).
 	// Forbidden on non-weapons: armor has no damage to type.
 	damageType string
 	// tags (weapon-type items only) name which attacks fire this weapon:
@@ -834,11 +834,11 @@ func validateRuleCondition(owner, event string, cond condition) {
 		if !validSpecies(cond.s) {
 			panic("game: " + owner + " attackerSpecies rule card names unknown species " + cond.s)
 		}
-	case condIncomingType:
-		// A resist/vuln card naming a type that doesn't exist would
+	case condDamageType:
+		// A resist/vuln or weapon-scoped card naming a type that doesn't exist would
 		// silently never hold — a content typo, caught at load (#92).
 		if !validDamageType(cond.s) {
-			panic("game: " + owner + " incomingType rule card names unknown damage type " + cond.s)
+			panic("game: " + owner + " damageType rule card names unknown damage type " + cond.s)
 		}
 	case condTargetKind:
 		// A kind gate on an unregistered monster id would silently never

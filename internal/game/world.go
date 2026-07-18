@@ -1571,7 +1571,7 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 // damage number in the game flows through here. Callers hold w.mu.
 func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weapon *itemDef, base int) int {
 	ctx := ruleCtx{
-		attacker: attacker, victim: victim, incomingType: weapon.damageType,
+		attacker: attacker, victim: victim, damageType: weapon.damageType,
 		allyInBubble: w.allyInBubbleLocked(attacker), rng: rng,
 	}
 

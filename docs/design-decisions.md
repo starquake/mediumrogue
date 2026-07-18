@@ -269,7 +269,7 @@ at once. Four things were settled.
   either is missing — an untyped weapon would silently dodge every resist
   card ever written and surface only as odd numbers mid-fight.
 - **Resists are cards, not a subsystem.** A resistance or vulnerability is a
-  `take-damage` card gated on one new condition, `incomingType` — the single
+  `take-damage` card gated on one new condition, `damageType` — the single
   condition kind that serves every such card ever written. This clears the
   no-mechanic-wildfire gate by construction, and it keeps the ARPG rule: the
   check is **decoupled** (what type is landing?), never a coupled roll

@@ -12,7 +12,7 @@ without writing code. Game-design background lives in
 > — the three species bonuses and gear's rule-carrying items all run through
 > it today (`internal/game/rules.go`). Every attack also carries one of six
 > **damage types** (#92), which resistance and vulnerability cards key on via
-> the `incomingType` condition. `on-kill` is still future. The old
+> the `damageType` condition. `on-kill` is still future. The old
 > coupled **`attack-roll`** (a single to-hit roll) has been **dropped**:
 > combat is fully **ARPG**, so defence and offence are *decoupled* percentage
 > chances — `glance%` (defender blunts a hit to half; softened from binary
@@ -135,7 +135,8 @@ Every rule is three fill-in-the-blank slots.
   load), current HP ("below half health"), party membership.
 - *About the situation:* distance to target, target adjacent or not, number
   of enemies in the bubble, allies on your hex, melee vs. ranged hit.
-- *About the hit itself:* its **damage type** (shipped as `incomingType`,
+- *About the hit itself:* its **damage type** (shipped as `damageType` —
+  named `incomingType` until #155,
   #92 — one of sharp / blunt / fire / ice / holy / chaos, validated against
   that list at load). This is the one condition every **resistance** and
   **vulnerability** card uses: "take half from fire", "take +50% from holy".

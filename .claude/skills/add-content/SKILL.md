@@ -25,7 +25,7 @@ site. If a change needs a new engine capability, that is a design slice
    vocabulary is not wrong about the *intent*; only the mechanism.
 2. **No mechanic wildfire**: a NEW event/condition/effect kind needs at least
    **two** real consumers. One rider means the card is written with existing
-   vocabulary or the kind waits. (#92's `incomingType` cleared this by
+   vocabulary or the kind waits. (#92's `damageType` cleared this by
    construction — every resist and vulnerability card ever written uses it.)
 3. **A new kind is a design slice, not this skill.** Adding a card that uses
    existing vocabulary is content. Adding vocabulary is engine work.

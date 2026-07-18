@@ -439,11 +439,11 @@ func TestAggroRadiusForNoticeabilityGear(t *testing.T) {
 	}
 }
 
-// TestCondIncomingTypeHolds (#92): the condition every resistance and
+// TestCondDamageTypeHolds (#92): the condition every resistance and
 // vulnerability card uses reads the type of the attack in flight — and holds
 // for nothing when no attack is in flight (an earn-XP or aggro-range fold,
 // whose ctx carries no type).
-func TestCondIncomingTypeHolds(t *testing.T) {
+func TestCondDamageTypeHolds(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -461,9 +461,9 @@ func TestCondIncomingTypeHolds(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := ruleCtx{incomingType: tt.incoming}
-			if got, want := conditionHolds(condition{kind: condIncomingType, s: tt.card}, ctx), tt.want; got != want {
-				t.Errorf("condIncomingType holds = %v, want %v", got, want)
+			ctx := ruleCtx{damageType: tt.incoming}
+			if got, want := conditionHolds(condition{kind: condDamageType, s: tt.card}, ctx), tt.want; got != want {
+				t.Errorf("condDamageType holds = %v, want %v", got, want)
 			}
 		})
 	}
@@ -478,15 +478,15 @@ func TestFireResistCardHalvesOnlyFire(t *testing.T) {
 
 	resist := []ruleCard{{
 		event: evTakeDamage,
-		when:  []condition{{kind: condIncomingType, s: protocol.DamageTypeFire}},
+		when:  []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
 		then:  effect{kind: effMulPct, n: 50},
 	}}
 
-	if got, want := applyRules(evTakeDamage, 10, resist, ruleCtx{incomingType: protocol.DamageTypeFire}), 5; got != want {
+	if got, want := applyRules(evTakeDamage, 10, resist, ruleCtx{damageType: protocol.DamageTypeFire}), 5; got != want {
 		t.Errorf("fire hit through fire resist = %d, want %d", got, want)
 	}
 
-	sharp := ruleCtx{incomingType: protocol.DamageTypeSharp}
+	sharp := ruleCtx{damageType: protocol.DamageTypeSharp}
 	if got, want := applyRules(evTakeDamage, 10, resist, sharp), 10; got != want {
 		t.Errorf("sharp hit through fire resist = %d, want %d (inert)", got, want)
 	}

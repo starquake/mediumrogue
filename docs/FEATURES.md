@@ -366,7 +366,7 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   exercise; a cost makes it a decision.
 - **Damage types (#92, DT1)** — every attack carries exactly **one** of six
   types, and resistances and vulnerabilities are ordinary `take-damage` rule
-  cards gated on it (`incomingType`). There is no resist subsystem: one
+  cards gated on it (`damageType`). There is no resist subsystem: one
   condition kind serves every resist and vulnerability card ever written.
   Every weapon and every monster kind must carry a type, enforced at content
   load — an untyped weapon would silently dodge every resist card.
@@ -729,9 +729,12 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   Conditions: `chance`, `targetHPBelowPct`, `targetHPBelowFlat`,
   `targetHPFull`, `allyInBubble`, `targetAdjacent`, `attackerSpecies`,
   `targetKind` (victim is a monster of a specific registered kind — 6c,
-  validated against the monster registry), `incomingType` (the damage type
-  of the attack being folded — #92, validated against the six types; every
-  resist and vulnerability card uses it). Effects: `add`, `mulPct`. Fold
+  validated against the monster registry), `damageType` (the damage type
+  of the hit being folded — #92, renamed from `incomingType` in #155,
+  validated against the six types; works both ways: on a take-damage card it
+  is the type landing on you (every resist and vulnerability), on a
+  deal-damage card it is the type of the weapon you are swinging, which is
+  how weapon-flavoured passives like "+10% blunt damage" are expressed). Effects: `add`, `mulPct`. Fold
   order: all adds → **percentages add within the fold** (every `mulPct`
   card's delta from 100% sums into one combined percentage, applied with a
   single truncation — #61 principle 14, roadmap Q8, fast-lane batch) → event

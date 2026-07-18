@@ -314,7 +314,7 @@ var itemDefs = []*itemDef{
 	// the wave ships one resist armor per FAMILY (physical / elemental /
 	// metaphysical) plus a weapon for each type that had no representative.
 	// A resist is an ordinary take-damage card gated on the incoming type
-	// (condIncomingType) — no resist subsystem, no new machinery.
+	// (condDamageType) — no resist subsystem, no new machinery.
 	//
 	// Numbers below are first-draft knobs anchored on the shipped armor
 	// ladder (Leather -1, Iron Plate -2 flat): a resist is a HALVING, but
@@ -326,7 +326,7 @@ var itemDefs = []*itemDef{
 		desc:   "take half damage from fire",
 		flavor: "Forged in a place where fire was the weather.",
 		rules: []ruleCard{
-			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeFire}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
 				then: effect{kind: effMulPct, n: 50}},
 		},
 	},
@@ -339,7 +339,7 @@ var itemDefs = []*itemDef{
 		desc:   "take half damage from sharp weapons",
 		flavor: "Layered linen, quilted thick. Blades slide; hammers do not care.",
 		rules: []ruleCard{
-			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeSharp}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeSharp}},
 				then: effect{kind: effMulPct, n: 50}},
 		},
 	},
@@ -349,7 +349,7 @@ var itemDefs = []*itemDef{
 		desc:   "take half damage from chaos",
 		flavor: "Worn thin by a road no map admits to.",
 		rules: []ruleCard{
-			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeChaos}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeChaos}},
 				then: effect{kind: effMulPct, n: 50}},
 		},
 	},
@@ -467,7 +467,7 @@ var monsterDefs = []*monsterDef{
 		// nothing in the engine knows the two are paired. +50% from Holy —
 		// the Wyrmslayer Greatsword was forged for exactly this.
 		rules: []ruleCard{
-			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeHoly}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeHoly}},
 				then: effect{kind: effMulPct, n: percentBase + 50}},
 		},
 		// The starter set with venom-fang weighted up (a ghoul's signature drop).
@@ -500,7 +500,7 @@ var monsterDefs = []*monsterDef{
 		// "Trolls fear fire" — the identity the whole damage-type arc was
 		// pitched on (#92). +50% from Fire.
 		rules: []ruleCard{
-			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeFire}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
 				then: effect{kind: effMulPct, n: percentBase + 50}},
 		},
 		// The starter set with the warhammer/pack-bow/war-mage-staff weighted
