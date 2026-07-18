@@ -213,6 +213,11 @@ func TestArrivedMonsterReaggroesNextThink(t *testing.T) {
 		t.Fatalf("no walkable neighbor of home %v at distance >= %d from the player", home, aggro)
 	}
 
+	// Re-aggro needs SIGHT as well as range since #95, and by the re-aggro
+	// turn the rat is standing on HOME (it walks there on turn 1) — so that
+	// is the line that has to be clear. This test is about the leash flag
+	// clearing, not terrain.
+	clearSightLine(t, w, me.Hex, home)
 	ratID := w.PlaceMonsterKindForTest(start, "rat")
 	w.SetMonsterHomeForTest(ratID, home)
 	w.SetMonsterReturningForTest(ratID, true)

@@ -114,3 +114,10 @@ func sightBlocked(a, b protocol.Hex, radius int, terrainAt func(protocol.Hex) pr
 func (w *World) seesLocked(a, b protocol.Hex) bool {
 	return !sightBlocked(a, b, protocol.CombatRadius, func(h protocol.Hex) protocol.Terrain { return w.terrain[h] })
 }
+
+// sightBlockedLocked is sightBlocked against this world's terrain, at an
+// explicit radius — the aggro path passes the monster's own effective reach
+// rather than CombatRadius (#95). Callers hold w.mu.
+func (w *World) sightBlockedLocked(a, b protocol.Hex, radius int) bool {
+	return sightBlocked(a, b, radius, func(h protocol.Hex) protocol.Terrain { return w.terrain[h] })
+}

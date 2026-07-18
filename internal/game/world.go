@@ -2779,8 +2779,24 @@ func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, m *entity, players [
 	bestDist := 0
 
 	for _, p := range players {
+		// Folded ONCE per player: aggroRadiusForLocked consumes rng if a card
+		// ever carries a chance condition, so calling it twice per player
+		// would silently double-consume the turn stream.
+		reach := aggroRadiusForLocked(rng, base, p)
+
 		d := HexDistance(m.hex, p.hex)
-		if d > aggroRadiusForLocked(rng, base, p) {
+		if d > reach {
+			continue
+		}
+
+		// Sight and noticeability are INDEPENDENT gates (#95 Q2, #88): the
+		// fold above decides how far this monster could notice this player,
+		// and the raycast decides whether terrain lets it — over that same
+		// reach, not CombatRadius, since a kind can notice far past bubble
+		// range. A booted player behind a rock is hidden twice over, and the
+		// two are never folded into one number. A monster no longer charges
+		// through a rock wall and snaps into a bubble as it rounds the corner.
+		if w.sightBlockedLocked(m.hex, p.hex, reach) {
 			continue
 		}
 

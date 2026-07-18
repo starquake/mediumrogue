@@ -19,6 +19,7 @@ import (
 type sightPair struct {
 	w                   *game.World
 	playerID, monsterID int64
+	token               string
 	origin, beyond      protocol.Hex
 	between             protocol.Hex
 }
@@ -40,12 +41,15 @@ func rockWalledPair(t *testing.T) sightPair {
 		w.SetTerrainForTest(h, protocol.TerrainGrass)
 	}
 
-	playerID, _ := w.PlaceEntityForTest(origin)
+	playerID, token := w.PlaceEntityForTest(origin)
 	monsterID := w.PlaceMonsterKindForTest(beyond, "wolf")
 
 	w.SetTerrainForTest(between, protocol.TerrainRock)
 
-	return sightPair{w: w, playerID: playerID, monsterID: monsterID, origin: origin, beyond: beyond, between: between}
+	return sightPair{
+		w: w, playerID: playerID, token: token, monsterID: monsterID,
+		origin: origin, beyond: beyond, between: between,
+	}
 }
 
 // TestRockWallKeepsAPairOutOfCombat (#95): two hexes apart — trivially inside
@@ -127,4 +131,60 @@ func inCombatOf(t *testing.T, snap protocol.TurnEvent, id int64) bool {
 	}
 
 	return e.InCombat
+}
+
+// clearSightLine sets every hex on the line from a to b to grass, so a test
+// about the AGGRO RADIUS (or bubble-edge geometry) isn't silently retested as
+// a test about terrain. Since #95 a monster must SEE a player to notice them,
+// and generated forest along a long line legitimately shortens spotting range
+// — real behaviour, tested on its own in sight_test.go and this file, but
+// noise in a test that means to hold terrain constant and vary distance.
+func clearSightLine(t *testing.T, w *game.World, a, b protocol.Hex) {
+	t.Helper()
+
+	for _, h := range game.HexLine(a, b) {
+		w.SetTerrainForTest(h, protocol.TerrainGrass)
+	}
+}
+
+// TestAggroRespectsSight (#95 Q2): a wolf four hexes away — well inside its
+// radius of 10 — ignores a player behind a rock, and chases the moment the
+// wall is gone. The old rule had it charge through the wall and snap into a
+// bubble as it rounded the corner.
+func TestAggroRespectsSight(t *testing.T) {
+	t.Parallel()
+
+	p := rockWalledPair(t)
+	start := p.beyond
+
+	if got, want := hexOfSnap(step(t, p.w), p.monsterID), start; got != want {
+		t.Errorf("walled-off wolf moved to %v, want to stand still at %v (it can't see anyone)", got, want)
+	}
+
+	p.w.SetTerrainForTest(p.between, protocol.TerrainGrass)
+
+	if got := hexOfSnap(step(t, p.w), p.monsterID); got == start {
+		t.Errorf("wolf stayed at %v with a clear line, want it to close in", got)
+	}
+}
+
+// TestSightAndNoticeabilityAreIndependentGates (#95 + #88): the aggro-range
+// fold says how FAR a monster could notice this player; sight says whether
+// terrain lets it. Padded Boots shrink a wolf's reach to 7 — but at 4 hexes,
+// where the boots alone would not save you, a rock still does.
+func TestSightAndNoticeabilityAreIndependentGates(t *testing.T) {
+	t.Parallel()
+
+	p := rockWalledPair(t)
+
+	instID := p.w.GrantItemForTest(p.playerID, "padded-boots")
+	if err := p.w.SubmitIntent(protocol.IntentRequest{
+		EntityID: p.playerID, Token: p.token, Kind: protocol.IntentEquip, ItemID: instID,
+	}); err != nil {
+		t.Fatalf("SubmitIntent equip padded-boots: %v", err)
+	}
+
+	if got, want := hexOfSnap(step(t, p.w), p.monsterID), p.beyond; got != want {
+		t.Errorf("booted player behind a rock: wolf moved to %v, want %v (hidden twice over)", got, want)
+	}
 }

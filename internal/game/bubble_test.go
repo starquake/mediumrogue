@@ -341,7 +341,12 @@ func TestMonstersDoNotExtendBubbleReach(t *testing.T) {
 	// self-verifies and can't silently rot if the map or chase logic changes.
 	m1Hex := mustWalkable(t, w, protocol.Hex{Q: -1, R: 0})
 	m1ID := w.PlaceMonsterForTest(m1Hex)
-	m2ID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: -8, R: 0}))
+	m2Start := mustWalkable(t, w, protocol.Hex{Q: -8, R: 0})
+	// M2 must actually notice P and take its one chase step for this test to
+	// exercise the monster<->monster edge at all — since #95 that needs a
+	// clear line, and this test is about bubble edges, not terrain.
+	clearSightLine(t, w, me.Hex, m2Start)
+	m2ID := w.PlaceMonsterForTest(m2Start)
 
 	snap := step(t, w)
 

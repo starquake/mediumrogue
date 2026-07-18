@@ -179,6 +179,7 @@ func TestAggroRadiusPerKindOverrideHunts(t *testing.T) {
 
 	trollAggro := game.MonsterAggroRadiusForTest(kindTroll)
 	atTrollAggro := walkableHexAtDistance(t, w, me.Hex, trollAggro, trollAggro)
+	clearSightLine(t, w, me.Hex, atTrollAggro) // this test varies the KIND's radius, not terrain (#95)
 	trollID := w.PlaceMonsterKindForTest(atTrollAggro, kindTroll)
 
 	snap := step(t, w)
