@@ -331,6 +331,11 @@ var monsterDefs = []*monsterDef{
 			// its cumulative-weight position. Rare here (weight 1) — the wolf
 			// table is its common source.
 			{defID: idWoodenBuckler, weight: 1},
+			// Padded Boots (#88): appended LAST so every earlier entry keeps
+			// its cumulative-weight position. Rare here (weight 1) — the wolf
+			// table is the common source, so the first pair of boots reads as
+			// a wolf-country find.
+			{defID: idPaddedBoots, weight: 1},
 		},
 		rings: []int{0, 1},
 	},
@@ -361,6 +366,11 @@ var monsterDefs = []*monsterDef{
 			// its cumulative-weight position (killDropSeed/killMissSeed
 			// re-derived if the new total weight moves them).
 			{defID: idWoodenBuckler, weight: 4},
+			// Padded Boots (#88): appended LAST for the same reason — common
+			// here (weight 4), so noticeability gear is reachable early
+			// (killDropSeed/killMissSeed re-derived if the new total weight
+			// moves them).
+			{defID: idPaddedBoots, weight: 4},
 		},
 		rings: []int{1},
 	},
@@ -401,6 +411,11 @@ var monsterDefs = []*monsterDef{
 			// keeps its cumulative-weight position — frontier loot, common on
 			// the troll.
 			{defID: idIronKiteShield, weight: 4},
+			// Iron Plate Armor (#88): appended LAST so every earlier entry
+			// keeps its cumulative-weight position — frontier loot, common on
+			// the troll, the tier where taking 2 less per hit is worth being
+			// noticed sooner.
+			{defID: idIronPlateArmor, weight: 4},
 		},
 		rings: []int{2},
 	},
@@ -418,6 +433,9 @@ var monsterDefs = []*monsterDef{
 			// keeps its cumulative-weight position — rare here (weight 1),
 			// the troll table is its common source.
 			{defID: idIronKiteShield, weight: 1},
+			// Iron Plate Armor (#88): appended LAST — rare here (weight 1),
+			// the troll table is its common source.
+			{defID: idIronPlateArmor, weight: 1},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},

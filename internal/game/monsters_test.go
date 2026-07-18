@@ -83,6 +83,10 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		// Appended by shields v1 (#90): the Wooden Buckler, the wolf table
 		// being its common source. Appended LAST for the same reason.
 		{defID: idWoodenBuckler, weight: 4},
+		// Appended by noticeability gear (#88): the Padded Boots, common on
+		// the wolf so the reach-shrinking option is reachable early. Appended
+		// LAST for the same reason.
+		{defID: idPaddedBoots, weight: 4},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {
