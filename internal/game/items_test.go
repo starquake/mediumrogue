@@ -1302,7 +1302,8 @@ func TestStarterInventoryContentPinned(t *testing.T) {
 		t.Errorf("armor rule event = %q, want %q", got, want)
 	}
 
-	if got, want := armor.rules[0].then, (effect{kind: effAdd, n: -1}); got != want {
+	// re-derived: mitigation went PERCENTAGE (#154) — leather is ×0.9, not −1.
+	if got, want := armor.rules[0].then, (effect{kind: effMulPct, n: percentBase - 10}); got != want {
 		t.Errorf("armor rule effect = %+v, want %+v", got, want)
 	}
 

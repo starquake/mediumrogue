@@ -344,8 +344,8 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 
   | Item | Type | Card | Source |
   |---|---|---|---|
-  | Wooden Buckler | shield | take-damage −1 | rat (w1) / wolf (w4) drop |
-  | Iron Kite Shield | shield | take-damage −2 | troll (w4) / dragon (w1) drop |
+  | Wooden Buckler | shield | take-damage ×0.9 | rat (w1) / wolf (w4) drop |
+  | Iron Kite Shield | shield | take-damage ×0.8 | troll (w4) / dragon (w1) drop |
 
 - **Noticeability gear (#88)** — the first content to use the pipeline's
   `aggro-range` event: gear that changes how far off a world monster notices
@@ -358,10 +358,10 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   | Item | Type | Card(s) | Reach vs a wolf (10) | Source |
   |---|---|---|---|---|
   | Padded Boots | boots | aggro-range ×0.75 | 7 | rat (w1) / wolf (w4) drop |
-  | Iron Plate Armor | chest | take-damage −2, aggro-range ×1.25 | 12 | troll (w4) / dragon (w1) drop |
+  | Iron Plate Armor | chest | take-damage ×0.8, aggro-range ×1.25 | 12 | troll (w4) / dragon (w1) drop |
 
   Iron Plate Armor is the game's **first tradeoff item**: strictly better
-  mitigation than Leather Armor (−2 vs −1) bought with a real cost — you are
+  mitigation than Leather Armor (×0.8 vs ×0.9) bought with a real cost — you are
   noticed sooner. Gear that is only ever better makes the inventory a sorting
   exercise; a cost makes it a decision.
 - **Damage types (#92, DT1)** — every attack carries exactly **one** of six
@@ -405,12 +405,12 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
   both sit at the shipped 1H anchor so the *type* is the point, not a stat
   upgrade riding along. A weapon's type shows as a **Type** line in the stat
   tooltip (character panel and pickup modal alike).
-- **Non-weapon items**: Leather Armor (chest: take-damage −1, floor 1), Iron
-  Plate Armor (chest: take-damage −2 + aggro-range ×1.25), Padded Boots
+- **Non-weapon items**: Leather Armor (chest: take-damage ×0.9, floor 1), Iron
+  Plate Armor (chest: take-damage ×0.8 + aggro-range ×1.25), Padded Boots
   (boots: aggro-range ×0.75), the three resist armors above (chest: one type
   halved each), Headband of Learning (helmet: earn-XP ×1.05), Healing Potion
   (consumable: drink +5 HP, stacks to 5), and the two shields above
-  (off-hand: take-damage −1/−2).
+  (off-hand: take-damage ×0.9/×0.8).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride

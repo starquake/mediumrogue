@@ -210,12 +210,14 @@ var itemDefs = []*itemDef{
 	// class may equip both.
 	{
 		id: idLeatherArmor, name: "Leather Armor", itemType: protocol.ItemTypeChest,
-		desc:   "take a little less from every hit",
+		desc:   "take 10% less from every hit",
 		flavor: "Supple leather that lets you dodge out of harm's way.",
 		rules: []ruleCard{
-			// take-damage −1; applyRules' event-level clamp keeps every landed
-			// hit ≥1 (the card's "floor 1").
-			{event: evTakeDamage, then: effect{kind: effAdd, n: -1}},
+			// Mitigation is PERCENTAGE, not flat (#154): a percent is still a
+			// percent against a dragon, where a flat −N stacked into the ≥1
+			// clamp and stopped meaning anything. Percent deltas ADD within
+			// one fold (#61 principle 14), so pieces combine predictably.
+			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 10}},
 		},
 	},
 	{
@@ -237,18 +239,18 @@ var itemDefs = []*itemDef{
 	// passive never zeroes a hit.
 	{
 		id: idWoodenBuckler, name: "Wooden Buckler", itemType: protocol.ItemTypeShield,
-		desc:   "block 1 damage from every hit",
+		desc:   "take 10% less from every hit",
 		flavor: "A barrel lid with delusions of grandeur. It holds.",
 		rules: []ruleCard{
-			{event: evTakeDamage, then: effect{kind: effAdd, n: -1}},
+			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 10}},
 		},
 	},
 	{
 		id: idIronKiteShield, name: "Iron Kite Shield", itemType: protocol.ItemTypeShield,
-		desc:   "block 2 damage from every hit",
+		desc:   "take 20% less from every hit",
 		flavor: "Iron-bound and man-high — the wall the front rank hides behind.",
 		rules: []ruleCard{
-			{event: evTakeDamage, then: effect{kind: effAdd, n: -2}},
+			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 20}},
 		},
 	},
 
@@ -303,10 +305,10 @@ var itemDefs = []*itemDef{
 		// sooner. Gear that is only ever better makes the inventory a sorting
 		// exercise; a cost makes it a decision.
 		id: idIronPlateArmor, name: "Iron Plate Armor", itemType: protocol.ItemTypeChest,
-		desc:   "take 2 less from every hit; monsters notice you 25% sooner",
+		desc:   "take 20% less from every hit; monsters notice you 25% sooner",
 		flavor: "It turns blades. It also announces you, one clank at a time.",
 		rules: []ruleCard{
-			{event: evTakeDamage, then: effect{kind: effAdd, n: -2}},
+			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 20}},
 			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase + 25}},
 		},
 	},

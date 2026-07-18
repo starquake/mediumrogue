@@ -251,7 +251,8 @@ behind it. #88 gives it its first cards, and settles three things.
   could otherwise fold a radius to 0 — a monster that never notices anyone,
   which is not a design anyone will ask for on purpose.
 - **Tradeoff gear is a direction, not a one-off.** Iron Plate Armor is
-  strictly better than Leather Armor at its job (take-damage −2 vs −1) and
+  strictly better than Leather Armor at its job (take-damage ×0.8 vs ×0.9 —
+  −2 vs −1 when it shipped, converted to percentages in #154) and
   charges for it: you are noticed 25% sooner. Gear that is only ever better
   turns the inventory into a sorting exercise — the "best" item is
   computable, so there is no decision. A real cost makes equipping a
@@ -319,6 +320,32 @@ much shorter than the raw aggro radius. That is the feature, but it moved six
 existing tests, each re-derived by making its terrain explicit rather than by
 weakening an assertion. Ranged **attacks** stay distance-only by design —
 giving them LOS is its own slice.
+
+## Mitigation is a percentage, not a subtraction *(decided 2026-07-18, #154)*
+
+Every damage reduction in the game was a flat `−N`: dwarf −1, Leather Armor
+−1, Iron Plate −2, Wooden Buckler −1, Iron Kite Shield −2. Measured against
+the live registry, a dwarf in plate with a kite shield (−5) took **1** from
+everything up to and including a troll — the `≥1` clamp was doing all the
+work, and each extra piece of armour was worth less than the last. That is
+the TTRPG armour shape (armour subtracts); the project's grammar is ARPG,
+where mitigation scales with the hit.
+
+- **All gear mitigation converts to `mulPct`**: leather ×0.9, plate ×0.8,
+  buckler ×0.9, kite ×0.8. Percent deltas **add** within one fold (#61
+  principle 14), so plate + kite is 40% off rather than a compounding ×0.64 —
+  predictable stacking with no cliff.
+- **The dwarf passive stays flat −1** (@starquake's call). A species trait is
+  the one place a small always-on subtraction is defensible: it's the
+  "shrugs off a bit of everything" identity, it can't be stacked with itself,
+  and it folds in the ADD phase before the percentages, which the pipeline
+  already documents.
+- **The `≥1` clamp stays** — it is the floor that keeps a landed hit
+  meaningful, not a mitigation mechanism.
+
+The felt result: a troll now lands for 3 through full armour where it used to
+land for 1, and the *shape* of a defensive build is legible again — stacking
+two 20% pieces is visibly better than one, at every monster tier.
 
 ## Open flags (doc vs implementation)
 
