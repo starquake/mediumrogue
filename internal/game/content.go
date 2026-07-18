@@ -395,6 +395,14 @@ var monsterDefs = []*monsterDef{
 		id: idKindGhoul, name: "Ghoul",
 		maxHP: 16, damage: 4, xp: 35, aggroRadius: 8, dropChance: 35,
 		damageType: protocol.DamageTypeChaos,
+		// Opposition as an AUTHORING CONVENTION (#92), not machinery: a
+		// Chaos-aligned monster is written with a Holy vulnerability, and
+		// nothing in the engine knows the two are paired. +50% from Holy —
+		// the Wyrmslayer Greatsword was forged for exactly this.
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeHoly}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
 		// The starter set with venom-fang weighted up (a ghoul's signature drop).
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 4},
@@ -416,6 +424,12 @@ var monsterDefs = []*monsterDef{
 		id: idKindTroll, name: "Troll",
 		maxHP: 30, damage: 6, xp: 60, aggroRadius: 8, dropChance: 50,
 		damageType: protocol.DamageTypeBlunt,
+		// "Trolls fear fire" — the identity the whole damage-type arc was
+		// pitched on (#92). +50% from Fire.
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condIncomingType, s: protocol.DamageTypeFire}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
 		// The starter set with the warhammer/pack-bow/war-mage-staff weighted
 		// up — a troll's frontier-tier signature drops.
 		drops: []drop{
