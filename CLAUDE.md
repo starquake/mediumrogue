@@ -164,6 +164,10 @@ drift between calls; use absolute paths or `cd` to the repo root before
   that carry `ready to merge` — while **stopping at every maintainer gate**, at
   most **one build per pass**, and skipping anything labelled **`hold`**.
   Design direction and `ready to merge` are never Claude's to decide/grant.
+  Every open ticket also carries **one** auto-maintained `> 🤖 **Next steps**`
+  comment (edited in place, never re-posted) stating its state and the actions
+  available to move it — refresh it whenever you flip a `needs:*` label so a
+  commenter can always see the next step without knowing the workflow.
 - **Milestone slices are designed before they're built**: the spec and the
   implementation plan live **in the GitHub issue** (the "Design slice" issue
   template, `.github/ISSUE_TEMPLATE/design-slice.md`) — write the spec,

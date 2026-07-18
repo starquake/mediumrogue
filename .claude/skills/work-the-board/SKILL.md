@@ -54,13 +54,43 @@ The `needs:*` labels are the state machine; this skill just drives it.
 | PR with new maintainer comments | address them, re-push | rework |
 | PR carrying `ready to merge` | **merge it** (label + green CI + rebase-if-behind + squash) | `merge-pr` |
 
-3. **The build cap: one build per pass.** Cheap advancement, replies, and merges
+3. **Refresh each ticket's Next-steps reminder** (post if missing, edit in place
+   if stale) so its state + available actions are always current — see below.
+4. **The build cap: one build per pass.** Cheap advancement, replies, and merges
    are unlimited; but do only the **single** highest-priority build (an approved
    slice, else a bug fix), then leave the rest labelled for the next pass. This
    bounds cost and blast radius so the maintainer sees each build before the next
    starts.
-4. **Looks-driven** design steps still get their mockup first (`mockup` skill) —
+5. **Looks-driven** design steps still get their mockup first (`mockup` skill) —
    never build UI a pass hasn't previewed for the maintainer.
+
+## The Next-steps reminder — keep it fresh on every ticket
+
+Every open ticket carries **one** auto-maintained comment, headed
+`> 🤖 **Next steps**`, that states where the ticket is and what actions are
+available — so the maintainer *and* any commenter can move it without knowing the
+workflow. **One comment per ticket, edited in place** (find it by its header and
+update it — never post a second). A pass refreshes it wherever it no longer
+matches the ticket's state, and — the general convention (CLAUDE.md) — it is
+refreshed whenever *any* skill flips a `needs:*` label.
+
+Content by state (state line + a "Next:" line naming the action and who does it):
+
+- `needs: your input` — waiting on the maintainer. *Next: answer the open
+  questions in a comment; the next pass folds them in and writes the plan.*
+- `needs: your sign-off` — settled, waiting on the maintainer's OK. *Next:
+  comment `go` / `build` / `approved` (or flip the label to `needs: build`); the
+  next pass builds it into a draft PR.*
+- `needs: spec` / `needs: plan` — Claude's court. *Next: a pass drafts the
+  spec/plan and hands to the amber gate — nothing needed from you.*
+- `needs: build` — approved. *Next: a pass builds a draft PR; then add
+  `ready to merge` once you've reviewed it.*
+- no `needs:` label — tailor: **blocked** (name the blocker — "blocked by #NN"),
+  a **reference/record** (no action), or **un-triaged** (*Next: say "work the
+  board" to triage it into a spec + questions*).
+- `hold` — skipped; do not touch it or its reminder.
+- a **PR** — `ready to merge` present → *Next: a pass merges it*; else it's a
+  draft / awaiting CI / awaiting your `ready to merge`.
 
 ## Reporting
 
