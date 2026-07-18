@@ -1,5 +1,7 @@
 package game
 
+import "slices"
+
 // skills.go: the skill-system registry (#124). A skill is the same pure-data
 // rule card every other content type uses — species passives, gear, monster
 // kind passives — hung on a tree with prerequisites. Nothing here is a
@@ -164,4 +166,29 @@ func validateNoSkillPrereqCycle(defs []*skillDef) {
 	for _, def := range defs {
 		visit(def.id)
 	}
+}
+
+// skillCards returns the cards an entity's LEARNED skills contribute, in
+// REGISTRY order — not learn order — so the fold is identical however the
+// player got there. entity.learned is kept sorted for the same reason;
+// between them, two players with the same skills always fold the same way.
+//
+// An id with no registry entry is skipped rather than panicking: a snapshot
+// written before a skill was removed must not crash the world on load. The
+// version check is the guard against real drift; this is just not making a
+// bad day worse.
+func skillCards(e *entity) []ruleCard {
+	if len(e.learned) == 0 {
+		return nil
+	}
+
+	var cards []ruleCard
+
+	for _, def := range skillDefs {
+		if slices.Contains(e.learned, def.id) {
+			cards = append(cards, def.rules...)
+		}
+	}
+
+	return cards
 }

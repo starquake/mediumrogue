@@ -212,3 +212,69 @@ func TestMonstersEarnNoSkillPoints(t *testing.T) {
 		t.Errorf("monster banked %d skill points, want %d", got, want)
 	}
 }
+
+// TestSkillCardsFoldInRegistryOrder (#124 task 4): the fold must not depend on
+// the order a player learned things in. Two entities with the same skills
+// learned in opposite orders produce identical card sequences — the property
+// that lets learned/skillCards feed a seeded pipeline at all.
+//
+//nolint:paralleltest // swaps the package-global skill registry.
+func TestSkillCardsFoldInRegistryOrder(t *testing.T) {
+	const (
+		alpha = "alpha"
+		beta  = "beta"
+	)
+
+	first := ruleCard{event: evDealDamage, then: effect{kind: effAdd, n: 1}}
+	second := ruleCard{event: evDealDamage, then: effect{kind: effAdd, n: 2}}
+
+	withSkillRegistry(t, []*skillDef{
+		{id: alpha, tree: treeClass, rules: []ruleCard{first}},
+		{id: beta, tree: treeClass, rules: []ruleCard{second}},
+	})
+
+	forward := skillCards(&entity{learned: []string{alpha, beta}})
+	reversed := skillCards(&entity{learned: []string{beta, alpha}})
+
+	if got, want := len(forward), 2; got != want {
+		t.Fatalf("skillCards returned %d cards, want %d", got, want)
+	}
+
+	// ruleCard holds a []condition, so it is not comparable with == ; these
+	// fixtures differ only in their effect, which is.
+	if forward[0].then != first.then || forward[1].then != second.then {
+		t.Errorf("skillCards = %+v, want registry order (alpha then beta)", forward)
+	}
+
+	if forward[0].then != reversed[0].then || forward[1].then != reversed[1].then {
+		t.Errorf("learn order changed the fold: %+v vs %+v", forward, reversed)
+	}
+}
+
+// TestSkillCardsSkipsUnknownIDs (#124): a learned id with no registry entry —
+// a snapshot written before a skill was removed — is skipped, not a panic.
+//
+//nolint:paralleltest // swaps the package-global skill registry.
+func TestSkillCardsSkipsUnknownIDs(t *testing.T) {
+	card := ruleCard{event: evDealDamage, then: effect{kind: effAdd, n: 5}}
+
+	withSkillRegistry(t, []*skillDef{{id: "extant", tree: treeClass, rules: []ruleCard{card}}})
+
+	got := skillCards(&entity{learned: []string{"deleted-last-year", "extant"}})
+	if len(got) != 1 || got[0].then != card.then {
+		t.Errorf("skillCards with an unknown id = %+v, want just the extant card", got)
+	}
+}
+
+// TestSkillLessEntityFoldsExactlyAsBefore (#124 task 4) is the regression
+// guard for every pinned seed in the repo: an entity with no skills must
+// contribute NO cards, so the concat is byte-identical to the pre-skills
+// fold. nil, not an empty slice — slices.Concat treats them the same, but a
+// nil says "there was nothing here" rather than "here is nothing".
+func TestSkillLessEntityFoldsExactlyAsBefore(t *testing.T) {
+	t.Parallel()
+
+	if got := skillCards(&entity{}); got != nil {
+		t.Errorf("skillCards for an entity with no skills = %+v, want nil", got)
+	}
+}
