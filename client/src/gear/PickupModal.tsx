@@ -1,4 +1,4 @@
-import { Index, Show } from "solid-js";
+import { createEffect, Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -11,6 +11,15 @@ export interface PickupActions {
 }
 
 function PickupModal(props: { actions: PickupActions }): JSXElement {
+  // The tooltip is a global overlay, so a row/modal removed programmatically
+  // (item taken, walked away) fires no mouse-leave — clear the hover when the
+  // modal closes so a lingering tooltip can't outlive the window.
+  createEffect(() => {
+    if (!modalOpen()) {
+      hideHover();
+    }
+  });
+
   return (
     <Show when={modalOpen()}>
       <div id="pickup-modal" class="panel prompt">
@@ -44,7 +53,10 @@ function PickupModal(props: { actions: PickupActions }): JSXElement {
                   class="yes"
                   classList={{ taking: taking().has(row().id) }}
                   disabled={row().rejected || taking().has(row().id)}
-                  onClick={() => props.actions.take(row().id)}
+                  onClick={() => {
+                    hideHover(); // taking removes the row → no mouse-leave to clear it
+                    props.actions.take(row().id);
+                  }}
                 >
                   <Show when={taking().has(row().id)} fallback={"take"}>
                     <span class="spinner" />

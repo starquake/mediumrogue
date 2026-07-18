@@ -242,6 +242,9 @@ test("dropping a backpack item opens the pickup modal; taking a row returns the 
   // Take it back — the row leaves the modal, and it returns to the backpack
   // (unequipped: items never auto-equip on pickup).
   await myRow.locator("button.yes").click();
+  // #139: taking removes the hovered row without a mouse-leave — the tooltip
+  // must not outlive it (a global overlay would otherwise linger).
+  await expect(stack).toBeHidden();
   await expect
     .poll(() => page.evaluate((id) => window.game.pickupModal.rows.some((r) => r.id === id), shortbowId), TURN_GATED)
     .toBe(false);

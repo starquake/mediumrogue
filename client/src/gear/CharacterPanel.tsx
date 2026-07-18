@@ -1,4 +1,4 @@
-import { For, Index, Show } from "solid-js";
+import { createEffect, For, Index, Show } from "solid-js";
 import type { Accessor, JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -136,6 +136,15 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
 }
 
 function CharacterPanel(props: { actions: CharacterActions }): JSXElement {
+  // The stat tooltip is a global overlay (shared with the pickup modal), so
+  // closing the panel unmounts the hovered cell without a mouse-leave — clear
+  // the hover here so the tooltip can't linger after the panel is gone.
+  createEffect(() => {
+    if (!panelOpen()) {
+      hideHover();
+    }
+  });
+
   return (
     <Show when={panelOpen()}>
       <div id="character-panel">
