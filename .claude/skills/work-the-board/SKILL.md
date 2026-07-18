@@ -96,6 +96,12 @@ reader who saw the old state can't tell what changed or when. Appending keeps
 the issue readable top-to-bottom, in order. The older reminders simply stand as
 the record of where the ticket has been.
 
+**Write it as a reply, not a dashboard.** The ticket is a back-and-forth: they
+comment, you comment back, and the thread reads in order. So a reminder
+answers *what just happened* — "folded your answers in, plan's in the body,
+one thing I didn't decide for you" — rather than re-stating the whole ticket
+from scratch. Assume the reader has the comment above it.
+
 Post one whenever the state actually moves (a `needs:*` flip, a plan landing, a
 PR opening or merging) — not on every pass. If nothing changed since the last
 reminder, say nothing: an unchanged state re-posted is noise, and the previous
