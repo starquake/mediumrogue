@@ -275,6 +275,14 @@ export const WeaponTagRanged = "ranged";
  */
 export const WeaponTagMagic = "magic";
 /**
+ * ForestSightCost is what one forest hex between two entities costs a line of
+ * sight, in hexes of effective range (#95). Rock blocks sight outright;
+ * forest SOFTENS it — you see a long way over open grass and only a short way
+ * into trees. Against CombatRadius that reads: 6 hexes over grass, ~4 through
+ * one belt of trees, ~2 through two.
+ */
+export const ForestSightCost = 2;
+/**
  * Damage types (#92, DT1): every attack carries exactly one, and resistances
  * and vulnerabilities are take-damage rule cards conditioned on it — one
  * vocabulary shared by the engine, content, and the client tooltip. Three

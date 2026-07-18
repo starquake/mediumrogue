@@ -365,6 +365,7 @@ func TestMonsterWithinAggroRangeHunts(t *testing.T) {
 	pinToOrigin(w, &me)
 
 	atRadius := walkableHexAtDistance(t, w, me.Hex, protocol.MonsterAggroRadius, protocol.MonsterAggroRadius)
+	clearSightLine(t, w, me.Hex, atRadius) // this test varies DISTANCE, not terrain (#95)
 	monsterID := w.PlaceMonsterForTest(atRadius)
 
 	snap := step(t, w)
@@ -407,6 +408,7 @@ func noticedByWolfAt(t *testing.T, dist int, gearID string) bool {
 	}
 
 	at := walkableHexAtDistance(t, w, origin, dist, dist)
+	clearSightLine(t, w, origin, at) // hold terrain constant: this test varies GEAR
 	monsterID := w.PlaceMonsterKindForTest(at, "wolf")
 
 	return hexOfSnap(step(t, w), monsterID) != at

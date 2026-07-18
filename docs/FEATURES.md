@@ -23,7 +23,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   and reflexes are irrelevant by design. The input window is client pacing,
   not a server deadline: an intent that arrives while a turn is resolving
   is still accepted and simply applies to the **next** turn (#99).
-- **Combat time bubbles**: when a player and a hostile come within 6 hexes,
+- **Combat time bubbles**: when a player and a hostile come within 6 hexes
+  **and can see each other** (#95 — see line of sight below),
   a local bubble freezes — its turns are **action-gated** (advance when every
   player in it locks in an intent, or after a 30 s patience timeout — lowered
   from 60s, item 4, playtest batch 2). A
@@ -34,7 +35,32 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   land inside one interval). The rest of the world keeps ticking. Bubbles
   form/merge/dissolve as connected components; **only players extend a
   bubble's reach**. Walking into a bubble's radius joins the fight —
-  reinforcement is a core mechanic; fleeing beyond the radius escapes it.
+  reinforcement is a core mechanic; fleeing beyond the radius **or breaking
+  line of sight** escapes it.
+- **Line of sight (#95)** — terrain decides who can spot whom, so ducking
+  behind a rock is a real way to avoid or end a fight:
+
+  | Terrain | Effect on sight |
+  |---|---|
+  | **Rock** | hard-blocks — a single rock hex on the line ends the ray |
+  | **Forest** | **softens**: each forest hex on the line costs `ForestSightCost` (2) hexes of effective range |
+  | **Water** | unwalkable but **transparent** — you can see across a lake |
+  | **Grass** | open |
+
+  Only what lies **strictly between** counts, so adjacent entities always see
+  each other and standing in forest never hides you from something already
+  next to you. The check is **symmetric** — never "it sees you but you don't
+  see it". Against `CombatRadius = 6` that reads: 6 hexes over open grass,
+  ~4 through one belt of trees, ~2 through two.
+
+  It gates **two** things: bubble formation (and dissolution — losing sight
+  ends a fight, since bubbles are rebuilt from scratch every tick) and
+  **monster aggro**, over that monster kind's own reach rather than
+  `CombatRadius`. Aggro-range gear (#88) and sight are **independent gates**:
+  the gear fold decides how far a monster could notice you, sight decides
+  whether terrain lets it. The **leash is deliberately exempt** — a monster
+  walking home ignores players entirely, sight or no sight. Ranged attacks
+  remain distance-only (no LOS) by design; changing that is its own slice.
   The "In combat — waiting for: …" panel names the stragglers by **display
   name** (item 3, playtest batch 3 — was raw entity ids), mapped client-side
   from the bundle's entities with a `#id` fallback for an unknown id.
@@ -121,7 +147,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   intent (#116), one click per swing, and attacking never moves you;
   monsters still fight by moving into you (the classic roguelike
   bump-to-attack is now the monsters' rule); ranged **attack intent** (bow
-  single-target, mage AoE radius 1), range 4 hexes, distance-only (no LOS),
+  single-target, mage AoE radius 1), range 4 hexes, distance-only (no LOS —
+  bubbles and aggro use LOS since #95, attacks deliberately don't),
   **no friendly fire**.
 - **Entity-targeted single-target ranged attacks** (item 7, playtest batch
   2): a bow shot names its victim by **entity id** (`IntentRequest.
@@ -794,6 +821,7 @@ class-shaped weapon-slot special case (gear keystone, #55/#56).
 | `HumanXPBonusPercent` / `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 50 / 20 / 2 / 1 | species knobs |
 | `RogueGlanceChancePercent` / `GlanceDamagePercent` | 20 / 50 | Rogue class passive: chance an incoming hit is halved (never negated; floor 1 still applies) |
 | `RegenPerTurn` | 1 | out-of-combat HP per world turn |
+| `ForestSightCost` | 2 | hexes of effective sight range one forest hex between two entities costs (#95); rock hard-blocks, water is transparent |
 | `MonsterAggroRadius` | 10 | default world-monster notice distance (> CombatRadius, compile-guarded); per-kind `aggroRadius` overrides it |
 | `MonsterLeashMultiplier` | 2 | default leash radius = this × the kind's aggro radius (#102); per-kind `leashRadius` overrides the derived value |
 | `RingCount` | 3 | difficulty rings worldgen bands the map into |
@@ -819,7 +847,7 @@ the hub itself; healing potions + the backpack-cap layer now ship with the
 inventory system), wand↔staff interactions, item destruction/durability, backpack
 upgrades, trading, continuous spawning with density-tracks-players,
 monster-kind passives (the `rules` seam on `monsterDef` ships empty), ring
-UI indicators, terrain-blocked LOS, path-preview breadcrumb, bed/home spawns
+UI indicators, path-preview breadcrumb, bed/home spawns
 (model decided — see `design-decisions.md` (Q9): sanctuary-scatter first spawn and
 respawn shipped; the future step is last-visited bed with Home fallback —
 milestone 10a persisted characters and the world, but the bed slice stays

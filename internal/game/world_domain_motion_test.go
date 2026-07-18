@@ -85,6 +85,9 @@ func TestWorldMonstersKeepMovingWhileAllPlayersAreBubbled(t *testing.T) {
 	// forming turn below can't accidentally close it into alice's bubble
 	// before the "starts OUTSIDE the bubble" precondition is even checked.
 	farHex := walkableHexAtDistance(t, w, alice.Hex, protocol.CombatRadius+2, protocol.MonsterAggroRadius)
+	// …and a clear line, since #95: noticing now needs SIGHT as well as
+	// range, and this test is about the world clock, not terrain.
+	clearSightLine(t, w, alice.Hex, farHex)
 	farID := w.PlaceMonsterForTest(farHex)
 
 	// Forming turn: alice + the near monster bubble up; the far monster stays

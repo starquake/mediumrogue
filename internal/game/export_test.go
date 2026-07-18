@@ -801,3 +801,22 @@ func KillSoloSummaryForTest(playerName string, kindIDs ...string) string {
 // HitRetentionTurnsForTest exposes hitRetentionTurns (#114) so a hits test
 // can assert the prune window without duplicating the constant inline.
 const HitRetentionTurnsForTest = hitRetentionTurns
+
+// SetTerrainForTest overwrites the terrain of one hex, so a line-of-sight
+// test (#95) can put a rock or a belt of trees exactly where it needs one
+// instead of hunting the generated map for a suitable spot. Terrain is
+// otherwise immutable after worldgen — this is a test-only door.
+func (w *World) SetTerrainForTest(h protocol.Hex, t protocol.Terrain) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.terrain[h] = t
+}
+
+// SeesForTest exposes the terrain half of the spotting check (#95).
+func (w *World) SeesForTest(a, b protocol.Hex) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.seesLocked(a, b)
+}
