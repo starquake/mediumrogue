@@ -1570,7 +1570,10 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 // list never reaches here — see queueAttackLocked/resolveRangedLocked). Every
 // damage number in the game flows through here. Callers hold w.mu.
 func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weapon *itemDef, base int) int {
-	ctx := ruleCtx{attacker: attacker, victim: victim, allyInBubble: w.allyInBubbleLocked(attacker), rng: rng}
+	ctx := ruleCtx{
+		attacker: attacker, victim: victim, incomingType: weapon.damageType,
+		allyInBubble: w.allyInBubbleLocked(attacker), rng: rng,
+	}
 
 	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules)
 	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)

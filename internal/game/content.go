@@ -72,33 +72,39 @@ var itemDefs = []*itemDef{
 	{
 		id: idIronSword, name: "Iron Sword", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, damage: 4,
+		damageType: protocol.DamageTypeSharp,
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 7 -> 4, §4's "1H ≈ ½ 2H"
 		// pass — the dagger no longer out-damages the fighter's sword).
 		id: idDagger, name: "Dagger", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, damage: 4,
+		damageType: protocol.DamageTypeSharp,
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 6 -> 4).
 		id: idShortbow, name: "Shortbow", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagRanged}, damage: 4, rangeHex: 4,
+		damageType: protocol.DamageTypeSharp,
 	},
 	{
 		id: idOakWand, name: "Oak Wand", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, damage: 2,
+		damageType: protocol.DamageTypeBlunt,
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 4 -> 3).
 		id: idEmberFocus, name: "Ember Focus", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, damage: 3, rangeHex: 4, aoeRadius: 1,
+		damageType: protocol.DamageTypeFire,
 	},
 
 	// Starter drop set.
 	{
 		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 3, desc: "+3 damage vs targets below half HP",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, desc: "+3 damage vs targets below half HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowPct, n: 50}}, then: effect{kind: effAdd, n: 3}},
 		},
@@ -106,14 +112,16 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 6 -> 5).
 		id: idIronWarhammer, name: "Iron Warhammer", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 5, desc: "a flat upgrade over the iron sword — rare",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeBlunt,
+		damage:     5, desc: "a flat upgrade over the iron sword — rare",
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 3).
 		id: idVenomFang, name: "Venom Fang", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 3, desc: "+4 damage vs targets at full HP",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, desc: "+4 damage vs targets at full HP",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}}, then: effect{kind: effAdd, n: 4}},
 		},
@@ -121,8 +129,9 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 3).
 		id: idPackBow, name: "Pack Bow", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagRanged},
-		damage: 3, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
+		tags:       []string{protocol.WeaponTagRanged},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAllyInBubble}}, then: effect{kind: effAdd, n: 3}},
 		},
@@ -131,7 +140,8 @@ var itemDefs = []*itemDef{
 		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
 		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
-		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
+		damageType: protocol.DamageTypeFire,
+		damage:     6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
@@ -142,8 +152,9 @@ var itemDefs = []*itemDef{
 	// content designer — ids/names/numbers are his cards, transcribed.
 	{
 		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 4, desc: "+3 damage in a dwarf's hands",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeBlunt,
+		damage:     4, desc: "+3 damage in a dwarf's hands",
 		flavor: "This ancient mattock still holds a razor-sharp edge.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
@@ -154,7 +165,8 @@ var itemDefs = []*itemDef{
 		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
 		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
-		damage: 6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		damageType: protocol.DamageTypeFire,
+		damage:     6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
 		flavor: "Tuned to eliminate the weakest enemies.",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
@@ -174,7 +186,8 @@ var itemDefs = []*itemDef{
 		// keystone spec's "1H ≈ ½ 2H" anchor: a 2H roughly doubles a 1H).
 		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, twoHanded: true,
-		damage: 9, desc: "×1.5 damage vs dragons",
+		damageType: protocol.DamageTypeHoly,
+		damage:     9, desc: "×1.5 damage vs dragons",
 		flavor: "Forged by a legendary hero to slay the evil dragon Werdmullerix.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
@@ -245,8 +258,9 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 6 -> 4).
 		id: idMisericorde, name: "Misericorde", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 4, desc: "15% chance to strike true for double damage",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     4, desc: "15% chance to strike true for double damage",
 		flavor: "A blade thin enough to find the gap between any two plates.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 15}},
@@ -256,8 +270,9 @@ var itemDefs = []*itemDef{
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 4).
 		id: idDuelistsSaber, name: "Duelist's Saber", itemType: protocol.ItemTypeWeapon,
-		tags:   []string{protocol.WeaponTagMelee},
-		damage: 4, desc: "10% chance to land a perfect riposte for double",
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     4, desc: "10% chance to land a perfect riposte for double",
 		flavor: "Its balance rewards patience; its edge rewards timing.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
@@ -323,6 +338,7 @@ var monsterDefs = []*monsterDef{
 		// (a monster must notice a player before it can close into a combat
 		// bubble, or it sits frozen just outside its own aggro range forever).
 		maxHP: 4, damage: 1, xp: 8, aggroRadius: protocol.CombatRadius + 1, dropChance: 10,
+		damageType: protocol.DamageTypeSharp,
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 1},
 			// Low-weight potion (inventory-slots task 3): recovery layer 2.
@@ -342,6 +358,7 @@ var monsterDefs = []*monsterDef{
 	{
 		id: idKindWolf, name: "Wolf",
 		maxHP: 10, damage: 3, xp: 20, aggroRadius: protocol.MonsterAggroRadius, dropChance: 30,
+		damageType: protocol.DamageTypeSharp,
 		// The current starter drop set, same order/weights as the pre-6c
 		// global dropTable — pins killDropSeed/killMissSeed (drops_test.go).
 		drops: []drop{
@@ -377,6 +394,7 @@ var monsterDefs = []*monsterDef{
 	{
 		id: idKindGhoul, name: "Ghoul",
 		maxHP: 16, damage: 4, xp: 35, aggroRadius: 8, dropChance: 35,
+		damageType: protocol.DamageTypeChaos,
 		// The starter set with venom-fang weighted up (a ghoul's signature drop).
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 4},
@@ -397,6 +415,7 @@ var monsterDefs = []*monsterDef{
 	{
 		id: idKindTroll, name: "Troll",
 		maxHP: 30, damage: 6, xp: 60, aggroRadius: 8, dropChance: 50,
+		damageType: protocol.DamageTypeBlunt,
 		// The starter set with the warhammer/pack-bow/war-mage-staff weighted
 		// up — a troll's frontier-tier signature drops.
 		drops: []drop{
@@ -422,6 +441,7 @@ var monsterDefs = []*monsterDef{
 	{
 		id: idKindDragon, name: "Dragon",
 		maxHP: 60, damage: 9, xp: 150, aggroRadius: 12, dropChance: 100,
+		damageType: protocol.DamageTypeFire,
 		// The Wyrmslayer Greatsword (weight 2 — the headline drop, roughly as
 		// likely as the whole rest of the rare pool combined) plus a small
 		// rare pool.

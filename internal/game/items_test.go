@@ -1360,3 +1360,112 @@ func TestStarterInventoryContentPinned(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateItemDefsPanicsOnDamageTypeShape (#92): every weapon carries
+// exactly one of the six damage types and no non-weapon carries any. An
+// untyped weapon would silently dodge every resist and vulnerability card
+// ever written — a content bug that would only surface as odd numbers
+// mid-fight, so it fails at load instead.
+func TestValidateItemDefsPanicsOnDamageTypeShape(t *testing.T) {
+	t.Parallel()
+
+	t.Run("weapon without a type", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs did not panic on a weapon with no damage type")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeWeapon,
+			tags: []string{protocol.WeaponTagMelee}, damage: 3,
+		}})
+	})
+
+	t.Run("weapon with an unknown type", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs did not panic on a weapon with an unknown damage type")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeWeapon, damageType: "psychic",
+			tags: []string{protocol.WeaponTagMelee}, damage: 3,
+		}})
+	})
+
+	t.Run("armor with a type", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs did not panic on a non-weapon carrying a damage type")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeChest, damageType: protocol.DamageTypeFire,
+		}})
+	})
+}
+
+// TestValidateRuleCardsPanicsOnUnknownDamageType (#92): a resist card naming
+// a type that doesn't exist would silently never hold — the same fail-loud
+// treatment condAttackerSpecies and condTargetKind already get.
+func TestValidateRuleCardsPanicsOnUnknownDamageType(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("validateRuleCards did not panic on a card naming an unknown damage type")
+		}
+	}()
+
+	validateRuleCards("x", []ruleCard{{
+		event: evTakeDamage,
+		when:  []condition{{kind: condIncomingType, s: "psychic"}},
+		then:  effect{kind: effMulPct, n: 50},
+	}})
+}
+
+// TestEveryWeaponAndKindCarriesADamageType (#92) pins the spec's assignment
+// table: every registered weapon has a valid type, every monster kind's claws
+// carry their kind's type through the buildMonsterIndex seam, and the
+// built-in fists fall back to blunt.
+func TestEveryWeaponAndKindCarriesADamageType(t *testing.T) {
+	t.Parallel()
+
+	for _, def := range itemDefs {
+		if def.isWeapon() && !validDamageType(def.damageType) {
+			t.Errorf("weapon %s damage type = %q, want one of the six", def.id, def.damageType)
+		}
+	}
+
+	if got, want := fistsDef.damageType, protocol.DamageTypeBlunt; got != want {
+		t.Errorf("fists damage type = %q, want %q", got, want)
+	}
+
+	wantKinds := map[string]string{
+		idKindRat:    protocol.DamageTypeSharp,
+		idKindWolf:   protocol.DamageTypeSharp,
+		idKindGhoul:  protocol.DamageTypeChaos,
+		idKindTroll:  protocol.DamageTypeBlunt,
+		idKindDragon: protocol.DamageTypeFire,
+	}
+
+	for id, want := range wantKinds {
+		def, ok := monsterDefByID[id]
+		if !ok {
+			t.Fatalf("monster kind %s not registered", id)
+		}
+
+		if got := def.claws.damageType; got != want {
+			t.Errorf("%s claws damage type = %q, want %q", id, got, want)
+		}
+	}
+}

@@ -33,6 +33,11 @@ type itemDef struct {
 	// chosen at equip time, and a consumable has no slot (backpack stack
 	// only).
 	itemType string
+	// damageType (weapon-type items only, REQUIRED on every weapon) is the
+	// protocol.DamageType* an attack with this weapon deals — what
+	// resistance and vulnerability cards key on (condIncomingType, #92).
+	// Forbidden on non-weapons: armor has no damage to type.
+	damageType string
 	// tags (weapon-type items only) name which attacks fire this weapon:
 	// protocol.WeaponTagMelee/Ranged/Magic. ≥1 tag required for a weapon,
 	// none allowed on anything else (validateItemDefs).
@@ -98,6 +103,19 @@ type groundStack struct {
 var fistsDef = &itemDef{
 	id: "fists", name: "Fists", itemType: protocol.ItemTypeWeapon,
 	tags: []string{protocol.WeaponTagMelee}, damage: protocol.FistsDamage,
+	damageType: protocol.DamageTypeBlunt,
+}
+
+// validDamageType reports whether t is one of the six damage types (#92).
+func validDamageType(t string) bool {
+	switch t {
+	case protocol.DamageTypeSharp, protocol.DamageTypeBlunt,
+		protocol.DamageTypeFire, protocol.DamageTypeIce,
+		protocol.DamageTypeHoly, protocol.DamageTypeChaos:
+		return true
+	default:
+		return false
+	}
 }
 
 // validItemType reports whether t is one of the taxonomy's 9 known types.
@@ -736,11 +754,23 @@ func validateItemHeal(def *itemDef) {
 // not a damage field). #90.
 func validateItemCombatStats(def *itemDef) {
 	if def.isWeapon() {
+		// Every weapon carries exactly one damage type (#92): an untyped
+		// weapon would silently dodge every resist and vulnerability card
+		// ever written, which is a content bug that only shows up as odd
+		// numbers mid-fight.
+		if !validDamageType(def.damageType) {
+			panic("game: weapon " + def.id + " has unknown or missing damage type " + def.damageType)
+		}
+
 		return
 	}
 
 	if def.damage != 0 || def.rangeHex != 0 || def.aoeRadius != 0 {
 		panic("game: non-weapon item " + def.id + " must not set damage, rangeHex, or aoeRadius")
+	}
+
+	if def.damageType != "" {
+		panic("game: non-weapon item " + def.id + " must not set a damage type")
 	}
 }
 
@@ -790,6 +820,12 @@ func validateRuleCondition(owner, event string, cond condition) {
 		// never hold — a content typo, caught at load.
 		if !validSpecies(cond.s) {
 			panic("game: " + owner + " attackerSpecies rule card names unknown species " + cond.s)
+		}
+	case condIncomingType:
+		// A resist/vuln card naming a type that doesn't exist would
+		// silently never hold — a content typo, caught at load (#92).
+		if !validDamageType(cond.s) {
+			panic("game: " + owner + " incomingType rule card names unknown damage type " + cond.s)
 		}
 	case condTargetKind:
 		// A kind gate on an unregistered monster id would silently never

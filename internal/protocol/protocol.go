@@ -184,6 +184,26 @@ const (
 	WeaponTagMagic  = "magic"
 )
 
+// Damage types (#92, DT1): every attack carries exactly one, and resistances
+// and vulnerabilities are take-damage rule cards conditioned on it — one
+// vocabulary shared by the engine, content, and the client tooltip. Three
+// families of two: physical (Sharp/Blunt), elemental (Fire/Ice), and
+// metaphysical (Holy/Chaos).
+//
+// The families and the Holy↔Chaos / Fire↔Ice oppositions are an AUTHORING
+// CONVENTION, not machinery: all six types are mechanically flat, and a
+// "Chaos monster fears Holy" is a vulnerability card someone wrote, not an
+// axis the engine knows about. Promotable to a real axis later if content
+// always ends up mirrored.
+const (
+	DamageTypeSharp = "sharp"
+	DamageTypeBlunt = "blunt"
+	DamageTypeFire  = "fire"
+	DamageTypeIce   = "ice"
+	DamageTypeHoly  = "holy"
+	DamageTypeChaos = "chaos"
+)
+
 // Equip-slot names. Armor slots equal their item type; weapons go to a
 // hand (main first, then off; two-handed locks both).
 const (
