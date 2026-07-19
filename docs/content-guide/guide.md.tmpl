@@ -1,0 +1,116 @@
+# mediumrogue — content design guide
+
+> **Generated from the live registries.** Every number below is what the game
+> actually runs. Regenerate with `make guide`; never hand-edit this file.
+>
+> The prose is authored, the tables are generated. If a number looks wrong,
+> the game changed and this was regenerated — trust the table. If the
+> *reasoning* looks wrong, argue with it.
+
+## The one tell: coupling
+
+This is an **ARPG**, never a TTRPG. The distinction is not vocabulary — it is
+whether a mechanic folds the attacker's numbers and the defender's numbers
+into *one* roll.
+
+- **TTRPG:** attacker rolls, the defender's Armour Class sets the target, one
+  roll decides hit-or-miss. Attack bonus and AC are coupled.
+- **ARPG:** two *independent* percentage checks. `crit%` is the attacker's
+  alone, `glance%` the defender's alone. Neither reads the other side's stats.
+  Damage is then a fold, not a comparison.
+
+**A proposal wearing percentages can still be TTRPG.** "5% chance to miss,
+modified by the target's evasion" is a coupled roll in percentage clothing.
+Ask only: *does one side's number change the other side's outcome inside a
+single check?* If yes, translate it.
+
+## The four drift cases — and their translations
+
+| Arrives as | Why it doesn't fit | Build this instead |
+|---|---|---|
+| A miss chance / to-hit roll | Couples both sides; a whiff is a null turn in a 4-second WeGo loop. | A defender-side `glance%`. A glance **halves** a hit — it never negates it. |
+| Flat `−N` damage reduction (armour) | Subtractive mitigation stacks into the ≥1 clamp and stops meaning anything. | A percentage on `take-damage`. (The dwarf passive's −1 is the one deliberate exception — a species trait that can't stack with itself.) |
+| A stance, mode, or "block" | A mode economy this game doesn't have — one action per turn — and hit-negation was rejected when `evasion%` became `glance%`. | A `glance%` bump, conditioned on the situation the stance was meant to describe. |
+| "Works with swords / axes / polearms" | Weapon categories don't exist. Weapons carry *tags* (how a weapon is used) and a *damage type* (what it deals). | `weaponTagged` for how it's swung, or `damageType` for what lands. |
+
+## How a card works
+
+Every species trait, item property and skill is a **rule card**: pure data,
+never code. A card says *at this event*, *when these conditions hold*, *do this
+to the value*.
+
+Fold order is fixed: within one event, **every `add` sums first**, then **every
+percentage sums and applies once**. Percentages never compound pairwise — two
++50% cards are +100%, not ×2.25.
+
+### Events — the moments a value folds
+
+| Event | Parameter | Meaning |
+|---|---|---|
+{{range .Events}}| `{{.Kind}}` | {{.Param}} | {{.Description}} |
+{{end}}
+### Conditions — when a card fires
+
+| Condition | Parameter | Meaning |
+|---|---|---|
+{{range .Conditions}}| `{{.Kind}}` | {{.Param}} | {{.Description}} |
+{{end}}
+### Effects — what a card does
+
+| Effect | Parameter | Meaning |
+|---|---|---|
+{{range .Effects}}| `{{.Kind}}` | {{.Param}} | {{.Description}} |
+{{end}}
+### Damage types and weapon tags
+
+Damage types: {{range $i, $t := .DamageTypes}}{{if $i}}, {{end}}`{{$t}}`{{end}}.
+
+Weapon tags: {{range $i, $t := .WeaponTags}}{{if $i}}, {{end}}`{{$t}}`{{end}}.
+
+## Which cards may go on what
+
+Enforced at load — a violation panics the server at start, not mid-combat.
+**Offensive cards** (`deal-damage`) belong on weapons; **defensive cards**
+(`take-damage`) belong on worn kit. That is what lets a stat line stay terse:
+on a weapon a number means damage dealt, on armour it means damage taken, so
+no line needs a "Taken" suffix to disambiguate.
+
+It follows that stat text is **never written by hand** — it is rendered from
+the card. Flavour text carries no numbers at all: a hand-written line
+restating its own card is a drift surface, and the load-time validator rejects
+any digit in flavour.
+
+## Calibration — pitch new numbers against these
+
+| Anchor | Value | What it means |
+|---|---|---|
+{{range .Numbers}}| {{.Name}} | `{{.Value}}` | {{.Description}} |
+{{end}}
+## Every item today
+
+| Item | Type | Damage type | Tags | Damage | Range | AoE | Heal | Stat lines |
+|---|---|---|---|---|---|---|---|---|
+{{range .Items}}| **{{.Name}}**<br>`{{.ID}}` | {{.Type}}{{if .TwoHanded}}<br>two-handed{{end}} | {{if .DamageType}}{{.DamageType}}{{else}}—{{end}} | {{if .Tags}}{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}{{else}}—{{end}} | {{if .Damage}}{{.Damage}}{{else}}—{{end}} | {{if .RangeHex}}{{.RangeHex}}{{else}}melee{{end}} | {{if .AoERadius}}{{.AoERadius}}{{else}}—{{end}} | {{if .Heal}}{{.Heal}}{{else}}—{{end}} | {{range .Stats}}{{if .Drawback}}⚠ {{end}}{{.Text}}<br>{{else}}—{{end}} |
+{{end}}
+⚠ marks a **drawback** — a stat that makes its holder worse. Sign alone can't
+say: `+25% Aggro Range` is a cost, `+5% XP` is not.
+
+## Every monster kind today
+
+| Kind | HP | Damage | Damage type | XP | Aggro | Drop % | Cards |
+|---|---|---|---|---|---|---|---|
+{{range .Monsters}}| **{{.Name}}**<br>`{{.ID}}` | {{.MaxHP}} | {{.Damage}} | {{.DamageType}} | {{.XP}} | {{.AggroRadius}} | {{.DropChance}} | {{range .Stats}}{{if .Drawback}}⚠ {{end}}{{.Text}}<br>{{else}}—{{end}} |
+{{end}}
+## Before you send a proposal
+
+1. Does any single check read *both* sides' numbers? If yes, it's a coupled
+   roll — translate it.
+2. Is mitigation a percentage rather than a flat `−N`?
+3. Does a defensive proc *halve* rather than cancel?
+4. Is it expressible as event + conditions + effect using only the tables
+   above? A card needing a brand-new condition is fine — but a new condition
+   wants **two** real users before it earns its place.
+5. Are the numbers pitched against the calibration anchors, not against
+   another game's?
+6. Is the flavour text free of digits, with the mechanics left to the
+   generated stat line?

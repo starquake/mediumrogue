@@ -22,7 +22,7 @@ TYGO_BIN := $(BIN_DIR)/tygo
 
 # Developer gate before committing. Mirrors the CI jobs.
 .PHONY: check
-check: lint protocol-check icons-check client-check test test-integration build
+check: lint protocol-check icons-check guide-check client-check test test-integration build
 
 ## ---- Go server ----
 
@@ -81,6 +81,24 @@ protocol: $(TYGO_BIN)
 protocol-check: protocol
 	@git diff --exit-code -- client/src/protocol.gen.ts \
 	    || { echo "protocol.gen.ts is stale: commit the regenerated file"; exit 1; }
+
+## ---- Designer content guide (#156) ----
+
+# Regenerate docs/content-guide/README.md from the live registries. The
+# guide's numbers come from internal/protocol and content.go, never from
+# memory — the same rule FEATURES.md lives under, made mechanical.
+.PHONY: guide
+guide:
+	$(GO) run ./cmd/contentguide
+
+# Fail when the committed guide is stale — i.e. a slice moved a number the
+# guide cites and didn't regenerate. The 2026-07-18 PDF went stale twice in a
+# day precisely because nothing could tell; this is that check.
+.PHONY: guide-check
+guide-check:
+	@$(GO) run ./cmd/contentguide -out $(BUILD_DIR)/guide-check.md
+	@diff -q $(BUILD_DIR)/guide-check.md docs/content-guide/README.md >/dev/null \
+	    || { echo "content guide is stale: run 'make guide' and commit docs/content-guide/README.md"; exit 1; }
 
 ## ---- Glyph icons (vendored game-icons.net SVGs -> glyphIcons.ts) ----
 
