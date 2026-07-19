@@ -38,7 +38,7 @@ func withSkillRegistry(t *testing.T, defs []*skillDef) {
 //nolint:paralleltest // swaps the package-global skill registry; parallel siblings would race on it.
 func TestValidateSkillDefsAcceptsAWellFormedTree(t *testing.T) {
 	defs := []*skillDef{
-		{id: "combat-training", name: "Combat Training", tree: treeClass, desc: "+10% melee damage", rules: []ruleCard{
+		{id: "combat-training", name: "Combat Training", tree: treeClass, rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condWeaponTagged, s: protocol.WeaponTagMelee}},
 				then: effect{kind: effMulPct, n: percentBase + 10}},
 		}},

@@ -112,47 +112,52 @@ var itemDefs = []*itemDef{
 		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeSharp,
-		damage:     3, desc: "+3 damage vs targets below half HP",
+		damage:     3,
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPBelowPct, n: 50}}, then: effect{kind: effAdd, n: 3}},
 		},
+		flavor: "Made for carcasses. It has never much minded the difference.",
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 6 -> 5).
 		id: idIronWarhammer, name: "Iron Warhammer", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeBlunt,
-		damage:     5, desc: "a flat upgrade over the iron sword — rare",
+		damage:     5,
+		flavor:     "Not clever. It has never needed to be.",
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 3).
 		id: idVenomFang, name: "Venom Fang", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeSharp,
-		damage:     3, desc: "+4 damage vs targets at full HP",
+		damage:     3,
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetHPFull}}, then: effect{kind: effAdd, n: 4}},
 		},
+		flavor: "The venom went stale a long time ago. The point did not.",
 	},
 	{
 		// re-derived: gear keystone rebalance (damage 5 -> 3).
 		id: idPackBow, name: "Pack Bow", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagRanged},
 		damageType: protocol.DamageTypeSharp,
-		damage:     3, rangeHex: 4, desc: "+3 damage while an ally shares the bubble",
+		damage:     3, rangeHex: 4,
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAllyInBubble}}, then: effect{kind: effAdd, n: 3}},
 		},
+		flavor: "Wolf-gut string. It sings better in company.",
 	},
 	{
 		// re-derived: staves 2H, wands 1H (keystone amendment) — damage 3 -> 6.
 		id: idEmberStaff, name: "Ember Staff", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
 		damageType: protocol.DamageTypeFire,
-		damage:     6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs adjacent targets",
+		damage:     6, rangeHex: 4, aoeRadius: 1,
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetAdjacent}}, then: effect{kind: effMulPct, n: 200}},
 		},
+		flavor: "Close work — the kind that singes your own eyebrows.",
 	},
 
 	// First designer batch (docs/content-authoring.md's card format;
@@ -162,8 +167,8 @@ var itemDefs = []*itemDef{
 		id: idAncientDwarvenMattock, name: "Ancient Dwarven Mattock", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeBlunt,
-		damage:     4, desc: "+3 damage in a dwarf's hands",
-		flavor: "This ancient mattock still holds a razor-sharp edge.",
+		damage:     4,
+		flavor:     "This ancient mattock still holds a razor-sharp edge.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condAttackerSpecies, s: protocol.SpeciesDwarf}},
 				then: effect{kind: effAdd, n: 3}},
@@ -174,7 +179,7 @@ var itemDefs = []*itemDef{
 		id: idWarMageStaff, name: "Staff of the War Mage", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMagic}, twoHanded: true,
 		damageType: protocol.DamageTypeFire,
-		damage:     6, rangeHex: 4, aoeRadius: 1, desc: "double damage vs targets below 6 HP",
+		damage:     6, rangeHex: 4, aoeRadius: 1,
 		flavor: "Tuned to eliminate the weakest enemies.",
 		rules: []ruleCard{
 			// Flat threshold BY DESIGN, not percent: a mop-up AoE that ends the
@@ -195,8 +200,8 @@ var itemDefs = []*itemDef{
 		id: idWyrmslayerGreatsword, name: "Wyrmslayer Greatsword", itemType: protocol.ItemTypeWeapon,
 		tags: []string{protocol.WeaponTagMelee}, twoHanded: true,
 		damageType: protocol.DamageTypeHoly,
-		damage:     9, desc: "×1.5 damage vs dragons",
-		flavor: "Forged by a legendary hero to slay the evil dragon Werdmullerix.",
+		damage:     9,
+		flavor:     "Forged by a legendary hero to slay the evil dragon Werdmullerix.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condTargetKind, s: idKindDragon}},
 				then: effect{kind: effMulPct, n: 150}},
@@ -210,7 +215,8 @@ var itemDefs = []*itemDef{
 	// weight (task 3 — recovery layer 2 begins).
 	{
 		id: idHealingPotion, name: "Healing Potion", itemType: protocol.ItemTypeConsumable,
-		heal: 5, desc: "drink: +5 HP; stacks to 5",
+		heal:   5,
+		flavor: "Tastes like a barn floor. Nobody drinks it for the taste.",
 	},
 
 	// Inventory-slots starter armor (task 3, the designer's cards): the first
@@ -218,7 +224,6 @@ var itemDefs = []*itemDef{
 	// class may equip both.
 	{
 		id: idLeatherArmor, name: "Leather Armor", itemType: protocol.ItemTypeChest,
-		desc:   "take 10% less from every hit",
 		flavor: "Supple leather that lets you dodge out of harm's way.",
 		rules: []ruleCard{
 			// Mitigation is PERCENTAGE, not flat (#154): a percent is still a
@@ -230,7 +235,6 @@ var itemDefs = []*itemDef{
 	},
 	{
 		id: idHeadbandOfLearning, name: "Headband of Learning", itemType: protocol.ItemTypeHelmet,
-		desc:   "earn 5% more XP",
 		flavor: "Stimulates your tiny little brain, for faster learning.",
 		rules: []ruleCard{
 			{event: evEarnXP, then: effect{kind: effMulPct, n: percentBase + 5}},
@@ -247,7 +251,6 @@ var itemDefs = []*itemDef{
 	// passive never zeroes a hit.
 	{
 		id: idWoodenBuckler, name: "Wooden Buckler", itemType: protocol.ItemTypeShield,
-		desc:   "take 10% less from every hit",
 		flavor: "A barrel lid with delusions of grandeur. It holds.",
 		rules: []ruleCard{
 			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 10}},
@@ -255,7 +258,6 @@ var itemDefs = []*itemDef{
 	},
 	{
 		id: idIronKiteShield, name: "Iron Kite Shield", itemType: protocol.ItemTypeShield,
-		desc:   "take 20% less from every hit",
 		flavor: "Iron-bound and man-high — the wall the front rank hides behind.",
 		rules: []ruleCard{
 			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 20}},
@@ -270,8 +272,8 @@ var itemDefs = []*itemDef{
 		id: idMisericorde, name: "Misericorde", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeSharp,
-		damage:     4, desc: "15% chance to strike true for double damage",
-		flavor: "A blade thin enough to find the gap between any two plates.",
+		damage:     4,
+		flavor:     "A blade thin enough to find the gap between any two plates.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 15}},
 				then: effect{kind: effMulPct, n: percentBase + 100}},
@@ -282,8 +284,8 @@ var itemDefs = []*itemDef{
 		id: idDuelistsSaber, name: "Duelist's Saber", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeSharp,
-		damage:     4, desc: "10% chance to land a perfect riposte for double",
-		flavor: "Its balance rewards patience; its edge rewards timing.",
+		damage:     4,
+		flavor:     "Its balance rewards patience; its edge rewards timing.",
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
 				then: effect{kind: effMulPct, n: percentBase + 100}},
@@ -301,7 +303,6 @@ var itemDefs = []*itemDef{
 	// keeps any radius ≥1.
 	{
 		id: idPaddedBoots, name: "Padded Boots", itemType: protocol.ItemTypeBoots,
-		desc:   "monsters notice you 25% later",
 		flavor: "Rag-wrapped soles. You hear yourself think, and nothing hears you.",
 		rules: []ruleCard{
 			{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase - 25}},
@@ -313,7 +314,6 @@ var itemDefs = []*itemDef{
 		// sooner. Gear that is only ever better makes the inventory a sorting
 		// exercise; a cost makes it a decision.
 		id: idIronPlateArmor, name: "Iron Plate Armor", itemType: protocol.ItemTypeChest,
-		desc:   "take 20% less from every hit; monsters notice you 25% sooner",
 		flavor: "It turns blades. It also announces you, one clank at a time.",
 		rules: []ruleCard{
 			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 20}},
@@ -333,7 +333,6 @@ var itemDefs = []*itemDef{
 	{
 		// The parked P2 designer card, unparked (#92).
 		id: idInfernalChainMail, name: "Infernal Chain Mail", itemType: protocol.ItemTypeChest,
-		desc:   "take half damage from fire",
 		flavor: "Forged in a place where fire was the weather.",
 		rules: []ruleCard{
 			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
@@ -346,7 +345,6 @@ var itemDefs = []*itemDef{
 		// strictly better than either elemental resist, since almost every
 		// early monster is sharp or blunt.
 		id: idWardedGambeson, name: "Warded Gambeson", itemType: protocol.ItemTypeChest,
-		desc:   "take half damage from sharp weapons",
 		flavor: "Layered linen, quilted thick. Blades slide; hammers do not care.",
 		rules: []ruleCard{
 			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeSharp}},
@@ -356,7 +354,6 @@ var itemDefs = []*itemDef{
 	{
 		// Metaphysical-family resist: chaos only, the ghoul-tier answer.
 		id: idPilgrimsMantle, name: "Pilgrim's Mantle", itemType: protocol.ItemTypeChest,
-		desc:   "take half damage from chaos",
 		flavor: "Worn thin by a road no map admits to.",
 		rules: []ruleCard{
 			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeChaos}},
@@ -370,8 +367,8 @@ var itemDefs = []*itemDef{
 		id: idFrostbrand, name: "Frostbrand", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeIce,
-		damage:     4, desc: "a blade of standing cold",
-		flavor: "The scabbard frosts over between fights.",
+		damage:     4,
+		flavor:     "The scabbard frosts over between fights.",
 	},
 	{
 		// Holy had exactly one representative, the dragon-only Wyrmslayer —
@@ -380,8 +377,8 @@ var itemDefs = []*itemDef{
 		id: idConsecratedMace, name: "Consecrated Mace", itemType: protocol.ItemTypeWeapon,
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeHoly,
-		damage:     4, desc: "blessed iron — ghouls fear it",
-		flavor: "Every dent in it was somebody's bad night.",
+		damage:     4,
+		flavor:     "Every dent in it was somebody's bad night.",
 	},
 }
 

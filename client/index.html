@@ -582,6 +582,18 @@
         font-style: italic;
         padding: 0.1rem 0.4rem;
       }
+      /* A drawback reads apart from a benefit (#171): sign alone cannot say
+         — "+25% Aggro Range" is a cost, "+5% XP" is not. */
+      .skill-desc.drawback,
+      .tt-stat.drawback {
+        color: #c98a6a;
+      }
+      .tt-stat {
+        font-size: 0.68rem;
+        color: var(--fg);
+        line-height: 1.4;
+        margin-top: 0.12rem;
+      }
       .skills-foot {
         margin-top: 0.5rem;
         padding-top: 0.35rem;

@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -55,7 +55,7 @@ function StatLine(props: { label: string; value: number }): JSXElement {
 // beside it for comparison (slot set → labelled "equipped · Main Hand").
 function StatBlock(props: { item: ItemStats & { name: string }; slot?: string }): JSXElement {
   const it = (): ItemStats & { name: string } => props.item;
-  const hasCombat = (): boolean => it().damage > 0 || it().rangeHex > 0 || it().aoeRadius > 0;
+  const hasCombat = (): boolean => it().damageType !== "";
   return (
     <div class="stat-tip">
       <div class="tt-name">{it().name}</div>
@@ -65,25 +65,21 @@ function StatBlock(props: { item: ItemStats & { name: string }; slot?: string })
       <Show
         when={hasCombat()}
         fallback={
-          <Show when={it().desc === ""}>
-            <div class="tt-none">No combat stats.</div>
+          <Show when={it().stats.length === 0}>
+            <div class="tt-none">No stats.</div>
           </Show>
         }
       >
-        <StatLine label="Damage" value={it().damage} />
         <Show when={it().damageType !== ""}>
           <StatText label="Type" value={it().damageType} />
         </Show>
-        <Show when={it().rangeHex > 0}>
-          <StatLine label="Range" value={it().rangeHex} />
-        </Show>
-        <Show when={it().aoeRadius > 0}>
-          <StatLine label="AoE" value={it().aoeRadius} />
-        </Show>
       </Show>
-      <Show when={it().desc !== ""}>
-        <div class="tt-effect">{it().desc}</div>
-      </Show>
+      {/* Stat lines come rendered from the server (#171): they are derived
+          from the item's rule cards, so the text can never disagree with the
+          mechanic. <Index>, not <For> — rebuilt from a full bundle each turn. */}
+      <Index each={it().stats}>
+        {(stat) => <div class="tt-stat" classList={{ drawback: stat().drawback }}>{stat().text}</div>}
+      </Index>
       <Show when={it().flavor !== ""}>
         <div class="tt-flavor">{it().flavor}</div>
       </Show>

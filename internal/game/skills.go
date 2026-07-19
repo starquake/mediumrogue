@@ -51,11 +51,9 @@ type skillDef struct {
 	prereqs []string
 	// rules are the cards this skill folds into the pipeline while learned.
 	rules []ruleCard
-	// desc is the authored mechanical line ("+10% damage with melee
-	// weapons"); flavor is the optional lore line. Same split as itemDef.
-	// flavor is authored (task 5) but has no reader until the panel renders
-	// it (task 9).
-	desc   string
+	// flavor is the skill's authored lore line, and the only authored text on
+	// a skillDef since #171 — its mechanical line is rendered from the cards
+	// (statlines.go). Carries no numbers (validateFlavorHasNoStats).
 	flavor string
 }
 
@@ -71,7 +69,6 @@ var skillDefs = []*skillDef{
 	// --- Class tree -------------------------------------------------------
 	{
 		id: skillCombatTraining, name: "Combat Training", tree: treeClass,
-		desc:   "+10% damage with melee weapons",
 		flavor: "Hours on the practice yard, and it finally shows.",
 		rules: []ruleCard{
 			// Scoped by weapon TAG rather than damage type (@starquake's
@@ -85,7 +82,6 @@ var skillDefs = []*skillDef{
 	{
 		id: skillWeakSpot, name: "Weak Spot", tree: treeClass,
 		prereqs: []string{skillCombatTraining},
-		desc:    "+4 damage against a target at full health",
 		flavor:  "The first cut is the one you plan.",
 		rules: []ruleCard{
 			// Zero new vocabulary: condTargetHPFull has shipped since the
@@ -97,7 +93,6 @@ var skillDefs = []*skillDef{
 	},
 	{
 		id: skillShieldWall, name: "Shield Wall", tree: treeClass,
-		desc:   "while holding a shield, 15% chance an incoming hit only glances",
 		flavor: "Set your feet. Let it come.",
 		rules: []ruleCard{
 			// A glance% bump, NOT flat mitigation (@starquake's call, #124;
@@ -116,7 +111,6 @@ var skillDefs = []*skillDef{
 	// --- Adventure tree ---------------------------------------------------
 	{
 		id: skillScouting, name: "Scouting", tree: treeAdventure,
-		desc:   "monsters notice you 20% later",
 		flavor: "You read the ground before you walk it.",
 		rules: []ruleCard{
 			// The second rider #88 promised for evAggroRange (Padded Boots
@@ -171,6 +165,7 @@ func validateSkillDefs(defs []*skillDef) {
 		}
 
 		validateRuleCards("skill:"+def.id, def.rules)
+		validateFlavorHasNoStats("skill "+def.id, def.flavor)
 	}
 
 	// Prereq checks run in a second pass so a skill may name one declared
@@ -340,7 +335,7 @@ func skillViewsLocked(e *entity) []protocol.SkillView {
 
 		views = append(views, protocol.SkillView{
 			ID: def.id, Name: def.name, Tree: def.tree,
-			Desc: def.desc, Flavor: def.flavor, Learned: learned,
+			Stats: statViewsFor(&itemDef{rules: def.rules}), Flavor: def.flavor, Learned: learned,
 		})
 	}
 

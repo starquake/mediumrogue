@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 
-import type { ItemView } from "../protocol.gen";
+import type { ItemView, StatView } from "../protocol.gen";
 import {
   BackpackSize,
   ItemTypeShield,
@@ -55,8 +55,8 @@ export interface ItemStats {
   damage: number;
   rangeHex: number;
   aoeRadius: number;
-  /** The mechanical effect line ("×1.5 damage vs dragons"). */
-  desc: string;
+  /** Rendered stat lines (#171), derived server-side from the rule cards. */
+  stats: StatView[];
   /** The authored lore/"Fantasy" line; "" for items without lore. */
   flavor: string;
   tags: string[];
@@ -235,7 +235,7 @@ export function setInventory(items: ItemView[]): void {
       damage: it.damage,
       rangeHex: it.rangeHex,
       aoeRadius: it.aoeRadius,
-      desc: it.desc,
+      stats: it.stats,
       flavor: it.flavor,
       tags: it.tags,
       damageType: it.damageType,

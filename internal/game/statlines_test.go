@@ -35,17 +35,18 @@ func TestStatLinesForShippedContent(t *testing.T) {
 		idWyrmslayerGreatsword:  {dmg9, "+50% Damage vs Dragons"},
 		idMisericorde:           {dmg4, "15% chance ×2 Damage"},
 		idFrostbrand:            {dmg4},
-		// Wearables — the number is damage TAKEN, again by slot.
-		idLeatherArmor:      {"−10% Damage"},
-		idIronKiteShield:    {"−20% Damage"},
-		idPilgrimsMantle:    {"−50% Chaos Damage"},
-		idInfernalChainMail: {"−50% Fire Damage"},
-		idWardedGambeson:    {"−50% Sharp Damage"},
+		// Wearables read as RESISTANCE, which carries its own direction — no
+		// inference from the slot, and no double negative (#171, revised).
+		idLeatherArmor:      {"+10% Damage Resistance"},
+		idIronKiteShield:    {"+20% Damage Resistance"},
+		idPilgrimsMantle:    {"+50% Chaos Resistance"},
+		idInfernalChainMail: {"+50% Fire Resistance"},
+		idWardedGambeson:    {"+50% Sharp Resistance"},
 		// Utility stats name their own subject and are exempt from the slot
 		// rule (Q5) — "+5% XP" is good, "+25% Aggro Range" is not.
 		idHeadbandOfLearning: {"+5% XP"},
 		idPaddedBoots:        {"−25% Aggro Range"},
-		idIronPlateArmor:     {"−20% Damage", "+25% Aggro Range"},
+		idIronPlateArmor:     {"+20% Damage Resistance", "+25% Aggro Range"},
 		// A consumable's heal is not a card at all (#175).
 		idHealingPotion: {"+5 HP", "Stacks to 5"},
 	}
@@ -83,9 +84,9 @@ func TestDrawbackDetection(t *testing.T) {
 		card ruleCard
 		want bool
 	}{
-		{name: "less damage taken is good", card: ruleCard{event: evTakeDamage,
+		{name: "more resistance is good", card: ruleCard{event: evTakeDamage,
 			then: effect{kind: effMulPct, n: percentBase - 20}}},
-		{name: "MORE damage taken is a drawback", card: ruleCard{event: evTakeDamage,
+		{name: "LESS resistance is a drawback", card: ruleCard{event: evTakeDamage,
 			then: effect{kind: effMulPct, n: percentBase + 20}}, want: true},
 		{name: "more damage dealt is good", card: ruleCard{event: evDealDamage,
 			then: effect{kind: effAdd, n: 3}}},
@@ -140,7 +141,7 @@ func TestSkillStatLines(t *testing.T) {
 		skillCombatTraining: "+10% Melee Damage",
 		skillWeakSpot:       "+4 Damage vs Full HP",
 		skillScouting:       "−20% Aggro Range",
-		skillShieldWall:     "15% chance −50% Damage with a Shield",
+		skillShieldWall:     "15% chance +50% Damage Resistance with a Shield",
 	}
 
 	for id, wantLine := range want {

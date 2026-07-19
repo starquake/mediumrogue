@@ -37,7 +37,6 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 						Damage:    4,
 						RangeHex:  1,
 						AoERadius: 0,
-						Desc:      "+3 vs targets below half HP",
 						Equipped:  true,
 						Count:     1,
 					},
@@ -56,7 +55,6 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 				Damage:    3,
 				RangeHex:  4,
 				AoERadius: 0,
-				Desc:      "A ranged weapon.",
 				Flavor:    "Yew and sinew.",
 			},
 		},
@@ -126,8 +124,8 @@ func TestItemAndGroundItemRoundTripOnWire(t *testing.T) {
 		t.Errorf("ItemView.AoERadius = %d, want %d", got, want)
 	}
 
-	if got, want := gotItem.Desc, wantItem.Desc; got != want {
-		t.Errorf("ItemView.Desc = %q, want %q", got, want)
+	if got, want := gotItem.Flavor, wantItem.Flavor; got != want {
+		t.Errorf("ItemView.Flavor = %q, want %q", got, want)
 	}
 
 	if got, want := gotItem.Equipped, wantItem.Equipped; got != want {
@@ -187,8 +185,8 @@ func assertGroundItemRoundTrip(t *testing.T, got, want protocol.GroundItemView) 
 		t.Errorf("GroundItemView.Tags = %v, want %v", got, want)
 	}
 
-	if got, want := got.Desc, want.Desc; got != want {
-		t.Errorf("GroundItemView.Desc = %q, want %q", got, want)
+	if got, want := got.Flavor, want.Flavor; got != want {
+		t.Errorf("GroundItemView.Flavor = %q, want %q", got, want)
 	}
 
 	if got, want := got.Flavor, want.Flavor; got != want {

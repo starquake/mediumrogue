@@ -25,7 +25,7 @@ function itemView(overrides: Partial<ItemView>): ItemView {
     damage: 0,
     rangeHex: 0,
     aoeRadius: 0,
-    desc: "",
+    stats: [],
     flavor: "",
     equipped: false,
     count: 1,

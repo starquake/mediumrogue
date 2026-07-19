@@ -1264,7 +1264,7 @@ func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 				ID: gs.inst.id, Hex: hex, DefID: gs.inst.defID, Name: def.name, Type: def.itemType, Count: gs.count,
 				// Detail fields (#139), read straight off the def like itemViewOf.
 				Tags: wireTags(def), DamageType: def.damageType, TwoHanded: def.twoHanded,
-				Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc, Flavor: def.flavor,
+				Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Stats: statViewsFor(def), Flavor: def.flavor,
 			})
 		}
 	}
@@ -1360,7 +1360,8 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 	return protocol.ItemView{
 		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
 		Tags: wireTags(def), DamageType: def.damageType, TwoHanded: def.twoHanded,
-		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
+		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius,
+		Stats:    statViewsFor(def),
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
 	}

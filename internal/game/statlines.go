@@ -6,6 +6,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// doublePercent is 200% — a clean doubling, which reads better as "×2" than
+// as "+100%", and is also the mirror point when inverting a take-damage
+// multiplier into a resistance (×0.5 taken == +50% resisted).
+const doublePercent = 2 * percentBase
+
 // statlines.go: rendering a def's numbers as ARPG stat lines (#171) — "−50%
 // Chaos Damage", "+10% Melee Damage", "Damage 4" — instead of the authored
 // prose that used to restate each rule card by hand.
@@ -14,10 +19,19 @@ import (
 // drift surface, and this file exists so the tooltip and the card can never
 // disagree. Authored text is now flavor ONLY, and carries no numbers.
 //
-// SIGN CONVENTION (@starquake, #171): a damage stat is read against the
-// ITEM'S NATURE — a weapon's number is damage dealt, a wearable's is damage
-// taken — so neither needs a "Taken" suffix. Utility stats (XP, Aggro Range)
-// are exempt: they name their own subject and their sign is literal.
+// VOCABULARY (@starquake, #171, revised 2026-07-19): defensive stats read as
+// RESISTANCE, offensive ones as DAMAGE. "+50% Chaos Resistance", not "−50%
+// Chaos Damage".
+//
+// Resistance carries its own direction, so the reader never has to infer
+// anything from which slot the item occupies — and it removes a
+// double-negative: "+50% Chaos Resistance" is plainly a benefit, where "−50%
+// Chaos Damage" only reads as one after working out that less damage taken is
+// good. A future cursed item falls out for free as "−50% Fire Resistance".
+//
+// Sign still does not mean good — "+25% Aggro Range" is a drawback — so the
+// drawback flag below stays. Utility stats (XP, Aggro Range) name their own
+// subject and their sign is literal.
 
 // statLine is one rendered stat. Drawback marks a stat that makes the wearer
 // WORSE — Iron Plate Armor's +25% Aggro Range is the shipped example — so the
@@ -69,7 +83,7 @@ func statLinesFor(def *itemDef) []statLine {
 
 // cardStatLine renders one rule card: [chance prefix] amount subject [suffix].
 func cardStatLine(c ruleCard) statLine {
-	text := amountText(c.then) + " " + subjectText(c)
+	text := amountText(c.then, c.event) + " " + subjectText(c)
 
 	if prefix := chancePrefix(c.when); prefix != "" {
 		text = prefix + " " + text
@@ -83,24 +97,37 @@ func cardStatLine(c ruleCard) statLine {
 }
 
 // amountText renders the effect's magnitude: "+3", "−1", "×2", "+10%", "−50%".
-// A mulPct is shown as a DELTA from 100 (−50% rather than ×0.5) because
+// A mulPct is shown as a DELTA from 100 (+50% rather than ×1.5) because
 // percent effects add within a fold — deltas are what actually stack, so the
 // number a player sees is the number that combines.
-func amountText(e effect) string {
+//
+// take-damage INVERTS: the stat is named Resistance, so a card multiplying
+// incoming damage by 0.5 reads "+50% Resistance", and a flat −1 to damage
+// taken reads "+1 Resistance".
+func amountText(e effect, event string) string {
+	n := e.n
+	if event == evTakeDamage {
+		if e.kind == effAdd {
+			n = -n
+		} else {
+			n = doublePercent - n
+		}
+	}
+
 	if e.kind == effAdd {
-		if e.n < 0 {
-			return "−" + strconv.Itoa(-e.n)
+		if n < 0 {
+			return "−" + strconv.Itoa(-n)
 		}
 
-		return "+" + strconv.Itoa(e.n)
+		return "+" + strconv.Itoa(n)
 	}
 
 	// A clean doubling reads better as ×2 than as +100%.
-	if e.n == 2*percentBase {
+	if n == doublePercent && event != evTakeDamage {
 		return "×2"
 	}
 
-	delta := e.n - percentBase
+	delta := n - percentBase
 	if delta < 0 {
 		return "−" + strconv.Itoa(-delta) + "%"
 	}
@@ -110,10 +137,18 @@ func amountText(e effect) string {
 
 // subjectText names WHAT the card changes: the event's noun, narrowed by any
 // condition that qualifies the noun itself (a damage type, a weapon tag).
+//
+// A take-damage card is named RESISTANCE rather than damage, which is why
+// amountText inverts its sign: a card that multiplies incoming damage by 0.5
+// is +50% resistance, not −50% damage.
 func subjectText(c ruleCard) string {
 	noun := "Damage"
 
 	switch c.event {
+	case evTakeDamage:
+		// "Damage Resistance" rather than a bare "Resistance": untyped
+		// mitigation resists everything, and the noun should say what.
+		noun = "Damage Resistance"
 	case evEarnXP:
 		noun = "XP"
 	case evAggroRange:
@@ -123,7 +158,13 @@ func subjectText(c ruleCard) string {
 	for _, cond := range c.when {
 		switch cond.kind {
 		case condDamageType:
-			noun = titleWord(cond.s) + " " + noun
+			// A type REPLACES the generic noun rather than stacking with it:
+			// "Chaos Resistance", not "Chaos Damage Resistance".
+			if c.event == evTakeDamage {
+				noun = titleWord(cond.s) + " Resistance"
+			} else {
+				noun = titleWord(cond.s) + " " + noun
+			}
 		case condWeaponTagged:
 			noun = titleWord(cond.s) + " " + noun
 		}
@@ -238,4 +279,18 @@ func kindDisplayName(id string) string {
 	}
 
 	return titleWord(id) + "s"
+}
+
+// statViewsFor renders a def's stat lines for the wire. Always non-nil: the
+// generated TS type is a non-optional StatView[], and a nil slice marshals to
+// null — the exact shape that froze the client in #167.
+func statViewsFor(def *itemDef) []protocol.StatView {
+	lines := statLinesFor(def)
+	out := make([]protocol.StatView, 0, len(lines))
+
+	for _, l := range lines {
+		out = append(out, protocol.StatView{Text: l.text, Drawback: l.drawback})
+	}
+
+	return out
 }

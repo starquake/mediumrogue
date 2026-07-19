@@ -2,6 +2,8 @@ package game
 
 import (
 	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
@@ -20,10 +22,13 @@ import (
 // rule cards it feeds into the pipeline when equipped. Pure data (the design
 // doc's §7 SQLite prerequisite) — mirrors ruleCard.
 type itemDef struct {
-	id, name, desc string
-	// flavor is the card's authored lore ("Fantasy") line, shown as flavor
-	// text in the inventory tooltip — separate from desc's mechanical effect
-	// line, and never gameplay-affecting. Empty for items without lore.
+	id, name string
+	// flavor is the item's authored lore line, and the ONLY authored text on
+	// a def since #171: mechanical text is rendered from the rule cards
+	// (statlines.go), never written by hand beside them. A hand-written line
+	// that restates its own card is a drift surface — change the number and
+	// the prose lies — so flavor carries no numbers at all
+	// (validateFlavorHasNoStats). Empty for items without lore.
 	flavor string
 	// itemType is one of the protocol.ItemType* consts — the taxonomy's 9
 	// types (one weapon type plus consumable plus shield plus the six
@@ -712,7 +717,25 @@ func validateItemDefs(defs []*itemDef) {
 		validateItemHeal(def)
 		validateItemCombatStats(def)
 		validateItemNature(def)
+		validateFlavorHasNoStats("item "+def.id, def.flavor)
 		validateRuleCards(def.id, def.rules)
+	}
+}
+
+// validateFlavorHasNoStats panics if authored lore contains a digit (#171).
+//
+// Stats are rendered from the cards; flavor is prose. A number in flavor is
+// how the two drift apart again — someone writes "blocks 2 damage" in the
+// lore, the card later changes to 3, and the item now contradicts itself in
+// its own tooltip. Cheapest possible guard, and it fails at process start.
+//
+// Deliberately crude: ANY digit fails. A flavor line that genuinely needs a
+// number ("the seven kings") can be reworded, and that is a smaller cost than
+// a rule nobody can check mechanically.
+func validateFlavorHasNoStats(owner, flavor string) {
+	if strings.ContainsFunc(flavor, unicode.IsDigit) {
+		panic("game: " + owner + " flavor contains a digit — stats are rendered from cards, " +
+			"flavor is prose (#171): " + flavor)
 	}
 }
 
