@@ -51,6 +51,39 @@ maintainer has OK'd it. If either is missing, stop and route to the
    not mergeable. A flake (e.g. #117's autowalk timeout) on an unrelated
    diff: confirm it's known, re-run the job, note the recurrence.
 
+## The PR body: REVIEW is the bottleneck, not throughput
+
+The maintainer reviews every PR alone (2026-07-19: *"1. reviewing"*). So a PR
+body is a **guide to reviewing**, never a defence of the work. Long bodies make
+review more expensive — the reader has to scan everything to find the parts
+that actually need judgement.
+
+Structure, always:
+
+1. **`## Where to look`** — the **two or three** places you made a judgement
+   call the maintainer might disagree with, each naming its file. A number you
+   picked, a deliberate overlap, a reading that could plausibly be wrong. If
+   there are none, say so in one line.
+2. A `---`, then **`*Mechanically verified — skip unless curious.*`** and ONE
+   compressed paragraph: gate green, determinism, e2e, docs. These are claims
+   already verified by running them; prose restating them adds nothing a
+   reviewer must read.
+
+**Do not** narrate the design reasoning in the PR body. It belongs in
+`design-decisions.md`, written once — a PR body copy is drift with extra steps
+and dies with the PR.
+
+**Code comments follow the same rule** (maintainer's call, same day): keep the
+*why* — why this side of the fold, why this order is contractual, why a
+counter-intuitive reading is correct — but **not** whole explanations of game
+mechanics or design intent. "Category axis rejected because the taxonomy has
+none" is a comment; three paragraphs on why weapon categories are an MMO move
+is `design-decisions.md`.
+
+**Keep mechanical churn in its own commit** (regenerated files, lint fixes,
+doc regeneration) so the reviewer can skip that commit in the diff instead of
+scanning past it.
+
 ## Finish
 
 - Last task is always docs: `FEATURES.md` (values from `internal/protocol` /
