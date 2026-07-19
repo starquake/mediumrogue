@@ -35,6 +35,14 @@ correctly.
   maintainer (`needs: your input`), never answered by you.
 - **Never grant `ready to merge`, and never merge without it.** The label is the
   maintainer's approval — you may *act* on it (merge), never *create* it.
+  **Re-read the label at the moment you merge, from the API, not from a
+  notification.** A Monitor event is a *pointer that something happened*, never
+  a fact about the current state: it fires on the change and cannot see the
+  retraction. (2026-07-19: `ready to merge` was added to #184 and removed 85
+  seconds later when the maintainer noticed a red build. The monitor reported
+  the add; merging on that event alone would have landed a PR whose approval
+  had been explicitly withdrawn.) Same for CI: a green result seen before a
+  push is not a green result after it.
 - **Build only what's authorised:** a plan the maintainer OK'd (`needs: build`,
   or a go-signal on a `needs: your sign-off` issue), or a **bug** (no design gate
   — straight to a PR). Never build a `needs: your input` / `needs: your sign-off`

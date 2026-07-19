@@ -41,14 +41,43 @@ maintainer has OK'd it. If either is missing, stop and route to the
    data + rule cards; determinism rules (sort map-derived slices before rng;
    re-derive moved seeded pins, never weaken; drop rows appended LAST);
    `got, want` test style (`.claude/rules/go-style.md`).
-4. Full gate: `cd` to the repo root, then
-   `set -o pipefail && make check 2>&1 | tail -15` (go may live at
-   `/usr/local/go/bin/go`). A seeded failure in a task that shouldn't touch
-   rng is a bug — investigate, don't re-derive.
+4. Full gate: **check the EXIT CODE, never grep the output.**
+
+   ```bash
+   if set -o pipefail && make check > /tmp/check.log 2>&1; then
+     echo "GATE PASS"
+   else
+     echo "GATE FAIL ($?)"; grep -E "^(---)? ?FAIL|Error" /tmp/check.log | head -5
+   fi
+   ```
+
+   Grepping for failure patterns means inventing a regex that must match every
+   way the toolchain can fail — and the one it misses reads as green.
+   (2026-07-19: `make check 2>&1 | grep -iE "^FAIL|error:"` reported clean while
+   four error sentinels were unmapped, which CI caught as a 500-instead-of-422
+   bug. Switching to exit-code gating surfaced a SECOND failure in the same
+   run — a snapshot fixture pinned to the old version — that the same regex had
+   also been hiding.) A seeded failure in a task that shouldn't touch rng is a
+   bug — investigate, don't re-derive.
+
+   `go` may live at `/usr/local/go/bin/go`.
 5. One commit per task, message referencing the issue; push; tick the task's
    checkbox in the issue's Plan.
-6. **Watch CI to completion** (`gh pr checks <n> --watch`) — local-green is
-   not mergeable. A flake (e.g. #117's autowalk timeout) on an unrelated
+6. **Watch CI to completion, and read EVERY job.** `gh pr checks <n> --watch`
+   — never piped through `tail`/`head`. A pipe truncates the failing line out
+   of view *and* swallows the command's non-zero exit, so a red build reads as
+   green twice over (2026-07-19: `| tail -4` hid a failing `test` job; the
+   maintainer found it). When the run is ambiguous, enumerate explicitly:
+
+   ```bash
+   gh api "repos/:owner/:repo/actions/runs?head_sha=$(git rev-parse HEAD)" \
+     --jq '[.workflow_runs[]|select(.name=="CI")]|.[0].jobs_url' \
+     | xargs -I{} gh api {} --jq '.jobs[] | "\(.name) \(.conclusion)"'
+   ```
+
+   Also confirm the run you are reading belongs to **the commit you just
+   pushed** — `gh pr checks` will happily show the previous run's results for a
+   few seconds after a push. Local-green is not mergeable. A flake (e.g. #117's autowalk timeout) on an unrelated
    diff: confirm it's known, re-run the job, note the recurrence.
 
 ## The PR body: REVIEW is the bottleneck, not throughput
