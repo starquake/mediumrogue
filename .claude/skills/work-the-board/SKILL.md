@@ -177,7 +177,59 @@ schedule — same contract, same one-build cap. Locally that's `/loop`;
 unattended/away it's a `/schedule` cloud agent (headless: `gh`/GitHub works,
 interactive-auth MCP does not). "stop the board" ends it.
 
-### Pacing: back off when quiet, speed up when active
+### Prefer a Monitor over polling — it is faster AND free
+
+A timed tick costs tokens every time it fires, including the many times it
+finds nothing. A **Monitor** inverts that: the poll loop runs in the shell,
+outside the agent's context, and only a printed line wakes anyone. Quiet
+minutes cost **nothing**, and reaction time drops from tens of minutes to
+about one.
+
+Arm one at the start of a loop session (persistent, so it lives as long as
+the session), watching the only two things a pass acts on unprompted — a new
+maintainer comment, and a PR newly carrying `ready to merge`:
+
+```bash
+since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+prev=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
+while true; do
+  sleep 60
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # Human comments anywhere in the repo; ours carry the bot header and are skipped.
+  gh api "repos/<owner>/<repo>/issues/comments?since=$since&per_page=30" \
+    --jq '.[] | select((.body | startswith("> 🤖")) | not)
+          | "COMMENT on #\(.issue_url | split("/") | last): \(.body | gsub("\n"; " ") | .[0:120])"' 2>/dev/null || true
+
+  # DIFFED against last cycle, or a labelled PR re-fires every minute and the
+  # monitor gets auto-stopped for noise.
+  cur=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
+  comm -13 <(echo "$prev") <(echo "$cur") 2>/dev/null | sed 's/^/READY TO MERGE: PR #/' || true
+  prev=$cur
+
+  since=$now
+done
+```
+
+Two things that make it behave:
+
+- **Diff the label set.** Emitting the current set every cycle spams a
+  notification per minute for any PR that sits unmerged, and monitors that
+  flood get stopped automatically.
+- **`|| true` on every remote call.** One failed request must not kill a
+  session-length watch.
+
+**Rate limits are not the constraint.** Authenticated GitHub REST allows
+5,000 requests/hour; this loop uses 2/minute — **120/hour, ~2.4% of quota**.
+If a faster poll were ever wanted, conditional requests (`If-None-Match`)
+return 304 and do not count against the primary limit. GitHub webhooks would
+be true push, but need a public receiver — real infrastructure to shave 60
+seconds off something already free.
+
+With a Monitor armed, the scheduled tick becomes **insurance only** — set it
+to ~an hour, so a dead monitor is noticed but a healthy one costs nothing.
+
+### Pacing when there is no Monitor: back off when quiet, speed up when active
 
 A fixed interval is wrong in both directions — too slow while work is in
 flight, too fast when the board is parked on the maintainer. In dynamic mode
