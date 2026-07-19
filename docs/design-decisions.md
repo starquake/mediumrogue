@@ -457,6 +457,30 @@ and the sentence disagreeing after a retune.
   beats annotating it. The day gear modifies *other gear* (a ring that boosts
   sword damage specifically), we need PoE's flag for real; nothing wants that.
 
+## Client visibility: a frozen client must say so (2026-07-19, #170)
+
+#167 taught the failure mode: an uncaught exception inside the turn handler
+stopped every layer from updating while SSE stayed healthy, so the HUD read
+"connected" over a frozen map, the server log looked entirely normal, and the
+only evidence was a browser console the player had no reason to open. Three
+decisions came out of it.
+
+- **An uncaught client error is a UI event, not a console event.** The window
+  `error` / `unhandledrejection` handlers raise a banner naming the message.
+  The player sees that something broke and gets text worth pasting into a
+  report — the alternative is a silent map and a shrug.
+- **Liveness is measured by what was APPLIED, not what arrived.** `turnApplied`
+  is stamped on the turn handler's last line; `turnReceived` on its first. A
+  bundle that throws halfway advances one and not the other, and the HUD's
+  `⚠ stuck` marker keys off the gap. The existing `turn` field could not do
+  this job: it is assigned early in the handler and counted up happily right
+  through #167's freeze.
+- **The regression guard watches the same number the HUD does.** The naive
+  test — "assert the turn counter advances after an inventory action" — would
+  have passed straight through the bug it exists to catch. `client-alive.spec.ts`
+  asserts on `turnApplied` instead, and was verified by injecting a throw
+  before that assignment and confirming both its cases go red.
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14, **shipped

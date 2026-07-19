@@ -318,6 +318,20 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 - **HUD stats line** (item 9, playtest batch 2; XP portion reworked for the
   quadratic curve, fast-lane batch): `Lv L · (xp into this level)/(XP needed
   this level) XP · (q, r)` — my entity's hex, live per turn bundle.
+- **Client liveness on the HUD** (#170): the stats line ends with the last
+  turn the client **received**, and — only when the client has fallen behind
+  — a `⚠ stuck` marker. Two counters make that visible: `turnReceived` is
+  stamped on the FIRST line of the turn handler, `turnApplied` on its LAST,
+  so a bundle that throws mid-apply advances one and not the other. A gap
+  greater than 1 turn shows the marker. (#167 froze the client exactly this
+  way while `turn` — assigned early in the handler — kept counting up, so
+  the HUD read healthy over a dead map.)
+- **Client error banner** (#170): `window.addEventListener("error")` and
+  `"unhandledrejection"` put a red banner across the top —
+  *the client hit an error and stopped updating — reload the page (…)* —
+  carrying the message. An uncaught client exception is now visible in the
+  UI instead of only in a console the player never opens, and the text is
+  what they paste into a bug report.
 
 ### Gear & inventory (milestone 6b.4, loot 6c, inventory system: slots/backpack/drop/pickup/drink; gear keystone #55/#56: weapon tags, hand slots, gates dropped, rebalance + first 2H)
 - **9-type item taxonomy** (`internal/protocol`'s `ItemType*` consts): one
@@ -820,10 +834,16 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (42 e2e tests across 25 spec files). The client exposes **`window.game`**
+  embedded-client binary (46 e2e tests across 28 spec files). The client exposes **`window.game`**
   (positions incl. `monsterKind`, hp, inventory, equipped, backpack,
   panelOpen, pickupModal, combatMoves, damage events, tapHex, hexToScreen,
-  sendChat, identityLink…) as the always-in-sync test/debug surface.
+  sendChat, identityLink, turnReceived, turnApplied, clientError…) as the
+  always-in-sync test/debug surface.
+  **`client-alive.spec.ts` (#170) is the liveness guard**: it drives an
+  unequip + re-equip and asserts `turnApplied` keeps advancing across it,
+  deliberately NOT `turn` — `turn` is assigned early in the handler and kept
+  advancing right through #167's freeze, so a guard watching it would have
+  passed while the game was dead.
   `hexToScreen(q, r)` returns a hex's live viewport coordinates — the inverse
   of the canvas pointerdown mapping — so a spec can drive a REAL
   `page.mouse.click` (and so exercise overlay `pointer-events` hit-testing)

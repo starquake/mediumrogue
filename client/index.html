@@ -602,6 +602,29 @@
         color: var(--dim);
         line-height: 1.45;
       }
+      /* "stuck" shows when bundles keep ARRIVING but stop being APPLIED —
+         an exception mid-handler kills rendering while SSE stays healthy,
+         which otherwise looks identical to a calm game (#170). */
+      #turn-stuck {
+        color: #d98b6a;
+        font-weight: bold;
+      }
+      /* A client-side crash banner: the failure this replaces was silent —
+         "connected" in the HUD and a frozen map (#167/#170). */
+      #client-error {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        padding: 0.5rem 0.8rem;
+        background: #5a1d1d;
+        color: #ffd9d0;
+        border-bottom: 1px solid #a33;
+        font-family: inherit;
+        font-size: 0.8rem;
+        text-align: center;
+      }
       #quest-panel {
         pointer-events: auto;
         /* 23rem (was 20rem, item 5 playtest feedback batch 3): wide enough
@@ -1145,7 +1168,7 @@
     <div id="left-column">
       <header id="hud">
         <h1>Medium Rogue</h1>
-        <div id="turn-row">turn <span id="turn">—</span></div>
+        <div id="turn-row">turn <span id="turn">—</span><span id="turn-stuck" hidden> · stuck at <span id="turn-received">—</span></span></div>
         <div id="status" data-connected="false">connecting…</div>
         <div id="stats">Lv — · —/— XP</div>
         <button id="copy-link" type="button" hidden>copy character link</button>
@@ -1160,6 +1183,7 @@
         <div id="skills-root"></div>
       </div>
     </div>
+    <div id="client-error" hidden></div>
     <div id="character-root"></div>
     <div id="pickup-root"></div>
     <div id="tooltip-root"></div>
