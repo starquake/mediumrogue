@@ -43,7 +43,27 @@ const (
 	skillHardy       = "hardy"
 	skillTwinFangs   = "twin-fangs"
 	skillWandChorus  = "wand-chorus"
+
+	// Actives (#161). Blink is the first — the category exists so the second
+	// one is content rather than another special case.
+	skillBlink = "blink"
 )
+
+// activeDef is a skill's triggerable half (#161). A skill is passive (rules,
+// no active) or active (an active, no rules) — never both; validateSkillDefs
+// rejects the mix.
+//
+// Cooldowns count TURNS, whichever clock is ticking. Bubble turns run slower
+// in wall-clock than world turns, and that dilation is the bubble's point, so
+// a turn-denominated cooldown rides it instead of fighting it (#161).
+type activeDef struct {
+	// cooldownTurns is how many turns must pass before it can fire again.
+	// Must be > 0: a zero cooldown is a skill with no cost.
+	cooldownTurns int
+	// rangeHex is the furthest target hex, capped at protocol.CombatRadius so
+	// an active cannot leave a bubble from anywhere inside it by accident.
+	rangeHex int
+}
 
 // skillDef is one entry in the skill registry: what it is, which tree it
 // hangs on, what must be learned first, and the cards it contributes once
@@ -60,7 +80,11 @@ type skillDef struct {
 	// principle 12) — "be level 5" is deliberately not expressible.
 	prereqs []string
 	// rules are the cards this skill folds into the pipeline while learned.
+	// Empty for an active, whose behaviour is its trigger rather than a fold.
 	rules []ruleCard
+	// active is non-nil for a triggerable skill (#161). Mutually exclusive
+	// with rules.
+	active *activeDef
 	// flavor is the skill's authored lore line, and the only authored text on
 	// a skillDef since #171 — its mechanical line is rendered from the cards
 	// (statlines.go). Carries no numbers (validateFlavorHasNoStats).
@@ -191,6 +215,19 @@ var skillDefs = []*skillDef{
 	},
 
 	{
+		// The first active (#161). Survival tree, 1 point, 3 hexes, 3-turn
+		// cooldown — maintainer's defaults.
+		//
+		// Destination needs line of sight as well as range: it does NOT pass
+		// through walls, deliberately unlike the classic ARPG blink, so cover
+		// stays real.
+		id: skillBlink, name: "Blink", tree: treeSurvival,
+		prereqs: []string{skillSurvivalist},
+		flavor:  "Here, then not.",
+		active:  &activeDef{cooldownTurns: 3, rangeHex: 3},
+	},
+
+	{
 		id: skillScouting, name: "Scouting", tree: treeAdventure,
 		flavor: "You read the ground before you walk it.",
 		rules: []ruleCard{
@@ -247,6 +284,7 @@ func validateSkillDefs(defs []*skillDef) {
 
 		validateRuleCards("skill:"+def.id, def.rules)
 		validateFlavorHasNoStats("skill "+def.id, def.flavor)
+		validateSkillActive(def)
 	}
 
 	// Prereq checks run in a second pass so a skill may name one declared
@@ -256,6 +294,27 @@ func validateSkillDefs(defs []*skillDef) {
 	}
 
 	validateNoSkillPrereqCycle(defs)
+}
+
+// validateSkillActive panics if an active skill is malformed (#161): carrying
+// rule cards as well as a trigger, a cooldown that never costs anything, or a
+// range that could clear a combat bubble from anywhere inside it.
+func validateSkillActive(def *skillDef) {
+	if def.active == nil {
+		return
+	}
+
+	if len(def.rules) > 0 {
+		panic("game: active skill " + def.id + " also carries rule cards")
+	}
+
+	if def.active.cooldownTurns <= 0 {
+		panic("game: active skill " + def.id + " has no cooldown")
+	}
+
+	if def.active.rangeHex <= 0 || def.active.rangeHex > protocol.CombatRadius {
+		panic("game: active skill " + def.id + " range is outside 1..CombatRadius")
+	}
 }
 
 // validateSkillPrereqs panics if def names a prerequisite that is unknown,
@@ -358,6 +417,52 @@ func learnableFor(e *entity, def *skillDef) bool {
 	}
 
 	return true
+}
+
+// useSkillLocked validates an active-skill trigger and queues it as this
+// turn's action (#161). Callers hold w.mu.
+//
+// The destination needs range, walkability AND line of sight: an active does
+// not pass through walls, so cover stays real.
+func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error {
+	def, ok := skillDefByID[id]
+	if !ok {
+		return ErrNoSuchSkill
+	}
+
+	if def.active == nil {
+		return ErrSkillNotActive
+	}
+
+	if !slices.Contains(e.learned, id) {
+		return ErrSkillNotLearned
+	}
+
+	if w.turn < e.activeReadyTurn[id] {
+		return ErrSkillOnCooldown
+	}
+
+	if HexDistance(e.hex, target) > def.active.rangeHex {
+		return ErrOutOfRange
+	}
+
+	if !w.walkableLocked(target) {
+		return ErrNotWalkable
+	}
+
+	if w.sightBlockedLocked(e.hex, target, def.active.rangeHex) {
+		return ErrNoLineOfSight
+	}
+
+	// The turn's action, so it displaces any queued move or attack — the
+	// latest intent in the window wins, exactly as elsewhere.
+	e.path = nil
+	e.attackTarget = nil
+	e.attackTargetEntity = 0
+	e.activeSkill = id
+	e.activeTarget = &target
+
+	return nil
 }
 
 // learnSkillLocked spends one banked point on id. Free and immediate OUT of

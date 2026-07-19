@@ -43,7 +43,7 @@ import (
 // ReturningHome. A v4 snapshot's monsters would all restore with home at the
 // origin (the Hex zero value) and leash-walk there en masse, so it is
 // preserved-aside + fresh.
-const snapshotVersion = 6
+const snapshotVersion = 7
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -130,6 +130,9 @@ type entityDTO struct {
 	Learned            []string `json:"learned"`
 	SkillPoints        int      `json:"skillPoints"`
 	PointsGrantedLevel int      `json:"pointsGrantedLevel"`
+	// ActiveReadyTurn is each active skill's ready-again turn (#161, v7). A
+	// cooldown that reset on restart would make a restart a free reset.
+	ActiveReadyTurn map[string]int64 `json:"activeReadyTurn,omitempty"`
 }
 
 // groundStackDTO mirrors groundStack: a dropped item instance plus its stack
@@ -383,6 +386,7 @@ func entityToDTO(e *entity) entityDTO {
 		Equipped: equippedToDTO(e.equipped), Backpack: backpackToDTO(e.backpack),
 		HomeHex: e.homeHex, ReturningHome: e.returningHome,
 		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
+		ActiveReadyTurn: e.activeReadyTurn,
 	}
 }
 
@@ -399,6 +403,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
 		homeHex: ed.HomeHex, returningHome: ed.ReturningHome,
 		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,
+		activeReadyTurn: ed.ActiveReadyTurn,
 	}
 }
 

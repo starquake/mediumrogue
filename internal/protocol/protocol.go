@@ -165,6 +165,10 @@ const (
 	// (IntentRequest.ItemID): applies the def's heal (clamped to max HP) and
 	// decrements the stack; an emptied stack frees its backpack entry.
 	IntentDrink = "drink"
+	// IntentUseSkill triggers a learned ACTIVE skill (IntentRequest.SkillID)
+	// at IntentRequest.Target — #161. It is the turn's action, exactly like a
+	// move: it does not stack with one, and it is not a bonus action.
+	IntentUseSkill = "use-skill"
 )
 
 // The item taxonomy (gear keystone, #55/#56): one weapon type carrying

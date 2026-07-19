@@ -835,6 +835,21 @@ func (w *World) SetSkillStateForTest(id int64, learned []string, points, granted
 	}
 }
 
+// ActiveReadyTurnForTest reads an active skill's ready-again turn (#161); 0
+// means ready. Used to assert a cooldown SURVIVES a snapshot round-trip, which
+// is the whole reason v7 bumped the version.
+func (w *World) ActiveReadyTurnForTest(id int64, skill string) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e := w.entities[id]
+	if e == nil {
+		return 0
+	}
+
+	return e.activeReadyTurn[skill]
+}
+
 // SkillStateForTest reads back what SetSkillStateForTest wrote.
 func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
 	w.mu.Lock()
