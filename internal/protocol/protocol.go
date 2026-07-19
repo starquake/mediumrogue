@@ -477,11 +477,23 @@ type SkillView struct {
 	Name string `json:"name"`
 	// Tree is one of the three tree names ("class"/"adventure"/"survival").
 	Tree string `json:"tree"`
-	// Desc is the authored mechanical line; Flavor the optional lore line.
-	Desc   string `json:"desc"`
-	Flavor string `json:"flavor"`
+	// Stats are the rendered stat lines (#171); Flavor is the authored lore
+	// line. Mechanical text is never authored beside a card.
+	Stats  []StatView `json:"stats"`
+	Flavor string     `json:"flavor"`
 	// Learned distinguishes an owned skill from one currently learnable.
 	Learned bool `json:"learned"`
+}
+
+// StatView is one rendered stat line (#171) — "+50% Chaos Resistance",
+// "×2 Damage vs Adjacent". Derived server-side from the item's rule cards, so
+// the text and the mechanic can never disagree; the client only draws it.
+type StatView struct {
+	Text string `json:"text"`
+	// Drawback marks a stat that makes its holder WORSE (Iron Plate Armor's
+	// +25% Aggro Range), so the client can style it apart. Sign alone cannot
+	// say: +25% Aggro Range is bad, +5% XP is good.
+	Drawback bool `json:"drawback"`
 }
 
 // ItemView is one owned item as the client sees it: display stats plus
@@ -507,9 +519,8 @@ type ItemView struct {
 	Damage    int  `json:"damage"`
 	RangeHex  int  `json:"rangeHex"`
 	AoERadius int  `json:"aoeRadius"`
-	// Desc is the authored human-readable rule text ("+3 vs targets below
-	// half HP"); empty for rule-less items.
-	Desc string `json:"desc"`
+	// Stats are the rendered stat lines (#171), in display order.
+	Stats []StatView `json:"stats"`
 	// Flavor is the item's authored lore ("Fantasy") line; empty for items
 	// without lore. Cosmetic only — flavor text in the inventory tooltip.
 	Flavor   string `json:"flavor"`
@@ -534,14 +545,15 @@ type GroundItemView struct {
 	Type  string `json:"type"`
 	Count int    `json:"count"`
 	// Detail fields (#139) — identical meanings to ItemView's.
-	Tags       []string `json:"tags"`
-	DamageType string   `json:"damageType"`
-	TwoHanded  bool     `json:"twoHanded"`
-	Damage     int      `json:"damage"`
-	RangeHex   int      `json:"rangeHex"`
-	AoERadius  int      `json:"aoeRadius"`
-	Desc       string   `json:"desc"`
-	Flavor     string   `json:"flavor"`
+	Tags       []string   `json:"tags"`
+	DamageType string     `json:"damageType"`
+	TwoHanded  bool       `json:"twoHanded"`
+	Damage     int        `json:"damage"`
+	RangeHex   int        `json:"rangeHex"`
+	AoERadius  int        `json:"aoeRadius"`
+	Desc       string     `json:"desc"`
+	Stats      []StatView `json:"stats"`
+	Flavor     string     `json:"flavor"`
 }
 
 // Entity is one thing standing on the map: a player or a monster.

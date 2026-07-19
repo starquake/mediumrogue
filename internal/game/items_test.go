@@ -1508,3 +1508,63 @@ func TestValidateRuleCardsAcceptsTheNewSkillConditions(t *testing.T) {
 		},
 	})
 }
+
+// TestValidateItemDefsPanicsOnMixedNature (#171 task 2): an item's cards must
+// point the same way as its type. This is what makes the stat line's sign
+// convention readable — "−20% Damage" carries no "Taken" suffix because a
+// weapon means dealt and worn kit means taken, and one mixed item would make
+// every tooltip ambiguous at a glance.
+func TestValidateItemDefsPanicsOnMixedNature(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defensive card on a weapon", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs accepted a take-damage card on a weapon")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeWeapon, damageType: protocol.DamageTypeSharp,
+			tags: []string{protocol.WeaponTagMelee}, damage: 3,
+			rules: []ruleCard{{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 10}}},
+		}})
+	})
+
+	t.Run("offensive card on armor", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("validateItemDefs accepted a deal-damage card on a chest item")
+			}
+		}()
+
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeChest,
+			rules: []ruleCard{{event: evDealDamage, then: effect{kind: effAdd, n: 3}}},
+		}})
+	})
+
+	t.Run("utility cards are exempt on either nature", func(t *testing.T) {
+		t.Parallel()
+
+		// Iron Plate Armor's shape: a defensive card plus an aggro-range
+		// drawback on the same worn item (#171 Q5).
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeChest,
+			rules: []ruleCard{
+				{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 20}},
+				{event: evAggroRange, then: effect{kind: effMulPct, n: percentBase + 25}},
+			},
+		}})
+
+		// And an XP card on a helmet (Headband of Learning).
+		validateItemDefs([]*itemDef{{
+			id: "y", itemType: protocol.ItemTypeHelmet,
+			rules: []ruleCard{{event: evEarnXP, then: effect{kind: effMulPct, n: percentBase + 5}}},
+		}})
+	})
+}

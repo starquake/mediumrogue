@@ -114,6 +114,20 @@ the card reaches the real combat site.
 - Content-load panics fire at **package init**, so a bad card breaks every
   test in the package at once — read the panic, not the test list.
 
+## Text: you write flavor, never stats
+
+Since #171, a def has **no `desc` field**. The mechanical line is rendered
+from the card (`statLinesFor`, `statlines.go`) — a `take-damage ×0.5` gated on
+chaos reads as `+50% Chaos Resistance` with nobody writing it.
+
+What you author is **flavor, and it may not contain a digit** — a load-time
+check rejects one. That is not fussiness: a hand-written number beside a card
+is the drift this whole mechanism removed.
+
+Defensive cards render as resistance, offensive ones as damage, utility cards
+name their own subject. If a new card renders badly, fix the renderer rather
+than working around it in prose.
+
 ## The paperwork (same PR, always)
 
 - `docs/FEATURES.md`: the item/kind tables, drop sources, and any vocabulary

@@ -1660,7 +1660,7 @@ async function start(): Promise<void> {
                 damage: gi.damage,
                 rangeHex: gi.rangeHex,
                 aoeRadius: gi.aoeRadius,
-                desc: gi.desc,
+                stats: gi.stats,
                 flavor: gi.flavor,
                 tags: gi.tags,
                 damageType: gi.damageType,

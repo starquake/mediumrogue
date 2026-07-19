@@ -44,7 +44,15 @@ function SkillsPanel(props: { learn: (id: string) => void }): JSXElement {
                       <span class="skill-mark">{skill().learned ? "✓" : "●"}</span>
                       <span class="skill-body">
                         <span class="skill-name">{skill().name}</span>
-                        <span class="skill-desc">{skill().desc}</span>
+                        {/* Server-rendered stat lines (#171) — one per card,
+                            never authored prose. */}
+                        <Index each={skill().stats}>
+                          {(stat) => (
+                            <span class="skill-desc" classList={{ drawback: stat().drawback }}>
+                              {stat().text}
+                            </span>
+                          )}
+                        </Index>
                       </span>
                       <Show
                         when={!skill().learned}

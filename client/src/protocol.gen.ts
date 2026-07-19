@@ -712,14 +712,29 @@ export interface SkillView {
    */
   tree: string;
   /**
-   * Desc is the authored mechanical line; Flavor the optional lore line.
+   * Stats are the rendered stat lines (#171); Flavor is the authored lore
+   * line. Mechanical text is never authored beside a card.
    */
-  desc: string;
+  stats: StatView[];
   flavor: string;
   /**
    * Learned distinguishes an owned skill from one currently learnable.
    */
   learned: boolean;
+}
+/**
+ * StatView is one rendered stat line (#171) — "+50% Chaos Resistance",
+ * "×2 Damage vs Adjacent". Derived server-side from the item's rule cards, so
+ * the text and the mechanic can never disagree; the client only draws it.
+ */
+export interface StatView {
+  text: string;
+  /**
+   * Drawback marks a stat that makes its holder WORSE (Iron Plate Armor's
+   * +25% Aggro Range), so the client can style it apart. Sign alone cannot
+   * say: +25% Aggro Range is bad, +5% XP is good.
+   */
+  drawback: boolean;
 }
 /**
  * ItemView is one owned item as the client sees it: display stats plus
@@ -755,10 +770,9 @@ export interface ItemView {
   rangeHex: number /* int */;
   aoeRadius: number /* int */;
   /**
-   * Desc is the authored human-readable rule text ("+3 vs targets below
-   * half HP"); empty for rule-less items.
+   * Stats are the rendered stat lines (#171), in display order.
    */
-  desc: string;
+  stats: StatView[];
   /**
    * Flavor is the item's authored lore ("Fantasy") line; empty for items
    * without lore. Cosmetic only — flavor text in the inventory tooltip.
@@ -797,6 +811,7 @@ export interface GroundItemView {
   rangeHex: number /* int */;
   aoeRadius: number /* int */;
   desc: string;
+  stats: StatView[];
   flavor: string;
 }
 /**

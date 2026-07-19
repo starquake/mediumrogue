@@ -2,6 +2,8 @@ package game
 
 import (
 	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
@@ -20,10 +22,13 @@ import (
 // rule cards it feeds into the pipeline when equipped. Pure data (the design
 // doc's §7 SQLite prerequisite) — mirrors ruleCard.
 type itemDef struct {
-	id, name, desc string
-	// flavor is the card's authored lore ("Fantasy") line, shown as flavor
-	// text in the inventory tooltip — separate from desc's mechanical effect
-	// line, and never gameplay-affecting. Empty for items without lore.
+	id, name string
+	// flavor is the item's authored lore line, and the ONLY authored text on
+	// a def since #171: mechanical text is rendered from the rule cards
+	// (statlines.go), never written by hand beside them. A hand-written line
+	// that restates its own card is a drift surface — change the number and
+	// the prose lies — so flavor carries no numbers at all
+	// (validateFlavorHasNoStats). Empty for items without lore.
 	flavor string
 	// itemType is one of the protocol.ItemType* consts — the taxonomy's 9
 	// types (one weapon type plus consumable plus shield plus the six
@@ -128,6 +133,21 @@ func validDamageType(t string) bool {
 	default:
 		return false
 	}
+}
+
+// isOffensiveType reports whether an item type's numbers read as damage
+// DEALT. Exactly the weapon type today — a shield is defence, and a
+// consumable is neither (#171).
+//
+// The item's TYPE carries this, not its slot: the off-hand accepts both a
+// shield and a dual-wielded weapon, so the slot alone cannot say which
+// reading applies.
+func isOffensiveType(t string) bool { return t == protocol.ItemTypeWeapon }
+
+// isDefensiveType reports whether an item type's numbers read as damage
+// TAKEN: everything wearable, including shields. Consumables are neither.
+func isDefensiveType(t string) bool {
+	return t != protocol.ItemTypeWeapon && t != protocol.ItemTypeConsumable
 }
 
 // validItemType reports whether t is one of the taxonomy's 9 known types.
@@ -696,7 +716,56 @@ func validateItemDefs(defs []*itemDef) {
 		validateItemType(def)
 		validateItemHeal(def)
 		validateItemCombatStats(def)
+		validateItemNature(def)
+		validateFlavorHasNoStats("item "+def.id, def.flavor)
 		validateRuleCards(def.id, def.rules)
+	}
+}
+
+// validateFlavorHasNoStats panics if authored lore contains a digit (#171).
+//
+// Stats are rendered from the cards; flavor is prose. A number in flavor is
+// how the two drift apart again — someone writes "blocks 2 damage" in the
+// lore, the card later changes to 3, and the item now contradicts itself in
+// its own tooltip. Cheapest possible guard, and it fails at process start.
+//
+// Deliberately crude: ANY digit fails. A flavor line that genuinely needs a
+// number ("the seven kings") can be reworded, and that is a smaller cost than
+// a rule nobody can check mechanically.
+func validateFlavorHasNoStats(owner, flavor string) {
+	if strings.ContainsFunc(flavor, unicode.IsDigit) {
+		panic("game: " + owner + " flavor contains a digit — stats are rendered from cards, " +
+			"flavor is prose (#171): " + flavor)
+	}
+}
+
+// validateItemNature panics if an item carries a card that contradicts its
+// type's nature (#171): a deal-damage card on wearable kit, or a take-damage
+// card on a weapon.
+//
+// This is what makes the stat line's SIGN CONVENTION safe to read. Lines are
+// rendered without a "Taken" suffix — "−20% Damage" on armor means damage you
+// take, on a weapon it means damage you deal — and that shorthand only holds
+// while an item's cards all point the same way as its type. A single mixed
+// item would silently make every tooltip ambiguous, so it fails at load.
+//
+// Utility events (earn-xp, aggro-range) are deliberately EXEMPT: they name
+// their own subject and their sign is literal, so they are legal on anything
+// (#171 Q5 — Iron Plate Armor's aggro-range card is the shipped example).
+func validateItemNature(def *itemDef) {
+	for _, c := range def.rules {
+		switch c.event {
+		case evDealDamage:
+			if !isOffensiveType(def.itemType) {
+				panic("game: " + def.itemType + " item " + def.id +
+					" carries a deal-damage card — offensive cards belong on weapons (#171)")
+			}
+		case evTakeDamage:
+			if !isDefensiveType(def.itemType) {
+				panic("game: " + def.itemType + " item " + def.id +
+					" carries a take-damage card — defensive cards belong on worn kit (#171)")
+			}
+		}
 	}
 }
 

@@ -79,6 +79,19 @@ const chaseIntoCombat = async (page: import("@playwright/test").Page): Promise<v
 test("mage: hovering an AoE target highlights the blast disc; clicking keeps the disc lit with NO centre crosshair until the turn resolves", async ({
   page,
 }) => {
+  // Metered on GAME progress, not wall clock: this test joins, waits for a
+  // monster, closes to AoE range, fires, waits for the turn to resolve, and
+  // only then waits for a real hit to ride the bundle (#114). That is many
+  // turns, and on a contended CI runner they legitimately take longer than
+  // the default 30s budget while nothing is actually wrong — the inner poll
+  // alone is allowed 20s. Same reasoning (and same fix) as autowalk.spec.ts
+  // and the inventory journeys.
+  //
+  // CI hit exactly that on 2026-07-19: "Test timeout of 30000ms exceeded"
+  // with the hit-poll still waiting, un-reproducible locally at
+  // --repeat-each=3 --workers=6 (6/6 green).
+  test.slow();
+
   // Join as mage (Ember Focus: aoeRadius > 0) — the identity-seeding
   // technique ranged.spec.ts uses, skipping the start screen.
   await page.addInitScript(() => {
