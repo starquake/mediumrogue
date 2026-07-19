@@ -402,8 +402,10 @@ func (w *World) learnSkillLocked(e *entity, id string) error {
 // accident (#124 Q7, enforced server-side by design rather than by client
 // discipline). Registry order, so the panel is stable between turns.
 func skillViewsLocked(e *entity) []protocol.SkillView {
+	// Empty, never nil: a nil slice marshals to JSON null and the generated
+	// client type says it is an array. See wire_nil_test.go.
 	if e.kind != protocol.EntityPlayer {
-		return nil
+		return []protocol.SkillView{}
 	}
 
 	views := make([]protocol.SkillView, 0, len(skillDefs))

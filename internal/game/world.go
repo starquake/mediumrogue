@@ -3082,6 +3082,11 @@ func (w *World) entityViewsLocked() []protocol.Entity {
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
 			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
 			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
+			// Empty, never nil (wire_nil_test.go): own-only fields are
+			// stamped later by fillOwnOnlyLocked and stay at their zero value
+			// for every OTHER entity — which is exactly where a nil slice
+			// hides, since the viewer's own row always looks fine in testing.
+			Skills: []protocol.SkillView{},
 		})
 	}
 
