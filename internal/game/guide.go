@@ -59,9 +59,14 @@ type GuideItem struct {
 // the kind's own cards rendered through the same statlines path as an item's —
 // a troll's fire vulnerability reads the way a resistance on armour reads.
 type GuideMonster struct {
-	ID, Name    string
-	MaxHP       int
+	ID, Name string
+	MaxHP    int
+	// Weapon is the kind's natural weapon (#179): its name, damage, reach and
+	// type all come from a real registry item now, so the guide shows what the
+	// kind actually swings rather than a copy of its numbers.
+	Weapon      string
 	Damage      int
+	RangeHex    int
 	DamageType  string
 	XP          int
 	AggroRadius int
@@ -294,6 +299,12 @@ func GuideData() Guide {
 	}
 
 	for _, def := range itemDefs {
+		// Monster natural weapons are shown in the monster table, where a
+		// designer looks for them — not mixed into the gear a player can hold.
+		if def.monsterOnly {
+			continue
+		}
+
 		g.Items = append(g.Items, GuideItem{
 			ID: def.id, Name: def.name, Type: def.itemType, DamageType: def.damageType,
 			Tags: wireTags(def), TwoHanded: def.twoHanded,
@@ -304,9 +315,11 @@ func GuideData() Guide {
 
 	for _, def := range monsterDefs {
 		g.Monsters = append(g.Monsters, GuideMonster{
-			ID: def.id, Name: def.name, MaxHP: def.maxHP, Damage: def.damage,
-			DamageType: def.damageType, XP: def.xp, AggroRadius: aggroRadiusOf(def),
-			DropChance: def.dropChance, Stats: guideStatsFor(def.claws),
+			ID: def.id, Name: def.name, MaxHP: def.maxHP,
+			Weapon: def.weaponDef.name, Damage: def.weaponDef.damage,
+			RangeHex: def.weaponDef.rangeHex, DamageType: def.weaponDef.damageType,
+			XP: def.xp, AggroRadius: aggroRadiusOf(def),
+			DropChance: def.dropChance, Stats: guideStatsFor(&itemDef{rules: def.rules}),
 		})
 	}
 

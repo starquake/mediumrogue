@@ -1644,7 +1644,16 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	// this slice keeps its position in the rng stream. A chance-conditioned
 	// skill card consumes rng; putting skills anywhere but last would shift
 	// every pinned seed in the repo.
-	attackerCards := slices.Concat(speciesCards(attacker.species), weapon.rules, skillCards(attacker))
+	// Order is CONTRACTUAL (see below). kindCards sits immediately after the
+	// weapon's own cards, which is what keeps the sequence byte-identical to
+	// the pre-#179 order: a monster's cards used to arrive AS weapon.rules
+	// (the synthesised claws carried them), and the natural weapons that
+	// replaced that carry no cards of their own — so the same cards arrive in
+	// the same positions, and every pinned seed survives. Adding a card to a
+	// natural weapon would shift them; do that deliberately, not by accident.
+	attackerCards := slices.Concat(
+		speciesCards(attacker.species), weapon.rules, kindCards(attacker), skillCards(attacker),
+	)
 	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)
 
 	// Species, then class, then gear: chance conditions consume the turn rng
@@ -1678,10 +1687,29 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 // canonicalSlotOrder — deterministic).
 func victimGearCards(e *entity) []ruleCard {
 	if e.kind == protocol.EntityMonster {
-		return closeDefFor(e).rules
+		// The KIND's own cards, not its weapon's (#179). Before kinds named
+		// a shared registry weapon, monsterDef.rules did double duty — the
+		// claws' cards AND the monster's whole-person cards — because the
+		// synthesised claws def was the only vehicle. Sharing the weapon
+		// forces the split: a troll's fire vulnerability is a property of
+		// the troll, and would otherwise ride on a maul that other kinds
+		// (and, one bad drop row away, players) could hold.
+		return kindCards(e)
 	}
 
 	return equippedRuleCards(e)
+}
+
+// kindCards returns monster e's KIND's own rule cards — its identity
+// (vulnerabilities, resistances, passives), separate from whatever its
+// natural weapon carries. Empty for a player or a malformed fixture.
+func kindCards(e *entity) []ruleCard {
+	k := kindOf(e)
+	if k == nil {
+		return nil
+	}
+
+	return k.rules
 }
 
 // earnXPCards returns the cards folded over an XP award for player e:

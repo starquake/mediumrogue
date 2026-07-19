@@ -107,6 +107,48 @@ var itemDefs = []*itemDef{
 		damageType: protocol.DamageTypeFire,
 	},
 
+	// Monster natural weapons (#179). A kind NAMES one of these instead of
+	// carrying a private copy of a weapon's fields, so the base layer is
+	// shared with player gear all the way down (see design-decisions.md's
+	// one-base-layer entry). They carry NO rule cards on purpose: a kind's
+	// own cards fold alongside the weapon's, and keeping these empty leaves
+	// the fold sequence byte-identical to the pre-#179 order, so every
+	// pinned seed survives.
+	//
+	// monsterOnly keeps them unreachable by players — validated, not trusted.
+	{
+		id: idClaws, name: "Claws", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 1,
+		damageType: protocol.DamageTypeSharp, monsterOnly: true,
+	},
+	{
+		id: idFangs, name: "Fangs", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 3,
+		damageType: protocol.DamageTypeSharp, monsterOnly: true,
+	},
+	{
+		id: idTalons, name: "Talons", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 4,
+		damageType: protocol.DamageTypeChaos, monsterOnly: true,
+	},
+	{
+		id: idMaul, name: "Maul", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 6,
+		damageType: protocol.DamageTypeBlunt, monsterOnly: true,
+	},
+	{
+		id: idDragonJaws, name: "Dragon Jaws", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 9,
+		damageType: protocol.DamageTypeFire, monsterOnly: true,
+	},
+	{
+		// The whole point of #179: a monster weapon with reach, which the
+		// old copied-fields shorthand could not express at all.
+		id: idHunterBow, name: "Hunter's Bow", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagRanged}, damage: 3, rangeHex: 3,
+		damageType: protocol.DamageTypeSharp, monsterOnly: true,
+	},
+
 	// Starter drop set.
 	{
 		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeWeapon,
@@ -407,8 +449,7 @@ var monsterDefs = []*monsterDef{
 		// the validation invariant this file shares with protocol.MonsterAggroRadius
 		// (a monster must notice a player before it can close into a combat
 		// bubble, or it sits frozen just outside its own aggro range forever).
-		maxHP: 4, damage: 1, xp: 8, aggroRadius: protocol.CombatRadius + 1, dropChance: 10,
-		damageType: protocol.DamageTypeSharp,
+		maxHP: 4, weapon: idClaws, xp: 8, aggroRadius: protocol.CombatRadius + 1, dropChance: 10,
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 1},
 			// Low-weight potion (inventory-slots task 3): recovery layer 2.
@@ -427,8 +468,7 @@ var monsterDefs = []*monsterDef{
 	},
 	{
 		id: idKindWolf, name: "Wolf",
-		maxHP: 10, damage: 3, xp: 20, aggroRadius: protocol.MonsterAggroRadius, dropChance: 30,
-		damageType: protocol.DamageTypeSharp,
+		maxHP: 10, weapon: idFangs, xp: 20, aggroRadius: protocol.MonsterAggroRadius, dropChance: 30,
 		// The current starter drop set, same order/weights as the pre-6c
 		// global dropTable — pins killDropSeed/killMissSeed (drops_test.go).
 		drops: []drop{
@@ -467,8 +507,7 @@ var monsterDefs = []*monsterDef{
 	},
 	{
 		id: idKindGhoul, name: "Ghoul",
-		maxHP: 16, damage: 4, xp: 35, aggroRadius: 8, dropChance: 35,
-		damageType: protocol.DamageTypeChaos,
+		maxHP: 16, weapon: idTalons, xp: 35, aggroRadius: 8, dropChance: 35,
 		// Opposition as an AUTHORING CONVENTION (#92), not machinery: a
 		// Chaos-aligned monster is written with a Holy vulnerability, and
 		// nothing in the engine knows the two are paired. +50% from Holy —
@@ -502,8 +541,7 @@ var monsterDefs = []*monsterDef{
 	},
 	{
 		id: idKindTroll, name: "Troll",
-		maxHP: 30, damage: 6, xp: 60, aggroRadius: 8, dropChance: 50,
-		damageType: protocol.DamageTypeBlunt,
+		maxHP: 30, weapon: idMaul, xp: 60, aggroRadius: 8, dropChance: 50,
 		// "Trolls fear fire" — the identity the whole damage-type arc was
 		// pitched on (#92). +50% from Fire.
 		rules: []ruleCard{
@@ -537,8 +575,7 @@ var monsterDefs = []*monsterDef{
 	},
 	{
 		id: idKindDragon, name: "Dragon",
-		maxHP: 60, damage: 9, xp: 150, aggroRadius: 12, dropChance: 100,
-		damageType: protocol.DamageTypeFire,
+		maxHP: 60, weapon: idDragonJaws, xp: 150, aggroRadius: 12, dropChance: 100,
 		// The Wyrmslayer Greatsword (weight 2 — the headline drop, roughly as
 		// likely as the whole rest of the rare pool combined) plus a small
 		// rare pool.
