@@ -47,6 +47,10 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // about a fresh character's own state, and a wandering monster would only
   // add a bubble that blocks learning.
   { name: "skills" },
+  // client-alive (#170): the regression guard for #167 — bundles keep being
+  // APPLIED after an inventory action. Monster-free: the failure is in the
+  // client's own turn handler, not in combat.
+  { name: "client-alive" },
   { name: "identity" },
   { name: "identity-multitab" },
   { name: "combat", monsters: 3 },

@@ -93,6 +93,27 @@ importIdentityFromFragment();
 export interface GameDebug {
   turn: number;
   connected: boolean;
+  /**
+   * The turn number of the last bundle RECEIVED — stamped at the very top of
+   * onTurn, before any work (#170).
+   */
+  turnReceived: number;
+  /**
+   * The turn number of the last bundle fully APPLIED — stamped at the very
+   * END of onTurn, after every layer has been updated.
+   *
+   * The gap between these two is the whole point: an exception mid-handler
+   * leaves rendering dead while the stream stays healthy, and on 2026-07-19
+   * that shipped as "connected" plus a frozen map. `turn` itself is no use as
+   * a guard, because it is assigned EARLY in the handler and kept advancing
+   * right through that outage.
+   */
+  turnApplied: number;
+  /**
+   * The last uncaught client error, or null. Set by the global handlers that
+   * also raise the on-screen banner.
+   */
+  clientError: string | null;
   /** Number of map tiles rendered; 0 until the map layer is on stage. */
   tiles: number;
   /** Entity count from the latest turn bundle. */
@@ -375,6 +396,45 @@ function mustGet(id: string): HTMLElement {
 
 
 const turnEl = mustGet("turn");
+const turnStuckEl = mustGet("turn-stuck");
+const turnReceivedEl = mustGet("turn-received");
+const clientErrorEl = mustGet("client-error");
+
+/**
+ * Show the stuck marker when bundles are arriving but not being applied
+ * (#170). One turn of lag is normal — a bundle can land mid-handler — so only
+ * a gap of MORE than one counts, or the HUD would flicker every turn.
+ */
+const stuckAfterTurns = 1;
+
+function applyStatus(): void {
+  const behind = window.game.turnReceived - window.game.turnApplied;
+  turnStuckEl.hidden = behind <= stuckAfterTurns;
+  turnReceivedEl.textContent = String(window.game.turnReceived);
+}
+
+/**
+ * Raise the crash banner (#170). The failure it replaces was silent: an
+ * uncaught throw inside the turn handler stopped all rendering while the SSE
+ * stream stayed up, so the HUD said "connected" over a frozen map and nobody
+ * — player or maintainer — had a signal to act on.
+ *
+ * Deliberately not auto-dismissed and deliberately blunt: the client cannot
+ * recover its own render loop from here, so the only useful advice is reload.
+ */
+function reportClientError(what: string): void {
+  window.game.clientError = what;
+  clientErrorEl.textContent = `the client hit an error and stopped updating — reload the page (${what})`;
+  clientErrorEl.hidden = false;
+}
+
+window.addEventListener("error", (ev) => {
+  reportClientError(ev.message);
+});
+
+window.addEventListener("unhandledrejection", (ev) => {
+  reportClientError(String((ev as PromiseRejectionEvent).reason));
+});
 const statusEl = mustGet("status");
 const statsEl = mustGet("stats");
 const copyLinkEl = mustGet("copy-link") as HTMLButtonElement;
@@ -565,6 +625,9 @@ window.game = {
   equipped: {},
   backpack: [],
   panelOpen: false,
+  turnReceived: -1,
+  turnApplied: -1,
+  clientError: null,
   skills: [],
   skillPoints: 0,
   skillsPanelOpen: false,
@@ -1451,6 +1514,12 @@ async function start(): Promise<void> {
 
   eventsController = connectEvents(() => identity.token, {
     onTurn: (event: TurnEvent): void => {
+      // Stamped BEFORE any work: paired with turnApplied at the bottom, the
+      // two bracket the handler, so a mid-handler throw is visible as a gap
+      // rather than as silence (#170).
+      window.game.turnReceived = event.turn;
+      turnReceivedEl.textContent = String(event.turn);
+
       if (firstWorldID === null) {
         firstWorldID = event.worldId;
       } else if (event.worldId !== firstWorldID) {
@@ -1820,6 +1889,13 @@ async function start(): Promise<void> {
       // (#101), and inCombat / my own hex may have flipped (#135).
       refreshAttackHighlight();
       refreshHoverMove();
+
+      // LAST line of the handler, deliberately: reaching it is the only proof
+      // that the whole bundle was applied. Anything that throws above leaves
+      // turnApplied behind turnReceived, which is what the HUD and the e2e
+      // guard both watch (#170).
+      window.game.turnApplied = event.turn;
+      applyStatus();
     },
     onConnectionChange: (connected: boolean): void => {
       window.game.connected = connected;
