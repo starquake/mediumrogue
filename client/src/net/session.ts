@@ -1,5 +1,5 @@
 import type { ChatRequest, ErrorResponse, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
-import { IntentDrink, IntentDrop, IntentEquip, IntentPickup, IntentUnequip } from "../protocol.gen";
+import { IntentDrink, IntentDrop, IntentEquip, IntentLearnSkill, IntentPickup, IntentUnequip } from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
 
@@ -340,4 +340,26 @@ export async function sendChat(token: string, text: string): Promise<void> {
       .catch(() => "");
     throw new Error(detail || `chat failed (${resp.status})`);
   }
+}
+
+/**
+ * POSTs a learn-skill intent (#124). Resolves true on accept, false on a
+ * typed rejection (no points, prerequisite unmet, already learned, or in
+ * combat — learning is a between-fights decision and the server rejects it
+ * inside a bubble rather than queueing it).
+ */
+export async function submitLearnSkill(
+  identity: Pick<Identity, "entityId" | "token">,
+  skillId: string,
+): Promise<boolean> {
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target: { q: 0, r: 0 },
+    kind: IntentLearnSkill,
+    itemId: 0,
+    groundItemId: 0,
+    targetEntityId: 0,
+    skillId,
+  });
 }

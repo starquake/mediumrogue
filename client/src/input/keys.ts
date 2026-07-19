@@ -17,6 +17,10 @@ const KEY_TO_DIRECTION: Record<string, Direction> = {
 const WAIT_KEY = "Space";
 const INVENTORY_KEY = "KeyI";
 const CHARACTER_KEY = "KeyC";
+// `k` for the skills panel (#124). NOT `s` — that is already the south
+// movement direction, and a movement key that sometimes opens a panel is
+// exactly the kind of thing that gets reported as "my character froze".
+const SKILLS_KEY = "KeyK";
 const ESCAPE_KEY = "Escape";
 
 export interface KeyCallbacks {
@@ -34,6 +38,14 @@ export interface KeyCallbacks {
    * guards as movement, so typing "i" or "c" into chat never opens it.
    */
   onToggleInventory?: () => void;
+  /**
+   * `k`: toggle the skills panel (#124) — same typing-target and isBlocked
+   * guards as everything else here, so typing "k" into chat never opens it.
+   * Independent of the inventory panel: they answer different questions
+   * ("what am I carrying" vs "what can I become") and a player comparing a
+   * skill against their gear wants both.
+   */
+  onToggleSkills?: () => void;
   /**
    * Escape: close the character/inventory panel (gear keystone task 4) —
    * only invoked while isPanelOpen() reports true, so Escape is a no-op
@@ -86,6 +98,12 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
 
     if ((ev.code === INVENTORY_KEY || ev.code === CHARACTER_KEY) && callbacks.onToggleInventory !== undefined) {
       callbacks.onToggleInventory();
+
+      return;
+    }
+
+    if (ev.code === SKILLS_KEY && callbacks.onToggleSkills !== undefined) {
+      callbacks.onToggleSkills();
 
       return;
     }

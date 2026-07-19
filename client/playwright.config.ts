@@ -43,6 +43,10 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   { name: "inventory" },
   { name: "equip-feedback" },
   { name: "panelkeys" },
+  // skills (#124): monster-free — the panel and its near-sightedness are
+  // about a fresh character's own state, and a wandering monster would only
+  // add a bubble that blocks learning.
+  { name: "skills" },
   { name: "identity" },
   { name: "identity-multitab" },
   { name: "combat", monsters: 3 },

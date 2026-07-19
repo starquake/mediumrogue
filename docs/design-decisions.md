@@ -127,13 +127,21 @@ spawn (Q9 first half).
   Combat stays **attack-only** plus the passive layer (glance/crit) and
   shields. This also cuts **active skills (SK5)** and the **skill-usage UI
   (UI2)** — so a future skill system would be **passive-only**. (2026-07-14)
+  **Partly reopened 2026-07-18**: the *passive* skill system shipped as #124,
+  and active skills are being revisited for teleport (#161). Worth knowing
+  the original cut was a **scope** decision taken during a roadmap
+  walk-through, not an identity one — `game-identity.md` explicitly says an
+  action economy of the "your one action can be something other than attack"
+  kind FITS. Reactions (block-when-attacked) stay out regardless: those are
+  the TTRPG tell.
 
 ## Deferred — backlog, not committed
 
 Kept as open issues, not green-lit; revisit when nearer work clears.
 
-- **Skill system** — rule-card skills + 3 trees, property passives, prerequisites
-  (SK1/2/3/7), aura/ally effects (SK6). #57 / #61.
+- ~~**Skill system**~~ — **shipped 2026-07-18 (#124)**: 3 trees, rule-card
+  passives, prerequisites, points per level, near-sighted UI. Aura/ally
+  effects (SK6) and the rest of #57's content backlog remain deferred.
 - **Skill-tree UI** — view trees, spend points (UI1). #62.
 - **Damage-type system** — every attack/monster carries a type (DT1); unblocks
   fire gear and the parked Infernal Chain Mail card. #92.
@@ -346,6 +354,46 @@ where mitigation scales with the hit.
 The felt result: a troll now lands for 3 through full armour where it used to
 land for 1, and the *shape* of a defensive build is legible again — stacking
 two 20% pieces is visibly better than one, at every monster tier.
+
+## The skill system is content, not machinery *(built 2026-07-18, #124 — closes #123)*
+
+Three trees (Class / Adventure / Survival) of pure-data rule cards, four v1
+skills, points banked per level, and a near-sighted panel. What the slice
+actually decided:
+
+- **A skill is a rule card, so the pipeline cannot tell it from a sword.**
+  Learning one appends its cards to the same folds gear and species passives
+  already use — appended LAST, which is contractual: a chance-conditioned
+  skill consumes rng, so any other position would shift every pinned seed in
+  the repo.
+- **Near-sighted, enforced server-side.** You see what you know and what you
+  can learn next. A locked skill is not hidden by the client — it never
+  reaches it (`skillViewsLocked`). The point is stumbling onto a capstone
+  rather than planning toward one seen from the start, and enforcing it at
+  the wire means no future client bug can leak the tree.
+- **Own-only bundles.** The original spec said skills would be own-only
+  "like `Items`" — but `Items` is sent for *every* entity, so there was no
+  precedent to copy. `SnapshotFor(viewerToken)` renders a bundle per viewer
+  instead; at ~15 players that is affordable, and the hub's coalescing
+  contract is untouched.
+- **The point bank rides a high-water mark, not a level-up event** — the
+  engine has none, since level is derived from XP. Without `pointsGrantedLevel`
+  three things silently double-pay: a repeated grant, re-earning XP lost to
+  death, and reloading a snapshot.
+- **Learning is out-of-combat only**, and deliberately NOT queued like the
+  five inventory actions. It costs no bubble turn and needs no pending-action
+  plumbing: it is a between-fights decision, not a turn's action.
+- **The Human perk becomes +1 skill point per level**, retiring the +50% XP
+  card — which is #123's complaint answered. XP bought "reach the same HP
+  slightly sooner" because levels grant HP only, so it read strong and played
+  invisible. It is a species check rather than a rule card, because a
+  per-level *bank* grant is not a fold over a combat value.
+- **Scoping by weapon TAG, not damage type** (Combat Training). The
+  damage-type version needed no new vocabulary at all, but a tag is how a
+  weapon is *used* — which is what "+10% with melee weapons" means.
+- **Shield Wall is a `glance%` bump, not flat mitigation** — consistent with
+  #154, after which a flat `−N` would have been the only subtractive card
+  left besides the dwarf passive.
 
 ## Open flags (doc vs implementation)
 
