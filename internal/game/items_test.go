@@ -1568,3 +1568,69 @@ func TestValidateItemDefsPanicsOnMixedNature(t *testing.T) {
 		}})
 	})
 }
+
+// TestOneBaseLayer_EveryDamageSourceIsAnItemDef (#175) pins the invariant that
+// makes base stats safe to keep as plain fields instead of rule cards: there is
+// exactly ONE base layer, and every damage number the combat path consumes
+// comes out of an *itemDef.
+//
+// #175 asked whether damage/range/heal should become cards for uniformity. The
+// answer was no, and the reason is this invariant rather than taste — the
+// argument against base-as-fields is fragmentation (content types growing
+// incompatible base layers), and we have none: players, bare fists and monsters
+// all arrive at rollDamageLocked as an *itemDef read through itemDamage. If
+// that ever stopped being true, base-as-fields would become the wrong call and
+// #175 would deserve reopening. Nothing else pinned it, so this test does.
+func TestOneBaseLayer_EveryDamageSourceIsAnItemDef(t *testing.T) {
+	t.Parallel()
+
+	// A monster's claws are a REAL itemDef compiled from the kind's shorthand
+	// by buildMonsterIndex — not a parallel damage representation.
+	for _, def := range monsterDefs {
+		claws := def.claws
+		if claws == nil {
+			t.Errorf("monster kind %s has no claws profile", def.id)
+
+			continue
+		}
+
+		if got, want := claws.damage, def.damage; got != want {
+			t.Errorf("%s claws damage = %d, want the kind's own %d", def.id, got, want)
+		}
+
+		if got, want := itemDamage(claws), def.damage; got != want {
+			t.Errorf("itemDamage(%s claws) = %d, want %d", def.id, got, want)
+		}
+
+		if !claws.isWeapon() {
+			t.Errorf("%s claws item type = %q, want a weapon", def.id, claws.itemType)
+		}
+	}
+
+	// Every entity the melee path can be asked about yields non-empty
+	// []*itemDef with a real base — a player holding a weapon, a bare player
+	// (fists), and a monster (claws). No branch returns a bare number.
+	cases := map[string]*entity{
+		"armed player": {
+			kind: protocol.EntityPlayer, class: protocol.ClassRogue,
+			equipped: map[string]itemInstance{protocol.SlotMainHand: {id: 7, defID: idDagger}},
+		},
+		"bare player": {kind: protocol.EntityPlayer, class: protocol.ClassFighter},
+		"monster":     {kind: protocol.EntityMonster, monsterKind: idKindWolf},
+	}
+
+	for name, e := range cases {
+		defs := meleeDefsFor(e)
+		if len(defs) == 0 {
+			t.Errorf("meleeDefsFor(%s) is empty, want at least one base profile", name)
+
+			continue
+		}
+
+		for _, def := range defs {
+			if got := itemDamage(def); got <= 0 {
+				t.Errorf("meleeDefsFor(%s) base %q damage = %d, want > 0", name, def.id, got)
+			}
+		}
+	}
+}

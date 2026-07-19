@@ -424,9 +424,38 @@ and the sentence disagreeing after a retune.
   defensive on worn kit — since the terse phrasing only stays unambiguous
   while items point one way. The nature belongs to the item's *type*, not its
   slot: the off-hand accepts both a shield and a dual-wielded weapon.
-- **Base stats stay fields, not cards.** Damage, reach and heal are the
-  pipeline's *input*; a card transforms a value, so something must supply the
-  first one. Whether that should change is #175.
+- **Base stats stay fields, not cards** *(settled 2026-07-19, #175)*. Damage,
+  reach and heal are the pipeline's *input*; a card transforms a value, so
+  something must supply the first one. The argument for converting them is
+  uniformity; the argument against is that the base stops being checkable —
+  "a weapon has damage" is a load-time invariant, "has a card that happens to
+  be the base" is not, and a content bug becomes a fold you must simulate
+  rather than a field you can read. The precedent agrees: Path of Exile,
+  Diablo II–IV and WoW all keep base stats as fields on the base item and put
+  the *variation* in data, even where the whole engine is a modifier fold.
+  Everything-is-an-effect works for card-battlers (nothing persists) and
+  component/ECS works for Caves of Qud (the query layer IS the engine);
+  neither is a cheap bolt-on here.
+  **What actually makes this safe is that there is exactly ONE base layer** —
+  players, bare fists and monsters all reach the combat path as an `*itemDef`
+  read through `itemDamage`; `monsterDef.damage` is authoring shorthand that
+  `buildMonsterIndex` compiles into a real claws def at init. The day that
+  stops being true, base-as-fields becomes the wrong call, so it is pinned by
+  `TestOneBaseLayer_EveryDamageSourceIsAnItemDef`.
+- **Offensive cards are LOCAL to the firing weapon; defensive cards are GLOBAL
+  to the wearer** *(#175 — long implicit, written down 2026-07-19)*.
+  `rollDamageLocked` collects the two sides differently and always has: the
+  attacker side folds `species + THIS weapon's rules + skills`, so the sword in
+  your other hand contributes nothing to this hit; the victim side folds
+  `species + class + EVERY equipped slot + skills`, because a hit lands on the
+  whole person, not on whichever slot is swinging. This is Path of Exile's
+  local-vs-global modifier distinction, arrived at independently. PoE needs a
+  scope flag on each mod because a ring there *may* carry a damage modifier;
+  we forbid it instead — #171's `validateItemNature` allows offensive cards
+  only on weapons — so a `deal-damage` card on a ring is a panic at process
+  start rather than a card that silently never fires. Making it unrepresentable
+  beats annotating it. The day gear modifies *other gear* (a ring that boosts
+  sword damage specifically), we need PoE's flag for real; nothing wants that.
 
 ## Open flags (doc vs implementation)
 
