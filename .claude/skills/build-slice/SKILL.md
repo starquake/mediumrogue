@@ -98,6 +98,15 @@ Structure, always:
    already verified by running them; prose restating them adds nothing a
    reviewer must read.
 
+**The same rule governs COMMENTS, and it is easier to break there.** When the
+maintainer asks a direct question — *"are you going to fix it?"*, *"can linting
+prevent this?"* — the answer goes in the **first line**, and any reasoning goes
+below it. (2026-07-19: a crash report got a reply that opened with "fixed in
+#186" and then spent 400 words on TypeScript soundness. Nine minutes later:
+*"Sooooo are you going to fix it?"* The answer was present and unfindable.) A
+comment that has to be read to the end to learn whether the thing is done has
+failed, however correct its content.
+
 **Do not** narrate the design reasoning in the PR body. It belongs in
 `design-decisions.md`, written once — a PR body copy is drift with extra steps
 and dies with the PR.
