@@ -60,6 +60,11 @@
   }
   .skill-use:disabled { background: transparent; color: var(--dim); border-color: #2a3d2b; }
   .cooldown { font-size: 0.62rem; color: var(--cool); }
+  .badge {
+    font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.1em;
+    border: 1px solid var(--cool); color: var(--cool); padding: 0 0.22rem;
+    margin-left: 0.3rem; vertical-align: 0.08rem;
+  }
 
   /* HUD chip */
   .hud {
@@ -108,10 +113,19 @@
       <span class="skill-tag">Learned</span>
     </div>
 
+    <div class="skill-row active-skill">
+      <span class="skill-mark">●</span>
+      <span class="skill-body">
+        <span class="skill-name">Blink <span class="badge">active</span></span>
+        <span class="skill-desc">Teleport up to 3 hexes · 3 turn cooldown</span>
+      </span>
+      <button class="skill-learn">Learn</button>
+    </div>
+
     <div class="skill-row learned active-skill">
       <span class="skill-mark">✓</span>
       <span class="skill-body">
-        <span class="skill-name">Blink</span>
+        <span class="skill-name">Blink <span class="badge">active</span></span>
         <span class="skill-desc">Teleport up to 3 hexes · 3 turn cooldown</span>
       </span>
       <button class="skill-use">Use</button>
@@ -120,7 +134,7 @@
     <div class="skill-row learned active-skill">
       <span class="skill-mark">✓</span>
       <span class="skill-body">
-        <span class="skill-name">Blink</span>
+        <span class="skill-name">Blink <span class="badge">active</span></span>
         <span class="skill-desc">Teleport up to 3 hexes · 3 turn cooldown</span>
         <span class="cooldown">ready in 2 turns</span>
       </span>
@@ -137,8 +151,12 @@
     </div>
   </div>
   <div class="note">
-    Blink shown twice — <b>ready</b> and <b>cooling</b>. Actives get a blue left
-    edge and a <b>Use</b> button where a passive shows <b>Learned</b>.
+    Blink shown in all three states — <b>unlearned</b>, <b>ready</b>,
+    <b>cooling</b>. <b>Learn spends a skill point to acquire</b>, exactly as for
+    a passive; <b>Use triggers</b>, and only ever appears once learned. The
+    earlier draft skipped the unlearned row, which made Learn look like it
+    selected the skill. An <b>active</b> badge marks the kind before you have
+    it, so the choice to spend a point is informed.
   </div>
 </div>
 
