@@ -259,6 +259,25 @@ pipeline cannot tell them apart from a sword's.
   hands. A two-handed weapon is **not** dual-wielding — it occupies both slots
   but is one weapon, so the condition counts weapons rather than filled slots.
 
+- **Active skills** (#161): a skill is **passive** (rule cards) or **active**
+  (a trigger + cooldown) — never both, rejected at content load. An active is
+  the turn's action, exactly like a move: not a bonus action, and it displaces
+  a queued move or attack.
+  - **Blink** — Survival tree, 3 hexes, **3-turn cooldown**. The destination
+    needs range, walkability **and line of sight**: it does *not* pass through
+    walls, deliberately unlike the classic ARPG blink, so cover stays real.
+  - **Cooldowns count TURNS, whichever clock is ticking.** A bubble turn is
+    slower in wall-clock than a world turn, and that dilation is the bubble's
+    point — a turn-denominated cooldown rides it instead of fighting it. A
+    seconds-denominated one would run *through* bullet time and break it.
+  - Cooldowns **persist** (`snapshotVersion` 7), so a server restart is not a
+    free reset.
+  - Wire: `IntentUseSkill` with a skill id + target hex. Rejections are 422 —
+    not learned, not an active, on cooldown, out of range, not walkable, no
+    line of sight.
+  - **No client UI yet**: no button, no keybind. Reachable only by POSTing the
+    intent directly until #161's client half lands (blocked on a palette
+    decision; the action bar is #185).
 - **Points**: `SkillPointsPerLevel = 3` per level, `HumanBonusSkillPoints = 1`
   extra for Humans. The grant works off a persisted high-water mark, not a
   level-up event (the engine has none — level is derived from XP), so dying
@@ -985,8 +1004,7 @@ values are unchanged (20 / 3 / 30%).*
 Recorded in `design.md` §0/§8/§9, `design-decisions.md` (Q1–Q11
 all decided 2026-07-13), and issue #36: the **rest of the skill trees**
 (#124 shipped the system with four v1 skills; First Aid & Make Camp still
-seed the Survival/Adventure trees), **active skills** (#161 — cut in
-2026-07-14's action-economy prune, reopened for teleport), downed
+seed the Survival/Adventure trees), downed
 state & revive, further recovery layers (rests, the sanctuary
 **trade hub** — the 6c sanctuary zone is only the monster-free ground, not
 the hub itself; healing potions + the backpack-cap layer now ship with the

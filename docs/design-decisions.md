@@ -127,8 +127,9 @@ spawn (Q9 first half).
   Combat stays **attack-only** plus the passive layer (glance/crit) and
   shields. This also cuts **active skills (SK5)** and the **skill-usage UI
   (UI2)** — so a future skill system would be **passive-only**. (2026-07-14)
-  **Partly reopened 2026-07-18**: the *passive* skill system shipped as #124,
-  and active skills are being revisited for teleport (#161). Worth knowing
+  **Reopened and shipped**: the *passive* skill system shipped as #124, and
+  **active skills shipped 2026-07-19 as a category** (#161), with Blink as
+  their first content — server side; the client half is still pending. Worth knowing
   the original cut was a **scope** decision taken during a roadmap
   walk-through, not an identity one — `game-identity.md` explicitly says an
   action economy of the "your one action can be something other than attack"
@@ -564,6 +565,32 @@ shipping a fourth Class skill.
 - **A two-handed weapon is not dual-wielding.** It fills both hand slots but is
   one weapon, so the condition counts weapons (`heldWeapons`) rather than
   occupied slots — the reading a skimmer would most plausibly get wrong.
+
+## Active skills are a category, and cooldowns count turns (2026-07-19, #161)
+
+The 2026-07-14 action-economy prune cut active skills, so everything in #124 is
+passive: cards folded onto a value at an event. Teleport reopened the question,
+and the maintainer's call was to build the **category** rather than a hardcoded
+teleport — more expensive once, no rewrite when the second active arrives.
+
+- **A skill is passive or active, never both.** An active carries a trigger and
+  a cooldown instead of cards; the mixed shape, a zero cooldown, and a range
+  outside `1..CombatRadius` all panic at content load.
+- **It is the turn's action.** Not a bonus action — it displaces a queued move
+  or attack, which is why it fits an economy that allows exactly one action per
+  turn and does not touch WeGo simultaneity.
+- **Cooldowns count TURNS, whichever clock ticks.** The maintainer's framing
+  settled this: *"the entire world slows down… a bit like bullet time."*
+  Measured in turns there is no asymmetry — 3 turns is 3 turns everywhere — and
+  the wall-clock difference *is* the bubble's conceit. A seconds-denominated
+  cooldown would run through bullet time and break the effect.
+- **Blink does NOT pass through walls**, the opposite of the genre's usual
+  blink. Escaping still requires somewhere you can see, so a rock wall stays
+  cover rather than a suggestion.
+- **A queued active is dropped, not deferred**, if its caster attacked or died
+  that turn: a stale trigger firing a turn late would teleport someone who has
+  since chosen something else.
+- Cooldowns persist (`snapshotVersion` 7) — a restart must not be a free reset.
 
 ## Open flags (doc vs implementation)
 
