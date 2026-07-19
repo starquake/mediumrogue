@@ -848,6 +848,16 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   of the canvas pointerdown mapping — so a spec can drive a REAL
   `page.mouse.click` (and so exercise overlay `pointer-events` hit-testing)
   rather than only `tapHex`'s synthetic path.
+- **Designer content guide** (#156): `docs/content-guide/README.md` is
+  **generated** — `make guide` renders it from the live registries via
+  `cmd/contentguide`, so its vocabulary tables, calibration anchors and
+  item/monster numbers cannot drift from the game. Stat lines come from
+  `statlines.go`, the same path that fills a tooltip, so the guide and the
+  client can never disagree. Only the prose (the coupling tell, the drift
+  cases, the checklist) is authored, in `docs/content-guide/guide.md.tmpl`.
+  **`make guide-check` runs inside `make check`**: a change to a number the
+  guide cites fails the gate until the guide is regenerated — the FEATURES.md
+  "values come from the code, never memory" rule made mechanical.
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
