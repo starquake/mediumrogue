@@ -442,6 +442,20 @@ and the sentence disagreeing after a retune.
   `buildMonsterIndex` compiles into a real claws def at init. The day that
   stops being true, base-as-fields becomes the wrong call, so it is pinned by
   `TestOneBaseLayer_EveryDamageSourceIsAnItemDef`.
+- **Offensive cards are LOCAL to the firing weapon; defensive cards are GLOBAL
+  to the wearer** *(#175 — long implicit, written down 2026-07-19)*.
+  `rollDamageLocked` collects the two sides differently and always has: the
+  attacker side folds `species + THIS weapon's rules + skills`, so the sword in
+  your other hand contributes nothing to this hit; the victim side folds
+  `species + class + EVERY equipped slot + skills`, because a hit lands on the
+  whole person, not on whichever slot is swinging. This is Path of Exile's
+  local-vs-global modifier distinction, arrived at independently. PoE needs a
+  scope flag on each mod because a ring there *may* carry a damage modifier;
+  we forbid it instead — #171's `validateItemNature` allows offensive cards
+  only on weapons — so a `deal-damage` card on a ring is a panic at process
+  start rather than a card that silently never fires. Making it unrepresentable
+  beats annotating it. The day gear modifies *other gear* (a ring that boosts
+  sword damage specifically), we need PoE's flag for real; nothing wants that.
 
 ## Open flags (doc vs implementation)
 
