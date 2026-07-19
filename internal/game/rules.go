@@ -106,7 +106,20 @@ const (
 	// "equippedType" condition; #57's shield-skill backlog is its rider
 	// queue, so it is not a one-off.
 	condShieldEquipped = "shieldEquipped"
+	// condDualWielding (no parameter): the ATTACKER holds a weapon in BOTH
+	// hands. Attacker-side like condAttackerSpecies — in rollDamageLocked a
+	// victim's cards fold under a ctx whose .attacker is still the swinger,
+	// so reading the wrong side is silent and wrong.
+	//
+	// A two-handed weapon is NOT dual-wielding: it fills both slots but is one
+	// weapon, so this counts weapons, not slots.
+	condDualWielding = "dualWielding"
 )
+
+// dualWieldHandCount is how many weapons "dual-wielding" means. Named rather
+// than inline so the two-handed case reads correctly: it is a count of
+// WEAPONS, not of occupied hand slots.
+const dualWieldHandCount = 2
 
 // Effect kinds. All adds apply before all multipliers (fold phases), so card
 // order can never change arithmetic within a phase. See the evDealDamage
@@ -188,8 +201,8 @@ func conditionHolds(c condition, ctx ruleCtx) bool {
 		return ctx.damageType == c.s
 	case condWeaponTagged:
 		return ctx.weapon != nil && ctx.weapon.hasTag(c.s)
-	case condShieldEquipped:
-		return shieldEquippedHolds(ctx)
+	case condShieldEquipped, condDualWielding:
+		return equipmentConditionHolds(c, ctx)
 	default:
 		return false // unknown condition never holds — content bugs fail closed
 	}
@@ -228,6 +241,30 @@ func shieldEquippedHolds(ctx ruleCtx) bool {
 	def := ctx.victim.equippedDefIn(protocol.SlotOffHand)
 
 	return def != nil && def.itemType == protocol.ItemTypeShield
+}
+
+// equipmentConditionHolds groups the two hand-slot conditions, split out to
+// keep conditionHolds under the complexity threshold (as targetHPConditionHolds
+// does). They read OPPOSITE sides: shield is defender-side, dual-wielding
+// attacker-side — the grouping is about switch size, not symmetry.
+func equipmentConditionHolds(c condition, ctx ruleCtx) bool {
+	if c.kind == condShieldEquipped {
+		return shieldEquippedHolds(ctx)
+	}
+
+	return dualWieldingHolds(ctx)
+}
+
+// dualWieldingHolds is condDualWielding's body: the ATTACKER holds two
+// weapons. Counts weapons via heldWeapons rather than checking that both hand
+// slots are occupied, which is what makes a two-handed weapon (one weapon,
+// both slots) correctly fail.
+func dualWieldingHolds(ctx ruleCtx) bool {
+	if ctx.attacker == nil {
+		return false
+	}
+
+	return len(ctx.attacker.heldWeapons()) >= dualWieldHandCount
 }
 
 // targetKindHolds is condTargetKind's condition body, split out of

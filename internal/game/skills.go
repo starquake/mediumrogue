@@ -33,6 +33,16 @@ const (
 	skillWeakSpot       = "weak-spot"
 	skillShieldWall     = "shield-wall"
 	skillScouting       = "scouting"
+
+	// Skills 2 (#57). Crusher/Kindler are damage-type lines (zero new
+	// vocabulary); Survivalist/Hardy open the Survival tree, which shipped
+	// empty in v1; Twin Fangs/Wand Chorus are condDualWielding's two riders.
+	skillCrusher     = "crusher"
+	skillKindler     = "kindler"
+	skillSurvivalist = "survivalist"
+	skillHardy       = "hardy"
+	skillTwinFangs   = "twin-fangs"
+	skillWandChorus  = "wand-chorus"
 )
 
 // skillDef is one entry in the skill registry: what it is, which tree it
@@ -109,6 +119,77 @@ var skillDefs = []*skillDef{
 	},
 
 	// --- Adventure tree ---------------------------------------------------
+	{
+		id: skillCrusher, name: "Crusher", tree: treeClass,
+		flavor: "Nothing fancy. Just weight, arriving.",
+		rules: []ruleCard{
+			// Damage-type scoped, not weapon-category: the taxonomy has no
+			// category axis (#57, design-decisions.md).
+			//
+			// Stacks with Combat Training on a blunt melee weapon: +20%, NOT
+			// x1.21 — percentages sum within a fold.
+			{event: evDealDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeBlunt}},
+				then: effect{kind: effMulPct, n: percentBase + 10}},
+		},
+	},
+	{
+		id: skillKindler, name: "Kindler", tree: treeClass,
+		flavor: "It only ever needed an excuse.",
+		rules: []ruleCard{
+			{event: evDealDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
+				then: effect{kind: effMulPct, n: percentBase + 10}},
+		},
+	},
+	{
+		id: skillTwinFangs, name: "Twin Fangs", tree: treeClass,
+		flavor: "Two answers to every question.",
+		rules: []ruleCard{
+			// First of condDualWielding's two riders (#57).
+			{event: evDealDamage, when: []condition{{kind: condDualWielding}},
+				then: effect{kind: effMulPct, n: percentBase + 10}},
+		},
+	},
+	{
+		id: skillWandChorus, name: "Wand Chorus", tree: treeClass,
+		prereqs: []string{skillTwinFangs},
+		flavor:  "Each wand hears the other.",
+		rules: []ruleCard{
+			// Second rider. A bonus for dual-wielding, never a gate on it.
+			{
+				event: evDealDamage,
+				when: []condition{
+					{kind: condDualWielding},
+					{kind: condDamageType, s: protocol.DamageTypeFire},
+				},
+				then: effect{kind: effMulPct, n: percentBase + 15},
+			},
+		},
+	},
+
+	// --- Survival tree ----------------------------------------------------
+	// Defensive/attrition (settled #57; see design-decisions.md). Empty
+	// before #57 — TestSurvivalTreeIsNotEmpty guards that.
+	{
+		id: skillSurvivalist, name: "Survivalist", tree: treeSurvival,
+		flavor: "You have been colder, and hungrier, and here you are.",
+		rules: []ruleCard{
+			// A percentage, never flat -N (#154: subtractive mitigation
+			// stacks into the >=1 clamp).
+			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 10}},
+		},
+	},
+	{
+		id: skillHardy, name: "Hardy", tree: treeSurvival,
+		prereqs: []string{skillSurvivalist},
+		flavor:  "The part of the fight where it counts.",
+		rules: []ruleCard{
+			// condTargetHPBelowPct reads the VICTIM, which in a take-damage
+			// fold is the holder.
+			{event: evTakeDamage, when: []condition{{kind: condTargetHPBelowPct, n: 40}},
+				then: effect{kind: effMulPct, n: percentBase - 15}},
+		},
+	},
+
 	{
 		id: skillScouting, name: "Scouting", tree: treeAdventure,
 		flavor: "You read the ground before you walk it.",

@@ -538,6 +538,33 @@ ranged monster was not unimplemented but unrepresentable.
   also matches ARPG convention — monster kiting is rare and disliked, because
   kiting is the *player's* verb.
 
+## The Survival tree means defence, and skills sum (2026-07-19, #57)
+
+The v1 skill batch (#124) filled Class and Adventure and left **Survival
+empty** — three trees are principle 1 of #61, so a player could spend points
+into a tree with nothing in it. Skills 2 fixes that as its spine rather than
+shipping a fourth Class skill.
+
+- **Survival = defensive / attrition** (maintainer's call). #61 pins Adventure
+  as "map, surroundings, loot, fog of war" and never defined Survival; it does
+  now. Its root is deliberately dull — a flat percentage floor is what makes a
+  tree enterable.
+- **Mitigation is a percentage, never flat `−N`** — the same rule #154 settled
+  for gear. Subtractive mitigation stacks into the ≥1 clamp and stops meaning
+  anything.
+- **Overlapping damage-type skills SUM.** Combat Training + Crusher on a blunt
+  melee weapon is +20%, not ×1.21. This was flagged to the maintainer before
+  the build rather than discovered after: the Class tree's first column is
+  becoming "stack damage percentages", which is the least interesting shape a
+  tree can take. Accepted for this batch, worth watching at the next.
+- **`dualWielding` shipped with two riders, not one.** The no-mechanic-wildfire
+  gate wants ≥2 real users for a new condition, and this ticket was originally
+  filed *because* the mage dual-wand focus was a lone rider. Twin Fangs and
+  Wand Chorus land together, so the gate was satisfied rather than waived.
+- **A two-handed weapon is not dual-wielding.** It fills both hand slots but is
+  one weapon, so the condition counts weapons (`heldWeapons`) rather than
+  occupied slots — the reading a skimmer would most plausibly get wrong.
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14, **shipped

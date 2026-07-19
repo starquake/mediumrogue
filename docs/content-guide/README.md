@@ -62,6 +62,7 @@ percentage sums and applies once**. Percentages never compound pairwise — two
 | `targetKind` | s = monster kind | The victim is a monster of that registered kind. Never holds against a player. |
 | `attackerSpecies` | s = species | Who SWINGS is of that species — gear a class can use but that sings in one species' hands. |
 | `shieldEquipped` | — | The DEFENDER holds a shield in its off-hand. Defender-side is a requirement, not a convention. |
+| `dualWielding` | — | The ATTACKER holds a weapon in both hands. A two-handed weapon is NOT dual-wielding — it fills both slots but is one weapon. |
 | `targetAdjacent` | — | The victim is in an adjacent hex. |
 | `allyInBubble` | — | Another friendly is in this combat bubble. |
 | `targetHPFull` | — | The victim is at full HP — opener flavour. |

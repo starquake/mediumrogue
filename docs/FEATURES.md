@@ -238,7 +238,26 @@ pipeline cannot tell them apart from a sword's.
 | Combat Training | Class | `deal-damage` ×1.10 with a **melee-tagged** weapon |
 | Weak Spot | Class | `deal-damage` +4 vs a full-health target (requires Combat Training) |
 | Shield Wall | Class | while a shield is in the off-hand, **15% chance** an incoming hit only glances |
+| Crusher | Class | `deal-damage` ×1.10 on **blunt** hits (#57) |
+| Kindler | Class | `deal-damage` ×1.10 on **fire** hits (#57) |
+| Twin Fangs | Class | `deal-damage` ×1.10 while **dual-wielding** (#57) |
+| Wand Chorus | Class | `deal-damage` ×1.15 on fire hits while dual-wielding (requires Twin Fangs) (#57) |
 | Scouting | Adventure | `aggro-range` ×0.8 — renders as `−20% Aggro Range` |
+| Survivalist | Survival | `take-damage` ×0.9 — the tree's root (#57) |
+| Hardy | Survival | `take-damage` ×0.85 below 40% HP (requires Survivalist) (#57) |
+
+- **The Survival tree is defensive/attrition** (settled #57, 2026-07-19). It
+  shipped empty in v1, which meant a player could spend points into a tree with
+  nothing in it; `TestSurvivalTreeIsNotEmpty` now fails loudly if any tree is
+  emptied again.
+- **Damage-type skills stack by SUMMING, never compounding.** Combat Training
+  plus Crusher on a blunt melee weapon is +20%, not ×1.21 — percentages sum
+  within one fold and apply once. Pinned by
+  `TestCrusherAndCombatTrainingSUMRatherThanCompound`, because "stacking" is
+  exactly where a reader assumes multiplication.
+- **`dualWielding`** (#57) gates on the ATTACKER holding a weapon in **both**
+  hands. A two-handed weapon is **not** dual-wielding — it occupies both slots
+  but is one weapon, so the condition counts weapons rather than filled slots.
 
 - **Points**: `SkillPointsPerLevel = 2` per level, `HumanBonusSkillPoints = 1`
   extra for Humans. The grant works off a persisted high-water mark, not a
