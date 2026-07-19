@@ -130,6 +130,21 @@ func validDamageType(t string) bool {
 	}
 }
 
+// isOffensiveType reports whether an item type's numbers read as damage
+// DEALT. Exactly the weapon type today — a shield is defence, and a
+// consumable is neither (#171).
+//
+// The item's TYPE carries this, not its slot: the off-hand accepts both a
+// shield and a dual-wielded weapon, so the slot alone cannot say which
+// reading applies.
+func isOffensiveType(t string) bool { return t == protocol.ItemTypeWeapon }
+
+// isDefensiveType reports whether an item type's numbers read as damage
+// TAKEN: everything wearable, including shields. Consumables are neither.
+func isDefensiveType(t string) bool {
+	return t != protocol.ItemTypeWeapon && t != protocol.ItemTypeConsumable
+}
+
 // validItemType reports whether t is one of the taxonomy's 9 known types.
 func validItemType(t string) bool {
 	switch t {
@@ -696,7 +711,38 @@ func validateItemDefs(defs []*itemDef) {
 		validateItemType(def)
 		validateItemHeal(def)
 		validateItemCombatStats(def)
+		validateItemNature(def)
 		validateRuleCards(def.id, def.rules)
+	}
+}
+
+// validateItemNature panics if an item carries a card that contradicts its
+// type's nature (#171): a deal-damage card on wearable kit, or a take-damage
+// card on a weapon.
+//
+// This is what makes the stat line's SIGN CONVENTION safe to read. Lines are
+// rendered without a "Taken" suffix — "−20% Damage" on armor means damage you
+// take, on a weapon it means damage you deal — and that shorthand only holds
+// while an item's cards all point the same way as its type. A single mixed
+// item would silently make every tooltip ambiguous, so it fails at load.
+//
+// Utility events (earn-xp, aggro-range) are deliberately EXEMPT: they name
+// their own subject and their sign is literal, so they are legal on anything
+// (#171 Q5 — Iron Plate Armor's aggro-range card is the shipped example).
+func validateItemNature(def *itemDef) {
+	for _, c := range def.rules {
+		switch c.event {
+		case evDealDamage:
+			if !isOffensiveType(def.itemType) {
+				panic("game: " + def.itemType + " item " + def.id +
+					" carries a deal-damage card — offensive cards belong on weapons (#171)")
+			}
+		case evTakeDamage:
+			if !isDefensiveType(def.itemType) {
+				panic("game: " + def.itemType + " item " + def.id +
+					" carries a take-damage card — defensive cards belong on worn kit (#171)")
+			}
+		}
 	}
 }
 
