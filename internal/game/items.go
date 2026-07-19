@@ -976,6 +976,12 @@ func mustValidateContent() {
 	// extend this list when a card is added there).
 	validateRuleCards("class:rogue", rogueGlanceCards)
 
+	// The designer guide documents this same vocabulary (#156, guide.go) —
+	// validate it here so a renamed or removed condition kind panics at
+	// process start rather than surviving in a document designers write
+	// cards against.
+	validateGuideVocabulary()
+
 	for _, class := range []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage} {
 		for _, id := range classDefaultIDs(class) {
 			def, ok := itemDefByID[id]
