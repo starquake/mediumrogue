@@ -12,10 +12,22 @@ description: >
 ---
 
 You run the issue tracker forward so the maintainer can drive everything through
-comments and labels. A pass reads the board, does every **blue (your-court)**
-step it can, executes the actions the maintainer has already authorised (a "go"
+comments and labels. A pass reads the board, does every **work-label** step it
+can, executes the actions the maintainer has already authorised (a "go"
 signal, a `ready to merge` label), and **stops at every gate that is theirs**.
 The `needs:*` labels are the state machine; this skill just drives it.
+
+**Two kinds of label, and the wording tells you which:**
+
+- **Gate labels** — `needs: your input`, `needs: your sign-off`. Work *stops*.
+  The maintainer decides; you may ask, never answer.
+- **Work labels** — `needs: spec`, `needs: plan`, `needs: build`. Work
+  *proceeds*. The label is the instruction; acting on it needs no further
+  permission.
+
+The test is in the label itself: **if it says "your", it is a gate.** No colour
+legend, no memorised list — a label you have never seen before still sorts
+correctly.
 
 ## The autonomy contract — do not cross
 
@@ -37,7 +49,7 @@ The `needs:*` labels are the state machine; this skill just drives it.
 1. **Enumerate.** `gh issue list --state open`, `gh pr list --state open`, and a
    recently-closed sweep for comments that landed after close. Drop anything
    carrying `hold`.
-   **Labels are NOT enough — read the comments too.** For every item at an amber
+   **Labels are NOT enough — read the comments too.** For every item at a
    gate, fetch its comments (`gh api repos/:owner/:repo/issues/<n>/comments`) and
    look for the maintainer's answer or go-signal *after* your last comment. A
    go-signal (`go` / `build` / `approved` / "Build!") arrives as a **comment**
@@ -183,7 +195,7 @@ Content by state (state line + a "Next:" line naming the action and who does it)
   comment `go` / `build` / `approved` (or flip the label to `needs: build`); the
   next pass builds it into a draft PR.*
 - `needs: spec` / `needs: plan` — Claude's court. *Next: a pass drafts the
-  spec/plan and hands to the amber gate — nothing needed from you.*
+  spec/plan and hands back to a gate — nothing needed from you.*
 - `needs: build` — approved. *Next: a pass builds a draft PR; then add
   `ready to merge` once you've reviewed it.*
 - no `needs:` label — tailor: **blocked** (name the blocker — "blocked by #NN"),
@@ -195,7 +207,7 @@ Content by state (state line + a "Next:" line naming the action and who does it)
 
 ## Blue work is not a menu — pick it up
 
-**A ticket in your court gets worked, not reported.** `needs: spec`, `needs: plan`,
+**A work label gets worked, not reported.** `needs: spec`, `needs: plan`,
 `needs: build`, and any **bug** are already authorised: the label IS the
 instruction. Listing one back to the maintainer as "available" turns a state
 machine into a suggestion box, and makes them the scheduler for work they
@@ -218,7 +230,7 @@ is a complete pass. Work you were handed and left is not.
 
 End the pass with a short summary: **what moved** (and to what state), **what you
 built or merged**, and — most important — **what's now waiting on the
-maintainer** (the amber `needs: your input` / `needs: your sign-off` queue). In a
+maintainer** (the `needs: your input` / `needs: your sign-off` gate queue). In a
 loop this becomes a push notification ONLY when something needs them.
 
 Report what a pass *chose not to do* as plainly as what it did: a build it

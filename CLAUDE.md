@@ -157,13 +157,15 @@ drift between calls; use absolute paths or `cd` to the repo root before
   PR). Check the label immediately before merging; if absent, surface it and
   wait — adding it is the maintainer's signal.
 - **The `needs:*` labels are the handoff baton** — exactly one per issue names
-  the next action and whose court it's in: amber (`needs: your input` /
-  `needs: your sign-off`) is the maintainer's, blue (`needs: spec` /
-  `needs: plan` / `needs: build`) is Claude's, and `ready to merge` is the
+  the next action and whose court it's in. **Gate labels**
+  (`needs: your input` / `needs: your sign-off`) stop the work and are the
+  maintainer's; **work labels** (`needs: spec` / `needs: plan` /
+  `needs: build`) mean proceed and are Claude's. The test is the wording
+  itself: **if the label says "your", it is a gate.** `ready to merge` is the
   PR-level gate above. The design/mockup/build skills flip it at each pause.
   **The whole board can be driven async through comments + labels**: the
   `work-the-board` skill runs one triage-and-advance pass — replying to
-  comments, doing the blue work, building slices the maintainer authorised (a
+  comments, doing the work-label work, building slices the maintainer authorised (a
   `go`/`build`/`approved` comment or a flip to `needs: build`), and merging PRs
   that carry `ready to merge` — while **stopping at every maintainer gate**, at
   most **one build per pass**, and skipping anything labelled **`hold`**.
