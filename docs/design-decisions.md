@@ -395,6 +395,39 @@ actually decided:
   #154, after which a flat `−N` would have been the only subtractive card
   left besides the dwarf passive.
 
+## Stat lines are rendered, and flavor never carries a number *(decided 2026-07-19, #171)*
+
+Item and skill text used to be authored prose that restated the rule card
+sitting beside it — "take half damage from chaos" next to a `take-damage ×0.5`
+card. Two things were wrong with that: it reads like a tooltip from a
+different genre, and it is a drift surface, because nothing stops the number
+and the sentence disagreeing after a retune.
+
+- **Mechanical text is derived from the cards.** `statLinesFor` renders them;
+  nobody writes them. The tooltip and the mechanic cannot disagree because
+  they are the same data.
+- **Authored text is flavor only, and contains no digits** — enforced at load.
+  Crude on purpose: a flavor line that genuinely wants a number can be
+  reworded, which is cheaper than a rule no one can check.
+- **Defensive stats read as RESISTANCE, offensive ones as DAMAGE.** The first
+  draft used the slot to disambiguate ("−50% Chaos Damage" on armour meaning
+  damage taken), which works but asks the reader to notice which slot an item
+  occupies. Resistance carries its own direction and removes a double
+  negative: `+50% Chaos Resistance` is plainly good, where `−50% Chaos Damage`
+  needs a beat of thought. A future cursed item falls out for free as
+  `−50% Fire Resistance`. Revised mid-build, before anything merged.
+- **Sign does not mean good**, so drawbacks are flagged separately and styled
+  apart. `+25% Aggro Range` is a cost; `+5% XP` is not. Detection is an
+  explicit per-event table rather than a sign test, because "is this good?"
+  depends on the event.
+- **Item nature is enforced at content load** — offensive cards on weapons,
+  defensive on worn kit — since the terse phrasing only stays unambiguous
+  while items point one way. The nature belongs to the item's *type*, not its
+  slot: the off-hand accepts both a shield and a dual-wielded weapon.
+- **Base stats stay fields, not cards.** Damage, reach and heal are the
+  pipeline's *input*; a card transforms a value, so something must supply the
+  first one. Whether that should change is #175.
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14, **shipped

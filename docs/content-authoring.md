@@ -153,6 +153,27 @@ Every rule is three fill-in-the-blank slots.
 - Later, once supported: **trigger** something (heal, apply a status
   effect, push the target a hex).
 
+### Don't write the stats — write the intent
+
+**You never write the mechanical line.** It is rendered from the card itself
+(#171): a `take-damage ×0.5` card gated on chaos becomes `+50% Chaos
+Resistance` automatically, and always agrees with the number that actually
+runs.
+
+What you DO write is the **flavor** — and flavor carries **no numbers at all**.
+A digit in a flavor line is rejected at load, on purpose: "blocks 2 damage" in
+the lore is how prose and mechanics drift apart the moment someone retunes the
+card.
+
+> **Frostbrand** — *"The scabbard frosts over between fights."*  ✅
+>
+> **Frostbrand** — *"A blade of standing cold, +4 damage."*  ❌ rejected at load
+
+The vocabulary the renderer uses, so you can predict what a card will read as:
+defensive cards become **resistance** (`+50% Fire Resistance`), offensive ones
+**damage** (`+10% Blunt Damage`), and utility cards name their own subject
+(`+5% XP`, `−20% Aggro Range`).
+
 A worked example, written exactly as you'd hand it to us:
 
 > **Item — Butcher's Cleaver** (fighter melee weapon)

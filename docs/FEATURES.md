@@ -238,7 +238,7 @@ pipeline cannot tell them apart from a sword's.
 | Combat Training | Class | `deal-damage` ×1.10 with a **melee-tagged** weapon |
 | Weak Spot | Class | `deal-damage` +4 vs a full-health target (requires Combat Training) |
 | Shield Wall | Class | while a shield is in the off-hand, **15% chance** an incoming hit only glances |
-| Scouting | Adventure | `aggro-range` ×0.8 — monsters notice you 20% later |
+| Scouting | Adventure | `aggro-range` ×0.8 — renders as `−20% Aggro Range` |
 
 - **Points**: `SkillPointsPerLevel = 2` per level, `HumanBonusSkillPoints = 1`
   extra for Humans. The grant works off a persisted high-water mark, not a
@@ -260,6 +260,37 @@ pipeline cannot tell them apart from a sword's.
   another's (#61 principle 5), enforced at content load.
 - Panel: `k` (not `s` — that's south), default closed, toggles independently
   of the character panel.
+
+### Item and skill text (#171)
+
+Every mechanical line a player reads is **rendered from the rule cards**, never
+authored beside them. Authored text is **flavor only, and carries no numbers**
+— a load-time check rejects a digit in flavor, because a hand-written "blocks
+2 damage" is exactly how prose and mechanics drift apart once the card changes.
+
+The vocabulary:
+
+| Shape | Renders as |
+|---|---|
+| defensive card (`take-damage`) | **resistance** — `+50% Chaos Resistance`, `+20% Damage Resistance` |
+| offensive card (`deal-damage`) | **damage** — `+10% Melee Damage`, `×2 Damage vs Adjacent` |
+| utility card (`earn-xp`, `aggro-range`) | names its own subject — `+5% XP`, `−20% Aggro Range` |
+| base stats (not cards) | `Damage 4`, `Range 4`, `AoE 1`, `+5 HP`, `Stacks to 5` |
+
+Resistance carries its own direction, so nothing is inferred from which slot
+an item occupies, and there is no double negative to decode. Percentages show
+as a **delta** (`+50%`, not `×1.5`) because percentages *add* within a fold —
+the number shown is the number that stacks.
+
+**A drawback is flagged and styled apart**, because sign alone cannot say:
+`+25% Aggro Range` is a cost, `+5% XP` is not. Iron Plate Armor carries one of
+each — `+20% Damage Resistance · +25% Aggro Range` — which is what the flag
+exists for.
+
+**Item nature is enforced at load**: a `deal-damage` card belongs on a weapon,
+a `take-damage` card on worn kit, and a mixed item panics at process start.
+Utility cards are exempt. The nature lives on the item's *type*, not its slot,
+because the off-hand takes both a shield and a dual-wielded weapon.
 
 ### Progression, XP & death
 - XP from kills: **every player in the bubble gets the full amount per kill
@@ -481,7 +512,7 @@ pipeline cannot tell them apart from a sword's.
     ×3 · consumable"); **hovering a row reveals the item's details** (#139) in
     the **same stat tooltip the inventory uses** (`gear/StatTooltip`, extracted
     so the character panel and the pickup modal share one component) — name,
-    damage / range / AoE, the rule `desc` and `flavor`. Alongside the candidate,
+    damage / range / AoE, the rendered **stat lines** and `flavor`. Alongside the candidate,
     the tooltip **also shows a block for each equipped item it would be weighed
     against** — for a weapon that's **both hands** (you can dual-wield two 1H
     weapons; a 2H weapon replaces both), each labelled by slot — so you read the
