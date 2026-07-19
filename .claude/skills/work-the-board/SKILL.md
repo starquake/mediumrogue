@@ -204,7 +204,10 @@ while true; do
   # DIFFED against last cycle, or a labelled PR re-fires every minute and the
   # monitor gets auto-stopped for noise.
   cur=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
-  comm -13 <(echo "$prev") <(echo "$cur") 2>/dev/null | sed 's/^/READY TO MERGE: PR #/' || true
+  # grep keeps ONLY real numbers: when the labelled set empties, `echo ""`
+  # feeds comm a blank line that it reports as new, emitting a bogus
+  # "READY TO MERGE: PR #" with no number.
+  comm -13 <(echo "$prev") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
   prev=$cur
 
   since=$now
@@ -218,6 +221,11 @@ Two things that make it behave:
   flood get stopped automatically.
 - **`|| true` on every remote call.** One failed request must not kill a
   session-length watch.
+- **Filter the diff to real values.** An empty set becomes a blank line, and
+  a blank line looks "new" to `comm` — which fired a phantom
+  "READY TO MERGE: PR #" the first time a merge emptied the label set
+  (2026-07-19). Anything derived from a diff of two lists wants a shape check
+  before it becomes a notification.
 
 **Rate limits are not the constraint.** Authenticated GitHub REST allows
 5,000 requests/hour; this loop uses 2/minute — **120/hour, ~2.4% of quota**.
