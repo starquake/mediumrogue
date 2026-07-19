@@ -122,8 +122,24 @@ The `needs:*` labels are the state machine; this skill just drives it.
    never build UI a pass hasn't previewed for the maintainer.
 6. **A ticket a pass FILES gets the same treatment as one it finds**: a
    `needs:*` label naming whose court it lands in (a finding with open
-   directions is `needs: your input`, not a silent backlog entry) and a
-   Next-steps reminder. A filed-and-unlabelled issue is invisible.
+   directions is `needs: your input`, not a silent backlog entry; a **bug** is
+   `needs: build`, since bugs have no design gate) and a Next-steps reminder.
+   A filed-and-unlabelled issue is invisible.
+
+   **Filing is not done when `gh issue create` returns — do the label and the
+   reminder in the SAME action.** Not "later in the pass": filing usually
+   happens at the tail of something bigger, where the new ticket feels like a
+   by-product rather than work, and that is exactly when the follow-up step
+   gets dropped. (2026-07-19: #181 was filed with a strong body — repro
+   command, evidence it was pre-existing, an explicit "not root-caused" — and
+   no label, no reminder. The maintainer found it: *"#181 does not have
+   instructions on how to continue."* This rule already existed and still
+   didn't hold, which is why it is now part of the create rather than a step
+   after it.)
+
+   A ticket with evidence but no next step is close to not having been filed.
+   Audit with `gh issue list --json number,labels` filtered to those carrying
+   no `needs:` label — a pass that files anything should end by running it.
 
 ## The Next-steps reminder — append one whenever the state moves
 
