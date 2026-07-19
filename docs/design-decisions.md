@@ -424,9 +424,24 @@ and the sentence disagreeing after a retune.
   defensive on worn kit — since the terse phrasing only stays unambiguous
   while items point one way. The nature belongs to the item's *type*, not its
   slot: the off-hand accepts both a shield and a dual-wielded weapon.
-- **Base stats stay fields, not cards.** Damage, reach and heal are the
-  pipeline's *input*; a card transforms a value, so something must supply the
-  first one. Whether that should change is #175.
+- **Base stats stay fields, not cards** *(settled 2026-07-19, #175)*. Damage,
+  reach and heal are the pipeline's *input*; a card transforms a value, so
+  something must supply the first one. The argument for converting them is
+  uniformity; the argument against is that the base stops being checkable —
+  "a weapon has damage" is a load-time invariant, "has a card that happens to
+  be the base" is not, and a content bug becomes a fold you must simulate
+  rather than a field you can read. The precedent agrees: Path of Exile,
+  Diablo II–IV and WoW all keep base stats as fields on the base item and put
+  the *variation* in data, even where the whole engine is a modifier fold.
+  Everything-is-an-effect works for card-battlers (nothing persists) and
+  component/ECS works for Caves of Qud (the query layer IS the engine);
+  neither is a cheap bolt-on here.
+  **What actually makes this safe is that there is exactly ONE base layer** —
+  players, bare fists and monsters all reach the combat path as an `*itemDef`
+  read through `itemDamage`; `monsterDef.damage` is authoring shorthand that
+  `buildMonsterIndex` compiles into a real claws def at init. The day that
+  stops being true, base-as-fields becomes the wrong call, so it is pinned by
+  `TestOneBaseLayer_EveryDamageSourceIsAnItemDef`.
 
 ## Open flags (doc vs implementation)
 
