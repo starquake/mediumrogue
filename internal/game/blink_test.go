@@ -9,7 +9,12 @@ import (
 
 // blink_test.go (#161): the first ACTIVE skill, end to end.
 
-const skillBlinkID = "blink"
+const (
+	skillBlinkID = "blink"
+	// skillSurvivalistID is Blink's prerequisite, and is also seeded by
+	// wire_nil_test.go's board — shared so goconst stays quiet.
+	skillSurvivalistID = "survivalist"
+)
 
 // blinkReady seeds a player who has learned Blink and can use it.
 func blinkReady(t *testing.T, w *game.World) (int64, string) {
@@ -20,7 +25,7 @@ func blinkReady(t *testing.T, w *game.World) (int64, string) {
 		t.Fatalf("Join: %v", err)
 	}
 
-	w.SetSkillStateForTest(resp.EntityID, []string{"survivalist", skillBlinkID}, 0, 1)
+	w.SetSkillStateForTest(resp.EntityID, []string{skillSurvivalistID, skillBlinkID}, 0, 1)
 
 	return resp.EntityID, resp.Token
 }
@@ -119,7 +124,7 @@ func TestBlinkRejectsAPassiveSkill(t *testing.T) {
 
 	if got, want := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-		SkillID: "survivalist", Target: protocol.Hex{Q: 0, R: 0},
+		SkillID: skillSurvivalistID, Target: protocol.Hex{Q: 0, R: 0},
 	}), game.ErrSkillNotActive; got == nil {
 		t.Fatalf("passive skill accepted as an active, want %v", want)
 	}

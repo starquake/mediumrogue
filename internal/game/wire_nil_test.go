@@ -36,7 +36,7 @@ func TestNoNilSlicesAnywhereOnTheWire(t *testing.T) {
 	}
 
 	w.SetHexForTest(resp.EntityID, protocol.Hex{Q: 0, R: 0})
-	w.SetSkillStateForTest(resp.EntityID, []string{"survivalist"}, 2, 1)
+	w.SetSkillStateForTest(resp.EntityID, []string{skillSurvivalistID}, 2, 1)
 	w.GrantItemForTest(resp.EntityID, "butchers-cleaver")
 
 	adjacent := walkableHexAtDistance(t, w, protocol.Hex{Q: 0, R: 0}, 1, 1)
