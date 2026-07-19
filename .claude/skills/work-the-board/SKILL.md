@@ -193,6 +193,27 @@ Content by state (state line + a "Next:" line naming the action and who does it)
 - a **PR** — `ready to merge` present → *Next: a pass merges it*; else it's a
   draft / awaiting CI / awaiting your `ready to merge`.
 
+## Blue work is not a menu — pick it up
+
+**A ticket in your court gets worked, not reported.** `needs: spec`, `needs: plan`,
+`needs: build`, and any **bug** are already authorised: the label IS the
+instruction. Listing one back to the maintainer as "available" turns a state
+machine into a suggestion box, and makes them the scheduler for work they
+already assigned.
+
+This fails most often **outside a loop**, answering messages one at a time:
+each reply feels complete on its own, and authorised work sits in the queue
+because no reply happened to be about it. (2026-07-19: #181 sat labelled
+`needs: build` across several exchanges until the maintainer asked *"why are
+you not picking up #181 automatically?"* — there was no reason. Nothing
+blocked it.)
+
+So: **end every exchange by checking whether anything is in your court, and if
+it is, do it** rather than closing with a status table. The one-build-per-pass
+cap still applies inside a loop; it is not a licence to defer the build.
+Genuinely nothing authorised is a fine answer — "everything is at your gate"
+is a complete pass. Work you were handed and left is not.
+
 ## Reporting
 
 End the pass with a short summary: **what moved** (and to what state), **what you
