@@ -964,7 +964,7 @@ func validateRuleCondition(owner, event string, cond condition) {
 		if !validDamageType(cond.s) {
 			panic("game: " + owner + " damageType rule card names unknown damage type " + cond.s)
 		}
-	case condShieldEquipped:
+	case condShieldEquipped, condDualWielding:
 		// No parameter to validate: it reads the entity's own off-hand.
 	case condWeaponTagged:
 		// A tag gate on a tag that can't exist would silently never hold —

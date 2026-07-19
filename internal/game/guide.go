@@ -173,6 +173,11 @@ var guideDescriptions = map[string]GuideVocabEntry{
 		Description: "The weapon being swung carries that tag. A tag is how a weapon is USED; a damage type is what " +
 			"it DEALS.",
 	},
+	condDualWielding: {
+		Param: "—",
+		Description: "The ATTACKER holds a weapon in both hands. A two-handed weapon is NOT " +
+			"dual-wielding — it fills both slots but is one weapon.",
+	},
 	condShieldEquipped: {
 		Param:       "—",
 		Description: "The DEFENDER holds a shield in its off-hand. Defender-side is a requirement, not a convention.",
@@ -213,7 +218,7 @@ var (
 	guideEvents     = []string{evDealDamage, evTakeDamage, evEarnXP, evAggroRange}
 	guideConditions = []string{
 		condChance, condDamageType, condWeaponTagged, condTargetKind, condAttackerSpecies,
-		condShieldEquipped, condTargetAdjacent, condAllyInBubble,
+		condShieldEquipped, condDualWielding, condTargetAdjacent, condAllyInBubble,
 		condTargetHPFull, condTargetHPBelowPct, condTargetHPBelowFlat,
 	}
 	guideEffects = []string{effAdd, effMulPct}

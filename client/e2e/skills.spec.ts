@@ -41,3 +41,31 @@ test("the skills panel shows learnable skills and hides locked ones", async ({ p
   await page.keyboard.press("KeyK");
   await expect.poll(() => page.evaluate(() => window.game.skillsPanelOpen)).toBe(false);
 });
+
+// #57: the Survival tree has content for the first time. It shipped empty in
+// v1 (#124), so the panel has only ever rendered its `nothing available yet`
+// fallback — this asserts the real branch, since a fallback that never turns
+// off is exactly the bug an empty tree could hide.
+test("every tree renders real rows — the Survival tree is no longer empty", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "fighter" }));
+  });
+
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.game.skills.length)).toBeGreaterThan(0);
+
+  // The wire carries a survival-tree skill at all.
+  const trees = await page.evaluate(() => window.game.skills.map((s) => s.tree));
+  expect(trees, "the survival tree must reach the client").toContain("survival");
+
+  await page.keyboard.press("KeyK");
+  await expect.poll(() => page.evaluate(() => window.game.skillsPanelOpen)).toBe(true);
+  await expect(page.locator("#skills-panel")).toBeVisible();
+
+  // No tree renders the empty fallback any more.
+  await expect(page.locator(".skill-empty")).toHaveCount(0);
+
+  // …and Survivalist specifically is on screen, not merely on the wire.
+  await expect(page.locator(".skill-row", { hasText: "Survivalist" })).toHaveCount(1);
+});
