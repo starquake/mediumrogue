@@ -1263,7 +1263,7 @@ func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 			groundItems = append(groundItems, protocol.GroundItemView{
 				ID: gs.inst.id, Hex: hex, DefID: gs.inst.defID, Name: def.name, Type: def.itemType, Count: gs.count,
 				// Detail fields (#139), read straight off the def like itemViewOf.
-				Tags: def.tags, DamageType: def.damageType, TwoHanded: def.twoHanded,
+				Tags: wireTags(def), DamageType: def.damageType, TwoHanded: def.twoHanded,
 				Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc, Flavor: def.flavor,
 			})
 		}
@@ -1319,6 +1319,24 @@ func itemViewsLocked(e *entity) []protocol.ItemView {
 	return views
 }
 
+// wireTags renders a def's weapon tags for the wire, never nil. A nil Go
+// slice marshals to JSON `null`, but the generated TS type is a
+// NON-OPTIONAL `tags: string[]` — so sending null was the server lying to
+// the client about its own contract, and the client (reasonably) called
+// .includes() on it. Every non-weapon has nil tags, so equipping ANY armor
+// froze the client's turn handler: the exception escaped onTurn, rendering
+// stopped, and SSE stayed connected — "connected but nothing moves".
+//
+// Same "always non-nil" rule the hits slice already follows (see
+// SnapshotFor), applied to the one place that had slipped through.
+func wireTags(def *itemDef) []string {
+	if def.tags == nil {
+		return []string{}
+	}
+
+	return def.tags
+}
+
 // itemViewOf renders one owned item instance for the wire. slot is the equip
 // slot this instance currently occupies, or "" for a backpack entry. count is
 // the stack size (1 for gear and equipped items). Type carries slot for an
@@ -1341,7 +1359,7 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 
 	return protocol.ItemView{
 		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
-		Tags: def.tags, DamageType: def.damageType, TwoHanded: def.twoHanded,
+		Tags: wireTags(def), DamageType: def.damageType, TwoHanded: def.twoHanded,
 		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Desc: def.desc,
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,

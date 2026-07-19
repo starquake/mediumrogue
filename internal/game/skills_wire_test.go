@@ -6,8 +6,11 @@ package game_test
 // the wire carries rather than the engine's unexported constants.
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
@@ -75,4 +78,63 @@ func TestSnapshotForIsOwnOnly(t *testing.T) {
 		t.Errorf("alice's row in a VIEWERLESS bundle = %d points / %d skills, want 0 and empty",
 			got.SkillPoints, len(got.Skills))
 	}
+}
+
+// TestWireNeverSendsNullTags is the regression guard for the staging freeze
+// (2026-07-19): every non-weapon def has nil Go tags, which marshal to JSON
+// `null` — but the generated TS type is a NON-OPTIONAL `tags: string[]`, so
+// the client called .includes() on null inside onTurn. The exception escaped
+// the turn handler, rendering stopped, and the SSE stream stayed up: the
+// client reported "connected" while the map sat frozen with no entities.
+//
+// Asserted on the marshalled JSON rather than the Go value, because `null`
+// vs `[]` is exactly the distinction that only exists after marshalling.
+func TestWireNeverSendsNullTags(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me, err := w.Join("", "mage", protocol.ClassMage, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// One of each shape that carries tags: worn armor (nil tags — the bug),
+	// a shield, and a weapon (non-nil tags — the case that always worked).
+	for _, defID := range []string{"pilgrims-mantle", "wooden-buckler", "iron-sword"} {
+		instID := w.GrantItemForTest(me.EntityID, defID)
+		if err := w.SubmitIntent(protocol.IntentRequest{
+			EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentEquip, ItemID: instID,
+		}); err != nil {
+			t.Fatalf("equip %s: %v", defID, err)
+		}
+	}
+
+	// And one lying on the ground, which rides GroundItemView's own Tags.
+	w.GroundItemForTest(hexOfEntity(t, w, me.EntityID), "leather-armor")
+
+	blob, err := json.Marshal(w.SnapshotFor(me.Token))
+	if err != nil {
+		t.Fatalf("marshal bundle: %v", err)
+	}
+
+	if got := string(blob); strings.Contains(got, `"tags":null`) {
+		t.Errorf(`turn bundle contains "tags":null — the client's tags is a non-optional string[], ` +
+			`and .includes() on null inside onTurn freezes rendering while SSE stays connected`)
+	}
+}
+
+// hexOfEntity reads an entity's current hex off the wire.
+func hexOfEntity(t *testing.T, w *game.World, id int64) protocol.Hex {
+	t.Helper()
+
+	for _, e := range w.Snapshot().Entities {
+		if e.ID == id {
+			return e.Hex
+		}
+	}
+
+	t.Fatalf("entity %d not in bundle", id)
+
+	return protocol.Hex{}
 }
