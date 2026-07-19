@@ -259,10 +259,17 @@ pipeline cannot tell them apart from a sword's.
   hands. A two-handed weapon is **not** dual-wielding — it occupies both slots
   but is one weapon, so the condition counts weapons rather than filled slots.
 
-- **Points**: `SkillPointsPerLevel = 2` per level, `HumanBonusSkillPoints = 1`
+- **Points**: `SkillPointsPerLevel = 3` per level, `HumanBonusSkillPoints = 1`
   extra for Humans. The grant works off a persisted high-water mark, not a
   level-up event (the engine has none — level is derived from XP), so dying
   and re-earning a level never re-pays.
+- **Cost**: `SkillPointCost = 3` per skill, uniform across passives and
+  actives. Raised from 1 together with the per-level grant (2→3) so the change
+  stayed a *pacing* change: at 2/level a 3-point cost would have turned the
+  Human +1 into a third of a skill every level instead of a rounding
+  difference, handing Humans their first skill a level earlier than everyone
+  else. Both moved, so every species still affords one skill per level and the
+  Human perk stays a spare point rather than a head start.
 - **Learning is out-of-combat only.** Unlike the five inventory actions it is
   *not* queued as a bubble turn — it's rejected in combat (422). Learning is a
   between-fights decision.

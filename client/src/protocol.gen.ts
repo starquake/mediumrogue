@@ -507,9 +507,17 @@ export const ElfCritMultiplier = 2;
 export const DwarfDamageReduction = 1;
 /**
  * SkillPointsPerLevel is the skill-point bank grant every player earns per
- * level gained (#124).
+ * level gained (#124). Raised 2 -> 3 alongside SkillPointCost 1 -> 3
+ * (#57/#161 tuning, 2026-07-19): at 2/level a 3-point cost would have made
+ * the Human +1 worth a third of a skill every level instead of a rounding
+ * difference, so raising both keeps the species gap where it was.
  */
-export const SkillPointsPerLevel = 2;
+export const SkillPointsPerLevel = 3;
+/**
+ * SkillPointCost is what learning ONE skill costs from the bank —
+ * uniform across passives and actives (maintainer's call, 2026-07-19).
+ */
+export const SkillPointCost = 3;
 /**
  * HumanBonusSkillPoints is the EXTRA point a Human earns per level — the
  * species perk that replaces the XP multiplier (#123/#124 task 8). Not a
