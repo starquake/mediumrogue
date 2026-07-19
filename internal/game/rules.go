@@ -106,16 +106,13 @@ const (
 	// "equippedType" condition; #57's shield-skill backlog is its rider
 	// queue, so it is not a one-off.
 	condShieldEquipped = "shieldEquipped"
-	// condDualWielding (no parameter) gates on the ATTACKER holding a weapon
-	// in BOTH hands — #57's rogue and mage lines. Attacker-side, mirroring
-	// condAttackerSpecies: it is a deal-damage condition, and in
-	// rollDamageLocked a victim's own cards fold under a ctx whose .attacker
-	// is still the swinger, so reading the wrong side is silent and wrong.
+	// condDualWielding (no parameter): the ATTACKER holds a weapon in BOTH
+	// hands. Attacker-side like condAttackerSpecies — in rollDamageLocked a
+	// victim's cards fold under a ctx whose .attacker is still the swinger,
+	// so reading the wrong side is silent and wrong.
 	//
-	// A TWO-HANDED weapon is NOT dual-wielding, even though it occupies both
-	// hand slots: it is one weapon. heldWeapons returns one entry for it, so
-	// counting weapons rather than filled slots gets this right by
-	// construction (TestDualWieldingDoesNotHoldForATwoHander).
+	// A two-handed weapon is NOT dual-wielding: it fills both slots but is one
+	// weapon, so this counts weapons, not slots.
 	condDualWielding = "dualWielding"
 )
 
@@ -246,15 +243,10 @@ func shieldEquippedHolds(ctx ruleCtx) bool {
 	return def != nil && def.itemType == protocol.ItemTypeShield
 }
 
-// equipmentConditionHolds groups the two hand-slot conditions
-// (condShieldEquipped, condDualWielding) — split out of conditionHolds' switch
-// to keep its cyclomatic complexity under the linter's threshold, exactly as
-// targetHPConditionHolds groups the three victim-HP ones.
-//
-// They read OPPOSITE sides on purpose: a shield is defender-side (a
-// take-damage card asking "do I have a shield"), dual-wielding is
-// attacker-side (a deal-damage card asking "am I holding two"). The grouping
-// is about the switch's size, never about them being symmetric.
+// equipmentConditionHolds groups the two hand-slot conditions, split out to
+// keep conditionHolds under the complexity threshold (as targetHPConditionHolds
+// does). They read OPPOSITE sides: shield is defender-side, dual-wielding
+// attacker-side — the grouping is about switch size, not symmetry.
 func equipmentConditionHolds(c condition, ctx ruleCtx) bool {
 	if c.kind == condShieldEquipped {
 		return shieldEquippedHolds(ctx)

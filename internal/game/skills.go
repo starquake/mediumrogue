@@ -123,14 +123,11 @@ var skillDefs = []*skillDef{
 		id: skillCrusher, name: "Crusher", tree: treeClass,
 		flavor: "Nothing fancy. Just weight, arriving.",
 		rules: []ruleCard{
-			// Scoped by DAMAGE TYPE, not by weapon category (#57's ARPG
-			// translation): "maces & warhammers" would need a category axis
-			// the taxonomy doesn't have, and inventing one to hang a single
-			// skill off is the MMO move. condDamageType already ships.
+			// Damage-type scoped, not weapon-category: the taxonomy has no
+			// category axis (#57, design-decisions.md).
 			//
-			// Deliberately STACKS with Combat Training for a blunt melee
-			// weapon — and stacking here means the percentages SUM (+20%),
-			// never compound (x1.21). Flagged to the maintainer before build.
+			// Stacks with Combat Training on a blunt melee weapon: +20%, NOT
+			// x1.21 — percentages sum within a fold.
 			{event: evDealDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeBlunt}},
 				then: effect{kind: effMulPct, n: percentBase + 10}},
 		},
@@ -147,9 +144,7 @@ var skillDefs = []*skillDef{
 		id: skillTwinFangs, name: "Twin Fangs", tree: treeClass,
 		flavor: "Two answers to every question.",
 		rules: []ruleCard{
-			// First of condDualWielding's two riders (#57). The condition
-			// shipped WITH both, which is the no-mechanic-wildfire gate
-			// working as intended rather than being waived.
+			// First of condDualWielding's two riders (#57).
 			{event: evDealDamage, when: []condition{{kind: condDualWielding}},
 				then: effect{kind: effMulPct, n: percentBase + 10}},
 		},
@@ -159,8 +154,7 @@ var skillDefs = []*skillDef{
 		prereqs: []string{skillTwinFangs},
 		flavor:  "Each wand hears the other.",
 		rules: []ruleCard{
-			// The mage dual-wand focus #57 was filed for, and the second
-			// rider. A BONUS for dual-wielding, never a gate on it.
+			// Second rider. A bonus for dual-wielding, never a gate on it.
 			{
 				event: evDealDamage,
 				when: []condition{
@@ -173,19 +167,14 @@ var skillDefs = []*skillDef{
 	},
 
 	// --- Survival tree ----------------------------------------------------
-	// Empty until #57. Three trees are principle 1 of #61, and a player
-	// spending points into a tree with no entries is a structural hole, not
-	// a content preference — which is why this batch's spine is here rather
-	// than being a fourth Class skill.
-	//
-	// Identity (settled by @starquake, 2026-07-19): DEFENSIVE / ATTRITION.
+	// Defensive/attrition (settled #57; see design-decisions.md). Empty
+	// before #57 — TestSurvivalTreeIsNotEmpty guards that.
 	{
 		id: skillSurvivalist, name: "Survivalist", tree: treeSurvival,
 		flavor: "You have been colder, and hungrier, and here you are.",
 		rules: []ruleCard{
-			// Deliberately dull: a flat percentage floor is what makes a
-			// tree enterable. A percentage, never flat -N (#154 — subtractive
-			// mitigation stacks into the >=1 clamp and stops meaning anything).
+			// A percentage, never flat -N (#154: subtractive mitigation
+			// stacks into the >=1 clamp).
 			{event: evTakeDamage, then: effect{kind: effMulPct, n: percentBase - 10}},
 		},
 	},
@@ -194,8 +183,8 @@ var skillDefs = []*skillDef{
 		prereqs: []string{skillSurvivalist},
 		flavor:  "The part of the fight where it counts.",
 		rules: []ruleCard{
-			// Rewards the moment survival actually matters. condTargetHPBelowPct
-			// reads the VICTIM, which in a take-damage fold is the holder.
+			// condTargetHPBelowPct reads the VICTIM, which in a take-damage
+			// fold is the holder.
 			{event: evTakeDamage, when: []condition{{kind: condTargetHPBelowPct, n: 40}},
 				then: effect{kind: effMulPct, n: percentBase - 15}},
 		},
