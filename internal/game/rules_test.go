@@ -74,14 +74,17 @@ func TestSpeciesCardsMatchOldPassives(t *testing.T) {
 		t.Errorf("dwarf take-damage(1) = %d, want %d", got, want)
 	}
 
-	// Human: the old award*(100+bonus)/100. wolf.xp (20) stands in for an
-	// arbitrary representative kill-XP base — any base proves the fold.
+	// Human: re-derived for #124 task 8. The species no longer carries ANY
+	// card — its perk is a +1 skill point per level, granted outside the
+	// pipeline (grantSkillPointsLocked) because a per-level bank grant is not
+	// a fold over a combat value. So the fold is now the identity, and this
+	// asserts that: an earn-xp card silently returning to humanCards would
+	// reintroduce the invisible +50% this slice removed.
 	human := speciesCards(protocol.SpeciesHuman)
 	wolfXP := monsterDefByID[idKindWolf].xp
 
-	if got, want := applyRules(evEarnXP, wolfXP, human, ruleCtx{}),
-		wolfXP*(percentBase+protocol.HumanXPBonusPercent)/percentBase; got != want {
-		t.Errorf("human earn-xp = %d, want %d", got, want)
+	if got, want := applyRules(evEarnXP, wolfXP, human, ruleCtx{}), wolfXP; got != want {
+		t.Errorf("human earn-xp = %d, want %d (no species card)", got, want)
 	}
 
 	// Elf: with a chance card, both branches must be reachable across seeds.

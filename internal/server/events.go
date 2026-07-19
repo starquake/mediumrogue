@@ -51,7 +51,11 @@ func handleEvents(deps Deps) http.Handler {
 		// this just avoids a needless lock. The defer sits right after the open
 		// so StreamClosed fires on every return path (normal, context cancel, or
 		// a write error), dropping the stream count and starting the grace.
-		if token := r.URL.Query().Get("token"); token != "" {
+		// The token also selects the VIEWER for own-only bundle fields
+		// (skills and the point bank, #124 task 7): resolved once here, not
+		// per turn. A token-less watcher gets the viewer-less bundle.
+		token := r.URL.Query().Get("token")
+		if token != "" {
 			deps.World.StreamOpened(token)
 			defer deps.World.StreamClosed(token)
 		}
@@ -66,7 +70,7 @@ func handleEvents(deps Deps) http.Handler {
 		// re-sent a turn it already has. A fresh client (no header) or a
 		// malformed value defaults to -1 → current snapshot sent immediately.
 		lastSent := parseLastEventID(r)
-		lastSent = writeTurn(w, deps, flusher, lastSent)
+		lastSent = writeTurn(w, deps, flusher, lastSent, token)
 
 		heartbeat := time.NewTicker(deps.HeartbeatInterval)
 		defer heartbeat.Stop()
@@ -76,7 +80,7 @@ func handleEvents(deps Deps) http.Handler {
 			case <-r.Context().Done():
 				return
 			case <-ticks:
-				lastSent = writeTurn(w, deps, flusher, lastSent)
+				lastSent = writeTurn(w, deps, flusher, lastSent, token)
 			case msg := <-chatCh:
 				if !writeChat(w, deps, flusher, msg) {
 					return
@@ -112,8 +116,8 @@ func parseLastEventID(r *http.Request) int64 {
 // writeTurn emits the latest turn bundle as an SSE frame, unless that turn
 // was already sent (a coalesced wake-up with no new turn is a no-op).
 // Returns the turn number now on the wire.
-func writeTurn(w http.ResponseWriter, deps Deps, flusher http.Flusher, lastSent int64) int64 {
-	snapshot := deps.World.Snapshot()
+func writeTurn(w http.ResponseWriter, deps Deps, flusher http.Flusher, lastSent int64, viewerToken string) int64 {
+	snapshot := deps.World.SnapshotFor(viewerToken)
 
 	turn := snapshot.Turn
 	if turn == lastSent {

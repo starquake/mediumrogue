@@ -226,7 +226,16 @@ export async function submitIntent(
   kind: string,
   targetEntityId = 0,
 ): Promise<boolean> {
-  return postIntent({ entityId: identity.entityId, token: identity.token, target, kind, itemId: 0, groundItemId: 0, targetEntityId });
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target,
+    kind,
+    itemId: 0,
+    groundItemId: 0,
+    targetEntityId,
+    skillId: "",
+  });
 }
 
 /**
@@ -263,6 +272,7 @@ export async function submitItemAction(
     itemId,
     groundItemId: 0,
     targetEntityId: 0,
+    skillId: "",
   });
 }
 
@@ -307,6 +317,7 @@ export async function submitPickup(
     itemId: 0,
     groundItemId,
     targetEntityId: 0,
+    skillId: "",
   });
 }
 

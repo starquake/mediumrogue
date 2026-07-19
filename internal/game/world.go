@@ -132,6 +132,25 @@ var (
 	// ErrNoSuchGroundItem rejects a pickup intent naming a ground item that
 	// is not lying on the player's own hex (stale id, or an item elsewhere).
 	ErrNoSuchGroundItem = errors.New("no such item here")
+	// ErrNoSuchSkill rejects a learn intent naming an unregistered skill.
+	// It and the four sentinels below are the learn-skill rejections (#124);
+	// all five are 422s — the request was well-formed and the world simply
+	// says no.
+	ErrNoSuchSkill = errors.New("no such skill")
+	// ErrSkillAlreadyLearned rejects re-learning — points are spent once and
+	// there is no respec in v1.
+	ErrSkillAlreadyLearned = errors.New("skill already learned")
+	// ErrSkillPrereqUnmet rejects a skill whose prerequisites are not all
+	// learned. Near-sightedness means the client should never OFFER such a
+	// skill, so this fires on a stale or hand-made request.
+	ErrSkillPrereqUnmet = errors.New("prerequisite not learned")
+	// ErrNoSkillPoints rejects learning with an empty bank.
+	ErrNoSkillPoints = errors.New("no skill points to spend")
+	// ErrLearnInCombat rejects learning inside a combat bubble. Deliberately
+	// NOT queued like the inventory actions: learning is a between-fights
+	// decision, not a turn's action, so it costs no bubble turn and needs no
+	// pending-action plumbing.
+	ErrLearnInCombat = errors.New("can't learn a skill in combat")
 )
 
 // tokenBytes sizes the bearer token: 16 random bytes = 128 bits.
@@ -941,6 +960,8 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 		return w.queuePickupLocked(e, req.GroundItemID)
 	case protocol.IntentDrink:
 		return w.queueDrinkLocked(e, req.ItemID)
+	case protocol.IntentLearnSkill:
+		return w.learnSkillLocked(e, req.SkillID)
 	default:
 		return ErrInvalidIntentKind
 	}
@@ -1191,18 +1212,28 @@ func entityNameLocked(e *entity) string {
 
 // Snapshot is the current turn bundle: turn number plus every entity,
 // sorted by ID for a deterministic wire shape.
+// Snapshot renders the turn bundle with NO viewer: own-only fields (skills,
+// the point bank — #124) are omitted for every entity. Used by tests and any
+// caller that isn't a player's own stream; the SSE handler calls SnapshotFor.
 func (w *World) Snapshot() protocol.TurnEvent {
+	return w.SnapshotFor("")
+}
+
+// SnapshotFor renders the turn bundle as the holder of viewerToken sees it.
+// Skills and the unspent point bank are OWN-ONLY (#124 Q9): they are filled
+// in on the viewer's own entity and left zero on everyone else's, so another
+// player's build never reaches this client at all.
+//
+// Cost: one bundle per open stream per turn rather than one shared bundle —
+// ~15 at this game's scale, which is why own-only was affordable. The hub's
+// coalescing contract is untouched: this is still "fetch the latest state",
+// just rendered per viewer.
+func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	entities := make([]protocol.Entity, 0, len(w.entities))
-	for _, e := range w.entities {
-		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
-			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
-			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
-		})
-	}
+	entities := w.entityViewsLocked()
+	w.fillOwnOnlyLocked(entities, viewerToken)
 
 	slices.SortFunc(entities, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
 
@@ -2955,6 +2986,47 @@ func aggroRadiusForLocked(rng *mrand.Rand, base int, p *entity) int {
 	cards := slices.Concat(speciesCards(p.species), equippedRuleCards(p), skillCards(p))
 
 	return applyRules(evAggroRange, base, cards, ruleCtx{attacker: p, rng: rng})
+}
+
+// entityViewsLocked renders every entity for the wire, EXCEPT the own-only
+// fields (fillOwnOnlyLocked adds those for the viewer). Unsorted — the caller
+// sorts by id. Callers hold w.mu.
+func (w *World) entityViewsLocked() []protocol.Entity {
+	entities := make([]protocol.Entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		entities = append(entities, protocol.Entity{
+			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
+			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
+			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
+		})
+	}
+
+	return entities
+}
+
+// fillOwnOnlyLocked stamps the viewer's OWN skills and point bank onto their
+// row and nobody else's (#124 task 7, Q9). Split out of SnapshotFor to keep
+// that function under the length limit; the viewer is resolved once per
+// bundle rather than once per entity. Callers hold w.mu.
+func (w *World) fillOwnOnlyLocked(entities []protocol.Entity, viewerToken string) {
+	if viewerToken == "" {
+		return
+	}
+
+	viewer, ok := w.byToken[viewerToken]
+	if !ok || viewer == nil {
+		return
+	}
+
+	for i := range entities {
+		if entities[i].ID == viewer.id {
+			entities[i].Skills = skillViewsLocked(viewer)
+			entities[i].SkillPoints = viewer.skillPoints
+
+			return
+		}
+	}
 }
 
 // playersOf filters the player entities out of a member set, preserving order.
