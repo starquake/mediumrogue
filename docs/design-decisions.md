@@ -481,6 +481,33 @@ decisions came out of it.
   asserts on `turnApplied` instead, and was verified by injecting a throw
   before that assignment and confirming both its cases go red.
 
+## The designer guide is generated, not written (2026-07-19, #156)
+
+A content guide was written for the designer on 2026-07-18 and handed over as a
+PDF. It went stale **twice within a day** — the `damageType` rename, then
+#154's percentage mitigation. A document that cites live numbers and cannot
+know when they move is worse than no document, because a designer trusts it.
+
+- **The data half is generated** from the registries (`GuideData()`,
+  `cmd/contentguide`); the **prose half stays authored**. The split is
+  argument-versus-data: regenerating the coupling tell or the drift cases would
+  lose the reasoning that makes them persuasive.
+- **Stat lines come from `statlines.go`, never re-derived.** A second renderer
+  would be free to disagree with the tooltips players actually see — the guide
+  would be internally consistent and still describe a game nobody is playing.
+  Pinned by `TestGuideStatsComeFromStatlines`.
+- **Markdown, not HTML or PDF** (maintainer's call): shareable as a file,
+  rendered by GitHub, and diffable in review. A committed binary PDF is none
+  of those.
+- **`make guide-check` is in `make check`.** Staleness is what killed the last
+  version, so the rule is enforced rather than remembered: move a number the
+  guide cites and the gate fails until it is regenerated.
+- The vocabulary descriptions make `guideDescriptions` a **fourth** place that
+  must agree about the card grammar. Accepted deliberately, with two checks
+  instead of trust: every documented kind is fed to the real validator at init
+  (a rename panics at process start), and every kind content actually uses must
+  be documented.
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14, **shipped
