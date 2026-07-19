@@ -1,7 +1,4 @@
-# mediumrogue
-
-**An experiment in agentic engineering, disguised as a co-op hexcrawl for
-fifteen friends.**
+# Medium Rogue - An experiment in agentic engineering, disguised as a co-op hexcrawl for fifteen friends.
 
 A shared hex world that moves in simultaneous 4-second turns — until you meet
 a monster, and time freezes locally into a proper turn-based fight your
