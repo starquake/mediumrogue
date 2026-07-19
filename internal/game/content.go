@@ -574,6 +574,33 @@ var monsterDefs = []*monsterDef{
 		rings: []int{2},
 	},
 	{
+		// The first monster that attacks WITHOUT closing (#179). It exists to
+		// prove the point of that change: reach is now a property of the
+		// weapon a kind names, so this kind is a content row, not an engine
+		// change.
+		//
+		// Calibration (approved 2026-07-19): fragile relative to a ghoul (12
+		// vs 16 HP) and the wolf's damage exactly — reach is the upgrade,
+		// damage is not. Its bow reaches 3, under the player Shortbow's 4, so
+		// player gear still out-ranges it. XP above a wolf's because closing
+		// the distance is the cost.
+		//
+		// It shoots at point-blank rather than backing off: everything moves
+		// one hex per turn, so a kiting monster would simply be uncatchable.
+		id: idKindArcher, name: "Kin Archer",
+		maxHP: 12, weapon: idHunterBow, xp: 30, aggroRadius: 8, dropChance: 30,
+		// The starter set with the pack bow weighted up — a shooter's
+		// signature drop. Appended in the same order as every other kind's so
+		// the seeded drop pins keep their cumulative positions.
+		drops: []drop{
+			{defID: idButchersCleaver, weight: 4},
+			{defID: idPackBow, weight: 8},
+			{defID: idVenomFang, weight: 4},
+			{defID: idHealingPotion, weight: 1},
+		},
+		rings: []int{1, 2},
+	},
+	{
 		id: idKindDragon, name: "Dragon",
 		maxHP: 60, weapon: idDragonJaws, xp: 150, aggroRadius: 12, dropChance: 100,
 		// The Wyrmslayer Greatsword (weight 2 — the headline drop, roughly as

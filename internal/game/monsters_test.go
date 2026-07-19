@@ -7,12 +7,17 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// TestMonsterRegistryHasFiveLaunchKinds pins the launch set's ids (the spec's
-// table) — a content bug that drops or renames a kind fails here first.
-func TestMonsterRegistryHasFiveLaunchKinds(t *testing.T) {
+// TestMonsterRegistryHasTheExpectedKinds pins the registry's ids — a content
+// mistake that drops or renames a kind fails here first. Grew by one in #179 (the
+// Kin Archer, the first ranged kind); re-derived deliberately, since adding a
+// kind is exactly what this test is meant to notice.
+func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 	t.Parallel()
 
-	want := map[string]bool{idKindRat: true, idKindWolf: true, idKindGhoul: true, idKindTroll: true, idKindDragon: true}
+	want := map[string]bool{
+		idKindRat: true, idKindWolf: true, idKindGhoul: true,
+		idKindTroll: true, idKindDragon: true, idKindArcher: true,
+	}
 
 	if got, want := len(monsterDefs), len(want); got != want {
 		t.Fatalf("len(monsterDefs) = %d, want %d", got, want)

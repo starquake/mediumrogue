@@ -525,6 +525,29 @@ func rangedDefFor(e *entity) *itemDef {
 // its own hit this turn (a bow's single-target shot, a magic weapon's own
 // AoE). Empty if the entity holds no such weapon, or none reaches dist.
 func rangedDefsFor(e *entity, dist int) []*itemDef {
+	// A monster's natural weapon is its kind's (#179) — monsters own no items
+	// and never equip, so heldWeapons is always empty for one. Before kinds
+	// named a registry weapon this branch could not exist: every synthesised
+	// profile was melee, so no monster could ever reach this function with a
+	// weapon that had range.
+	if e.kind == protocol.EntityMonster {
+		k := kindOf(e)
+		if k == nil {
+			return nil
+		}
+
+		w := k.weaponDef
+		if !w.hasTag(protocol.WeaponTagRanged) && !w.hasTag(protocol.WeaponTagMagic) {
+			return nil
+		}
+
+		if w.rangeHex < dist {
+			return nil
+		}
+
+		return []*itemDef{w}
+	}
+
 	var out []*itemDef
 
 	for _, def := range e.heldWeapons() {

@@ -2882,6 +2882,18 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 			target = nearestPlayer(m.hex, targets)
 		}
 
+		// A monster whose natural weapon has reach SHOOTS instead of closing
+		// (#179) — the behaviour the old copied-fields shorthand could not
+		// express, since it carried no rangeHex at all.
+		//
+		// It shoots at point-blank too, deliberately (maintainer's call): a
+		// monster that backed off would be uncatchable, because everything
+		// moves exactly one hex per turn, so the gap could never close. That
+		// is a softlock, not a difficulty knob — revisit only if #98 lands.
+		if w.thinkRangedAttackLocked(m, target) {
+			continue
+		}
+
 		path := Pathfind(m.hex, target.hex, w.walkableLocked)
 		// Step toward the target; when adjacent, path[0] is the player's own
 		// hex, so the move phase converts this into a melee attack (6.3).
@@ -2891,6 +2903,30 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 			m.path = nil
 		}
 	}
+}
+
+// thinkRangedAttackLocked queues a shot at target if m's natural weapon has
+// the reach for it and terrain allows the shot, and reports whether it did.
+// Standing still to fire is the whole point: a monster that closed anyway
+// would never use its range.
+//
+// Sight is checked over the weapon's own range, mirroring the aggro raycast —
+// a monster does not shoot through a rock. Callers hold w.mu.
+func (w *World) thinkRangedAttackLocked(m, target *entity) bool {
+	dist := HexDistance(m.hex, target.hex)
+
+	if len(rangedDefsFor(m, dist)) == 0 {
+		return false
+	}
+
+	if w.sightBlockedLocked(m.hex, target.hex, dist) {
+		return false
+	}
+
+	m.path = nil
+	m.attackTargetEntity = target.id
+
+	return true
 }
 
 // nearestAggroedPlayerLocked returns the player nearest monster m among

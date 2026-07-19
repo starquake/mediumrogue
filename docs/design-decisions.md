@@ -508,6 +508,36 @@ know when they move is worse than no document, because a designer trusts it.
   (a rename panics at process start), and every kind content actually uses must
   be documented.
 
+## Monster kinds name a weapon, not a copy of one (2026-07-19, #179)
+
+`monsterDef` carried `damage` + `damageType` + `rules`, and the index
+synthesised a claws `itemDef` from them at init. What the shorthand never
+carried was `rangeHex` — so every monster was melee **by construction**, and a
+ranged monster was not unimplemented but unrepresentable.
+
+- **A kind names a registry weapon** (`weapon: idFangs`). The alternative —
+  adding `rangeHex`/`aoeRadius` to the shorthand — is smaller, and means every
+  future weapon property must be added in two places that agree. Referencing
+  removes the class of bug instead of paying it down once.
+- **Monster weapons share the player registry** (maintainer's call), with a
+  `monsterOnly` flag validated at load. Sharing is what makes the base layer
+  whole; the validator is the price, because nothing structural otherwise stops
+  a one-line drop row handing a player Dragon Jaws.
+- **Kind cards and weapon cards are now separate.** `monsterDef.rules` had been
+  doing double duty — the claws' cards *and* the monster's whole-person
+  defensive cards — because the synthesised claws was the only vehicle. On a
+  *shared* weapon that breaks: a troll's fire vulnerability would ride on a
+  maul any other kind could hold. This split should have existed anyway.
+- **Determinism cost: none.** Natural weapons carry no cards, so a monster's
+  cards arrive in exactly their pre-#179 fold positions and every pinned seed
+  survived untouched. Adding a card to a natural weapon *would* shift them.
+- **Ranged monsters shoot at point-blank; they never back off.** Kiting is not
+  merely strong here, it is unbeatable: everything moves one hex per turn, so
+  a retreating monster can never be caught and a melee player eats a hit every
+  turn forever. Revisit only if #98 (multi-hex travel) lands. Genre-wise this
+  also matches ARPG convention — monster kiting is rare and disliked, because
+  kiting is the *player's* verb.
+
 ## Open flags (doc vs implementation)
 
 - **Bubble trigger — LOS vs distance** *(decided 2026-07-14, **shipped

@@ -97,9 +97,14 @@ say: `+25% Aggro Range` is a cost, `+5% XP` is not.
 
 ## Every monster kind today
 
-| Kind | HP | Damage | Damage type | XP | Aggro | Drop % | Cards |
-|---|---|---|---|---|---|---|---|
-{{range .Monsters}}| **{{.Name}}**<br>`{{.ID}}` | {{.MaxHP}} | {{.Damage}} | {{.DamageType}} | {{.XP}} | {{.AggroRadius}} | {{.DropChance}} | {{range .Stats}}{{if .Drawback}}⚠ {{end}}{{.Text}}<br>{{else}}—{{end}} |
+A kind **names** its weapon in the item registry rather than carrying a copy of
+one, so damage, reach and damage type below are the weapon's own numbers. The
+Cards column is the kind's *own* cards — its identity — separate from anything
+its weapon carries.
+
+| Kind | HP | Weapon | Damage | Reach | Damage type | XP | Aggro | Drop % | Cards |
+|---|---|---|---|---|---|---|---|---|---|
+{{range .Monsters}}| **{{.Name}}**<br>`{{.ID}}` | {{.MaxHP}} | {{.Weapon}} | {{.Damage}} | {{if .RangeHex}}{{.RangeHex}} hexes{{else}}melee{{end}} | {{.DamageType}} | {{.XP}} | {{.AggroRadius}} | {{.DropChance}} | {{range .Stats}}{{if .Drawback}}⚠ {{end}}{{.Text}}<br>{{else}}—{{end}} |
 {{end}}
 ## Before you send a proposal
 

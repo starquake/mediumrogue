@@ -24,6 +24,7 @@ const (
 	idKindGhoul  = "ghoul"
 	idKindTroll  = "troll"
 	idKindDragon = "dragon"
+	idKindArcher = "kin-archer"
 )
 
 // defaultMonsterKindID is the kind SpawnMonsters/SpawnMonsterAt/
