@@ -1602,7 +1602,15 @@ async function start(): Promise<void> {
         window.game.backpack = backpackSignal();
 
         myRangedWeapons = mine.items
-          .filter((it: ItemView) => it.equipped && (it.tags.includes(WeaponTagRanged) || it.tags.includes(WeaponTagMagic)))
+          // `?? []` is belt-and-braces: the server now guarantees a non-nil
+          // tags array (wireTags, world.go), but an exception thrown HERE
+          // escapes onTurn and stops all rendering while SSE stays connected
+          // — a total freeze from one bad field. Cheap insurance.
+          .filter(
+            (it: ItemView) =>
+              it.equipped &&
+              ((it.tags ?? []).includes(WeaponTagRanged) || (it.tags ?? []).includes(WeaponTagMagic)),
+          )
           .map((it: ItemView) => ({ rangeHex: it.rangeHex, aoeRadius: it.aoeRadius }));
       }
 
