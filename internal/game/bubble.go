@@ -287,6 +287,14 @@ func (w *World) bubbleViewLocked(b *bubble, now time.Time) protocol.BubbleView {
 	slices.Sort(memberIDs)
 	slices.Sort(waiting)
 
+	// Empty, never nil (wire_nil_test.go). `waiting` is nil in the COMMON
+	// case — everyone locked in — which is how this reached development as a
+	// client crash on 2026-07-19. memberIDs is built with make and cannot be
+	// nil, so it needs no guard.
+	if waiting == nil {
+		waiting = []int64{}
+	}
+
 	return protocol.BubbleView{
 		ID: b.id, MemberIDs: memberIDs, WaitingForIDs: waiting,
 		PatienceRemainingMs: patienceRemainingMs(b.deadline, now),

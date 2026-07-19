@@ -507,8 +507,13 @@ func TestSkillViewsAreNearSighted(t *testing.T) {
 			skillCombatTraining, ids(skillViewsLocked(trained)), skillWeakSpot)
 	}
 
-	// Monsters have no skills on the wire at all.
-	if got := skillViewsLocked(&entity{kind: protocol.EntityMonster}); got != nil {
-		t.Errorf("monster skill views = %+v, want nil", got)
+	// Monsters have no skills on the wire — as an EMPTY list, never nil.
+	// Re-derived: nil marshals to JSON null while the generated client type
+	// says it is an array, which is the crash class wire_nil_test.go guards
+	// (#167, and the waitingForIds crash on development 2026-07-19).
+	if got := skillViewsLocked(&entity{kind: protocol.EntityMonster}); got == nil {
+		t.Error("monster skill views = nil, want an empty slice — nil marshals to null and crashes the client")
+	} else if len(got) != 0 {
+		t.Errorf("monster skill views = %+v, want empty", got)
 	}
 }
