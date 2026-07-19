@@ -54,6 +54,25 @@ The `needs:*` labels are the state machine; this skill just drives it.
    19:20 cutoff, so a pass asked the maintainer a question they had already
    answered — twice.)
 
+   **Read the ticket before ANSWERING it, too — not just before triaging it.**
+   The rule above is about reading *their* comments; this one is about reading
+   *your own*. When the maintainer asks a question in chat that belongs to an
+   open ticket ("#175, what do popular RPGs use?"), fetch that ticket's comments
+   before answering, and answer from what is already there. **A context break
+   makes this mandatory rather than optional**: a compaction summary carries
+   decisions, not what was already published to GitHub, so "I don't remember
+   posting that" is no evidence that nothing was posted. (2026-07-19: a full
+   genre-research comment — table, sources, its own answer block — had been on
+   #175 for twenty minutes; the whole thing was re-derived and posted again as
+   new, then a third comment presented an idea the first had already named. The
+   thread asked the maintainer to close one ticket twice with two competing
+   answer blocks. They caught it with "check the comment".)
+
+   When duplication has already happened, **own it in a NEW comment** naming
+   which earlier one is the better version — never edit or delete the
+   redundant one. The append-only rule is not just for state changes: the
+   thread is the record, including the noise in it.
+
    **A label REMOVED without a comment is a signal, not noise.** The maintainer
    answering in prose and then clearing the `needs:*` label is a normal way to
    say "done, over to you" — so a label that vanished since your last pass means
