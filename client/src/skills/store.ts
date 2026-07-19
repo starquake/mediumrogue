@@ -19,6 +19,27 @@ export function setSkills(next: SkillView[], bank: number): void {
   setPointsSignal(bank);
 }
 
+/**
+ * Apply an ACCEPTED learn locally, without waiting for the next turn bundle.
+ *
+ * Learning is not clock-gated: the server commits it immediately under the
+ * world mutex (`learnSkillLocked`) and rejects it in combat rather than
+ * queueing it. But the panel is rebuilt from turn bundles, so before this the
+ * button looked dead for up to a whole turn interval — an immediate action
+ * that read as a broken one.
+ *
+ * Only ever called after the POST resolved TRUE, i.e. the server has already
+ * committed; the next bundle then overwrites this with the authoritative
+ * state. It marks the skill learned and debits the bank — it deliberately
+ * does NOT reveal whatever the skill unlocks next, because near-sightedness
+ * is decided server-side and guessing it here would be a second, divergent
+ * implementation of that rule.
+ */
+export function applyLearnedLocally(skillId: string, cost: number): void {
+  setSkillsSignal((prev) => prev.map((s) => (s.id === skillId ? { ...s, learned: true } : s)));
+  setPointsSignal((bank) => Math.max(0, bank - cost));
+}
+
 /** Open/close the panel (the `k` key — `s` is already a movement key). */
 export function toggleSkillsPanel(): void {
   setPanelOpenSignal((open) => !open);

@@ -382,11 +382,11 @@ func (w *World) learnSkillLocked(e *entity, id string) error {
 		return ErrSkillPrereqUnmet
 	}
 
-	if e.skillPoints < 1 {
+	if e.skillPoints < protocol.SkillPointCost {
 		return ErrNoSkillPoints
 	}
 
-	e.skillPoints--
+	e.skillPoints -= protocol.SkillPointCost
 	// Insert in sorted position: skillCards folds in registry order, but
 	// `learned` itself is kept sorted so two players who learned the same
 	// skills in different orders are byte-identical on disk and on the wire.

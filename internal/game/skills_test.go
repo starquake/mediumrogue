@@ -454,13 +454,19 @@ func TestLearnSkillRejections(t *testing.T) {
 //nolint:paralleltest // mutates entity state.
 func TestLearnSkillSpendsAPointAndUnlocksTheNext(t *testing.T) {
 	w := newWorldForSkillTest(t)
-	e := &entity{kind: protocol.EntityPlayer, skillPoints: 2, equipped: map[string]itemInstance{}}
+	// Two skills' worth of bank — re-derived when SkillPointCost went 1 -> 3
+	// (2026-07-19). Expressed in terms of the constant so the next tuning
+	// change moves it automatically.
+	e := &entity{
+		kind: protocol.EntityPlayer, skillPoints: 2 * protocol.SkillPointCost,
+		equipped: map[string]itemInstance{},
+	}
 
 	if err := w.learnSkillLocked(e, skillCombatTraining); err != nil {
 		t.Fatalf("learn combat-training: %v", err)
 	}
 
-	if got, want := e.skillPoints, 1; got != want {
+	if got, want := e.skillPoints, protocol.SkillPointCost; got != want {
 		t.Errorf("bank after learning = %d, want %d", got, want)
 	}
 

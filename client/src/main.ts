@@ -49,7 +49,7 @@ import { setParty } from "./party/store";
 import type { GroundItemView, Hex, HitView, ItemView, QuestView, SkillView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
 import { mountSkills } from "./skills/SkillsPanel";
-import { panelOpen as skillsPanelOpen, setSkills, toggleSkillsPanel } from "./skills/store";
+import { applyLearnedLocally, panelOpen as skillsPanelOpen, setSkills, toggleSkillsPanel } from "./skills/store";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
@@ -59,6 +59,7 @@ import {
   IntentAttack,
   IntentMove,
   PlaybackSeconds,
+  SkillPointCost,
   SpeciesHuman,
   StackCap,
   TerrainForest,
@@ -1232,7 +1233,15 @@ async function start(): Promise<void> {
   };
 
   mountSkills(mustGet("skills-root"), (skillId: string): void => {
-    void submitLearnSkill(identity, skillId);
+    // Reflect an accepted learn at once (#124 follow-up): the server commits
+    // it immediately, so waiting for the next bundle made an immediate action
+    // look clock-gated. On rejection nothing changes, and the next bundle is
+    // authoritative either way.
+    void submitLearnSkill(identity, skillId).then((accepted) => {
+      if (accepted) {
+        applyLearnedLocally(skillId, SkillPointCost);
+      }
+    });
   });
 
   const characterActions = {
