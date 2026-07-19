@@ -33,3 +33,17 @@ make e2e          # Playwright against the real binary (once: cd client && npx p
 make build        # client bundle + embedded server binary
 ./build/bin/rogue # serves everything on :8080
 ```
+
+## License
+
+**Code: [MIT](LICENSE)** — © 2026 Jan Visser.
+
+**Third-party assets keep their own terms.** The entity glyphs are from
+[game-icons.net](https://game-icons.net) and are licensed **CC BY 3.0**, not
+MIT — per-icon authors are credited in
+[`client/tools/glyph-icons/README.md`](client/tools/glyph-icons/README.md) and
+in-app on the start screen. If you reuse them, carry the attribution.
+
+Dependencies are permissive throughout: the server has **no third-party Go
+modules at all** (standard library only), and the client is PixiJS + SolidJS,
+both MIT.
