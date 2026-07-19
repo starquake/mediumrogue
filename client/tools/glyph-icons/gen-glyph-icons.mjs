@@ -17,6 +17,10 @@ const ICONS = {
   ghoul: { file: "shambling-zombie.svg", author: "Delapouite" },
   troll: { file: "troll.svg", author: "Skoll" },
   dragon: { file: "dragon-head.svg", author: "Lorc" },
+  // #179's ranged kind. Key must equal the monster-kind id (entities.ts looks
+  // it up directly), so the file is kin-archer.svg though the source icon is
+  // called bowman.
+  "kin-archer": { file: "kin-archer.svg", author: "Lorc" },
 };
 
 const svgDir = new URL("./svg/", import.meta.url);
@@ -34,8 +38,12 @@ function inner(file) {
 }
 
 const iconName = (file) => file.replace(/\.svg$/, "");
+// Keys are monster-kind ids and class names, which may contain hyphens
+// (kin-archer) — quote anything that is not a bare JS identifier, or the
+// generated file is a TypeScript syntax error.
+const tsKey = (k) => (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : `"${k}"`);
 const entries = Object.entries(ICONS)
-  .map(([k, v]) => `  ${k}: '${inner(v.file).replace(/'/g, "\\'")}',`)
+  .map(([k, v]) => `  ${tsKey(k)}: '${inner(v.file).replace(/'/g, "\\'")}',`)
   .join("\n");
 const credits = Object.values(ICONS)
   .map((v) => `//   ${iconName(v.file)} — ${v.author}`)

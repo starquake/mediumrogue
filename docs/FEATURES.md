@@ -624,7 +624,8 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   Wolf carries forward the pre-6c flat numbers exactly. Each kind renders
   with a distinct on-map dot color (`entities.ts`'s `KIND_STYLE`) plus a
   **game-icons.net glyph** drawn dark on the dot (rat, wolf-head,
-  shambling-zombie, troll, dragon-head — `GLYPH_ICON_SVG`, keyed by kind id);
+  shambling-zombie, troll, dragon-head, bowman for the Kin Archer —
+  `GLYPH_ICON_SVG`, keyed by kind id; the source filename must equal that id);
   an unrecognized kind falls back to the flat monster red with no glyph.
   Players carry the same treatment — a class glyph (crossed-swords/hood/
   pointy-hat) on their relationship-colored dot. Icons are vendored inline SVG
