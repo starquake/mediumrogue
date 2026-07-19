@@ -7,12 +7,17 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// TestMonsterRegistryHasFiveLaunchKinds pins the launch set's ids (the spec's
-// table) — a content bug that drops or renames a kind fails here first.
-func TestMonsterRegistryHasFiveLaunchKinds(t *testing.T) {
+// TestMonsterRegistryHasTheExpectedKinds pins the registry's ids — a content
+// mistake that drops or renames a kind fails here first. Grew by one in #179 (the
+// Kin Archer, the first ranged kind); re-derived deliberately, since adding a
+// kind is exactly what this test is meant to notice.
+func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 	t.Parallel()
 
-	want := map[string]bool{idKindRat: true, idKindWolf: true, idKindGhoul: true, idKindTroll: true, idKindDragon: true}
+	want := map[string]bool{
+		idKindRat: true, idKindWolf: true, idKindGhoul: true,
+		idKindTroll: true, idKindDragon: true, idKindArcher: true,
+	}
 
 	if got, want := len(monsterDefs), len(want); got != want {
 		t.Fatalf("len(monsterDefs) = %d, want %d", got, want)
@@ -48,8 +53,12 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		t.Errorf("wolf.maxHP = %d, want %d", got, want)
 	}
 
-	if got, want := wolf.damage, 3; got != want {
-		t.Errorf("wolf.damage = %d, want %d", got, want)
+	if got, want := wolf.weaponDef.damage, 3; got != want {
+		t.Errorf("wolf weapon damage = %d, want %d", got, want)
+	}
+
+	if got, want := wolf.weapon, idFangs; got != want {
+		t.Errorf("wolf weapon = %q, want %q", got, want)
 	}
 
 	if got, want := wolf.xp, 20; got != want {
@@ -151,8 +160,8 @@ func TestValidateMonsterDefsPanicsOnDuplicateID(t *testing.T) {
 	}()
 
 	validateMonsterDefs([]*monsterDef{
-		{id: "sameid", damageType: protocol.DamageTypeSharp, rings: []int{0}},
-		{id: "sameid", damageType: protocol.DamageTypeSharp, rings: []int{1, 2}},
+		{id: "sameid", weapon: idFangs, rings: []int{0}},
+		{id: "sameid", weapon: idFangs, rings: []int{1, 2}},
 	})
 }
 
@@ -185,8 +194,8 @@ func TestValidateMonsterDefsPanicsOnUnknownDropItem(t *testing.T) {
 
 	validateMonsterDefs([]*monsterDef{
 		{id: "x",
-			damageType: protocol.DamageTypeSharp,
-			rings:      []int{0, 1, 2}, drops: []drop{{defID: "no-such-item", weight: 1}}},
+			weapon: idFangs,
+			rings:  []int{0, 1, 2}, drops: []drop{{defID: "no-such-item", weight: 1}}},
 	})
 }
 
@@ -202,7 +211,7 @@ func TestValidateMonsterDefsPanicsOnRingWithNoKind(t *testing.T) {
 	}()
 
 	validateMonsterDefs([]*monsterDef{
-		{id: "x", damageType: protocol.DamageTypeSharp, rings: []int{0}},
+		{id: "x", weapon: idFangs, rings: []int{0}},
 	})
 }
 
@@ -217,7 +226,7 @@ func TestValidateMonsterDefsPanicsOnInvalidRingIndex(t *testing.T) {
 	}()
 
 	validateMonsterDefs([]*monsterDef{
-		{id: "x", damageType: protocol.DamageTypeSharp, rings: []int{protocol.RingCount}},
+		{id: "x", weapon: idFangs, rings: []int{protocol.RingCount}},
 	})
 }
 
@@ -234,7 +243,7 @@ func TestValidateMonsterDefsPanicsOnAggroRadiusInForbiddenRange(t *testing.T) {
 	}()
 
 	validateMonsterDefs([]*monsterDef{
-		{id: "x", damageType: protocol.DamageTypeSharp, rings: []int{0, 1, 2}, aggroRadius: protocol.CombatRadius - 1},
+		{id: "x", weapon: idFangs, rings: []int{0, 1, 2}, aggroRadius: protocol.CombatRadius - 1},
 	})
 }
 
@@ -244,7 +253,7 @@ func TestValidateMonsterDefsAcceptsZeroAggroRadius(t *testing.T) {
 	t.Parallel()
 
 	validateMonsterDefs([]*monsterDef{
-		{id: "x", damageType: protocol.DamageTypeSharp, rings: []int{0, 1, 2}, aggroRadius: 0},
+		{id: "x", weapon: idFangs, rings: []int{0, 1, 2}, aggroRadius: 0},
 	})
 }
 
@@ -262,8 +271,8 @@ func TestValidateMonsterDefsPanicsOnLeashInsideAggro(t *testing.T) {
 
 	validateMonsterDefs([]*monsterDef{
 		{id: "x",
-			damageType: protocol.DamageTypeSharp,
-			rings:      []int{0, 1, 2}, aggroRadius: protocol.CombatRadius + 2, leashRadius: protocol.CombatRadius + 2},
+			weapon: idFangs,
+			rings:  []int{0, 1, 2}, aggroRadius: protocol.CombatRadius + 2, leashRadius: protocol.CombatRadius + 2},
 	})
 }
 
@@ -280,7 +289,7 @@ func TestValidateMonsterDefsPanicsOnLeashInsideDefaultAggro(t *testing.T) {
 	}()
 
 	validateMonsterDefs([]*monsterDef{
-		{id: "x", damageType: protocol.DamageTypeSharp, rings: []int{0, 1, 2}, leashRadius: protocol.MonsterAggroRadius},
+		{id: "x", weapon: idFangs, rings: []int{0, 1, 2}, leashRadius: protocol.MonsterAggroRadius},
 	})
 }
 
@@ -291,10 +300,10 @@ func TestValidateMonsterDefsAcceptsZeroAndValidLeashRadius(t *testing.T) {
 	t.Parallel()
 
 	validateMonsterDefs([]*monsterDef{
-		{id: "x", damageType: protocol.DamageTypeSharp, rings: []int{0, 1, 2}, leashRadius: 0},
+		{id: "x", weapon: idFangs, rings: []int{0, 1, 2}, leashRadius: 0},
 		{id: "y",
-			damageType: protocol.DamageTypeSharp,
-			rings:      []int{0, 1, 2}, aggroRadius: protocol.CombatRadius + 2, leashRadius: protocol.CombatRadius + 3},
+			weapon: idFangs,
+			rings:  []int{0, 1, 2}, aggroRadius: protocol.CombatRadius + 2, leashRadius: protocol.CombatRadius + 3},
 	})
 }
 

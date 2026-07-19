@@ -574,16 +574,33 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   cosmetic, never gameplay-affecting.
 
 ### Monsters (kinds & difficulty rings — milestone 6c)
-- **Five kinds**, content data in `internal/game/content.go` (`monsterDefs`),
-  each with its own stats, aggro radius, XP award, and loot table:
+- **Six kinds**, content data in `internal/game/content.go` (`monsterDefs`),
+  each with its own stats, aggro radius, XP award, and loot table. A kind
+  **names its weapon** in the item registry (#179) rather than carrying a copy
+  of one, so reach, damage and damage type all come from a real item:
 
-  | Kind | Ring(s) | HP | Dmg | XP | Aggro | Drop chance |
-  |---|---|---|---|---|---|---|
-  | Rat | 0–1 | 4 | 1 | 8 | 7 | 10% |
-  | Wolf | 1 | 10 | 3 | 20 | 10 | 30% |
-  | Ghoul | 1–2 | 16 | 4 | 35 | 8 | 35% |
-  | Troll | 2 | 30 | 6 | 60 | 8 | 50% |
-  | Dragon | 2 (capped at 1 per world) | 60 | 9 | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
+  | Kind | Ring(s) | HP | Weapon | Dmg | Reach | XP | Aggro | Drop chance |
+  |---|---|---|---|---|---|---|---|---|
+  | Rat | 0–1 | 4 | Claws | 1 | melee | 8 | 7 | 10% |
+  | Wolf | 1 | 10 | Fangs | 3 | melee | 20 | 10 | 30% |
+  | Ghoul | 1–2 | 16 | Talons | 4 | melee | 35 | 8 | 35% |
+  | Kin Archer | 1–2 | 12 | Hunter's Bow | 3 | **3 hexes** | 30 | 8 | 30% |
+  | Troll | 2 | 30 | Maul | 6 | melee | 60 | 8 | 50% |
+  | Dragon | 2 (capped at 1 per world) | 60 | Dragon Jaws | 9 | melee | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
+
+  **The Kin Archer is the first kind that attacks without closing** (#179). It
+  shoots from up to 3 hexes — under the player Shortbow's 4, so player gear
+  still out-ranges it — and needs line of sight to fire, the same raycast the
+  aggro check uses. It **shoots at point-blank rather than backing off**: every
+  entity moves one hex per turn, so a kiting monster could never be caught,
+  which is a softlock rather than a difficulty knob.
+
+  Monster natural weapons (`Claws`, `Fangs`, `Talons`, `Maul`, `Dragon Jaws`,
+  `Hunter's Bow`) are ordinary registry weapons carrying `monsterOnly` — a
+  load-time validator panics if one is ever reachable through a drop table or
+  a class default. They carry **no rule cards**: a kind's own cards
+  (a troll's fire vulnerability) belong to the kind, not to a weapon other
+  kinds may share.
 
   Wolf carries forward the pre-6c flat numbers exactly. Each kind renders
   with a distinct on-map dot color (`entities.ts`'s `KIND_STYLE`) plus a

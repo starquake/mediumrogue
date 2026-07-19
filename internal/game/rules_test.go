@@ -533,7 +533,7 @@ func TestPercentMitigationStacksWithoutFlattening(t *testing.T) {
 		t.Run(tt.kind, func(t *testing.T) {
 			t.Parallel()
 
-			raw := monsterDefByID[tt.kind].damage
+			raw := monsterDefByID[tt.kind].weaponDef.damage
 			if got, want := applyRules(evTakeDamage, raw, cards, ruleCtx{}), tt.want; got != want {
 				t.Errorf("%s hit of %d through dwarf+plate+kite = %d, want %d", tt.kind, raw, got, want)
 			}
@@ -543,8 +543,8 @@ func TestPercentMitigationStacksWithoutFlattening(t *testing.T) {
 	// The point, stated as an assertion rather than a comment: a troll still
 	// hurts more than a wolf through the same armour. Under flat mitigation
 	// both landed for exactly 1.
-	wolf := applyRules(evTakeDamage, monsterDefByID[idKindWolf].damage, cards, ruleCtx{})
-	troll := applyRules(evTakeDamage, monsterDefByID[idKindTroll].damage, cards, ruleCtx{})
+	wolf := applyRules(evTakeDamage, monsterDefByID[idKindWolf].weaponDef.damage, cards, ruleCtx{})
+	troll := applyRules(evTakeDamage, monsterDefByID[idKindTroll].weaponDef.damage, cards, ruleCtx{})
 
 	if troll <= wolf {
 		t.Errorf("troll hit %d is not greater than wolf hit %d — mitigation is flattening again", troll, wolf)

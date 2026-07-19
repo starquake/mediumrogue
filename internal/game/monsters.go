@@ -24,6 +24,7 @@ const (
 	idKindGhoul  = "ghoul"
 	idKindTroll  = "troll"
 	idKindDragon = "dragon"
+	idKindArcher = "kin-archer"
 )
 
 // defaultMonsterKindID is the kind SpawnMonsters/SpawnMonsterAt/
@@ -51,8 +52,13 @@ type drop struct {
 type monsterDef struct {
 	id, name string
 	maxHP    int
-	damage   int // the claws profile: closeDefFor's monster branch
-	xp       int // per-kill award, folded through the shared earn-XP event
+	// weapon names this kind's natural weapon in the ITEM registry (#179) —
+	// idFangs, idHunterBow, … — instead of carrying a private copy of a
+	// weapon's fields. That is what made a ranged monster expressible: the
+	// old shorthand carried damage and damageType but never rangeHex, so
+	// every synthesised profile was melee by construction.
+	weapon string
+	xp     int // per-kill award, folded through the shared earn-XP event
 	// aggroRadius overrides protocol.MonsterAggroRadius for a WORLD-domain
 	// monster of this kind; 0 means "use the default". Non-zero values must
 	// be strictly greater than protocol.CombatRadius (validateMonsterDefs) —
@@ -72,16 +78,10 @@ type monsterDef struct {
 	drops       []drop
 	rings       []int      // which difficulty rings (0..protocol.RingCount-1) this kind spawns in
 	rules       []ruleCard // future kind passives; empty at launch
-	// damageType is the protocol.DamageType* this kind's claws deal (#92),
-	// carried onto the built claws profile below — REQUIRED on every kind
-	// (validateMonsterDefs), since claws are a weapon like any other.
-	damageType string
 
-	// claws is the built-in close-slot profile closeDefFor returns for an
-	// entity of this kind: damage + rules from the fields above, mirroring
-	// fistsDef's shape but per-kind. Built once by buildMonsterIndex, not
-	// part of the authored literal in content.go.
-	claws *itemDef
+	// weaponDef is the resolved registry def for `weapon`, wired once by
+	// buildMonsterIndex — never authored in content.go.
+	weaponDef *itemDef
 }
 
 // monsterDefs and monsterDefByID are the registry and its by-id lookup,
@@ -99,11 +99,18 @@ func buildMonsterIndex() {
 
 	for _, def := range monsterDefs {
 		monsterDefByID[def.id] = def
-		def.claws = &itemDef{
-			id: "claws", name: "Claws", itemType: protocol.ItemTypeWeapon,
-			tags: []string{protocol.WeaponTagMelee}, damage: def.damage, rules: def.rules,
-			damageType: def.damageType,
+		w, ok := itemDefByID[def.weapon]
+
+		if !ok {
+			panic("game: monster kind " + def.id + " names unregistered weapon " + def.weapon)
 		}
+
+		// The kind's weapon is now a REAL registry item, shared like any
+		// other. Its cards are the weapon's; the kind's own cards
+		// (def.rules) stay on the kind and fold alongside — never merged in
+		// here, because the weapon may be shared with another kind and a
+		// troll's fire vulnerability is not a property of a maul.
+		def.weaponDef = w
 	}
 }
 
@@ -273,7 +280,7 @@ func validateMonsterDefs(defs []*monsterDef) {
 
 		seen[def.id] = true
 
-		validateMonsterDamageType(def)
+		validateMonsterWeapon(def)
 		validateMonsterAggroRadius(def)
 		validateMonsterLeashRadius(def)
 		validateMonsterDrops(def)
@@ -288,12 +295,26 @@ func validateMonsterDefs(defs []*monsterDef) {
 	}
 }
 
-// validateMonsterDamageType panics if def carries no valid damage type
-// (#92): its claws are a weapon like any other, and an untyped one would
-// dodge every resistance and vulnerability card ever written.
-func validateMonsterDamageType(def *monsterDef) {
-	if !validDamageType(def.damageType) {
-		panic("game: monster " + def.id + " has unknown or missing damage type " + def.damageType)
+// validateMonsterWeapon panics if def names no registered weapon (#179).
+// The damage type check it replaces (#92) now happens once, on the weapon
+// itself, in validateItemDefs — a kind's attack is a registry weapon like any
+// other, so it cannot be untyped and dodge every resistance card.
+func validateMonsterWeapon(def *monsterDef) {
+	if def.weapon == "" {
+		panic("game: monster " + def.id + " names no weapon")
+	}
+
+	w, ok := itemDefByID[def.weapon]
+	if !ok {
+		panic("game: monster " + def.id + " names unregistered weapon " + def.weapon)
+	}
+
+	if !w.isWeapon() {
+		panic("game: monster " + def.id + " names non-weapon " + def.weapon)
+	}
+
+	if !w.monsterOnly {
+		panic("game: monster " + def.id + " names player-reachable weapon " + def.weapon)
 	}
 }
 

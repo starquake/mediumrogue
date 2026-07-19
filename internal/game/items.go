@@ -49,9 +49,16 @@ type itemDef struct {
 	tags []string
 	// twoHanded (weapons only): occupies main-hand AND locks off-hand.
 	twoHanded bool
-	damage    int
-	rangeHex  int // 0 = melee/adjacent (weapon-type items only)
-	aoeRadius int // 0 = single target
+	// monsterOnly marks a weapon that exists solely as a monster kind's
+	// natural attack (claws, fangs, a hunter's bow) — #179. Since kinds now
+	// NAME a registry item instead of carrying a copy of one, these live in
+	// the same registry as player gear, and this flag is what keeps them out
+	// of players' hands: validateMonsterOnlyItems panics if one is ever
+	// reachable through a drop table or a class default.
+	monsterOnly bool
+	damage      int
+	rangeHex    int // 0 = melee/adjacent (weapon-type items only)
+	aoeRadius   int // 0 = single target
 	// heal is a consumable's HP restore on drink (clamped to maxHP);
 	// validateItemDefs requires heal > 0 for a consumable and 0 for any gear
 	// def — drinking is an action (task 2), not a combat pipeline event.
@@ -101,7 +108,8 @@ type groundStack struct {
 // fistsDef is the built-in main-hand fallback for an empty-handed player: not
 // in the registry (no instance id, never owned, equipped, or dropped), just
 // the profile closeDefFor returns when an entity holds no melee-tagged
-// weapon. A monster's equivalent is per-kind (monsterDef.claws, monsters.go)
+// weapon. A monster's equivalent is its kind's named weapon (monsterDef.weapon,
+// monsters.go)
 // — built from that kind's own damage/rules, not a single shared fallback.
 //
 //nolint:gochecknoglobals // built-in fallback def, effectively const (never mutated).
@@ -475,7 +483,7 @@ func meleeDefsFor(e *entity) []*itemDef {
 			panic("game: meleeDefsFor monster entity has no registered kind")
 		}
 
-		return []*itemDef{k.claws}
+		return []*itemDef{k.weaponDef}
 	}
 
 	var out []*itemDef
@@ -517,6 +525,29 @@ func rangedDefFor(e *entity) *itemDef {
 // its own hit this turn (a bow's single-target shot, a magic weapon's own
 // AoE). Empty if the entity holds no such weapon, or none reaches dist.
 func rangedDefsFor(e *entity, dist int) []*itemDef {
+	// A monster's natural weapon is its kind's (#179) — monsters own no items
+	// and never equip, so heldWeapons is always empty for one. Before kinds
+	// named a registry weapon this branch could not exist: every synthesised
+	// profile was melee, so no monster could ever reach this function with a
+	// weapon that had range.
+	if e.kind == protocol.EntityMonster {
+		k := kindOf(e)
+		if k == nil {
+			return nil
+		}
+
+		w := k.weaponDef
+		if !w.hasTag(protocol.WeaponTagRanged) && !w.hasTag(protocol.WeaponTagMagic) {
+			return nil
+		}
+
+		if w.rangeHex < dist {
+			return nil
+		}
+
+		return []*itemDef{w}
+	}
+
 	var out []*itemDef
 
 	for _, def := range e.heldWeapons() {
@@ -565,6 +596,20 @@ const (
 	idShortbow   = "shortbow"
 	idOakWand    = "oak-wand"
 	idEmberFocus = "ember-focus"
+)
+
+// Monster natural-weapon ids (#179): the weapon a monster kind NAMES rather
+// than copies. They are ordinary registry weapons — same validation, same
+// stat-line rendering — but carry monsterOnly, so nothing can put one in a
+// player's hands. Their numbers ARE the kind's attack profile: moving one is
+// a monster rebalance, not an item tweak.
+const (
+	idClaws      = "claws"
+	idFangs      = "fangs"
+	idTalons     = "talons"
+	idMaul       = "maul"
+	idDragonJaws = "dragon-jaws"
+	idHunterBow  = "hunter-bow"
 )
 
 // Starter-drop-set item ids: named the same way as the class-default ids
@@ -964,11 +1009,44 @@ func validateMaxReach(defs []*itemDef) {
 // gates are gone (#56), so equippability no longer depends on the class.
 // Called once from content.go's init, so a content bug fails at process
 // start.
+// validateMonsterOnlyItems panics if a monster natural weapon (#179) is
+// reachable by a player — through a kind's drop table or a class default.
+//
+// Monster weapons share the player item registry on purpose: that is what
+// makes the base layer whole (a kind NAMES a weapon rather than copying one,
+// which is how a ranged monster became expressible at all). The cost of
+// sharing is that nothing structural stops Dragon Jaws — 9 damage, fire —
+// from being handed to a level-1 player by a one-line drop row. This is that
+// stop, and it fires at process start rather than in someone's inventory.
+func validateMonsterOnlyItems(kinds []*monsterDef, byID map[string]*itemDef) {
+	for _, kind := range kinds {
+		for _, d := range kind.drops {
+			def, ok := byID[d.defID]
+			if !ok {
+				continue // unknown drop ids are validateMonsterDefs' business
+			}
+
+			if def.monsterOnly {
+				panic("game: kind " + kind.id + " drops monster-only weapon " + d.defID)
+			}
+		}
+	}
+
+	for _, class := range []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage} {
+		for _, id := range classDefaultIDs(class) {
+			if def, ok := byID[id]; ok && def.monsterOnly {
+				panic("game: class " + class + " default is monster-only weapon " + id)
+			}
+		}
+	}
+}
+
 func mustValidateContent() {
 	validateItemDefs(itemDefs)
 	validateMaxReach(itemDefs)
 	validateMonsterDefs(monsterDefs)
 	validateSkillDefs(skillDefs)
+	validateMonsterOnlyItems(monsterDefs, itemDefByID)
 
 	// Class passives ride the same card vocabulary as items/monsters —
 	// validate them at init so a bad kind panics at process start, not

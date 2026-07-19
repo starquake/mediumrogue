@@ -2,6 +2,7 @@ package game //nolint:testpackage // white-box: needs unexported item-registry i
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -445,11 +446,11 @@ func TestCloseDefForMonsterIsClaws(t *testing.T) {
 	e := &entity{kind: protocol.EntityMonster, monsterKind: idKindWolf}
 
 	got := closeDefFor(e)
-	if got != monsterDefByID[idKindWolf].claws {
-		t.Errorf("closeDefFor(wolf) = %v, want the wolf kind's claws profile", got)
+	if got != monsterDefByID[idKindWolf].weaponDef {
+		t.Errorf("closeDefFor(wolf) = %v, want the wolf kind's named weapon", got)
 	}
 
-	if got, want := got.damage, monsterDefByID[idKindWolf].damage; got != want {
+	if got, want := got.damage, monsterDefByID[idKindWolf].weaponDef.damage; got != want {
 		t.Errorf("closeDefFor(wolf).damage = %d, want %d", got, want)
 	}
 }
@@ -1345,7 +1346,8 @@ func TestStarterInventoryContentPinned(t *testing.T) {
 		t.Errorf("potion rules = %d, want %d (drinking is an action, not a pipeline event)", got, want)
 	}
 
-	wantTables := map[string]int{idKindRat: 1, idKindWolf: 2}
+	// The Kin Archer (#179) carries the same low-weight potion as the rat.
+	wantTables := map[string]int{idKindRat: 1, idKindWolf: 2, idKindArcher: 1}
 
 	for _, def := range monsterDefs {
 		weight := 0
@@ -1465,7 +1467,7 @@ func TestEveryWeaponAndKindCarriesADamageType(t *testing.T) {
 			t.Fatalf("monster kind %s not registered", id)
 		}
 
-		if got := def.claws.damageType; got != want {
+		if got := def.weaponDef.damageType; got != want {
 			t.Errorf("%s claws damage type = %q, want %q", id, got, want)
 		}
 	}
@@ -1587,23 +1589,25 @@ func TestOneBaseLayer_EveryDamageSourceIsAnItemDef(t *testing.T) {
 	// A monster's claws are a REAL itemDef compiled from the kind's shorthand
 	// by buildMonsterIndex — not a parallel damage representation.
 	for _, def := range monsterDefs {
-		claws := def.claws
-		if claws == nil {
-			t.Errorf("monster kind %s has no claws profile", def.id)
+		w := def.weaponDef
+		if w == nil {
+			t.Errorf("monster kind %s resolved no weapon def", def.id)
 
 			continue
 		}
 
-		if got, want := claws.damage, def.damage; got != want {
-			t.Errorf("%s claws damage = %d, want the kind's own %d", def.id, got, want)
+		// #179: the kind's damage IS the registry weapon's — there is no
+		// second copy to disagree with it any more.
+		if got, want := itemDamage(w), itemDefByID[def.weapon].damage; got != want {
+			t.Errorf("itemDamage(%s weapon) = %d, want the registry's %d", def.id, got, want)
 		}
 
-		if got, want := itemDamage(claws), def.damage; got != want {
-			t.Errorf("itemDamage(%s claws) = %d, want %d", def.id, got, want)
+		if !w.isWeapon() {
+			t.Errorf("%s weapon item type = %q, want a weapon", def.id, w.itemType)
 		}
 
-		if !claws.isWeapon() {
-			t.Errorf("%s claws item type = %q, want a weapon", def.id, claws.itemType)
+		if !w.monsterOnly {
+			t.Errorf("%s names player-reachable weapon %s", def.id, def.weapon)
 		}
 	}
 
@@ -1633,4 +1637,63 @@ func TestOneBaseLayer_EveryDamageSourceIsAnItemDef(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestMonsterOnlyWeaponsAreUnreachableByPlayers (#179): monster natural
+// weapons live in the SAME registry as player gear — that is the point of the
+// change — so the only thing keeping Dragon Jaws out of a player's main hand
+// is this validation. Trusting the content author is not enough: a drop row is
+// one line, and a 9-damage fire weapon in a starting inventory would not look
+// like a mistake until someone used it.
+func TestMonsterOnlyWeaponsAreUnreachableByPlayers(t *testing.T) {
+	t.Parallel()
+
+	for _, def := range monsterDefs {
+		for _, d := range def.drops {
+			item, ok := itemDefByID[d.defID]
+			if !ok {
+				t.Fatalf("kind %s drops unregistered item %s", def.id, d.defID)
+			}
+
+			if item.monsterOnly {
+				t.Errorf("kind %s drops monster-only weapon %s", def.id, d.defID)
+			}
+		}
+	}
+
+	for _, class := range []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage} {
+		for _, id := range classDefaultIDs(class) {
+			if def, ok := itemDefByID[id]; ok && def.monsterOnly {
+				t.Errorf("class %s starts with monster-only weapon %s", class, id)
+			}
+		}
+	}
+}
+
+// TestValidateMonsterOnlyItemsPanicsOnADroppableNaturalWeapon: the guard
+// itself, exercised directly — the table above is green today, so without this
+// the validation could be deleted and nothing would notice.
+func TestValidateMonsterOnlyItemsPanicsOnADroppableNaturalWeapon(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("validateMonsterOnlyItems did not panic on a droppable natural weapon")
+		}
+
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("panic value = %T, want string", r)
+		}
+
+		if got, want := msg, "monster-only"; !strings.Contains(got, want) {
+			t.Errorf("panic = %q, should mention %q", got, want)
+		}
+	}()
+
+	validateMonsterOnlyItems(
+		[]*monsterDef{{id: "x", drops: []drop{{defID: idClaws, weight: 1}}}},
+		map[string]*itemDef{idClaws: {id: idClaws, monsterOnly: true}},
+	)
 }

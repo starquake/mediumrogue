@@ -144,13 +144,19 @@ say: `+25% Aggro Range` is a cost, `+5% XP` is not.
 
 ## Every monster kind today
 
-| Kind | HP | Damage | Damage type | XP | Aggro | Drop % | Cards |
-|---|---|---|---|---|---|---|---|
-| **Dragon**<br>`dragon` | 60 | 9 | fire | 150 | 12 | 100 | Damage 9<br> |
-| **Ghoul**<br>`ghoul` | 16 | 4 | chaos | 35 | 8 | 35 | Damage 4<br>⚠ −50% Holy Resistance<br> |
-| **Rat**<br>`rat` | 4 | 1 | sharp | 8 | 7 | 10 | Damage 1<br> |
-| **Troll**<br>`troll` | 30 | 6 | blunt | 60 | 8 | 50 | Damage 6<br>⚠ −50% Fire Resistance<br> |
-| **Wolf**<br>`wolf` | 10 | 3 | sharp | 20 | 10 | 30 | Damage 3<br> |
+A kind **names** its weapon in the item registry rather than carrying a copy of
+one, so damage, reach and damage type below are the weapon's own numbers. The
+Cards column is the kind's *own* cards — its identity — separate from anything
+its weapon carries.
+
+| Kind | HP | Weapon | Damage | Reach | Damage type | XP | Aggro | Drop % | Cards |
+|---|---|---|---|---|---|---|---|---|---|
+| **Dragon**<br>`dragon` | 60 | Dragon Jaws | 9 | melee | fire | 150 | 12 | 100 | — |
+| **Ghoul**<br>`ghoul` | 16 | Talons | 4 | melee | chaos | 35 | 8 | 35 | ⚠ −50% Holy Resistance<br> |
+| **Kin Archer**<br>`kin-archer` | 12 | Hunter's Bow | 3 | 3 hexes | sharp | 30 | 8 | 30 | — |
+| **Rat**<br>`rat` | 4 | Claws | 1 | melee | sharp | 8 | 7 | 10 | — |
+| **Troll**<br>`troll` | 30 | Maul | 6 | melee | blunt | 60 | 8 | 50 | ⚠ −50% Fire Resistance<br> |
+| **Wolf**<br>`wolf` | 10 | Fangs | 3 | melee | sharp | 20 | 10 | 30 | — |
 
 ## Before you send a proposal
 

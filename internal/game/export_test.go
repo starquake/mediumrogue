@@ -170,7 +170,7 @@ func (w *World) PlaceMonsterKindForTest(hex protocol.Hex, kind string) int64 {
 // combat numbers without duplicating the registry (content.go) inline —
 // mirrors ItemDamageForTest et al. Panics if kind is not registered.
 func MonsterMaxHPForTest(kind string) int       { return monsterDefByID[kind].maxHP }
-func MonsterDamageForTest(kind string) int      { return monsterDefByID[kind].damage }
+func MonsterDamageForTest(kind string) int      { return monsterDefByID[kind].weaponDef.damage }
 func MonsterXPForTest(kind string) int          { return monsterDefByID[kind].xp }
 func MonsterDropChanceForTest(kind string) int  { return monsterDefByID[kind].dropChance }
 func MonsterAggroRadiusForTest(kind string) int { return monsterDefByID[kind].aggroRadius }

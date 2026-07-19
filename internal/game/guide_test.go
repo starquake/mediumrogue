@@ -17,10 +17,6 @@ func TestGuideDataCoversEveryRegistryEntry(t *testing.T) {
 
 	g := GuideData()
 
-	if got, want := len(g.Items), len(itemDefs); got != want {
-		t.Errorf("guide items = %d, want every registered item (%d)", got, want)
-	}
-
 	if got, want := len(g.Monsters), len(monsterDefs); got != want {
 		t.Errorf("guide monsters = %d, want every registered kind (%d)", got, want)
 	}
@@ -30,9 +26,29 @@ func TestGuideDataCoversEveryRegistryEntry(t *testing.T) {
 		seen[it.ID] = true
 	}
 
+	// Every item a PLAYER can hold is in the item table. Monster natural
+	// weapons (#179) share the registry but are shown in the monster table
+	// instead, where a designer looks for them — listing Dragon Jaws among
+	// the gear would read as something you could equip.
 	for _, def := range itemDefs {
+		if def.monsterOnly {
+			if seen[def.id] {
+				t.Errorf("monster-only weapon %s is listed as player gear", def.id)
+			}
+
+			continue
+		}
+
 		if !seen[def.id] {
 			t.Errorf("item %s is registered but missing from the guide", def.id)
+		}
+	}
+
+	// …and every kind's weapon is named in the monster table, so the numbers
+	// are still reachable from the document.
+	for _, m := range g.Monsters {
+		if m.Weapon == "" {
+			t.Errorf("kind %s names no weapon in the guide", m.ID)
 		}
 	}
 }
