@@ -1,0 +1,188 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Active skills — Blink (#161)</title>
+<style>
+  :root {
+    --fg: #cfe3c8;
+    --dim: #5a7a5c;
+    --bg: #0b0f0b;
+    --accent: #7cb342;
+    --cool: #4a7fb5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg);
+    font-family: "Courier New", monospace; display: flex; gap: 2rem;
+    align-items: flex-start; flex-wrap: wrap;
+  }
+  .caption {
+    width: 100%; color: var(--dim); font-size: 0.7rem;
+    text-transform: uppercase; letter-spacing: 0.18em; margin-bottom: 0.5rem;
+  }
+  .frame { border: 1px solid #2a3d2b; padding: 0.75rem; background: #0d120d; }
+  .frame h3 {
+    margin: 0 0 0.6rem; font-size: 0.66rem; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 0.18em; font-weight: normal;
+  }
+
+  /* --- the real panel's styles, copied so the mockup can't flatter itself --- */
+  .skills-panel { width: 20rem; }
+  .skill-tree-name {
+    color: var(--dim); font-size: 0.66rem; letter-spacing: 0.18em;
+    text-transform: uppercase; margin: 0.5rem 0 0.25rem;
+  }
+  .skill-row {
+    display: flex; align-items: flex-start; gap: 0.45rem;
+    padding: 0.3rem 0.4rem; margin-bottom: 0.2rem;
+    background: #16201a; border: 1px solid #2a3d2b;
+  }
+  .skill-row.learned { background: #101710; border-color: #1d2a1e; }
+  .skill-mark { width: 0.9rem; flex: none; text-align: center; font-weight: bold; color: var(--dim); }
+  .skill-row.learned .skill-mark { color: var(--accent); }
+  .skill-body { flex: 1; min-width: 0; }
+  .skill-name { display: block; font-size: 0.78rem; }
+  .skill-desc { display: block; font-size: 0.66rem; color: var(--dim); line-height: 1.35; margin-top: 0.1rem; }
+  .skill-learn {
+    flex: none; align-self: center; font-family: inherit; font-size: 0.64rem;
+    letter-spacing: 0.08em; text-transform: uppercase; font-weight: bold;
+    color: #0b0f0b; background: var(--accent); border: 1px solid var(--accent);
+    padding: 0.2rem 0.45rem;
+  }
+  .skill-tag { flex: none; align-self: center; font-size: 0.62rem; color: var(--dim); }
+
+  /* --- NEW: the active-skill affordances --- */
+  .skill-row.active-skill { border-left: 2px solid var(--cool); }
+  .skill-use {
+    flex: none; align-self: center; font-family: inherit; font-size: 0.64rem;
+    letter-spacing: 0.08em; text-transform: uppercase; font-weight: bold;
+    color: #0b0f0b; background: var(--cool); border: 1px solid var(--cool);
+    padding: 0.2rem 0.45rem;
+  }
+  .skill-use:disabled { background: transparent; color: var(--dim); border-color: #2a3d2b; }
+  .cooldown { font-size: 0.62rem; color: var(--cool); }
+
+  /* HUD chip */
+  .hud {
+    display: flex; gap: 0.5rem; align-items: center;
+    border: 1px solid #2a3d2b; background: #0d120d; padding: 0.4rem 0.6rem;
+    font-size: 0.72rem;
+  }
+  .chip {
+    display: flex; align-items: center; gap: 0.35rem;
+    border: 1px solid var(--cool); color: var(--cool);
+    padding: 0.15rem 0.4rem; font-size: 0.66rem; text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .chip.cooling { border-color: #2a3d2b; color: var(--dim); }
+  .chip .key {
+    border: 1px solid currentColor; padding: 0 0.2rem; font-size: 0.6rem;
+  }
+
+  /* map targeting */
+  .map { position: relative; width: 17rem; height: 11rem; background: #0d120d; border: 1px solid #2a3d2b; }
+  .hex {
+    position: absolute; width: 2.1rem; height: 2.1rem; border: 1px solid #1d2a1e;
+    display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--dim);
+  }
+  .hex.inrange { border-color: var(--cool); background: rgba(74, 127, 181, 0.12); color: var(--cool); }
+  .hex.hover { border-color: var(--cool); background: rgba(74, 127, 181, 0.35); color: #cfe3c8; }
+  .hex.blocked { border-color: #3a2a2a; color: #6b4a4a; background: rgba(90, 40, 40, 0.15); }
+  .hex.me { border-color: var(--accent); color: var(--accent); }
+  .note { width: 100%; color: var(--dim); font-size: 0.68rem; line-height: 1.5; margin-top: 0.5rem; }
+  .note b { color: var(--fg); font-weight: normal; }
+</style>
+
+<div class="caption">Active skills — Blink (#161) · proposed client</div>
+
+<div class="frame">
+  <h3>Skills panel — an active among passives</h3>
+  <div class="skills-panel">
+    <div class="skill-tree-name">Survival</div>
+
+    <div class="skill-row learned">
+      <span class="skill-mark">✓</span>
+      <span class="skill-body">
+        <span class="skill-name">Survivalist</span>
+        <span class="skill-desc">−10% Damage Taken</span>
+      </span>
+      <span class="skill-tag">Learned</span>
+    </div>
+
+    <div class="skill-row learned active-skill">
+      <span class="skill-mark">✓</span>
+      <span class="skill-body">
+        <span class="skill-name">Blink</span>
+        <span class="skill-desc">Teleport up to 3 hexes · 3 turn cooldown</span>
+      </span>
+      <button class="skill-use">Use</button>
+    </div>
+
+    <div class="skill-row learned active-skill">
+      <span class="skill-mark">✓</span>
+      <span class="skill-body">
+        <span class="skill-name">Blink</span>
+        <span class="skill-desc">Teleport up to 3 hexes · 3 turn cooldown</span>
+        <span class="cooldown">ready in 2 turns</span>
+      </span>
+      <button class="skill-use" disabled>2</button>
+    </div>
+
+    <div class="skill-row">
+      <span class="skill-mark">●</span>
+      <span class="skill-body">
+        <span class="skill-name">Hardy</span>
+        <span class="skill-desc">−15% Damage Taken below 40% HP</span>
+      </span>
+      <button class="skill-learn">Learn</button>
+    </div>
+  </div>
+  <div class="note">
+    Blink shown twice — <b>ready</b> and <b>cooling</b>. Actives get a blue left
+    edge and a <b>Use</b> button where a passive shows <b>Learned</b>.
+  </div>
+</div>
+
+<div class="frame">
+  <h3>HUD chip — always visible once learned</h3>
+  <div class="hud">
+    <span>Lv 3 · 40/90 XP · (2, −5)</span>
+    <span class="chip"><span class="key">B</span> Blink</span>
+  </div>
+  <div style="height: 0.5rem"></div>
+  <div class="hud">
+    <span>Lv 3 · 40/90 XP · (2, −5)</span>
+    <span class="chip cooling"><span class="key">B</span> Blink 2</span>
+  </div>
+  <div class="note">
+    You need to know it's ready <b>without opening a panel</b> — that's the
+    whole point of an escape. Chip goes dim with a turn count while cooling.
+  </div>
+</div>
+
+<div class="frame">
+  <h3>Targeting — after pressing B</h3>
+  <div class="map">
+    <div class="hex me"      style="left: 7rem;  top: 4.4rem;">@</div>
+    <div class="hex inrange" style="left: 4.9rem; top: 4.4rem;"></div>
+    <div class="hex inrange" style="left: 2.8rem; top: 4.4rem;"></div>
+    <div class="hex inrange" style="left: 9.1rem; top: 4.4rem;"></div>
+    <div class="hex hover"   style="left: 11.2rem; top: 4.4rem;">◇</div>
+    <div class="hex inrange" style="left: 7rem;  top: 2.2rem;"></div>
+    <div class="hex inrange" style="left: 7rem;  top: 6.6rem;"></div>
+    <div class="hex blocked" style="left: 9.1rem; top: 2.2rem;">▲</div>
+    <div class="hex blocked" style="left: 11.2rem; top: 2.2rem;">▲</div>
+    <div class="hex inrange" style="left: 4.9rem; top: 6.6rem;"></div>
+  </div>
+  <div class="note">
+    Reachable hexes lit blue; the hovered destination brighter. Rock (▲) is
+    <b>not</b> lit — Blink needs line of sight, so cover stays real. Click to
+    commit, <b>Esc</b> or B again to cancel.
+  </div>
+</div>
+
+<div class="note" style="max-width: 62rem">
+  <b>Colour choice worth challenging:</b> actives use blue against the game's
+  green. It separates "trigger this" from "learn this" at a glance, but it is
+  the first non-green accent in the UI — say if you'd rather keep one palette
+  and distinguish actives by shape alone.
+</div>
