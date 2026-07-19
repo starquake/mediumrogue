@@ -37,6 +37,17 @@ maintainer has OK'd it. If either is missing, stop and route to the
 1. Check the task's box context: what it consumes and produces.
 2. **Failing tests first** where the plan says so — run them, confirm they
    fail for the right reason (missing feature, not a typo).
+
+   **A test that can never run is worse than no test** — it reads as coverage
+   on the dashboard while asserting nothing. After writing one, check it
+   actually *ran*: a `test.skip` guard whose precondition the harness can never
+   satisfy is the common shape. (2026-07-19: an e2e for "learning a skill
+   updates the panel immediately" skipped every time, because the monster-free
+   e2e server hands a fresh join zero skill points and has no grant hook. It
+   was deleted and replaced with store unit tests, which is what
+   `gear/store.test.ts` already exists to do.) When the state is unreachable
+   end-to-end, drop to the layer that CAN reach it and say why in the file
+   comment — don't keep the skipping test as a placeholder.
 3. Implement. Follow the domain patterns (CLAUDE.md): content as registry
    data + rule cards; determinism rules (sort map-derived slices before rng;
    re-derive moved seeded pins, never weaken; drop rows appended LAST);
