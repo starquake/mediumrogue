@@ -90,6 +90,20 @@ var (
 	// ErrNoRangedWeapon rejects an attack intent from a class with no ranged
 	// weapon (the Fighter, or any classless entity).
 	ErrNoRangedWeapon = errors.New("class has no ranged weapon")
+
+	// ErrSkillNotActive is a use-skill intent naming a passive skill (#161).
+	ErrSkillNotActive = errors.New("skill is not an active")
+
+	// ErrSkillNotLearned is a use-skill intent for a skill this player has
+	// not learned.
+	ErrSkillNotLearned = errors.New("skill is not learned")
+
+	// ErrSkillOnCooldown is a use-skill intent fired before its ready turn.
+	ErrSkillOnCooldown = errors.New("skill is on cooldown")
+
+	// ErrNoLineOfSight is an active-skill target the caster cannot see: an
+	// active does not pass through walls (#161).
+	ErrNoLineOfSight = errors.New("no line of sight to target")
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
 	ErrOutOfRange = errors.New("target is out of range")
@@ -220,6 +234,14 @@ type entity struct {
 	// levelFor), and death floors xp to levelFloorXP, so re-earning the same
 	// level must not re-grant. Never decreases.
 	pointsGrantedLevel int
+	// activeReadyTurn maps an active skill's id to the world turn it becomes
+	// usable again (#161). Absent means ready. Counted in TURNS, whichever
+	// clock is ticking — see activeDef.
+	activeReadyTurn map[string]int64
+	// activeSkill/activeTarget are this turn's queued active-skill trigger
+	// (#161) — transient like path and attackTarget, never snapshotted.
+	activeSkill  string
+	activeTarget *protocol.Hex
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
@@ -962,6 +984,8 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 		return w.queueDrinkLocked(e, req.ItemID)
 	case protocol.IntentLearnSkill:
 		return w.learnSkillLocked(e, req.SkillID)
+	case protocol.IntentUseSkill:
+		return w.useSkillLocked(e, req.SkillID, req.Target)
 	default:
 		return ErrInvalidIntentKind
 	}
@@ -1867,6 +1891,12 @@ func (w *World) collectMeleeAttacksLocked(
 func (w *World) movePhaseLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool,
 ) {
+	// Actives resolve BEFORE ordinary movement (#161): a blink is the turn's
+	// action, so its caster is not also a mover, and landing first means the
+	// destination is judged against the same pre-move board every other
+	// intent is judged against (#104).
+	w.resolveActivesLocked(byHex, members, attacked)
+
 	movers := make([]*entity, 0, len(members))
 
 	for _, e := range members {
@@ -1890,6 +1920,55 @@ func (w *World) movePhaseLocked(
 		m.hex = next
 		m.path = m.path[1:]
 		w.logger.Info(combatLogMsg, "event", combatEventMove, "id", m.id, "kind", m.kind, "from", from, "to", next)
+	}
+}
+
+// resolveActivesLocked applies every queued active-skill trigger (#161) and
+// starts its cooldown. Ordered by entity id so two blinks in one turn resolve
+// deterministically. Callers hold w.mu.
+//
+// A trigger is DROPPED, not deferred, if its caster attacked or died this
+// turn: the queue is one action per turn, and a stale blink firing a turn late
+// would teleport someone who has since chosen something else.
+func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool) {
+	casters := make([]*entity, 0, len(members))
+
+	for _, e := range members {
+		if e.activeSkill != "" && e.activeTarget != nil {
+			casters = append(casters, e)
+		}
+	}
+
+	slices.SortFunc(casters, func(a, b *entity) int { return int(a.id - b.id) })
+
+	for _, e := range casters {
+		id, target := e.activeSkill, *e.activeTarget
+		e.activeSkill, e.activeTarget = "", nil // consumed, hit or dropped
+
+		if attacked[e.id] || e.hp <= 0 {
+			continue
+		}
+
+		def, ok := skillDefByID[id]
+		if !ok || def.active == nil {
+			continue
+		}
+
+		from := e.hex
+		byHex[from] = removeEntity(byHex[from], e)
+		byHex[target] = append(byHex[target], e)
+		e.hex = target
+		e.path = nil
+
+		if e.activeReadyTurn == nil {
+			e.activeReadyTurn = make(map[string]int64, 1)
+		}
+
+		// Ready again N turns from the turn being resolved. Counts TURNS,
+		// whichever clock is ticking (activeDef).
+		e.activeReadyTurn[id] = w.turn + 1 + int64(def.active.cooldownTurns)
+
+		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id, "from", from, "to", target)
 	}
 }
 

@@ -226,6 +226,12 @@ export const IntentLearnSkill = "learn-skill";
  */
 export const IntentDrink = "drink";
 /**
+ * IntentUseSkill triggers a learned ACTIVE skill (IntentRequest.SkillID)
+ * at IntentRequest.Target — #161. It is the turn's action, exactly like a
+ * move: it does not stack with one, and it is not a bonus action.
+ */
+export const IntentUseSkill = "use-skill";
+/**
  * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
  * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
