@@ -37,19 +37,101 @@ maintainer has OK'd it. If either is missing, stop and route to the
 1. Check the task's box context: what it consumes and produces.
 2. **Failing tests first** where the plan says so — run them, confirm they
    fail for the right reason (missing feature, not a typo).
+
+   **A test that can never run is worse than no test** — it reads as coverage
+   on the dashboard while asserting nothing. After writing one, check it
+   actually *ran*: a `test.skip` guard whose precondition the harness can never
+   satisfy is the common shape. (2026-07-19: an e2e for "learning a skill
+   updates the panel immediately" skipped every time, because the monster-free
+   e2e server hands a fresh join zero skill points and has no grant hook. It
+   was deleted and replaced with store unit tests, which is what
+   `gear/store.test.ts` already exists to do.) When the state is unreachable
+   end-to-end, drop to the layer that CAN reach it and say why in the file
+   comment — don't keep the skipping test as a placeholder.
 3. Implement. Follow the domain patterns (CLAUDE.md): content as registry
    data + rule cards; determinism rules (sort map-derived slices before rng;
    re-derive moved seeded pins, never weaken; drop rows appended LAST);
    `got, want` test style (`.claude/rules/go-style.md`).
-4. Full gate: `cd` to the repo root, then
-   `set -o pipefail && make check 2>&1 | tail -15` (go may live at
-   `/usr/local/go/bin/go`). A seeded failure in a task that shouldn't touch
-   rng is a bug — investigate, don't re-derive.
+4. Full gate: **check the EXIT CODE, never grep the output.**
+
+   ```bash
+   if set -o pipefail && make check > /tmp/check.log 2>&1; then
+     echo "GATE PASS"
+   else
+     echo "GATE FAIL ($?)"; grep -E "^(---)? ?FAIL|Error" /tmp/check.log | head -5
+   fi
+   ```
+
+   Grepping for failure patterns means inventing a regex that must match every
+   way the toolchain can fail — and the one it misses reads as green.
+   (2026-07-19: `make check 2>&1 | grep -iE "^FAIL|error:"` reported clean while
+   four error sentinels were unmapped, which CI caught as a 500-instead-of-422
+   bug. Switching to exit-code gating surfaced a SECOND failure in the same
+   run — a snapshot fixture pinned to the old version — that the same regex had
+   also been hiding.) A seeded failure in a task that shouldn't touch rng is a
+   bug — investigate, don't re-derive.
+
+   `go` may live at `/usr/local/go/bin/go`.
 5. One commit per task, message referencing the issue; push; tick the task's
    checkbox in the issue's Plan.
-6. **Watch CI to completion** (`gh pr checks <n> --watch`) — local-green is
-   not mergeable. A flake (e.g. #117's autowalk timeout) on an unrelated
+6. **Watch CI to completion, and read EVERY job.** `gh pr checks <n> --watch`
+   — never piped through `tail`/`head`. A pipe truncates the failing line out
+   of view *and* swallows the command's non-zero exit, so a red build reads as
+   green twice over (2026-07-19: `| tail -4` hid a failing `test` job; the
+   maintainer found it). When the run is ambiguous, enumerate explicitly:
+
+   ```bash
+   gh api "repos/:owner/:repo/actions/runs?head_sha=$(git rev-parse HEAD)" \
+     --jq '[.workflow_runs[]|select(.name=="CI")]|.[0].jobs_url' \
+     | xargs -I{} gh api {} --jq '.jobs[] | "\(.name) \(.conclusion)"'
+   ```
+
+   Also confirm the run you are reading belongs to **the commit you just
+   pushed** — `gh pr checks` will happily show the previous run's results for a
+   few seconds after a push. Local-green is not mergeable. A flake (e.g. #117's autowalk timeout) on an unrelated
    diff: confirm it's known, re-run the job, note the recurrence.
+
+## The PR body: REVIEW is the bottleneck, not throughput
+
+The maintainer reviews every PR alone (2026-07-19: *"1. reviewing"*). So a PR
+body is a **guide to reviewing**, never a defence of the work. Long bodies make
+review more expensive — the reader has to scan everything to find the parts
+that actually need judgement.
+
+Structure, always:
+
+1. **`## Where to look`** — the **two or three** places you made a judgement
+   call the maintainer might disagree with, each naming its file. A number you
+   picked, a deliberate overlap, a reading that could plausibly be wrong. If
+   there are none, say so in one line.
+2. A `---`, then **`*Mechanically verified — skip unless curious.*`** and ONE
+   compressed paragraph: gate green, determinism, e2e, docs. These are claims
+   already verified by running them; prose restating them adds nothing a
+   reviewer must read.
+
+**The same rule governs COMMENTS, and it is easier to break there.** When the
+maintainer asks a direct question — *"are you going to fix it?"*, *"can linting
+prevent this?"* — the answer goes in the **first line**, and any reasoning goes
+below it. (2026-07-19: a crash report got a reply that opened with "fixed in
+#186" and then spent 400 words on TypeScript soundness. Nine minutes later:
+*"Sooooo are you going to fix it?"* The answer was present and unfindable.) A
+comment that has to be read to the end to learn whether the thing is done has
+failed, however correct its content.
+
+**Do not** narrate the design reasoning in the PR body. It belongs in
+`design-decisions.md`, written once — a PR body copy is drift with extra steps
+and dies with the PR.
+
+**Code comments follow the same rule** (maintainer's call, same day): keep the
+*why* — why this side of the fold, why this order is contractual, why a
+counter-intuitive reading is correct — but **not** whole explanations of game
+mechanics or design intent. "Category axis rejected because the taxonomy has
+none" is a comment; three paragraphs on why weapon categories are an MMO move
+is `design-decisions.md`.
+
+**Keep mechanical churn in its own commit** (regenerated files, lint fixes,
+doc regeneration) so the reviewer can skip that commit in the diff instead of
+scanning past it.
 
 ## Finish
 

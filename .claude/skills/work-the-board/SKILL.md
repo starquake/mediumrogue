@@ -12,10 +12,22 @@ description: >
 ---
 
 You run the issue tracker forward so the maintainer can drive everything through
-comments and labels. A pass reads the board, does every **blue (your-court)**
-step it can, executes the actions the maintainer has already authorised (a "go"
+comments and labels. A pass reads the board, does every **work-label** step it
+can, executes the actions the maintainer has already authorised (a "go"
 signal, a `ready to merge` label), and **stops at every gate that is theirs**.
 The `needs:*` labels are the state machine; this skill just drives it.
+
+**Two kinds of label, and the wording tells you which:**
+
+- **Gate labels** — `needs: your input`, `needs: your sign-off`. Work *stops*.
+  The maintainer decides; you may ask, never answer.
+- **Work labels** — `needs: spec`, `needs: plan`, `needs: build`. Work
+  *proceeds*. The label is the instruction; acting on it needs no further
+  permission.
+
+The test is in the label itself: **if it says "your", it is a gate.** No colour
+legend, no memorised list — a label you have never seen before still sorts
+correctly.
 
 ## The autonomy contract — do not cross
 
@@ -23,6 +35,14 @@ The `needs:*` labels are the state machine; this skill just drives it.
   maintainer (`needs: your input`), never answered by you.
 - **Never grant `ready to merge`, and never merge without it.** The label is the
   maintainer's approval — you may *act* on it (merge), never *create* it.
+  **Re-read the label at the moment you merge, from the API, not from a
+  notification.** A Monitor event is a *pointer that something happened*, never
+  a fact about the current state: it fires on the change and cannot see the
+  retraction. (2026-07-19: `ready to merge` was added to #184 and removed 85
+  seconds later when the maintainer noticed a red build. The monitor reported
+  the add; merging on that event alone would have landed a PR whose approval
+  had been explicitly withdrawn.) Same for CI: a green result seen before a
+  push is not a green result after it.
 - **Build only what's authorised:** a plan the maintainer OK'd (`needs: build`,
   or a go-signal on a `needs: your sign-off` issue), or a **bug** (no design gate
   — straight to a PR). Never build a `needs: your input` / `needs: your sign-off`
@@ -37,7 +57,7 @@ The `needs:*` labels are the state machine; this skill just drives it.
 1. **Enumerate.** `gh issue list --state open`, `gh pr list --state open`, and a
    recently-closed sweep for comments that landed after close. Drop anything
    carrying `hold`.
-   **Labels are NOT enough — read the comments too.** For every item at an amber
+   **Labels are NOT enough — read the comments too.** For every item at a
    gate, fetch its comments (`gh api repos/:owner/:repo/issues/<n>/comments`) and
    look for the maintainer's answer or go-signal *after* your last comment. A
    go-signal (`go` / `build` / `approved` / "Build!") arrives as a **comment**
@@ -53,6 +73,25 @@ The `needs:*` labels are the state machine; this skill just drives it.
    lot. (Second miss, same day: an answer on #155 sat 40 minutes outside a
    19:20 cutoff, so a pass asked the maintainer a question they had already
    answered — twice.)
+
+   **Read the ticket before ANSWERING it, too — not just before triaging it.**
+   The rule above is about reading *their* comments; this one is about reading
+   *your own*. When the maintainer asks a question in chat that belongs to an
+   open ticket ("#175, what do popular RPGs use?"), fetch that ticket's comments
+   before answering, and answer from what is already there. **A context break
+   makes this mandatory rather than optional**: a compaction summary carries
+   decisions, not what was already published to GitHub, so "I don't remember
+   posting that" is no evidence that nothing was posted. (2026-07-19: a full
+   genre-research comment — table, sources, its own answer block — had been on
+   #175 for twenty minutes; the whole thing was re-derived and posted again as
+   new, then a third comment presented an idea the first had already named. The
+   thread asked the maintainer to close one ticket twice with two competing
+   answer blocks. They caught it with "check the comment".)
+
+   When duplication has already happened, **own it in a NEW comment** naming
+   which earlier one is the better version — never edit or delete the
+   redundant one. The append-only rule is not just for state changes: the
+   thread is the record, including the noise in it.
 
    **A label REMOVED without a comment is a signal, not noise.** The maintainer
    answering in prose and then clearing the `needs:*` label is a normal way to
@@ -103,8 +142,24 @@ The `needs:*` labels are the state machine; this skill just drives it.
    never build UI a pass hasn't previewed for the maintainer.
 6. **A ticket a pass FILES gets the same treatment as one it finds**: a
    `needs:*` label naming whose court it lands in (a finding with open
-   directions is `needs: your input`, not a silent backlog entry) and a
-   Next-steps reminder. A filed-and-unlabelled issue is invisible.
+   directions is `needs: your input`, not a silent backlog entry; a **bug** is
+   `needs: build`, since bugs have no design gate) and a Next-steps reminder.
+   A filed-and-unlabelled issue is invisible.
+
+   **Filing is not done when `gh issue create` returns — do the label and the
+   reminder in the SAME action.** Not "later in the pass": filing usually
+   happens at the tail of something bigger, where the new ticket feels like a
+   by-product rather than work, and that is exactly when the follow-up step
+   gets dropped. (2026-07-19: #181 was filed with a strong body — repro
+   command, evidence it was pre-existing, an explicit "not root-caused" — and
+   no label, no reminder. The maintainer found it: *"#181 does not have
+   instructions on how to continue."* This rule already existed and still
+   didn't hold, which is why it is now part of the create rather than a step
+   after it.)
+
+   A ticket with evidence but no next step is close to not having been filed.
+   Audit with `gh issue list --json number,labels` filtered to those carrying
+   no `needs:` label — a pass that files anything should end by running it.
 
 ## The Next-steps reminder — append one whenever the state moves
 
@@ -148,7 +203,7 @@ Content by state (state line + a "Next:" line naming the action and who does it)
   comment `go` / `build` / `approved` (or flip the label to `needs: build`); the
   next pass builds it into a draft PR.*
 - `needs: spec` / `needs: plan` — Claude's court. *Next: a pass drafts the
-  spec/plan and hands to the amber gate — nothing needed from you.*
+  spec/plan and hands back to a gate — nothing needed from you.*
 - `needs: build` — approved. *Next: a pass builds a draft PR; then add
   `ready to merge` once you've reviewed it.*
 - no `needs:` label — tailor: **blocked** (name the blocker — "blocked by #NN"),
@@ -158,11 +213,32 @@ Content by state (state line + a "Next:" line naming the action and who does it)
 - a **PR** — `ready to merge` present → *Next: a pass merges it*; else it's a
   draft / awaiting CI / awaiting your `ready to merge`.
 
+## Blue work is not a menu — pick it up
+
+**A work label gets worked, not reported.** `needs: spec`, `needs: plan`,
+`needs: build`, and any **bug** are already authorised: the label IS the
+instruction. Listing one back to the maintainer as "available" turns a state
+machine into a suggestion box, and makes them the scheduler for work they
+already assigned.
+
+This fails most often **outside a loop**, answering messages one at a time:
+each reply feels complete on its own, and authorised work sits in the queue
+because no reply happened to be about it. (2026-07-19: #181 sat labelled
+`needs: build` across several exchanges until the maintainer asked *"why are
+you not picking up #181 automatically?"* — there was no reason. Nothing
+blocked it.)
+
+So: **end every exchange by checking whether anything is in your court, and if
+it is, do it** rather than closing with a status table. The one-build-per-pass
+cap still applies inside a loop; it is not a licence to defer the build.
+Genuinely nothing authorised is a fine answer — "everything is at your gate"
+is a complete pass. Work you were handed and left is not.
+
 ## Reporting
 
 End the pass with a short summary: **what moved** (and to what state), **what you
 built or merged**, and — most important — **what's now waiting on the
-maintainer** (the amber `needs: your input` / `needs: your sign-off` queue). In a
+maintainer** (the `needs: your input` / `needs: your sign-off` gate queue). In a
 loop this becomes a push notification ONLY when something needs them.
 
 Report what a pass *chose not to do* as plainly as what it did: a build it
@@ -177,7 +253,67 @@ schedule — same contract, same one-build cap. Locally that's `/loop`;
 unattended/away it's a `/schedule` cloud agent (headless: `gh`/GitHub works,
 interactive-auth MCP does not). "stop the board" ends it.
 
-### Pacing: back off when quiet, speed up when active
+### Prefer a Monitor over polling — it is faster AND free
+
+A timed tick costs tokens every time it fires, including the many times it
+finds nothing. A **Monitor** inverts that: the poll loop runs in the shell,
+outside the agent's context, and only a printed line wakes anyone. Quiet
+minutes cost **nothing**, and reaction time drops from tens of minutes to
+about one.
+
+Arm one at the start of a loop session (persistent, so it lives as long as
+the session), watching the only two things a pass acts on unprompted — a new
+maintainer comment, and a PR newly carrying `ready to merge`:
+
+```bash
+since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+prev=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
+while true; do
+  sleep 60
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # Human comments anywhere in the repo; ours carry the bot header and are skipped.
+  gh api "repos/<owner>/<repo>/issues/comments?since=$since&per_page=30" \
+    --jq '.[] | select((.body | startswith("> 🤖")) | not)
+          | "COMMENT on #\(.issue_url | split("/") | last): \(.body | gsub("\n"; " ") | .[0:120])"' 2>/dev/null || true
+
+  # DIFFED against last cycle, or a labelled PR re-fires every minute and the
+  # monitor gets auto-stopped for noise.
+  cur=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
+  # grep keeps ONLY real numbers: when the labelled set empties, `echo ""`
+  # feeds comm a blank line that it reports as new, emitting a bogus
+  # "READY TO MERGE: PR #" with no number.
+  comm -13 <(echo "$prev") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
+  prev=$cur
+
+  since=$now
+done
+```
+
+Two things that make it behave:
+
+- **Diff the label set.** Emitting the current set every cycle spams a
+  notification per minute for any PR that sits unmerged, and monitors that
+  flood get stopped automatically.
+- **`|| true` on every remote call.** One failed request must not kill a
+  session-length watch.
+- **Filter the diff to real values.** An empty set becomes a blank line, and
+  a blank line looks "new" to `comm` — which fired a phantom
+  "READY TO MERGE: PR #" the first time a merge emptied the label set
+  (2026-07-19). Anything derived from a diff of two lists wants a shape check
+  before it becomes a notification.
+
+**Rate limits are not the constraint.** Authenticated GitHub REST allows
+5,000 requests/hour; this loop uses 2/minute — **120/hour, ~2.4% of quota**.
+If a faster poll were ever wanted, conditional requests (`If-None-Match`)
+return 304 and do not count against the primary limit. GitHub webhooks would
+be true push, but need a public receiver — real infrastructure to shave 60
+seconds off something already free.
+
+With a Monitor armed, the scheduled tick becomes **insurance only** — set it
+to ~an hour, so a dead monitor is noticed but a healthy one costs nothing.
+
+### Pacing when there is no Monitor: back off when quiet, speed up when active
 
 A fixed interval is wrong in both directions — too slow while work is in
 flight, too fast when the board is parked on the maintainer. In dynamic mode

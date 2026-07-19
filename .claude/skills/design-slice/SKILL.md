@@ -20,9 +20,9 @@ build signal, and it must be explicit.
 the next action, so the maintainer can see at a glance what's waiting on them.
 This skill flips it at each pause. Whenever you set one, remove whatever
 `needs:*` label was there before (`gh issue edit <n> --add-label "<new>"
---remove-label "<old>"`) — exactly one at a time. The amber ones
+--remove-label "<old>"`) — exactly one at a time. The gate labels
 (`needs: your input`, `needs: your sign-off`) are the maintainer's court; the
-blue ones (`needs: spec`, `needs: plan`) are yours. `ready to merge` is a
+work labels (`needs: spec`, `needs: plan`) are yours. `ready to merge` is a
 PR-level gate you never set — see `merge-pr`.
 
 ## Step 1 — The issue
