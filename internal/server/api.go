@@ -61,7 +61,12 @@ func intentErrorStatus(err error) (int, bool) {
 		errors.Is(err, game.ErrNotEquippable), errors.Is(err, game.ErrNoSuchGroundItem),
 		errors.Is(err, game.ErrNoSuchSkill), errors.Is(err, game.ErrSkillAlreadyLearned),
 		errors.Is(err, game.ErrSkillPrereqUnmet), errors.Is(err, game.ErrNoSkillPoints),
-		errors.Is(err, game.ErrLearnInCombat):
+		errors.Is(err, game.ErrLearnInCombat),
+		// Use-skill rejections (#161): a learned-but-cooling active, a
+		// passive named as an active, an unlearned skill, a destination
+		// behind a wall — all well-formed requests the world says no to.
+		errors.Is(err, game.ErrSkillNotActive), errors.Is(err, game.ErrSkillNotLearned),
+		errors.Is(err, game.ErrSkillOnCooldown), errors.Is(err, game.ErrNoLineOfSight):
 		return http.StatusUnprocessableEntity, true
 	default:
 		return http.StatusInternalServerError, false

@@ -60,11 +60,11 @@ func craftInventorySnapshot() []byte {
 	}
 
 	snapshot := map[string]any{
-		// re-derived for snapshotVersion 6 (#124 task 3: skill state joined the
-		// entity DTO). The loader REJECTS a version mismatch by design, so a
-		// crafted fixture has to move with the version — it is not a value to
+		// re-derived for snapshotVersion 7 (#161: active-skill cooldowns joined
+		// the entity DTO). The loader REJECTS a version mismatch by design, so
+		// a crafted fixture has to move with the version — it is not a value to
 		// weaken.
-		"version":      6,
+		"version":      7,
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,
