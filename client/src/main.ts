@@ -1204,11 +1204,18 @@ async function start(): Promise<void> {
   startScreenEl.hidden = true;
 
   let me;
+  let joinedName: string;
   let joinedClass: string;
   let joinedSpecies: string;
   try {
     if (storedIdentity !== null && storedIdentity.token !== "") {
       me = await reclaim(storedIdentity);
+      // A reclaim sends no name (reclaim-or-fail contract) and JoinResponse
+      // doesn't carry one — the real name arrives with the first bundle
+      // (onTurn's `window.game.name = mine.name`). Claiming selectedName here
+      // reported the default "traveler" for a returning player until that
+      // bundle landed (#208); "" is the honest "not known yet".
+      joinedName = "";
       joinedClass = storedIdentity.class;
       joinedSpecies = storedIdentity.species;
     } else {
@@ -1219,6 +1226,7 @@ async function start(): Promise<void> {
       // (if any) still wins over the picker's live selection, same as
       // before this batch's reclaim/join split — there is no token
       // involved here, so no cross-tab reclaim hazard to guard against.
+      joinedName = selectedName;
       joinedClass = storedIdentity?.class || selectedClass;
       joinedSpecies = storedIdentity?.species || selectedSpecies;
       me = await join(selectedName, joinedClass, joinedSpecies);
@@ -1242,11 +1250,12 @@ async function start(): Promise<void> {
     await waitForEnter();
     startScreenEl.hidden = true;
     me = await join(selectedName, selectedClass, selectedSpecies);
+    joinedName = selectedName;
     joinedClass = selectedClass;
     joinedSpecies = selectedSpecies;
   }
   window.game.me = { id: me.entityId, hex: me.hex };
-  window.game.name = selectedName;
+  window.game.name = joinedName;
   const identity = { entityId: me.entityId, token: me.token, class: joinedClass, species: joinedSpecies };
   setChatToken(identity.token);
 
@@ -2237,6 +2246,14 @@ async function start(): Promise<void> {
     clickTarget(pixelToHex({ x: worldX, y: worldY }));
   });
 
+  // Last hex the tooltip scan ran for (#208): pointermove fires per pixel,
+  // and the monster lookup below (`positions.find` + tooltip content writes)
+  // was the client's one per-pixel O(n) — it only needs to run when the
+  // hovered HEX changes. Tracked separately from setHoveredHex's own guard,
+  // which also serves the window.game.hoverTile e2e hook (no cursor, no
+  // tooltip) and pointerleave.
+  let tooltipHex: Hex | null = null;
+
   app.canvas.addEventListener("pointermove", (ev: PointerEvent): void => {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
@@ -2255,43 +2272,51 @@ async function start(): Promise<void> {
     // Enemy hover tooltip (item 13, playtest batch 2): kind display name +
     // "HP cur/max", near the cursor. pointer-events: none on the tooltip
     // itself (index.html) means it can never intercept the click it's
-    // floating over.
+    // floating over. Content is recomputed only on a hex change (#208);
+    // the cheap left/top writes below stay per-pixel so the tooltip keeps
+    // following the cursor within a hex.
     //
     // Hover gating (item 6, playtest feedback batch 3): the HP line only
     // shows within CombatRadius of my own entity — scouting a distant
     // monster shouldn't read its exact health through the fog of distance.
     // Beyond that (or before I've joined) it's name-only.
-    const monster = window.game.positions.find(
-      (p) => p.kind === EntityMonster && p.hex.q === hover.q && p.hex.r === hover.r,
-    );
-    if (monster === undefined) {
-      hoverTooltipEl.hidden = true;
-    } else {
-      const me = window.game.me;
-      const inRange = me !== null && hexDistance(me.hex, monster.hex) <= CombatRadius;
-
-      hoverTooltipKindEl.textContent = monster.name;
-      if (inRange) {
-        const hp = window.game.hp[monster.id] ?? 0;
-        const maxHp = window.game.maxHp[monster.id] ?? 0;
-        // Reach is the one threat stat shown before contact (#201): a ranged
-        // monster (Kin Archer) reads "reach 3" so you see it outranges you;
-        // melee reads nothing extra. Damage and type are learned by being hit.
-        const reach = monster.reach > 0 ? ` · reach ${monster.reach}` : "";
-        hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}${reach}`;
-        hoverTooltipHPEl.hidden = false;
+    if (tooltipHex === null || hover.q !== tooltipHex.q || hover.r !== tooltipHex.r) {
+      tooltipHex = hover;
+      const monster = window.game.positions.find(
+        (p) => p.kind === EntityMonster && p.hex.q === hover.q && p.hex.r === hover.r,
+      );
+      if (monster === undefined) {
+        hoverTooltipEl.hidden = true;
       } else {
-        hoverTooltipHPEl.textContent = "";
-        hoverTooltipHPEl.hidden = true;
+        const me = window.game.me;
+        const inRange = me !== null && hexDistance(me.hex, monster.hex) <= CombatRadius;
+
+        hoverTooltipKindEl.textContent = monster.name;
+        if (inRange) {
+          const hp = window.game.hp[monster.id] ?? 0;
+          const maxHp = window.game.maxHp[monster.id] ?? 0;
+          // Reach is the one threat stat shown before contact (#201): a ranged
+          // monster (Kin Archer) reads "reach 3" so you see it outranges you;
+          // melee reads nothing extra. Damage and type are learned by being hit.
+          const reach = monster.reach > 0 ? ` · reach ${monster.reach}` : "";
+          hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}${reach}`;
+          hoverTooltipHPEl.hidden = false;
+        } else {
+          hoverTooltipHPEl.textContent = "";
+          hoverTooltipHPEl.hidden = true;
+        }
+        hoverTooltipEl.hidden = false;
       }
+    }
+    if (!hoverTooltipEl.hidden) {
       hoverTooltipEl.style.left = `${ev.clientX + 14}px`;
       hoverTooltipEl.style.top = `${ev.clientY + 14}px`;
-      hoverTooltipEl.hidden = false;
     }
   });
 
   app.canvas.addEventListener("pointerleave", () => {
     hoverTooltipEl.hidden = true;
+    tooltipHex = null; // re-entering at the same hex must rescan
     setHoveredHex(null);
   });
 }

@@ -68,6 +68,12 @@ test("a brand-new player sees the start screen, picks class/species, and joins o
   await expect
     .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
     .toBe(true);
+
+  // #208: a reclaim sends no name, so until the first bundle lands the client
+  // reports "" — never the default "traveler" this character isn't. By this
+  // point name is either "" (pre-bundle) or "Starquake" (bundle landed);
+  // "traveler" is the regression.
+  expect(await page.evaluate(() => window.game.name)).not.toBe("traveler");
   expect(await page.evaluate(() => window.game.me!.id)).toBe(entityId);
   await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassMage);
   await expect.poll(() => page.evaluate(() => window.game.species)).toBe(SpeciesElf);
