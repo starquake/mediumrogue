@@ -66,10 +66,11 @@ var intentSentinelStatus = map[error]int{
 // must land here or in intentSentinelStatus, deliberately, either way.
 var handledElsewhere = map[string]string{
 	// handleJoin (api.go) — its own switch; default 503.
-	"ErrInvalidClass":   "Join rejects the class",
-	"ErrInvalidSpecies": "Join rejects the species",
-	"ErrInvalidName":    "Join rejects the name",
-	"ErrWorldFull":      "Join has no room — 503 by design",
+	"ErrInvalidClass":    "Join rejects the class",
+	"ErrInvalidSpecies":  "Join rejects the species",
+	"ErrInvalidName":     "Join rejects the name",
+	"ErrWorldFull":       "Join has no room — 503 by design",
+	"ErrWorldAtCapacity": "Join past the player cap — 503 (#199)",
 	// routeChatCommand (chat.go) — any error becomes 422 there.
 	"ErrTargetNotFound":  "chat /invite names an absent player",
 	"ErrInviteSelf":      "chat /invite yourself",

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
@@ -13,9 +14,24 @@ import (
 // same reasoning.)
 const maxJSONBodySize = 64 * 1024
 
+// bodyReadTimeout bounds how long a JSON POST body may take to arrive (#199) —
+// a trickle defence. Applied per-request in decodeJSON, never server-wide, so
+// SSE streams keep their long life.
+const bodyReadTimeout = 10 * time.Second
+
 // decodeJSON reads a single bounded JSON value into dst. On failure it
 // writes the 4xx response itself and returns false.
 func decodeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, dst any) bool {
+	// Bound body-read TIME as well as size (#199): MaxBytesReader caps bytes,
+	// not duration, so a trickled body could pin a goroutine indefinitely. A
+	// per-request deadline set here (not a server-wide ReadTimeout) leaves the
+	// long-lived SSE GET untouched — only these JSON POSTs get the wall.
+	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(bodyReadTimeout)); err != nil {
+		// A connection that cannot take a deadline (rare/test transport) is
+		// not a client error — proceed without the bound.
+		logger.Debug("set read deadline", "err", err)
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodySize)
 
 	dec := json.NewDecoder(r.Body)

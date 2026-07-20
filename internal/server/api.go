@@ -23,6 +23,8 @@ func handleJoin(deps Deps) http.Handler {
 		case errors.Is(err, game.ErrInvalidClass), errors.Is(err, game.ErrInvalidSpecies),
 			errors.Is(err, game.ErrInvalidName):
 			respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
+		case errors.Is(err, game.ErrWorldAtCapacity):
+			respondError(w, deps.Logger, http.StatusServiceUnavailable, "world is at player capacity")
 		case err != nil:
 			deps.Logger.Error("join", "err", err)
 			respondError(w, deps.Logger, http.StatusServiceUnavailable, "no room in the world")
