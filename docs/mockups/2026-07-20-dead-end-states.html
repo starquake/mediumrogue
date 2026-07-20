@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Dead-end states (#204)</title>
+<style>
+  :root { --fg: #cfe3c8; --dim: #5a7a5c; --bg: #0b0f0b; --accent: #7cb342; --warn: #b5483d; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg); font-family: "Courier New", monospace; display: flex; gap: 1.6rem; flex-wrap: wrap; align-items: flex-start; }
+  .cap { width: 100%; color: var(--dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.18em; }
+  .screen { position: relative; width: 22rem; height: 13rem; border: 1px solid #2a3d2b; background: #070a07; overflow: hidden; }
+  .screen .lbl { position: absolute; top: 0.5rem; left: 0.6rem; font-size: 0.6rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.14em; }
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.5rem; }
+  .death .big { color: var(--warn); font-size: 1.5rem; letter-spacing: 0.14em; }
+  .death .sub { color: var(--fg); font-size: 0.78rem; }
+  .death .dim { color: var(--dim); font-size: 0.72rem; }
+  .veil { position: absolute; inset: 0; background: rgba(120, 30, 30, 0.14); }
+  .reset .big { color: var(--accent); font-size: 1.1rem; letter-spacing: 0.1em; }
+  .reset .sub, .down .sub { color: var(--dim); font-size: 0.74rem; line-height: 1.5; max-width: 16rem; }
+  .btn { border: 1px solid var(--accent); color: var(--accent); padding: 0.25rem 0.8rem; font-size: 0.74rem; margin-top: 0.3rem; }
+  .down .big { color: var(--warn); font-size: 1rem; }
+  .spinner { color: var(--dim); font-size: 0.72rem; }
+  .note { width: 100%; color: var(--dim); font-size: 0.7rem; line-height: 1.6; max-width: 46rem; }
+  .note b { color: var(--fg); font-weight: normal; }
+</style>
+
+<div class="cap">Dead-end states — #204 · proposed</div>
+
+<div class="screen death">
+  <span class="lbl">Death</span>
+  <div class="veil"></div>
+  <div class="center">
+    <div class="big">YOU DIED</div>
+    <div class="sub">a wolf got you</div>
+    <div class="dim">−40 XP · respawning…</div>
+  </div>
+</div>
+
+<div class="screen reset">
+  <span class="lbl">World reset</span>
+  <div class="center">
+    <div class="big">The world has reset</div>
+    <div class="sub">A new world has begun — your old character is gone.</div>
+    <button class="btn">Start fresh</button>
+  </div>
+</div>
+
+<div class="screen down">
+  <span class="lbl">Server unreachable</span>
+  <div class="center">
+    <div class="big">Can't reach the server</div>
+    <div class="sub">Retrying…</div>
+    <div class="spinner">◵ attempt 3</div>
+  </div>
+</div>
+
+<div class="note">
+  Three states that today give almost nothing. <b>Death</b>: a red vignette + a
+  brief "YOU DIED" that names the killer and the XP lost to the level floor, then
+  fades as you respawn — the only current feedback is a scrolling "NAME died"
+  chat line and a silent camera cut. <b>World reset</b>: today a bare
+  <code>location.reload()</code> dumps you on the start screen with no word that
+  your character is gone; this says so. <b>Server down at load</b>: today a tiny
+  dim "failed to start"; this retries with a visible count instead of a dead
+  black page.
+</div>
+
+<div class="note">
+  <b>Open for you (why it's `needs: your input`):</b>
+  should the death card <b>surface the XP loss</b>, or is the number better left unsaid (less punishing)?
+  Death card auto-fades on respawn, or needs a click to dismiss?
+  Auto-retry on server-down, or a manual "Retry" button?
+</div>
