@@ -53,14 +53,18 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   see it". Against `CombatRadius = 6` that reads: 6 hexes over open grass,
   ~4 through one belt of trees, ~2 through two.
 
-  It gates **two** things: bubble formation (and dissolution — losing sight
-  ends a fight, since bubbles are rebuilt from scratch every tick) and
+  It gates **three** things: bubble formation (and dissolution — losing sight
+  ends a fight, since bubbles are rebuilt from scratch every tick),
   **monster aggro**, over that monster kind's own reach rather than
-  `CombatRadius`. Aggro-range gear (#88) and sight are **independent gates**:
-  the gear fold decides how far a monster could notice you, sight decides
-  whether terrain lets it. The **leash is deliberately exempt** — a monster
-  walking home ignores players entirely, sight or no sight. Ranged attacks
-  remain distance-only (no LOS) by design; changing that is its own slice.
+  `CombatRadius`, and **ranged attacks** (#195 — a shot needs the same clear
+  ray a bubble does, so a wall shields a target instead of leaving it a
+  through-wall farming loophole). Aggro-range gear (#88) and sight are
+  **independent gates**: the gear fold decides how far a monster could notice
+  you, sight decides whether terrain lets it. The **leash is deliberately
+  exempt** — a monster walking home ignores players entirely, sight or no
+  sight. A ranged attack whose target is behind a wall is rejected at submit
+  with `ErrNoLineOfSight` (422); melee (adjacent) is exempt — endpoints are
+  never occluded.
   The "In combat — waiting for: …" panel names the stragglers by **display
   name** (item 3, playtest batch 3 — was raw entity ids), mapped client-side
   from the bundle's entities with a `#id` fallback for an unknown id.
@@ -147,8 +151,9 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   intent (#116), one click per swing, and attacking never moves you;
   monsters still fight by moving into you (the classic roguelike
   bump-to-attack is now the monsters' rule); ranged **attack intent** (bow
-  single-target, mage AoE radius 1), range 4 hexes, distance-only (no LOS —
-  bubbles and aggro use LOS since #95, attacks deliberately don't),
+  single-target, mage AoE radius 1), range 4 hexes, **line-of-sight-gated**
+  (#195 — a shot needs the same clear ray bubbles and aggro use since #95;
+  through a wall it rejects at submit with `ErrNoLineOfSight`),
   **no friendly fire**.
 - **Entity-targeted single-target ranged attacks** (item 7, playtest batch
   2): a bow shot names its victim by **entity id** (`IntentRequest.
@@ -156,10 +161,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   Melee shares this entity-targeted intent at distance 1 (#116). An AoE cast
   (mage) stays **ground-targeted** (a hex — the blast radius makes that the
   natural target).
-  Validated at submit (entity exists+alive, hostile, in range); resolution
-  (#104) runs against **pre-move positions**, so a committed shot always
-  lands — the `out_of_range` fizzle survives only as a defensive guard
-  (nothing moves between submit and the attack phase).
+  Validated at submit (entity exists+alive, hostile, in range, and — for a
+  ranged shot — line of sight, #195); resolution (#104) runs against
+  **pre-move positions**, so a committed shot always lands — the
+  `out_of_range` fizzle survives only as a defensive guard (nothing moves
+  between submit and the attack phase). A shot also fizzles `out_of_domain`
+  (#195) if its named victim is being resolved in a **different domain** —
+  entity-targeted resolution fetches the victim by id, so it is domain-guarded
+  against byHex rather than reaching across a bubble boundary.
 - **Phased resolution** (#104, attacks-before-moves): all attacks resolve
   simultaneously against **pre-move positions** (shared damage map — mutual
   kills are possible and intended; a stacked hex takes hits on a **random

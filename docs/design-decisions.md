@@ -327,8 +327,9 @@ target. Four decisions made it real.
 **Consequence worth knowing:** effective spotting range over forest is now
 much shorter than the raw aggro radius. That is the feature, but it moved six
 existing tests, each re-derived by making its terrain explicit rather than by
-weakening an assertion. Ranged **attacks** stay distance-only by design —
-giving them LOS is its own slice.
+weakening an assertion. Ranged **attacks** stayed distance-only at first —
+giving them LOS was deferred as its own slice, which #195 then actioned (see
+below).
 
 ## Mitigation is a percentage, not a subtraction *(decided 2026-07-18, #154)*
 
@@ -598,3 +599,32 @@ teleport — more expensive once, no rewrite when the second active arrives.
   2026-07-18** — #95)*. Bubbles triggered on pure distance as a placeholder;
   mutual line of sight was always the design target. **This flag is now
   closed** — see the LOS entry above.
+
+## Ranged attacks are line-of-sight-gated *(decided 2026-07-20, #195)*
+
+The #95 slice made bubble membership and monster aggro require mutual line of
+sight, but left ranged **attacks** distance-only as a deliberate deferral (its
+own slice). A code review (2026-07-19) found the consequence had become a bug:
+`queueAttackLocked`'s own invariant — *"anything a ranged attack can reach is
+already in the shooter's bubble"* — went false the day #95 shipped, and nobody
+added the guard the comment asked for.
+
+- **Symptom (a) — through-wall farming.** A shot fired at a monster behind a
+  rock forms no bubble (sight-blocked), so it resolves in the WORLD domain
+  where the monster never aggros back (its raycast is blocked too). Free kills,
+  loot drops, zero risk.
+- **Symptom (b) — cross-domain snipe.** `resolveEntityTargetedLocked` fetched
+  its victim from `w.entities` by id, not from the resolving domain's `byHex`,
+  so a shooter at world cadence could damage a monster frozen in *someone
+  else's* bubble — a corpse that bubble's own death loop never processes.
+
+**Fix — two guards, at the layer where each fact is authoritative.** Terrain
+is static and attack resolution runs against pre-move positions, so sight is
+knowable at submit: a ranged shot (distance > 1) now rejects at submit with
+`ErrNoLineOfSight` when terrain blocks the ray — the same `seesLocked`
+predicate bubbles use. Melee (adjacent) is exempt: endpoints are never
+occluded. Domain membership, by contrast, is a resolution-time property, so
+`resolveEntityTargetedLocked` fizzles `out_of_domain` when the named victim is
+absent from `byHex`. This actions the deferred "LOS on attacks" slice as the
+bug fix it turned out to be, restoring the invariant literally: reach ⊆
+see-able ⊆ same-bubble.
