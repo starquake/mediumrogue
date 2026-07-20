@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -40,30 +40,32 @@ function QuestPanel(): JSXElement {
           of a single implicit "my quest". */}
       <Show when={myQuests().length > 0}>
         <div id="quest-mine">
-          <For each={myQuests()}>
+          {/* <Index>, not <For>: rebuilt from a full turn bundle each tick
+              (CLAUDE.md's recurring remount trap — "quest rows"). */}
+          <Index each={myQuests()}>
             {(q) => (
               <div class="quest-mine-row">
                 <div class="quest-title">
-                  #{q.id} {q.name}
+                  #{q().id} {q().name}
                 </div>
                 <div class="quest-objective">
-                  {myObjective(q)} · {q.rewardXp} XP
+                  {myObjective(q())} · {q().rewardXp} XP
                 </div>
               </div>
             )}
-          </For>
+          </Index>
         </div>
       </Show>
       <Show when={available().length > 0}>
         <div id="quest-board">
           <div id="quest-board-title">Quest board — /quest &lt;id&gt;</div>
-          <For each={available()}>
+          <Index each={available()}>
             {(q) => (
               <div class="quest-row">
-                #{q.id} {q.name}: {objective(q)} · {q.rewardXp} XP
+                #{q().id} {q().name}: {objective(q())} · {q().rewardXp} XP
               </div>
             )}
-          </For>
+          </Index>
         </div>
       </Show>
     </div>
