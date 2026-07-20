@@ -147,6 +147,8 @@ export interface GameDebug {
   skillsPanelOpen: boolean;
   /** Whether the controls overlay is open (#203). */
   controlsOpen: boolean;
+  /** Whether the death card is showing (#204). */
+  died: boolean;
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;
   /**
@@ -501,6 +503,34 @@ function isControlsOverlayOpen(): boolean {
 function toggleControlsOverlay(): void {
   setControlsOverlay(!isControlsOverlayOpen());
 }
+
+const deathCardEl = mustGet("death-card");
+const deathKillerEl = mustGet("death-killer");
+const deathLossEl = mustGet("death-loss");
+const resetCardEl = mustGet("reset-card");
+
+// Death card (#204): a first-person "YOU DIED" naming the killer and the XP
+// lost to the level floor, auto-fading as the respawn lands. Death is detected
+// from XP DECREASING — xp only ever drops on the death floor, never on regen —
+// so no wire signal is needed. prevXp starts at -1 so the first bundle is never
+// read as a death.
+let prevXp = -1;
+let deathTimer = 0;
+function showDeath(killer: string, loss: number): void {
+  deathKillerEl.textContent = killer === "" ? "" : `${killer} got you`;
+  deathLossEl.textContent = loss > 0 ? `−${loss} XP · respawning…` : "respawning…";
+  deathCardEl.hidden = false;
+  deathCardEl.style.opacity = "1";
+  window.game.died = true;
+  window.clearTimeout(deathTimer);
+  deathTimer = window.setTimeout(() => {
+    deathCardEl.style.opacity = "0";
+    window.setTimeout(() => {
+      deathCardEl.hidden = true;
+      window.game.died = false;
+    }, 520);
+  }, 2400);
+}
 const turnTimerEl = mustGet("turn-timer");
 const combatPanelEl = mustGet("combat-panel");
 const combatWaitingEl = mustGet("combat-waiting");
@@ -695,6 +725,7 @@ window.game = {
   skillPoints: 0,
   skillsPanelOpen: false,
   controlsOpen: false,
+  died: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
     markPickupRejected(groundItemId);
@@ -1356,6 +1387,7 @@ async function start(): Promise<void> {
   // (defined above).
   toggleInventoryEl.hidden = false;
   toggleInventoryEl.addEventListener("click", toggleInventory);
+  mustGet("reset-fresh").addEventListener("click", () => window.location.reload());
 
   // Controls overlay button + close + first-run auto-show (#203).
   toggleHelpEl.hidden = false;
@@ -1608,7 +1640,8 @@ async function start(): Promise<void> {
       if (firstWorldID === null) {
         firstWorldID = event.worldId;
       } else if (event.worldId !== firstWorldID) {
-        window.location.reload();
+        // #204: say the world reset (character gone) instead of a bare reload.
+        resetCardEl.hidden = false;
         return;
       }
 
@@ -1714,6 +1747,15 @@ async function start(): Promise<void> {
             feedbackLayer.setDestination(null);
           }
         }
+
+        // #204: a drop in xp means I died this bundle (the level floor). Name
+        // the killer from this turn's hits and the loss from the delta.
+        if (prevXp >= 0 && mine.xp < prevXp) {
+          const killerId = freshHits.find((h) => h.victimId === me.entityId)?.attackerId;
+          const killer = event.entities.find((e) => e.id === killerId)?.name ?? "";
+          showDeath(killer, prevXp - mine.xp);
+        }
+        prevXp = mine.xp;
 
         window.game.xp = mine.xp;
         window.game.level = mine.level;
@@ -2125,6 +2167,16 @@ async function start(): Promise<void> {
   });
 }
 
-start().catch((err: unknown) => {
-  statusEl.textContent = `failed to start: ${String(err)}`;
-});
+// #204: server-down at load retries with a visible attempt count instead of a
+// dead "failed to start" over a black page. A JoinRejectedError is handled
+// inside start() (dead identity → start screen); only an infra failure (server
+// unreachable) reaches here, and it is worth retrying.
+let bootAttempt = 0;
+function boot(): void {
+  start().catch((err: unknown) => {
+    bootAttempt += 1;
+    statusEl.textContent = `can't reach the server — retrying… (attempt ${bootAttempt}: ${String(err)})`;
+    window.setTimeout(boot, 2000);
+  });
+}
+boot();
