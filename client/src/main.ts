@@ -138,7 +138,7 @@ export interface GameDebug {
   skills: { id: string; tree: string; learned: boolean }[];
   /** The viewer's unspent skill-point bank. */
   skillPoints: number;
-  /** Whether the skills panel is open (the S key / HUD toggle). */
+  /** Whether the skills panel is open (toggled by the `k` key). */
   skillsPanelOpen: boolean;
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;

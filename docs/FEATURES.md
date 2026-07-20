@@ -348,7 +348,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   falling to a floor of 1 XP per level forever. **Damage no longer scales
   with level at all** (#60 XP3, `DamagePerLevel` cut): a weapon's damage is
   its content-data base plus any rule-card modifiers, full stop — levels
-  give HP only — **plus skill points** since #124 (`SkillPointsPerLevel = 2`,
+  give HP only — **plus skill points** since #124 (`SkillPointsPerLevel = 3`,
   and a Human banks `HumanBonusSkillPoints = 1` more).
 - **Death**: XP falls to the start of the current level (levels never
   lost — the "level start" floor is level-aware under the quadratic curve
@@ -982,7 +982,8 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 | `XPCurveBase` / `QuestKillRewardPerTarget` | 100 / 20 | quadratic XP curve: total XP to **reach** level L = `XPCurveBase*(L-1)^2` (#60 XP1) & flat per-target kill-quest reward |
 | `MonsterMaxHP` / `FistsDamage` | 10 / 1 | pre-6c monster baseline (wolf's HP) & unarmed profile |
 | `ElfCritChancePercent` / `ElfCritMultiplier` / `DwarfDamageReduction` | 20 / 2 / 1 | species knobs (`HumanXPBonusPercent` retired in #124 — the Human perk is skill points now) |
-| `SkillPointsPerLevel` / `HumanBonusSkillPoints` | 2 / 1 | skill points banked per level, and the Human's extra (#124) |
+| `SkillPointsPerLevel` / `HumanBonusSkillPoints` | 3 / 1 | skill points banked per level, and the Human's extra (#124) |
+| `SkillPointCost` | 3 | skill points to learn one skill (#57) |
 | `RogueGlanceChancePercent` / `GlanceDamagePercent` | 20 / 50 | Rogue class passive: chance an incoming hit is halved (never negated; floor 1 still applies) |
 | `RegenPerTurn` | 1 | out-of-combat HP per world turn |
 | `ForestSightCost` | 2 | hexes of effective sight range one forest hex between two entities costs (#95); rock hard-blocks, water is transparent |
