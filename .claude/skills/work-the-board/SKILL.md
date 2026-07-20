@@ -234,6 +234,20 @@ cap still applies inside a loop; it is not a licence to defer the build.
 Genuinely nothing authorised is a fine answer — "everything is at your gate"
 is a complete pass. Work you were handed and left is not.
 
+**Drafting a spec or mockup is safe autonomous work — never defer it as
+"needs supervision."** The one-build-per-pass cap and the "hold risky/large
+builds for the maintainer's eyes" judgement are about *building code*. They do
+NOT apply to advancing a `needs: spec` ticket: drafting the spec (and the
+mockup for a looks-driven one) ends at `needs: your input` — the maintainer's
+gate — so it is reversible and commits nothing. The mockup-first rule means
+*get a mockup approved before building the UI*; it does not mean *wait for the
+maintainer before drafting the mockup*. (2026-07-20: three `needs: spec`
+tickets sat undrafted through two quiet loop passes because "looks-driven,
+needs approval before building" was misread as "can't advance without them";
+the maintainer asked *"why aren't you working on the needs:spec ones?"* — there
+was no reason.) When a loop has no authorised build to do, drafting a queued
+spec+mockup is the highest-value thing still in your court.
+
 ## Reporting
 
 End the pass with a short summary: **what moved** (and to what state), **what you
