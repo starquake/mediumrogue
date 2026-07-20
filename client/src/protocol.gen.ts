@@ -436,6 +436,11 @@ export const BackpackSize = 4;
  */
 export const ItemStackCap = 5;
 /**
+ * MaxPlayers caps concurrent players (#199) — a DoS bound for a small trusted
+ * roster, well above the ~15-friend group. A join past it is refused 503.
+ */
+export const MaxPlayers = 30;
+/**
  * Starting/maximum hit points by kind. HP is on the wire from milestone 6.2 so
  * the client can show health bars once combat (6.3) starts changing it.
  * MonsterMaxHP is superseded by per-kind maxHP (internal/game's monsterDef

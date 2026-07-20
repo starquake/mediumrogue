@@ -927,3 +927,23 @@ func TestMonsterReachIsOnTheWire(t *testing.T) {
 		t.Errorf("player reach = %d, want %d (players send 0)", got, want)
 	}
 }
+
+// TestPlayerCapRejectsBeyondMax (#199): joins are accepted up to
+// protocol.MaxPlayers and refused past it with ErrWorldAtCapacity — a DoS
+// bound distinct from the spatial ErrWorldFull.
+func TestPlayerCapRejectsBeyondMax(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	for i := range protocol.MaxPlayers {
+		if _, err := w.Join("", "p", protocol.ClassFighter, protocol.SpeciesHuman); err != nil {
+			t.Fatalf("join %d/%d failed: %v", i+1, protocol.MaxPlayers, err)
+		}
+	}
+
+	_, err := w.Join("", "one-too-many", protocol.ClassFighter, protocol.SpeciesHuman)
+	if got, want := err, game.ErrWorldAtCapacity; !errors.Is(got, want) {
+		t.Errorf("join past cap = %v, want %v", got, want)
+	}
+}

@@ -87,6 +87,10 @@ var (
 	// ErrWorldFull means no walkable hex has room for another entity — only
 	// plausible if joins vastly outnumber the map's capacity.
 	ErrWorldFull = errors.New("world is full: no walkable hex with room left")
+
+	// ErrWorldAtCapacity means the player cap (protocol.MaxPlayers) is reached
+	// — a join DoS bound (#199), distinct from ErrWorldFull's spatial limit.
+	ErrWorldAtCapacity = errors.New("world is at player capacity")
 	// ErrNoRangedWeapon rejects an attack intent from a class with no ranged
 	// weapon (the Fighter, or any classless entity).
 	ErrNoRangedWeapon = errors.New("class has no ranged weapon")
@@ -717,6 +721,15 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	name = strings.TrimSpace(name)
 	if err := w.validateNewJoinLocked(token, name, class, species); err != nil {
 		return protocol.JoinResponse{}, err
+	}
+
+	// Player cap (#199): a brand-new join is refused once the roster is full.
+	// A reclaim/restore above is exempt — a returning player is not a new seat.
+	if w.playerCountLocked() >= protocol.MaxPlayers {
+		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
+			"reason", "at_capacity", "name", name, "token_prefix", tokenPrefix(token))
+
+		return protocol.JoinResponse{}, ErrWorldAtCapacity
 	}
 
 	spawn, err := w.spawnHexLocked()
@@ -3241,6 +3254,20 @@ func monsterReachLocked(e *entity) int {
 	}
 
 	return k.weaponDef.rangeHex
+}
+
+// playerCountLocked counts live player entities — the roster the player cap
+// (protocol.MaxPlayers) bounds (#199). Callers hold w.mu.
+func (w *World) playerCountLocked() int {
+	n := 0
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer {
+			n++
+		}
+	}
+
+	return n
 }
 
 func (w *World) entityViewsLocked() []protocol.Entity {
