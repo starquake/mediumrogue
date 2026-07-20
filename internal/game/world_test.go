@@ -2,7 +2,9 @@ package game_test
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -848,4 +850,46 @@ func TestReservedSystemNameRejected(t *testing.T) {
 	if _, err := w.Join("", "systematic", protocol.ClassFighter, protocol.SpeciesHuman); err != nil {
 		t.Errorf("Join with a normal name failed: %v", err)
 	}
+}
+
+// TestSetLoggerIsMutexGuarded (#197): SetLogger must take w.mu like SetAnnounce,
+// so a post-Run call doesn't race a reader on the bare w.logger pointer. Run
+// under -race; without the lock this trips the detector.
+func TestSetLoggerIsMutexGuarded(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	// A monster next to a player guarantees combat LOGGING every turn (move /
+	// attack events read w.logger) — without a real read there is nothing for
+	// the concurrent write to race against, and the test would pass even
+	// unlocked (a test that cannot fail).
+	me, err := w.Join("", "racer", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.PlaceMonsterForTest(walkableNeighbor(t, w, me.Hex))
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+
+		for range 300 {
+			w.SetLogger(slog.New(slog.DiscardHandler))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for range 300 {
+			w.ResolveTurnForTest()
+		}
+	}()
+
+	wg.Wait()
 }
