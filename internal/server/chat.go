@@ -140,7 +140,7 @@ func routeChatCommand(
 	if err != nil {
 		msg := err.Error()
 		if errors.Is(err, chat.ErrUnknownCommand) {
-			msg = "unknown command — try /help" // #203: point at the help, not a dead end
+			msg += " — try /help" // #203: point at the help, keep the echoed verb
 		}
 
 		respondError(w, deps.Logger, http.StatusUnprocessableEntity, msg)

@@ -144,8 +144,11 @@
         color: var(--fg);
         font-size: 0.82rem;
         line-height: 1.7;
-        pointer-events: auto;
+        /* Purely informational: never trap game input. The close X opts back
+           into pointer events; Esc / ? also dismiss it (#203). */
+        pointer-events: none;
       }
+      #controls-overlay .close { pointer-events: auto; }
       #controls-overlay h2 {
         margin: 0 0 0.6rem;
         font-size: 0.7rem;
