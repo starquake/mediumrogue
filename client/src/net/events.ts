@@ -131,6 +131,16 @@ export function connectEvents(getToken: () => string, callbacks: EventsCallbacks
       if (torndown) {
         return;
       }
+      // Disarm the OLD stream's watchdog before handing over (#208): armed by
+      // the old stream's open/turn/heartbeat, it would otherwise survive into
+      // the new stream's handshake and could fire before `open` — closing the
+      // fresh connection mid-handshake, the exact close-before-open pattern
+      // connect() documents avoiding. connect() re-arms only once the new
+      // stream is actually alive.
+      if (watchdog !== undefined) {
+        clearTimeout(watchdog);
+        watchdog = undefined;
+      }
       source.close();
       connect();
     },
