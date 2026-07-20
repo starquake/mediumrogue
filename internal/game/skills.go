@@ -506,7 +506,7 @@ func (w *World) learnSkillLocked(e *entity, id string) error {
 // skill never reaches the wire, so the client cannot leak the tree even by
 // accident (#124 Q7, enforced server-side by design rather than by client
 // discipline). Registry order, so the panel is stable between turns.
-func skillViewsLocked(e *entity) []protocol.SkillView {
+func skillViewsLocked(e *entity, turn int64) []protocol.SkillView {
 	// Empty, never nil: a nil slice marshals to JSON null and the generated
 	// client type says it is an array. See wire_nil_test.go.
 	if e.kind != protocol.EntityPlayer {
@@ -521,10 +521,22 @@ func skillViewsLocked(e *entity) []protocol.SkillView {
 			continue
 		}
 
-		views = append(views, protocol.SkillView{
+		view := protocol.SkillView{
 			ID: def.id, Name: def.name, Tree: def.tree,
 			Stats: statViewsFor(&itemDef{rules: def.rules}), Flavor: def.flavor, Learned: learned,
-		})
+		}
+
+		if def.active != nil {
+			view.Active = true
+			view.CooldownTurns = def.active.cooldownTurns
+			view.RangeHex = def.active.rangeHex
+
+			if ready := e.activeReadyTurn[def.id]; ready > turn {
+				view.TurnsUntilReady = int(ready - turn)
+			}
+		}
+
+		views = append(views, view)
 	}
 
 	return views

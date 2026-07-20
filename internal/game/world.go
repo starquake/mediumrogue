@@ -3306,7 +3306,7 @@ func (w *World) fillOwnOnlyLocked(entities []protocol.Entity, viewerToken string
 
 	for i := range entities {
 		if entities[i].ID == viewer.id {
-			entities[i].Skills = skillViewsLocked(viewer)
+			entities[i].Skills = skillViewsLocked(viewer, w.turn)
 			entities[i].SkillPoints = viewer.skillPoints
 
 			return

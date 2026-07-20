@@ -503,6 +503,13 @@ type SkillView struct {
 	Flavor string     `json:"flavor"`
 	// Learned distinguishes an owned skill from one currently learnable.
 	Learned bool `json:"learned"`
+	// Active-skill fields (#161/#185): Active marks a triggerable skill;
+	// CooldownTurns and RangeHex are its static profile; TurnsUntilReady is
+	// this player's live cooldown (0 = ready). All zero for a passive.
+	Active          bool `json:"active"`
+	CooldownTurns   int  `json:"cooldownTurns"`
+	RangeHex        int  `json:"rangeHex"`
+	TurnsUntilReady int  `json:"turnsUntilReady"`
 }
 
 // StatView is one rendered stat line (#171) — "+50% Chaos Resistance",

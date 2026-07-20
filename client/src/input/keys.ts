@@ -22,6 +22,7 @@ const CHARACTER_KEY = "KeyC";
 // exactly the kind of thing that gets reported as "my character froze".
 const SKILLS_KEY = "KeyK";
 const HELP_KEY = "Slash"; // "?" is Shift+/ — the physical key is Slash (#203)
+const ACTION_KEYS: Record<string, number> = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }; // action bar (#185)
 const ESCAPE_KEY = "Escape";
 
 export interface KeyCallbacks {
@@ -49,6 +50,8 @@ export interface KeyCallbacks {
   onToggleSkills?: () => void;
   /** "?" (Slash): toggle the controls overlay (#203). Same typing guards. */
   onToggleHelp?: () => void;
+  /** Keys 1–4: trigger action-bar slot 0–3 (#185). Same typing guards. */
+  onActionSlot?: (slot: number) => void;
   /**
    * Escape: close the character/inventory panel (gear keystone task 4) —
    * only invoked while isPanelOpen() reports true, so Escape is a no-op
@@ -113,6 +116,13 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
 
     if (ev.code === HELP_KEY && callbacks.onToggleHelp !== undefined) {
       callbacks.onToggleHelp();
+
+      return;
+    }
+
+    const slot = ACTION_KEYS[ev.code];
+    if (slot !== undefined && callbacks.onActionSlot !== undefined) {
+      callbacks.onActionSlot(slot);
 
       return;
     }

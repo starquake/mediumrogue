@@ -69,3 +69,21 @@ test("every tree renders real rows — the Survival tree is no longer empty", as
   // …and Survivalist specifically is on screen, not merely on the wire.
   await expect(page.locator(".skill-row", { hasText: "Survivalist" })).toHaveCount(1);
 });
+
+// #185: the action bar stays hidden for a fresh player (no learned actives).
+// The filled-bar + trigger path needs a learned Blink, which requires skill
+// points a fresh join on the monster-free core server never has — covered by
+// the server SkillView test and window.game instead.
+test("the action bar is hidden with no learned actives", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "fighter" }));
+    localStorage.setItem("mediumrogue.seenControls", "1");
+  });
+
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.game.skills.length)).toBeGreaterThan(0);
+
+  await expect(page.locator("#action-bar")).toBeHidden();
+  expect(await page.evaluate(() => window.game.armedSkill())).toBeNull();
+});

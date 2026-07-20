@@ -1,5 +1,13 @@
 import type { ChatRequest, ErrorResponse, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
-import { IntentDrink, IntentDrop, IntentEquip, IntentLearnSkill, IntentPickup, IntentUnequip } from "../protocol.gen";
+import {
+  IntentDrink,
+  IntentDrop,
+  IntentEquip,
+  IntentLearnSkill,
+  IntentPickup,
+  IntentUnequip,
+  IntentUseSkill,
+} from "../protocol.gen";
 
 const STORAGE_KEY = "mediumrogue.identity";
 
@@ -394,6 +402,28 @@ export async function submitLearnSkill(
     token: identity.token,
     target: { q: 0, r: 0 },
     kind: IntentLearnSkill,
+    itemId: 0,
+    groundItemId: 0,
+    targetEntityId: 0,
+    skillId,
+  });
+}
+
+/**
+ * Triggers a learned ACTIVE skill (#185) at a target hex — Blink and future
+ * actives. The server validates learned/cooldown/range/walkable/LOS and, on a
+ * rejection, surfaces the reason via the #193 toast; a false here is a no-op.
+ */
+export async function submitUseSkill(
+  identity: Pick<Identity, "entityId" | "token">,
+  skillId: string,
+  target: Hex,
+): Promise<boolean> {
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target,
+    kind: IntentUseSkill,
     itemId: 0,
     groundItemId: 0,
     targetEntityId: 0,

@@ -677,6 +677,35 @@
         font-size: 0.8rem;
         text-align: center;
       }
+      #action-bar {
+        position: fixed;
+        bottom: 0.8rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 90;
+        display: none;
+        gap: 0.4rem;
+        pointer-events: auto;
+      }
+      #action-bar.shown { display: flex; }
+      #action-bar .aslot {
+        width: 3rem;
+        height: 3rem;
+        border: 1px solid #2a3d2b;
+        background: #0d120d;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.6rem;
+        color: #33402f;
+        cursor: default;
+      }
+      #action-bar .aslot .num { position: absolute; top: 0.1rem; left: 0.25rem; font-size: 0.55rem; color: var(--dim); }
+      #action-bar .aslot.filled { border-color: #4a7fb5; color: #4a7fb5; cursor: pointer; }
+      #action-bar .aslot.cooling { border-color: #2a3d2b; color: var(--dim); opacity: 0.55; cursor: default; }
+      #action-bar .aslot .cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--dim); }
+      #action-bar .aslot.arming { border-color: #7cb342; color: #7cb342; }
       #toast {
         position: fixed;
         bottom: 4.5rem;
@@ -1266,6 +1295,12 @@
         <div id="quest-root"></div>
         <div id="skills-root"></div>
       </div>
+    </div>
+    <div id="action-bar">
+      <div class="aslot" data-slot="0"><span class="num">1</span><span class="lbl">—</span></div>
+      <div class="aslot" data-slot="1"><span class="num">2</span><span class="lbl">—</span></div>
+      <div class="aslot" data-slot="2"><span class="num">3</span><span class="lbl">—</span></div>
+      <div class="aslot" data-slot="3"><span class="num">4</span><span class="lbl">—</span></div>
     </div>
     <div id="client-error" hidden></div>
     <div id="toast" hidden></div>

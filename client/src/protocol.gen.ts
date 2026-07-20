@@ -747,6 +747,15 @@ export interface SkillView {
    * Learned distinguishes an owned skill from one currently learnable.
    */
   learned: boolean;
+  /**
+   * Active-skill fields (#161/#185): Active marks a triggerable skill;
+   * CooldownTurns and RangeHex are its static profile; TurnsUntilReady is
+   * this player's live cooldown (0 = ready). All zero for a passive.
+   */
+  active: boolean;
+  cooldownTurns: number /* int */;
+  rangeHex: number /* int */;
+  turnsUntilReady: number /* int */;
 }
 /**
  * StatView is one rendered stat line (#171) — "+50% Chaos Resistance",
