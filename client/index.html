@@ -1279,6 +1279,16 @@
       <div style="margin-top:.5rem;color:var(--dim)">Chat: /help · /here · /quest &lt;id&gt;</div>
       <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /leave</div>
     </div>
+    <div id="death-card" hidden>
+      <div class="big">YOU DIED</div>
+      <div class="sub" id="death-killer"></div>
+      <div class="dim" id="death-loss"></div>
+    </div>
+    <div id="reset-card" hidden>
+      <div class="big">The world has reset</div>
+      <div class="sub">A new world has begun — your old character is gone.</div>
+      <button id="reset-fresh" type="button">Start fresh</button>
+    </div>
     <div id="character-root"></div>
     <div id="pickup-root"></div>
     <div id="tooltip-root"></div>
