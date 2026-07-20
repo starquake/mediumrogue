@@ -35,6 +35,7 @@ import {
   JoinRejectedError,
   loadIdentity,
   onForeignIdentityChange,
+  onIntentFeedback,
   reclaim,
   submitDrink,
   submitDrop,
@@ -400,6 +401,23 @@ const turnEl = mustGet("turn");
 const turnStuckEl = mustGet("turn-stuck");
 const turnReceivedEl = mustGet("turn-received");
 const clientErrorEl = mustGet("client-error");
+const toastEl = mustGet("toast");
+
+// A transient toast for intent rejections and network blips (#193): shows the
+// server's own reason ("target is out of range", "backpack full", …) instead
+// of swallowing it or guessing. Latest message wins; auto-hides.
+let toastTimer = 0;
+function showToast(msg: string): void {
+  toastEl.textContent = msg;
+  toastEl.hidden = false;
+  toastEl.style.opacity = "1";
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toastEl.style.opacity = "0";
+    window.setTimeout(() => (toastEl.hidden = true), 260);
+  }, 2600);
+}
+onIntentFeedback(showToast);
 
 /**
  * Show the stuck marker when bundles are arriving but not being applied

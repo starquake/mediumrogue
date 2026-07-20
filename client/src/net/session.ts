@@ -197,15 +197,52 @@ export function onForeignIdentityChange(currentToken: () => string, onForeignCha
   });
 }
 
-/** POSTs an IntentRequest and reports whether the server accepted it (202). */
-async function postIntent(body: IntentRequest): Promise<boolean> {
-  const resp = await fetch("/api/intent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+// The client shows the server's own rejection reason (#193): the 422 body
+// carries a precise string ("target is out of range", "backpack full", …) that
+// used to be thrown away. A registered handler renders it as a toast; the net
+// layer stays UI-agnostic by calling through this indirection.
+let notify: (msg: string) => void = () => {};
 
-  return resp.status === 202;
+/** Register the toast sink for intent rejections and network blips (#193). */
+export function onIntentFeedback(fn: (msg: string) => void): void {
+  notify = fn;
+}
+
+/**
+ * POSTs an IntentRequest and reports whether the server accepted it (202).
+ * On a typed rejection it surfaces the server's reason via the feedback sink;
+ * on a network failure it surfaces a transient message and returns false —
+ * NOT re-thrown, so a wifi/deploy blip never reaches the global
+ * unhandledrejection handler and its "client stopped updating" crash banner
+ * (#193, the false-alarm half).
+ */
+async function postIntent(body: IntentRequest): Promise<boolean> {
+  let resp: Response;
+  try {
+    resp = await fetch("/api/intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    notify("couldn't reach the server — retrying…");
+
+    return false;
+  }
+
+  if (resp.status === 202) {
+    return true;
+  }
+
+  const reason = await resp
+    .json()
+    .then((body: ErrorResponse) => body.error)
+    .catch(() => "");
+  if (reason !== "") {
+    notify(reason);
+  }
+
+  return false;
 }
 
 /**
