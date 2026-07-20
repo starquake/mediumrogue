@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -95,15 +96,15 @@ func handleEvents(deps Deps) http.Handler {
 		lastSent := parseLastEventID(r)
 		lastSent = writeTurn(w, deps, flusher, lastSent, token)
 
-		streamEvents(w, r, deps, flusher, token, lastSent, ticks, chatCh)
+		streamEvents(r.Context(), w, deps, flusher, token, lastSent, ticks, chatCh)
 	})
 }
 
 // streamEvents is handleEvents' pump: it forwards turn ticks, chat messages,
-// and heartbeats onto the established stream until the request context ends
-// or a write fails.
+// and heartbeats onto the established stream until ctx (the request context)
+// ends or a write fails.
 func streamEvents(
-	w http.ResponseWriter, r *http.Request, deps Deps, flusher http.Flusher,
+	ctx context.Context, w http.ResponseWriter, deps Deps, flusher http.Flusher,
 	token string, lastSent int64, ticks <-chan struct{}, chatCh <-chan protocol.ChatMessage,
 ) {
 	heartbeat := time.NewTicker(deps.HeartbeatInterval)
@@ -111,7 +112,7 @@ func streamEvents(
 
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			return
 		case <-ticks:
 			lastSent = writeTurn(w, deps, flusher, lastSent, token)

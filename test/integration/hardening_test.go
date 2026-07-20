@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,7 +28,15 @@ func TestChatRateLimitRejectsSecondLine(t *testing.T) {
 	alice := joinNamed(t, ts, "alice")
 	bob := joinNamed(t, ts, "bob")
 
-	resp := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: "first"})
+	// A rejected input spends no budget: this over-long paste 422s, and the
+	// corrected line right after must still be alice's free first line.
+	resp := postJSON(t, ts, "/api/chat",
+		protocol.ChatRequest{Token: alice.Token, Text: strings.Repeat("x", protocol.MaxChatLen+1)})
+	if got, want := resp.StatusCode, http.StatusUnprocessableEntity; got != want {
+		t.Fatalf("over-long chat status = %d, want %d", got, want)
+	}
+
+	resp = postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: "first"})
 	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
 		t.Fatalf("first chat status = %d, want %d", got, want)
 	}

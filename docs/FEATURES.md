@@ -975,9 +975,9 @@ because the off-hand takes both a shield and a dual-wielded weapon.
     sustained entity-minting is throttled with `429` + `Retry-After`.
     Returning tokens (live or archived) bypass the bucket.
   - **Chat rate limit**: one line per `CHAT_MIN_INTERVAL` per token (plain
-    lines and `/commands` alike, counted after authentication); over-rate
-    lines get `429` + `Retry-After`, which the client shows as a local
-    system line.
+    lines and `/commands` alike; a rejected input — empty, too long — spends
+    no budget); over-rate lines get `429` + `Retry-After`, which the client
+    shows as a local system line.
   - **SSE stream cap**: at most `SSE_MAX_STREAMS` concurrent `/api/events`
     streams **globally** (each open stream pays a per-tick snapshot under
     the world lock); over-cap connects get an immediate `503` +
