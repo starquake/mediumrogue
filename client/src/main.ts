@@ -129,7 +129,7 @@ export interface GameDebug {
    * chosen name, or a monster kind's display name — "Wolf", "Dragon" — used
    * by the enemy hover tooltip, item 13).
    */
-  positions: { id: number; hex: Hex; kind: string; monsterKind: string; name: string }[];
+  positions: { id: number; hex: Hex; kind: string; monsterKind: string; name: string; reach: number }[];
   /**
    * The viewer's OWN skills from the latest bundle (#124) — id, tree, and
    * whether it is learned. Near-sighted by construction: a locked skill is
@@ -1601,6 +1601,7 @@ async function start(): Promise<void> {
         hex: e.hex,
         kind: e.kind,
         monsterKind: e.monsterKind,
+        reach: e.reach,
         name: e.name,
       }));
       window.game.hp = Object.fromEntries(event.entities.map((e) => [e.id, e.hp]));
@@ -1651,7 +1652,7 @@ async function start(): Promise<void> {
         const xpNext = XPCurveBase * mine.level * mine.level;
         // Position readout (item 9, playtest batch 2): live per bundle, so
         // it never drifts from the server-authoritative hex even mid-tween.
-        statsEl.textContent = `Lv ${mine.level} · ${mine.xp - xpFloor}/${xpNext - xpFloor} XP · (${mine.hex.q}, ${mine.hex.r})`;
+        statsEl.textContent = `Lv ${mine.level} · ${mine.hp}/${mine.maxHp} HP · ${mine.xp - xpFloor}/${xpNext - xpFloor} XP · (${mine.hex.q}, ${mine.hex.r})`;
 
         // Gear: my owned items ride Entity.Items every bundle (full-snapshot
         // philosophy, same as everything else here). setInventory feeds the
@@ -2014,7 +2015,11 @@ async function start(): Promise<void> {
       if (inRange) {
         const hp = window.game.hp[monster.id] ?? 0;
         const maxHp = window.game.maxHp[monster.id] ?? 0;
-        hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}`;
+        // Reach is the one threat stat shown before contact (#201): a ranged
+        // monster (Kin Archer) reads "reach 3" so you see it outranges you;
+        // melee reads nothing extra. Damage and type are learned by being hit.
+        const reach = monster.reach > 0 ? ` · reach ${monster.reach}` : "";
+        hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}${reach}`;
         hoverTooltipHPEl.hidden = false;
       } else {
         hoverTooltipHPEl.textContent = "";

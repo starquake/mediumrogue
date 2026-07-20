@@ -52,7 +52,13 @@ test("a fresh player starts at level 1 with 0 XP, exposed on window.game and the
   // curve at level 1, but now a curve rather than a coincidence).
   const hex = await page.evaluate(() => window.game.me?.hex ?? null);
   expect(hex).not.toBeNull();
-  await expect(page.locator("#stats")).toHaveText(`Lv 1 · 0/${XPCurveBase} XP · (${hex?.q}, ${hex?.r})`);
+  const meId = await page.evaluate(() => window.game.me?.id ?? -1);
+  const hp = await page.evaluate((id) => window.game.hp[id] ?? 0, meId);
+  const maxHp = await page.evaluate((id) => window.game.maxHp[id] ?? 0, meId);
+  // #201: the line now carries the player's own HP between level and XP.
+  await expect(page.locator("#stats")).toHaveText(
+    `Lv 1 · ${hp}/${maxHp} HP · 0/${XPCurveBase} XP · (${hex?.q}, ${hex?.r})`,
+  );
 });
 
 test("the hex world renders from server map data", async ({ page }) => {
@@ -71,4 +77,15 @@ test("the hex world renders from server map data", async ({ page }) => {
   // void — sample the screenshot for non-background pixels.
   const screenshot = await page.screenshot();
   expect(screenshot.byteLength).toBeGreaterThan(10_000);
+});
+
+// #201: the HUD stats line shows the player's own HP number (it previously
+// showed only level/XP/coords, while any monster's HP was hover-readable).
+test("the HUD stats line shows the player's HP", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#status")).toHaveAttribute("data-connected", "true");
+
+  await expect
+    .poll(() => page.evaluate(() => document.getElementById("stats")?.textContent ?? ""))
+    .toMatch(/\d+\/\d+ HP/);
 });
