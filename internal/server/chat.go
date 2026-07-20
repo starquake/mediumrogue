@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -59,6 +60,27 @@ func handleChat(deps Deps) http.Handler {
 // invite/accept/leave), as opposed to a line a player typed.
 const systemSender = protocol.SystemSender
 
+// helpText is the one-line control + command summary the /help verb replies
+// with (#203), and what an unknown command now points at instead of a bare
+// error. Self-only (a 422 the client renders as a system line), so it never
+// spams the shared channel. Keep in step with client/src/input/keys.ts.
+const helpText = "controls — move QWE/ASD · wait Space · panels I·C inventory, K skills · " +
+	"chat /help /here /quest <id> · party /invite <name> /accept /leave"
+
+// questIDArg parses the numeric id argument shared by /quest and /abandon,
+// responding with a usage error and reporting false if it is missing or
+// malformed (#203 extraction — previously copy-pasted per verb).
+func questIDArg(w http.ResponseWriter, deps Deps, rest, verb string) (int64, bool) {
+	id, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
+	if err != nil {
+		respondError(w, deps.Logger, http.StatusUnprocessableEntity, "usage: "+verb+" <id>")
+
+		return 0, false
+	}
+
+	return id, true
+}
+
 // routeChatCommand runs a "/command" and returns the sender label to publish
 // under (systemSender for party ops, the player's own name otherwise) and the
 // text to broadcast. Party verbs (invite/accept/leave) go straight to World;
@@ -88,23 +110,24 @@ func routeChatCommand(
 	case "quest":
 		sender = systemSender
 
-		id, perr := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
-		if perr != nil {
-			respondError(w, deps.Logger, http.StatusUnprocessableEntity, "usage: /quest <id>")
-
+		id, ok := questIDArg(w, deps, rest, "/quest")
+		if !ok {
 			return "", "", false
 		}
 
 		out, err = deps.World.QuestTake(token, id)
+	case "help":
+		// Self-only reply: a 422 the client shows as a system line in the
+		// typer's own log (chat/store.ts), never broadcast.
+		respondError(w, deps.Logger, http.StatusUnprocessableEntity, helpText)
+
+		return "", "", false
 	case "abandon":
+		// A player can hold several quests, so /abandon names which (like /quest).
 		sender = systemSender
 
-		// Item 14, playtest batch 2: a player can hold several personal
-		// quests at once, so /abandon must name which one (mirrors /quest).
-		id, perr := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
-		if perr != nil {
-			respondError(w, deps.Logger, http.StatusUnprocessableEntity, "usage: /abandon <id>")
-
+		id, ok := questIDArg(w, deps, rest, "/abandon")
+		if !ok {
 			return "", "", false
 		}
 
@@ -115,7 +138,12 @@ func routeChatCommand(
 	}
 
 	if err != nil {
-		respondError(w, deps.Logger, http.StatusUnprocessableEntity, err.Error())
+		msg := err.Error()
+		if errors.Is(err, chat.ErrUnknownCommand) {
+			msg = "unknown command — try /help" // #203: point at the help, not a dead end
+		}
+
+		respondError(w, deps.Logger, http.StatusUnprocessableEntity, msg)
 
 		return "", "", false
 	}

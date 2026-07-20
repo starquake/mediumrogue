@@ -21,6 +21,7 @@ const CHARACTER_KEY = "KeyC";
 // movement direction, and a movement key that sometimes opens a panel is
 // exactly the kind of thing that gets reported as "my character froze".
 const SKILLS_KEY = "KeyK";
+const HELP_KEY = "Slash"; // "?" is Shift+/ — the physical key is Slash (#203)
 const ESCAPE_KEY = "Escape";
 
 export interface KeyCallbacks {
@@ -46,6 +47,8 @@ export interface KeyCallbacks {
    * skill against their gear wants both.
    */
   onToggleSkills?: () => void;
+  /** "?" (Slash): toggle the controls overlay (#203). Same typing guards. */
+  onToggleHelp?: () => void;
   /**
    * Escape: close the character/inventory panel (gear keystone task 4) —
    * only invoked while isPanelOpen() reports true, so Escape is a no-op
@@ -104,6 +107,12 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
 
     if (ev.code === SKILLS_KEY && callbacks.onToggleSkills !== undefined) {
       callbacks.onToggleSkills();
+
+      return;
+    }
+
+    if (ev.code === HELP_KEY && callbacks.onToggleHelp !== undefined) {
+      callbacks.onToggleHelp();
 
       return;
     }

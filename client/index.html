@@ -117,6 +117,55 @@
       /* Inventory toggle: the character/paper-doll panel is large, so it is
          not always-on — the `i` key (input/keys.ts) and this HUD button open
          and close it. Same click-through-HUD discipline as #copy-link. */
+      #toggle-help {
+        display: block;
+        margin-top: 0.4rem;
+        padding: 0.15rem 0.5rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        color: var(--fg);
+        background: #16201a;
+        border: 1px solid var(--dim);
+        cursor: pointer;
+        pointer-events: auto;
+      }
+      #toggle-help:hover { background: #2a3d2b; border-color: var(--accent); }
+      #toggle-help[hidden] { display: none; }
+      #controls-overlay {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 120;
+        max-width: 26rem;
+        padding: 1rem 1.3rem;
+        background: #0d120d;
+        border: 1px solid var(--accent);
+        color: var(--fg);
+        font-size: 0.82rem;
+        line-height: 1.7;
+        pointer-events: auto;
+      }
+      #controls-overlay h2 {
+        margin: 0 0 0.6rem;
+        font-size: 0.7rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--dim);
+        font-weight: normal;
+      }
+      #controls-overlay kbd {
+        border: 1px solid var(--dim);
+        padding: 0 0.3rem;
+        border-radius: 2px;
+        font-family: inherit;
+      }
+      #controls-overlay .close {
+        float: right;
+        color: var(--dim);
+        cursor: pointer;
+      }
+      #controls-overlay[hidden] { display: none; }
       #toggle-inventory {
         display: block;
         margin-top: 0.4rem;
@@ -1204,6 +1253,7 @@
         <div id="stats">Lv — · —/— XP</div>
         <button id="copy-link" type="button" hidden>copy character link</button>
         <button id="toggle-inventory" type="button" hidden>inventory (i)</button>
+        <button id="toggle-help" type="button" hidden>? controls</button>
         <div id="turn-timer" data-phase="input"><div id="turn-timer-fill"></div></div>
         <div id="combat-panel" hidden>
           In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
@@ -1217,6 +1267,15 @@
     <div id="client-error" hidden></div>
     <div id="toast" hidden></div>
     <div id="levelup" hidden></div>
+    <div id="controls-overlay" hidden>
+      <span class="close" id="controls-close">×</span>
+      <h2>Controls</h2>
+      <div>Move <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> / <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div>
+      <div>Wait <kbd>Space</kbd> · click a tile to move / attack</div>
+      <div>Panels <kbd>I</kbd>/<kbd>C</kbd> character · <kbd>K</kbd> skills · <kbd>Esc</kbd> close</div>
+      <div style="margin-top:.5rem;color:var(--dim)">Chat: /help · /here · /quest &lt;id&gt;</div>
+      <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /leave</div>
+    </div>
     <div id="character-root"></div>
     <div id="pickup-root"></div>
     <div id="tooltip-root"></div>

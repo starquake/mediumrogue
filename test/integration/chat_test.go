@@ -236,3 +236,38 @@ func TestJoinRequiresName(t *testing.T) {
 		t.Errorf("join(name=\"\") status = %d, want %d", got, want)
 	}
 }
+
+// TestHelpVerbAndUnknownCommandHint (#203): /help returns the control summary
+// as a self-only 422 (the client renders it as a system line), and an unknown
+// command points at /help instead of a bare error.
+func TestHelpVerbAndUnknownCommandHint(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+	alice := joinNamed(t, ts, "alice")
+
+	help := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: "/help"})
+	if got, want := help.StatusCode, http.StatusUnprocessableEntity; got != want {
+		t.Fatalf("/help status = %d, want %d (self-only reply)", got, want)
+	}
+
+	var helpBody protocol.ErrorResponse
+	if err := json.NewDecoder(help.Body).Decode(&helpBody); err != nil {
+		t.Fatalf("decode /help: %v", err)
+	}
+
+	if !strings.Contains(helpBody.Error, "move") || !strings.Contains(helpBody.Error, "/invite") {
+		t.Errorf("/help text = %q, want it to list controls and party commands", helpBody.Error)
+	}
+
+	bogus := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: "/nope"})
+
+	var bogusBody protocol.ErrorResponse
+	if err := json.NewDecoder(bogus.Body).Decode(&bogusBody); err != nil {
+		t.Fatalf("decode unknown-command reply: %v", err)
+	}
+
+	if !strings.Contains(bogusBody.Error, "/help") {
+		t.Errorf("unknown-command reply = %q, want it to point at /help", bogusBody.Error)
+	}
+}
