@@ -670,7 +670,7 @@ func TestSnapshotRoundTripSkillState(t *testing.T) {
 
 	w.StreamOpened(me.Token)
 
-	learned := []string{"combat-training", "weak-spot"}
+	learned := []string{skillCombatTrainingID, skillWeakSpotID}
 	w.SetSkillStateForTest(me.EntityID, learned, 4, 3)
 
 	data, err := w.MarshalState()

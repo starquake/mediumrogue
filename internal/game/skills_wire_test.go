@@ -33,7 +33,7 @@ func TestSnapshotForIsOwnOnly(t *testing.T) {
 		t.Fatalf("Join bob: %v", err)
 	}
 
-	w.SetSkillStateForTest(alice.EntityID, []string{"combat-training"}, 3, 2)
+	w.SetSkillStateForTest(alice.EntityID, []string{skillCombatTrainingID}, 3, 2)
 	w.SetSkillStateForTest(bob.EntityID, []string{"scouting"}, 5, 3)
 
 	find := func(snap protocol.TurnEvent, id int64) protocol.Entity {

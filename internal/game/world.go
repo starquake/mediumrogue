@@ -457,6 +457,16 @@ type characterRecord struct {
 	xp                   int
 	equipped             map[string]itemInstance
 	backpack             [protocol.BackpackSize]backpackEntry
+	// Skill state (#124/#161, added #192): a swept player's learned skills,
+	// unspent bank, high-water mark, and active cooldowns. Without these the
+	// archive round-trip was a silent full respec — skills wiped, then every
+	// spent point refunded on the next XP event (pointsGrantedLevel reset to 0
+	// with xp intact). The disconnect sweep is the path EVERY absent player
+	// takes, so this is not an edge case.
+	learned            []string
+	skillPoints        int
+	pointsGrantedLevel int
+	activeReadyTurn    map[string]int64
 }
 
 // archiveLocked captures e's character record for World.archive. The
@@ -468,10 +478,20 @@ func archiveLocked(e *entity) characterRecord {
 	equipped := make(map[string]itemInstance, len(e.equipped))
 	maps.Copy(equipped, e.equipped)
 
+	learned := append([]string(nil), e.learned...)
+
+	var ready map[string]int64
+	if len(e.activeReadyTurn) > 0 {
+		ready = make(map[string]int64, len(e.activeReadyTurn))
+		maps.Copy(ready, e.activeReadyTurn)
+	}
+
 	return characterRecord{
 		name: e.name, class: e.class, species: e.species,
 		xp:       e.xp,
 		equipped: equipped, backpack: e.backpack,
+		learned: learned, skillPoints: e.skillPoints,
+		pointsGrantedLevel: e.pointsGrantedLevel, activeReadyTurn: ready,
 	}
 }
 
@@ -776,6 +796,9 @@ func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protoc
 		kind: protocol.EntityPlayer, name: rec.name, class: rec.class, species: rec.species,
 		xp: rec.xp, hp: maxHP, maxHP: maxHP,
 		equipped: rec.equipped, backpack: rec.backpack,
+		learned: rec.learned, skillPoints: rec.skillPoints,
+		pointsGrantedLevel: rec.pointsGrantedLevel, activeReadyTurn: rec.activeReadyTurn,
+
 		// Restored as if freshly joined: the removal-grace clock starts now,
 		// not at the (long-gone) pre-sweep disconnect time — the spec's pinned
 		// risk (see archive_test.go).
