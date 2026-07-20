@@ -1535,7 +1535,7 @@ func (w *World) regenPlayersLocked(members []*entity) {
 // for the next turn. Like resolveWorldTurnLocked it does NOT recompute — see that
 // method. Callers hold w.mu.
 func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.Time) {
-	slain := w.resolveCombatLocked(members, playersOf(members), false)
+	slain, diedThisTurn := w.resolveCombatLocked(members, playersOf(members), false)
 
 	// Kill XP belongs to the fight: every player who survived this bubble-turn
 	// earns the FULL sum of the slain kinds' xp — no last-hit competition,
@@ -1548,7 +1548,9 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 		}
 
 		for _, e := range members {
-			if e.kind == protocol.EntityPlayer && e.hp > 0 {
+			// hp>0 is not enough: a player who died this turn was respawned to
+			// full HP inside resolveCombatLocked, so exclude the died set (#194).
+			if e.kind == protocol.EntityPlayer && e.hp > 0 && !diedThisTurn[e.id] {
 				award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
@@ -1597,7 +1599,9 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 // kinds of every monster that died this resolution (one entry per dead
 // monster, not deduplicated), which the bubble path turns into the shared
 // kill-XP award and the kill-summary announce. Callers hold w.mu.
-func (w *World) resolveCombatLocked(members, monsterTargets []*entity, worldDomain bool) []*monsterDef {
+func (w *World) resolveCombatLocked(
+	members, monsterTargets []*entity, worldDomain bool,
+) ([]*monsterDef, map[int64]bool) {
 	// Built before thinkMonstersLocked (unlike pre-6.4, when the rng was built
 	// after) so a future aggro-range rule card using a condChance condition has
 	// a real, turn-seeded rng to consume instead of a nil one — see
@@ -2570,19 +2574,27 @@ func levelFloorXP(xp int) int { return xpFloorFor(levelFor(xp)) }
 // (resolveCombatLocked/ResolveCombatOnlyForTest) — one drop roll per dead
 // monster, consumed in the same id-sorted order as the rest of this pass, so
 // a full turn stays reproducible from the seed alone. Callers hold w.mu.
-func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) []*monsterDef {
+func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*monsterDef, map[int64]bool) {
 	var dead []*entity
 
 	var slain []*monsterDef
+
+	// Players who died THIS turn. They are respawned to full HP below, so an
+	// hp>0 check after this can no longer tell them apart from the unhurt —
+	// the kill-XP award loop needs this set to exclude them (#194).
+	diedPlayers := make(map[int64]bool)
 
 	for _, e := range members {
 		if e.hp <= 0 {
 			dead = append(dead, e)
 
-			if e.kind == protocol.EntityMonster {
+			switch e.kind {
+			case protocol.EntityMonster:
 				if k := kindOf(e); k != nil {
 					slain = append(slain, k)
 				}
+			case protocol.EntityPlayer:
+				diedPlayers[e.id] = true
 			}
 		}
 	}
@@ -2627,7 +2639,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) []*monst
 		e.pending = pendingItemAction{}
 	}
 
-	return slain
+	return slain, diedPlayers
 }
 
 // dropLootLocked rolls a slain monster's ground-loot drop: k's own
