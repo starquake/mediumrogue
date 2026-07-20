@@ -264,8 +264,14 @@ pipeline cannot tell them apart from a sword's.
   the turn's action, exactly like a move: not a bonus action, and it displaces
   a queued move or attack.
   - **Blink** — Survival tree, 3 hexes, **3-turn cooldown**. The destination
-    needs range, walkability **and line of sight**: it does *not* pass through
-    walls, deliberately unlike the classic ARPG blink, so cover stays real.
+    needs range, walkability, line of sight **and room**: it does *not* pass
+    through walls, deliberately unlike the classic ARPG blink, so cover stays
+    real, and it respects hex occupancy exactly like an ordinary mover (#196) —
+    a hex held by a monster or already at `StackCap` friendlies is refused, so
+    a blink is never a teleport onto (or through) someone. The occupancy check
+    runs at both submit (surfaced 422) and resolution (a hex that fills between
+    the two — e.g. another blink the same turn — drops the later lander, no
+    move, no cooldown).
   - **Cooldowns count TURNS, whichever clock is ticking.** A bubble turn is
     slower in wall-clock than a world turn, and that dilation is the bubble's
     point — a turn-denominated cooldown rides it instead of fighting it. A
@@ -274,7 +280,7 @@ pipeline cannot tell them apart from a sword's.
     free reset.
   - Wire: `IntentUseSkill` with a skill id + target hex. Rejections are 422 —
     not learned, not an active, on cooldown, out of range, not walkable, no
-    line of sight.
+    line of sight, hex occupied.
   - **No client UI yet**: no button, no keybind. Reachable only by POSTing the
     intent directly until #161's client half lands (blocked on a palette
     decision; the action bar is #185).

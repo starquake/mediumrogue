@@ -108,6 +108,12 @@ var (
 	// ErrNoLineOfSight is an active-skill target the caster cannot see: an
 	// active does not pass through walls (#161).
 	ErrNoLineOfSight = errors.New("no line of sight to target")
+	// ErrHexOccupied rejects an active-skill (blink) whose destination is held
+	// by an opposing entity or already at StackCap — a teleport respects the
+	// same occupancy rule blockedFor applies to every ordinary mover (#196).
+	// Without it a blink onto a monster's hex was a permanent safe spot and a
+	// blink onto a full stack breached protocol.StackCap.
+	ErrHexOccupied = errors.New("target hex is occupied")
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
 	ErrOutOfRange = errors.New("target is out of range")
@@ -1471,6 +1477,23 @@ func blockedFor(m *entity, byHex map[protocol.Hex][]*entity, h protocol.Hex) boo
 	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
 }
 
+// occupiedForLocked applies blockedFor's opposing/StackCap rule to hex h against
+// the world's live entity positions rather than a resolution-phase byHex board,
+// so a submit-time validation (useSkillLocked, #196) can judge the same
+// "blocked" the move phase will. m itself is excluded — a caster never blocks
+// its own destination. Callers hold w.mu.
+func (w *World) occupiedForLocked(m *entity, h protocol.Hex) bool {
+	var occs []*entity
+
+	for _, e := range w.entities {
+		if e.hex == h && e != m {
+			occs = append(occs, e)
+		}
+	}
+
+	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
+}
+
 func opposingOccupants(occs []*entity, m *entity) []*entity {
 	var out []*entity
 
@@ -2008,6 +2031,15 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 
 		def, ok := skillDefByID[id]
 		if !ok || def.active == nil {
+			continue
+		}
+
+		// #196: the board evolves as actives resolve — an earlier blink this
+		// same turn may have taken the destination's last slot. Re-check against
+		// the live board and DROP (no move, no cooldown) rather than teleport
+		// onto an opposing/over-cap hex; useSkillLocked already refused the
+		// common static case with a surfaced reason.
+		if blockedFor(e, byHex, target) {
 			continue
 		}
 

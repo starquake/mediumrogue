@@ -454,6 +454,14 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error 
 		return ErrNoLineOfSight
 	}
 
+	// #196: a blink onto an opposing-held or StackCap-full hex is refused here
+	// for the same reason an ordinary mover is turned away — occupancy is not
+	// negotiable. resolveActivesLocked re-checks against the evolving board for
+	// the rare hex that fills between this window and resolution.
+	if w.occupiedForLocked(e, target) {
+		return ErrHexOccupied
+	}
+
 	// The turn's action, so it displaces any queued move or attack — the
 	// latest intent in the window wins, exactly as elsewhere.
 	e.path = nil
