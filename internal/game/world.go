@@ -818,8 +818,17 @@ func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protoc
 // protocol.MaxNameLen runes.
 func validName(name string) bool {
 	n := utf8.RuneCountInString(name)
+	if n == 0 || n > protocol.MaxNameLen {
+		return false
+	}
 
-	return n > 0 && n <= protocol.MaxNameLen
+	// The system-announcement label is reserved: a player taking it could
+	// impersonate server messages, which the client styles specially (#198).
+	if strings.EqualFold(strings.TrimSpace(name), protocol.SystemSender) {
+		return false
+	}
+
+	return true
 }
 
 // SenderFor resolves a chat sender from their token: their display name and

@@ -78,6 +78,12 @@ const (
 	MaxNameLen = 24
 )
 
+// SystemSender is the reserved chat-sender label the server uses for its own
+// announcements (party ops etc.). The client styles any message from this
+// sender as a server line, so a player may not take it as a name (#198).
+// Shared here so the reserved-name check and the label cannot drift apart.
+const SystemSender = "system"
+
 // _ [MonsterAggroRadius - CombatRadius - 1]struct{} is a compile-time guard
 // on the invariant documented on MonsterAggroRadius above: a negative array
 // length is a compile error, so the package fails to BUILD (not just fail a

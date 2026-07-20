@@ -829,3 +829,23 @@ func TestPhasedTieBreakIsNotIDFavoritism(t *testing.T) {
 		t.Fatalf("across 20 seeds the blocked mover was always the max id %d — no seeded tie-break", maxID)
 	}
 }
+
+// TestReservedSystemNameRejected (#198): a player may not name themselves the
+// reserved system-announcement label (any case), because the client styles
+// messages from that sender as server lines — a spoofing vector.
+func TestReservedSystemNameRejected(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	for _, name := range []string{"system", "System", "SYSTEM", " system "} {
+		if _, err := w.Join("", name, protocol.ClassFighter, protocol.SpeciesHuman); err == nil {
+			t.Errorf("Join with name %q was accepted, want rejected", name)
+		}
+	}
+
+	// A normal name still joins.
+	if _, err := w.Join("", "systematic", protocol.ClassFighter, protocol.SpeciesHuman); err != nil {
+		t.Errorf("Join with a normal name failed: %v", err)
+	}
+}

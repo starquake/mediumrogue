@@ -57,7 +57,7 @@ func handleChat(deps Deps) http.Handler {
 
 // systemSender labels chat announcements the server generates itself (party
 // invite/accept/leave), as opposed to a line a player typed.
-const systemSender = "system"
+const systemSender = protocol.SystemSender
 
 // routeChatCommand runs a "/command" and returns the sender label to publish
 // under (systemSender for party ops, the player's own name otherwise) and the
