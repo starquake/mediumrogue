@@ -33,18 +33,6 @@ func handleEvents(deps Deps) http.Handler {
 			return
 		}
 
-		h := w.Header()
-		h.Set("Content-Type", "text/event-stream")
-		h.Set("Cache-Control", "no-cache")
-		w.WriteHeader(http.StatusOK)
-
-		// Establish the stream on the wire immediately. Without this, Go's
-		// server buffers the header block until the first body write, so a
-		// reconnecting client whose Last-Event-ID already matches the current
-		// turn (writeTurn below sends nothing) would see its connection hang
-		// with no bytes at all until the next turn or heartbeat.
-		flusher.Flush()
-
 		// Identify the player behind this stream and mark presence. A token is
 		// present once the client has joined; a not-yet-joined watcher (empty
 		// token) is skipped — StreamOpened/Closed are no-ops for it anyway, so
@@ -60,11 +48,31 @@ func handleEvents(deps Deps) http.Handler {
 			defer deps.World.StreamClosed(token)
 		}
 
+		// Subscribe BEFORE any byte (headers included) reaches the client, so
+		// "the GET response arrived" guarantees this stream is registered with
+		// both the tick hub and the chat broker. The tick hub coalesces (a tick
+		// means "fetch latest", so a late subscription never loses a turn), but
+		// chat is ephemeral fan-out: a message published between the header
+		// flush and Chat.Subscribe would be silently dropped — the #220 flake,
+		// where a client POSTed a chat line the instant its peer's stream
+		// opened and the peer's subscription lost the race.
 		ticks, unsubscribe := deps.Ticks.Subscribe()
 		defer unsubscribe()
 
 		chatCh, unsubscribeChat := deps.Chat.Subscribe()
 		defer unsubscribeChat()
+
+		h := w.Header()
+		h.Set("Content-Type", "text/event-stream")
+		h.Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+
+		// Establish the stream on the wire immediately. Without this, Go's
+		// server buffers the header block until the first body write, so a
+		// reconnecting client whose Last-Event-ID already matches the current
+		// turn (writeTurn below sends nothing) would see its connection hang
+		// with no bytes at all until the next turn or heartbeat.
+		flusher.Flush()
 
 		// Seed the watermark from Last-Event-ID so a reconnecting client is not
 		// re-sent a turn it already has. A fresh client (no header) or a
