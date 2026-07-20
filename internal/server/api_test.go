@@ -53,6 +53,7 @@ var intentSentinelStatus = map[error]int{
 	game.ErrSkillNotLearned: http.StatusUnprocessableEntity,
 	game.ErrSkillOnCooldown: http.StatusUnprocessableEntity,
 	game.ErrNoLineOfSight:   http.StatusUnprocessableEntity,
+	game.ErrHexOccupied:     http.StatusUnprocessableEntity,
 }
 
 // handledElsewhere are the sentinels SubmitIntent can never return, each with
