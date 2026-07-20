@@ -321,6 +321,16 @@ export function refreshPickup(rows: Omit<PickupRow, "rejected" | "rejectedReason
     dismissed = false;
   }
 
+  // A rejected row clears when a backpack slot actually FREES (#193) — the free
+  // count going UP since the last bundle, i.e. the player dropped/consumed
+  // something — not merely "there's room now". A backpack-full rejection can
+  // only happen while full, so "freed" is the true retry signal; keying off a
+  // static non-full backpack would wrongly wipe a just-rejected row the same
+  // bundle it appeared.
+  const freeSlots = backpack().filter((e) => e === null).length;
+  const freed = lastFreeSlots >= 0 && freeSlots > lastFreeSlots;
+  lastFreeSlots = freeSlots;
+
   if (rows.length === 0) {
     setModalOpenSig(false);
     setPickupRowsSig([]);
@@ -332,13 +342,9 @@ export function refreshPickup(rows: Omit<PickupRow, "rejected" | "rejectedReason
   }
 
   // Carry forward rejection marks for ids still present (a rejected row stays
-  // rejected until the modal is dismissed / the player moves away) — UNLESS a
-  // backpack slot has since freed up (#193): a rejected "backpack full" row
-  // clears the moment there's room, so the player can retry without leaving and
-  // re-entering the hex.
-  const hasRoom = backpack().some((e) => e === null);
+  // rejected until the modal is dismissed / the player moves away / a slot frees).
   const prevReasons = new Map(pickupRows().filter((r) => r.rejected).map((r) => [r.id, r.rejectedReason]));
-  const rejectedIds = hasRoom ? new Set<number>() : new Set(prevReasons.keys());
+  const rejectedIds = freed ? new Set<number>() : new Set(prevReasons.keys());
   setPickupRowsSig(
     rows.map((r) => ({
       ...r,
@@ -360,6 +366,11 @@ export function refreshPickup(rows: Omit<PickupRow, "rejected" | "rejectedReason
 // dismissed tracks whether the player closed the modal while still standing on
 // the current hex — reset by refreshPickup when the player moves.
 let dismissed = false;
+
+// lastFreeSlots is the backpack's free-slot count at the previous bundle, so
+// refreshPickup can tell a slot FREEING (retry signal for a rejected row) from
+// a backpack that was simply never full. -1 means "no baseline yet".
+let lastFreeSlots = -1;
 
 /** Closes the modal, leaving the remaining items on the ground (spec: reopens on re-entry). */
 export function dismissPickup(): void {
