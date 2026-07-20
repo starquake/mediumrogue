@@ -1,6 +1,7 @@
 package game_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/game"
@@ -354,5 +355,47 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 
 	if got, want := player.XP, 100; got != want {
 		t.Errorf("respawned XP = %d, want %d (no kill award; a same-turn death earns nothing)", got, want)
+	}
+}
+
+// TestLevelUpIsAnnounced (#202): crossing a level posts a party-visible line
+// naming the points earned. The initial 0→1 grant on join is silent (not a
+// level-up), and a nameless test-bridge player is skipped like death.
+func TestLevelUpIsAnnounced(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	var announced []string
+
+	w.SetAnnounce(func(sender, text string) {
+		if sender == protocol.SystemSender {
+			announced = append(announced, text)
+		}
+	})
+
+	me, err := w.Join("", "climber", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// First XP event settles the level-1 grant silently.
+	w.SetXPForTest(me.EntityID, 10)
+	w.GrantSkillPointsForTest(me.EntityID)
+
+	if len(announced) != 0 {
+		t.Fatalf("initial grant announced %v, want silence", announced)
+	}
+
+	// Cross into level 2 → one announce naming the points (Human: 3+1=4/level).
+	w.SetXPForTest(me.EntityID, 2*protocol.XPCurveBase+5)
+	w.GrantSkillPointsForTest(me.EntityID)
+
+	if len(announced) != 1 {
+		t.Fatalf("level-up announces = %d (%v), want 1", len(announced), announced)
+	}
+
+	if got := announced[0]; !strings.Contains(got, "level 2") || !strings.Contains(got, "skill points") {
+		t.Errorf("announce = %q, want it to name the level and points", got)
 	}
 }

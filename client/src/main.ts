@@ -57,9 +57,11 @@ import {
   CombatRadius,
   EntityMonster,
   EntityPlayer,
+  HumanBonusSkillPoints,
   IntentAttack,
   IntentMove,
   PlaybackSeconds,
+  SkillPointsPerLevel,
   SkillPointCost,
   SpeciesHuman,
   StackCap,
@@ -116,6 +118,8 @@ export interface GameDebug {
    * also raise the on-screen banner.
    */
   clientError: string | null;
+  /** The level my last level-up banner announced (#202); 0 = none yet. */
+  lastLevelUp: number;
   /** Number of map tiles rendered; 0 until the map layer is on stage. */
   tiles: number;
   /** Entity count from the latest turn bundle. */
@@ -419,6 +423,27 @@ function showToast(msg: string): void {
 }
 onIntentFeedback(showToast);
 
+// Self-only level-up banner (#202): fires when MY level increases between
+// bundles. Names the points earned (per-level grant + Human bonus) and points
+// at the skills panel — the discoverability hook. prevLevel starts at 0 so a
+// fresh or reclaimed character's first bundle never flashes.
+const levelupEl = mustGet("levelup");
+let prevLevel = 0;
+let levelupTimer = 0;
+function showLevelUp(from: number, to: number, species: string): void {
+  const per = SkillPointsPerLevel + (species === SpeciesHuman ? HumanBonusSkillPoints : 0);
+  const pts = (to - from) * per;
+  window.game.lastLevelUp = to;
+  levelupEl.textContent = `LEVEL ${to} · +${pts} skill points — K to spend`;
+  levelupEl.hidden = false;
+  levelupEl.style.opacity = "1";
+  window.clearTimeout(levelupTimer);
+  levelupTimer = window.setTimeout(() => {
+    levelupEl.style.opacity = "0";
+    window.setTimeout(() => (levelupEl.hidden = true), 360);
+  }, 3200);
+}
+
 /**
  * Show the stuck marker when bundles are arriving but not being applied
  * (#170). One turn of lag is normal — a bundle can land mid-handler — so only
@@ -647,6 +672,7 @@ window.game = {
   turnReceived: -1,
   turnApplied: -1,
   clientError: null,
+  lastLevelUp: 0,
   skills: [],
   skillPoints: 0,
   skillsPanelOpen: false,
@@ -1671,6 +1697,13 @@ async function start(): Promise<void> {
         // Position readout (item 9, playtest batch 2): live per bundle, so
         // it never drifts from the server-authoritative hex even mid-tween.
         statsEl.textContent = `Lv ${mine.level} · ${mine.hp}/${mine.maxHp} HP · ${mine.xp - xpFloor}/${xpNext - xpFloor} XP · (${mine.hex.q}, ${mine.hex.r})`;
+
+        // #202: my level rose since the last bundle → flash the banner.
+        // prevLevel 0 guards the first bundle (fresh/reclaimed join).
+        if (prevLevel > 0 && mine.level > prevLevel) {
+          showLevelUp(prevLevel, mine.level, mine.species);
+        }
+        prevLevel = mine.level;
 
         // Gear: my owned items ride Entity.Items every bundle (full-snapshot
         // philosophy, same as everything else here). setInventory feeds the

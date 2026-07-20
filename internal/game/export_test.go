@@ -862,3 +862,19 @@ func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
 
 	return e.learned, e.skillPoints, e.pointsGrantedLevel
 }
+
+// GrantSkillPointsForTest runs the per-level grant AND the level-up announce
+// for a player, mirroring the real award callers (kill/quest), so a test can
+// drive level-up feedback (#202) without staging a full combat turn.
+func (w *World) GrantSkillPointsForTest(id int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e := w.entities[id]
+	if e == nil {
+		return
+	}
+
+	g, level, up := grantSkillPointsLocked(e)
+	w.announceLevelUpLocked(e, g, level, up)
+}

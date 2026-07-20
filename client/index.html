@@ -640,6 +640,22 @@
         pointer-events: none;
         transition: opacity 0.25s;
       }
+      #levelup {
+        position: fixed;
+        top: 4.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        padding: 0.45rem 1rem;
+        background: rgba(124, 178, 66, 0.14);
+        color: #7cb342;
+        border: 1px solid #7cb342;
+        font-family: inherit;
+        font-size: 0.85rem;
+        letter-spacing: 0.04em;
+        pointer-events: none;
+        transition: opacity 0.35s;
+      }
       #quest-panel {
         pointer-events: auto;
         /* 23rem (was 20rem, item 5 playtest feedback batch 3): wide enough
@@ -1200,6 +1216,7 @@
     </div>
     <div id="client-error" hidden></div>
     <div id="toast" hidden></div>
+    <div id="levelup" hidden></div>
     <div id="character-root"></div>
     <div id="pickup-root"></div>
     <div id="tooltip-root"></div>
