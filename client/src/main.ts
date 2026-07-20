@@ -145,6 +145,8 @@ export interface GameDebug {
   skillPoints: number;
   /** Whether the skills panel is open (toggled by the `k` key). */
   skillsPanelOpen: boolean;
+  /** Whether the controls overlay is open (#203). */
+  controlsOpen: boolean;
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
   hp: Record<number, number>;
   /**
@@ -483,6 +485,22 @@ const statusEl = mustGet("status");
 const statsEl = mustGet("stats");
 const copyLinkEl = mustGet("copy-link") as HTMLButtonElement;
 const toggleInventoryEl = mustGet("toggle-inventory") as HTMLButtonElement;
+const toggleHelpEl = mustGet("toggle-help") as HTMLButtonElement;
+const controlsOverlayEl = mustGet("controls-overlay");
+
+// Controls overlay (#203): the ? key, the HUD button, and the × all route
+// here. Shown once automatically on a first-ever join (localStorage flag) so a
+// new player is taught the keys without hunting.
+function setControlsOverlay(open: boolean): void {
+  controlsOverlayEl.hidden = !open;
+  window.game.controlsOpen = open;
+}
+function isControlsOverlayOpen(): boolean {
+  return !controlsOverlayEl.hidden;
+}
+function toggleControlsOverlay(): void {
+  setControlsOverlay(!isControlsOverlayOpen());
+}
 const turnTimerEl = mustGet("turn-timer");
 const combatPanelEl = mustGet("combat-panel");
 const combatWaitingEl = mustGet("combat-waiting");
@@ -676,6 +694,7 @@ window.game = {
   skills: [],
   skillPoints: 0,
   skillsPanelOpen: false,
+  controlsOpen: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
     markPickupRejected(groundItemId);
@@ -1337,6 +1356,15 @@ async function start(): Promise<void> {
   // (defined above).
   toggleInventoryEl.hidden = false;
   toggleInventoryEl.addEventListener("click", toggleInventory);
+
+  // Controls overlay button + close + first-run auto-show (#203).
+  toggleHelpEl.hidden = false;
+  toggleHelpEl.addEventListener("click", toggleControlsOverlay);
+  mustGet("controls-close").addEventListener("click", () => setControlsOverlay(false));
+  if (localStorage.getItem("mediumrogue.seenControls") === null) {
+    localStorage.setItem("mediumrogue.seenControls", "1");
+    setControlsOverlay(true);
+  }
 
   // Re-join tracking: if this client's entity is absent from turn bundles for
   // a sustained spell, the disconnect-grace sweep removed it server-side (the
@@ -2009,8 +2037,17 @@ async function start(): Promise<void> {
     // keys.ts (a no-op while already closed, never a toggle).
     onToggleInventory: toggleInventory,
     onToggleSkills: applySkillsPanel,
-    onClosePanel: (): void => applyPanelOpen(false),
-    isPanelOpen: (): boolean => panelOpen(),
+    onToggleHelp: toggleControlsOverlay,
+    // Esc closes ANY open surface (#203): the controls overlay, the character
+    // panel, and the skills panel — previously only the character panel.
+    onClosePanel: (): void => {
+      setControlsOverlay(false);
+      applyPanelOpen(false);
+      if (skillsPanelOpen()) {
+        applySkillsPanel();
+      }
+    },
+    isPanelOpen: (): boolean => panelOpen() || skillsPanelOpen() || isControlsOverlayOpen(),
     isBlocked: (): boolean => !startScreenEl.hidden,
   });
 

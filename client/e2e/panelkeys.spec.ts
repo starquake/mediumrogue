@@ -57,3 +57,35 @@ test("C and I toggle the panel, Esc closes, chat focus suppresses", async ({ pag
   await page.keyboard.press("Escape");
   expect(await page.evaluate(() => window.game.panelOpen)).toBe(true);
 });
+
+// #203: the controls overlay opens with "?" and closes with Esc; Esc also
+// closes the skills panel (previously Esc only closed the character panel).
+test("the ? controls overlay toggles, and Esc closes skills too", async ({ page }) => {
+  // Suppress the first-run auto-open so this test drives the toggle itself.
+  await page.addInitScript(() => localStorage.setItem("mediumrogue.seenControls", "1"));
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.game.turn >= 1)).toBe(true);
+
+  expect(await page.evaluate(() => window.game.controlsOpen)).toBe(false);
+
+  // "?" is Shift+/ — the physical key is Slash.
+  await page.keyboard.press("Shift+Slash");
+  await expect.poll(() => page.evaluate(() => window.game.controlsOpen)).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.evaluate(() => window.game.controlsOpen)).toBe(false);
+
+  // Esc now also closes the skills panel.
+  await page.keyboard.press("k");
+  await expect.poll(() => page.evaluate(() => window.game.skillsPanelOpen)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.evaluate(() => window.game.skillsPanelOpen)).toBe(false);
+});
+
+// #203: a first-ever join auto-shows the controls overlay once.
+test("controls overlay auto-shows on a first-ever join", async ({ page }) => {
+  await page.goto("/"); // no seenControls flag set → first run
+  await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.game.controlsOpen)).toBe(true);
+});
