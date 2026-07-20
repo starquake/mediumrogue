@@ -102,6 +102,13 @@ export const MaxChatLen = 500;
  */
 export const MaxNameLen = 24;
 /**
+ * SystemSender is the reserved chat-sender label the server uses for its own
+ * announcements (party ops etc.). The client styles any message from this
+ * sender as a server line, so a player may not take it as a name (#198).
+ * Shared here so the reserved-name check and the label cannot drift apart.
+ */
+export const SystemSender = "system";
+/**
  * Hex is an axial coordinate on the flat-top hex grid. See Red Blob Games'
  * hex guide for the coordinate math conventions.
  */
