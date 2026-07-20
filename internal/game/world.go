@@ -560,6 +560,13 @@ func (w *World) SetLogger(logger *slog.Logger) {
 		return
 	}
 
+	// Locked like SetAnnounce (quest.go): every reader takes w.logger under
+	// w.mu (pollTick's resolution logging), so a post-Run call — a future
+	// log-level reload — would otherwise race on this bare pointer (#197).
+	// Safe and uncontended when called before Run, as today (app.go).
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	w.logger = logger
 }
 
