@@ -1570,7 +1570,8 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 				award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
 				e.xp += award
 				syncMaxHPLocked(e)
-				grantSkillPointsLocked(e)
+				g, lvl, up := grantSkillPointsLocked(e)
+				w.announceLevelUpLocked(e, g, lvl, up)
 
 				w.logger.Info(combatLogMsg, "event", combatEventXP, "id", e.id, "base", totalXP, "awarded", award)
 			}
@@ -2543,14 +2544,20 @@ func isqrt(n int) int {
 // BANK grant is not a fold over a combat value, and inventing an evLevelUp
 // event for a single rider would trip the no-mechanic-wildfire gate.
 // Callers hold w.mu.
-func grantSkillPointsLocked(e *entity) {
+// grantSkillPointsLocked pays a player for every level crossed since the last
+// grant and reports a genuine level-UP for the announce (#202): granted points,
+// the new level, and leveledUp — true only when a level was gained ABOVE the
+// first-ever 0->1 grant, so the initial grant on join stays silent.
+func grantSkillPointsLocked(e *entity) (int, int, bool) {
 	if e.kind != protocol.EntityPlayer {
-		return
+		return 0, 0, false
 	}
 
 	level := levelFor(e.xp)
-	if level <= e.pointsGrantedLevel {
-		return
+
+	prev := e.pointsGrantedLevel
+	if level <= prev {
+		return 0, level, false
 	}
 
 	per := protocol.SkillPointsPerLevel
@@ -2558,8 +2565,23 @@ func grantSkillPointsLocked(e *entity) {
 		per += protocol.HumanBonusSkillPoints
 	}
 
-	e.skillPoints += (level - e.pointsGrantedLevel) * per
+	granted := (level - prev) * per
+	e.skillPoints += granted
 	e.pointsGrantedLevel = level
+
+	return granted, level, prev >= 1
+}
+
+// announceLevelUpLocked posts the party-visible level-up line (#202) when a
+// grant was a genuine level gain. The self-only banner is a client concern
+// (off the level delta). Skips a nameless test-bridge player, like death.
+func (w *World) announceLevelUpLocked(e *entity, granted, level int, leveledUp bool) {
+	if !leveledUp || e.name == "" {
+		return
+	}
+
+	w.announce(protocol.SystemSender,
+		fmt.Sprintf("%s reached level %d — +%d skill points (K to spend)", e.name, level, granted))
 }
 
 // syncMaxHPLocked recalibrates a player's maxHP to its class and current level

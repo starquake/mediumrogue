@@ -390,7 +390,8 @@ func (w *World) completeQuestLocked(q *quest) {
 
 		e.xp += award
 		syncMaxHPLocked(e)
-		grantSkillPointsLocked(e)
+		g, lvl, up := grantSkillPointsLocked(e)
+		w.announceLevelUpLocked(e, g, lvl, up)
 		names = append(names, e.name)
 	}
 
