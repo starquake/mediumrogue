@@ -1123,11 +1123,17 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 //
 // INVARIANT: max over every registered def's rangeHex+aoeRadius must stay <=
 // CombatRadius (validateMaxReach, run at content load by mustValidateContent),
-// so any entity a ranged attack can reach is always already in the shooter's
-// combat bubble. If that invariant were ever violated, a monster could be
+// so a ranged attack's REACH never exceeds a combat bubble's radius. Since #95
+// made bubble membership (and aggro) sight-gated while reach stayed
+// distance-only, reach alone stopped implying same-bubble — a monster could be
 // ranged-killed in the WORLD domain (where resolveWorldTurnLocked awards no
-// kill-XP) — add an in-bubble/target-in-member-set guard here then. Callers
-// hold w.mu.
+// kill-XP) yet still drop loot: risk-free farming through a wall. #195 restores
+// the invariant with two guards: a submit-time LINE-OF-SIGHT gate here (a
+// ranged shot needs the same clear ray a bubble does, so a wall shields a
+// target instead of leaving it a loophole) and a resolution-time IN-DOMAIN
+// guard in resolveEntityTargetedLocked (a shot never reaches a victim being
+// resolved in a DIFFERENT domain — e.g. one frozen in someone else's bubble).
+// Callers hold w.mu.
 func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID int64) error {
 	if targetEntityID != 0 {
 		victim, ok := w.entities[targetEntityID]
@@ -1149,6 +1155,17 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 			return ErrOutOfRange
 		}
 
+		// #195: a ranged shot (dist > 1) obeys the same line-of-sight gate as
+		// bubble membership and monster aggro (#95) — terrain that blocks
+		// spotting blocks the shot, so a wall is a real shield instead of a
+		// loophole for farming a target through it that can never see, or
+		// fight, back. An adjacent victim (melee, dist == 1) needs no sight:
+		// endpoints are never occluded (seesLocked is true), and the
+		// weapon-by-distance identity makes adjacency its own reach.
+		if dist != 1 && !w.seesLocked(e.hex, victim.hex) {
+			return ErrNoLineOfSight
+		}
+
 		e.attackTargetEntity = targetEntityID
 		e.attackTarget = nil
 		e.path = nil
@@ -1165,6 +1182,13 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 
 	if len(rangedDefsFor(e, HexDistance(e.hex, target))) == 0 {
 		return ErrOutOfRange
+	}
+
+	// #195: line-of-sight gate, as in the entity-targeted branch. seesLocked
+	// returns true for an adjacent target hex (nothing strictly between), so
+	// an adjacent ground shot stays exempt without an explicit distance guard.
+	if !w.seesLocked(e.hex, target) {
+		return ErrNoLineOfSight
 	}
 
 	t := target
@@ -2188,8 +2212,10 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 // ground-targeted by nature. A single-weapon shooter still fires exactly one
 // hit, so this is unchanged for every pre-dual-wield board. Every shooter's
 // pending target is cleared, hit or fizzle. byHex holds exactly the resolving
-// member set, so targets outside the domain are naturally unreachable.
-// Callers hold w.mu.
+// member set: a GROUND-targeted shot draws its victims from byHex[target] and
+// so is domain-scoped by construction, while an ENTITY-targeted shot fetches
+// its victim from w.entities by id and must be domain-guarded explicitly
+// (resolveEntityTargetedLocked, #195). Callers hold w.mu.
 func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int) {
 	var shooters []*entity
 
@@ -2326,13 +2352,34 @@ func (w *World) resolveGroundTargetedLocked(
 // resolveDeathsLocked runs after this), i.e. any entity that already left
 // w.entities entirely, which resolveCombatLocked never does mid-attack-phase;
 // this guard is therefore mostly defensive, matching resolveBowLocked's own
-// empty-hex no-op. Callers hold w.mu.
+// empty-hex no-op. A SEPARATE guard (#195) then fizzles a victim that exists
+// and lives but belongs to a DIFFERENT resolving domain (absent from byHex) —
+// the cross-domain snipe the reach invariant used to preclude. Callers hold
+// w.mu.
 func (w *World) resolveEntityTargetedLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacker *entity, targetEntityID int64, damage map[int64]int,
 ) {
 	victim, ok := w.entities[targetEntityID]
 	if !ok || victim.hp <= 0 {
 		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "target_gone", "attacker", attacker.id)
+
+		return
+	}
+
+	// #195: the victim must belong to the resolving domain. byHex holds
+	// exactly this domain's member set (the world domain, or one bubble), so a
+	// victim absent from byHex[victim.hex] is being resolved in a DIFFERENT
+	// domain this pass — e.g. a shooter at world cadence naming a target frozen
+	// in someone else's bubble. Damaging it here would apply the hit (and any
+	// death/drops) in the wrong domain: that bubble's own death loop never sees
+	// it, so it lingers at <= 0 HP until the bubble next resolves. Fizzle
+	// rather than reach across the boundary — the submit-time #95 sight gate
+	// already stops the same-domain through-wall case; this is the cross-domain
+	// half the reach invariant used to guarantee. Positions are pre-move (#104),
+	// so victim.hex matches the key byHex was built under.
+	if !slices.Contains(byHex[victim.hex], victim) {
+		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_domain",
+			"attacker", attacker.id, "victim", victim.id)
 
 		return
 	}
