@@ -625,6 +625,21 @@
         font-size: 0.8rem;
         text-align: center;
       }
+      #toast {
+        position: fixed;
+        bottom: 4.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        padding: 0.4rem 0.9rem;
+        background: #3a2410;
+        color: #ffd9a8;
+        border: 1px solid #7a5320;
+        font-family: inherit;
+        font-size: 0.78rem;
+        pointer-events: none;
+        transition: opacity 0.25s;
+      }
       #quest-panel {
         pointer-events: auto;
         /* 23rem (was 20rem, item 5 playtest feedback batch 3): wide enough
@@ -1184,6 +1199,7 @@
       </div>
     </div>
     <div id="client-error" hidden></div>
+    <div id="toast" hidden></div>
     <div id="character-root"></div>
     <div id="pickup-root"></div>
     <div id="tooltip-root"></div>
