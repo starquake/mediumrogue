@@ -2,6 +2,7 @@ import { Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
+import { SkillPointCost } from "../protocol.gen";
 import type { SkillView } from "../protocol.gen";
 import { panelOpen, points, skills, TREES } from "./store";
 
@@ -60,7 +61,7 @@ function SkillsPanel(props: { learn: (id: string) => void }): JSXElement {
                       >
                         <button
                           class="skill-learn"
-                          disabled={points() === 0}
+                          disabled={points() < SkillPointCost}
                           onClick={() => props.learn(skill().id)}
                         >
                           Learn

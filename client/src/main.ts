@@ -1528,6 +1528,10 @@ async function start(): Promise<void> {
       // rather than as silence (#170).
       window.game.turnReceived = event.turn;
       turnReceivedEl.textContent = String(event.turn);
+      // Update the stuck marker HERE too, not only at the end: a mid-handler
+      // throw never reaches the tail call, so this is the point where
+      // turnReceived can lead turnApplied and the marker can actually show.
+      applyStatus();
 
       if (firstWorldID === null) {
         firstWorldID = event.worldId;
