@@ -1,8 +1,21 @@
 import { describe, expect, test } from "vitest";
 
 import type { ItemView } from "../protocol.gen";
-import { ItemTypeConsumable, ItemTypeShield, ItemTypeWeapon, SlotChest, SlotMainHand, SlotOffHand } from "../protocol.gen";
-import { backpack, equipped, offHandLocked, setInventory, targetSlotFor } from "./store";
+import { BackpackSize, ItemTypeConsumable, ItemTypeShield, ItemTypeWeapon, SlotChest, SlotMainHand, SlotOffHand } from "../protocol.gen";
+import type { PickupRow } from "./store";
+import {
+  backpack,
+  clearOnePending,
+  equipped,
+  markPending,
+  markPickupRejected,
+  offHandLocked,
+  pending,
+  pickupRows,
+  refreshPickup,
+  setInventory,
+  targetSlotFor,
+} from "./store";
 
 // store.test.ts covers the slot-placement logic no e2e path can reach: the
 // approved mockup's greyed "two-handed grip" off-hand needs a two-handed
@@ -126,4 +139,72 @@ test("a backpack item's type stays generic — a weapon has no hand until equipp
 test("a consumable backpack stack is never equipped", () => {
   setInventory([itemView({ id: 1, name: "Healing Potion", type: ItemTypeConsumable, equipped: false, count: 3 })]);
   expect(equipped()).toEqual({});
+});
+
+// --- #193: rejection feedback surfaces the real reason and clears itself ---
+
+function pickupRow(id: number): Omit<PickupRow, "rejected" | "rejectedReason"> {
+  return {
+    id,
+    name: `item${id}`,
+    type: ItemTypeWeapon,
+    count: 1,
+    damage: 0,
+    rangeHex: 0,
+    aoeRadius: 0,
+    stats: [],
+    flavor: "",
+    tags: [],
+    damageType: "",
+    twoHanded: false,
+  };
+}
+
+function fillBackpack(n: number): void {
+  setInventory(
+    Array.from({ length: n }, (_, i) => itemView({ id: 100 + i, name: `bp${i}`, type: ItemTypeConsumable })),
+  );
+}
+
+describe("pickup rejection feedback (#193)", () => {
+  test("markPickupRejected stores the server's reason; defaults to backpack-full text", () => {
+    fillBackpack(BackpackSize); // no room, so the mark isn't auto-cleared below
+    refreshPickup([pickupRow(1), pickupRow(2)], false);
+
+    markPickupRejected(1, "that item is no longer there");
+    markPickupRejected(2); // no reason → sensible default
+
+    const rows = pickupRows();
+    expect(rows.find((r) => r.id === 1)).toMatchObject({ rejected: true, rejectedReason: "that item is no longer there" });
+    expect(rows.find((r) => r.id === 2)).toMatchObject({ rejected: true, rejectedReason: "backpack full — drop something first" });
+  });
+
+  test("a rejected row clears once a backpack slot frees, without leaving the hex", () => {
+    fillBackpack(BackpackSize);
+    refreshPickup([pickupRow(3)], false);
+    markPickupRejected(3);
+    expect(pickupRows().find((r) => r.id === 3)?.rejected).toBe(true);
+
+    // full → still rejected on the next bundle
+    refreshPickup([pickupRow(3)], false);
+    expect(pickupRows().find((r) => r.id === 3)?.rejected).toBe(true);
+
+    // a slot frees (dropped something) → the mark clears so the player can retry
+    fillBackpack(BackpackSize - 1);
+    refreshPickup([pickupRow(3)], false);
+    expect(pickupRows().find((r) => r.id === 3)).toMatchObject({ rejected: false, rejectedReason: "" });
+  });
+});
+
+describe("per-item pending clear (#193)", () => {
+  test("clearOnePending drops only the named item's mark", () => {
+    setInventory([itemView({ id: 7, name: "sword" }), itemView({ id: 8, name: "shield", type: ItemTypeShield })]);
+    markPending(7);
+    markPending(8);
+    expect(pending().size).toBe(2);
+
+    clearOnePending(7);
+    expect(pending().has(7)).toBe(false);
+    expect(pending().has(8)).toBe(true);
+  });
 });

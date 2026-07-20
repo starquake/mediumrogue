@@ -45,7 +45,7 @@ function PickupModal(props: { actions: PickupActions }): JSXElement {
                   <span class="itemline">{row().count > 1 ? `${row().name} ×${row().count}` : row().name}</span>
                   <span class="typeline"> · {typeLabel(row().type)}</span>
                   <Show when={row().rejected}>
-                    <div class="full">⚠ backpack full — drop something first</div>
+                    <div class="full">⚠ {row().rejectedReason}</div>
                   </Show>
                 </div>
                 <button

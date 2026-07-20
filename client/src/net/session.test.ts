@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { onIntentFeedback, submitDrop, submitUseSkill } from "./session";
+import { onIntentFeedback, submitDrop, submitPickup, submitUseSkill } from "./session";
 
 const identity = { entityId: 1, token: "t" };
 
@@ -49,6 +49,34 @@ describe("intent rejection feedback (#193)", () => {
 
     expect(ok).toBe(true);
     expect(seen).toEqual([]);
+  });
+});
+
+describe("submitPickup (#193)", () => {
+  test("returns the server's reason and does NOT toast — the modal surfaces it inline", async () => {
+    const seen: string[] = [];
+    onIntentFeedback((m) => seen.push(m));
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "backpack full" }), { status: 422 }),
+    );
+
+    const outcome = await submitPickup(identity, 42);
+
+    expect(outcome).toEqual({ ok: false, reason: "backpack full" });
+    expect(seen).toEqual([]); // suppressed: the pickup modal shows the reason, no double toast
+  });
+
+  test("a network failure still toasts a transient blip and never throws", async () => {
+    const seen: string[] = [];
+    onIntentFeedback((m) => seen.push(m));
+
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("failed to fetch"));
+
+    const outcome = await submitPickup(identity, 42);
+
+    expect(outcome).toEqual({ ok: false, reason: "" });
+    expect(seen).toHaveLength(1); // a network blip isn't a per-row reason, so it toasts
   });
 });
 

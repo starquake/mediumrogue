@@ -100,6 +100,12 @@ export interface PickupRow extends ItemStats {
   count: number;
   /** Set when a take was rejected (backpack full) — inline feedback shows. */
   rejected: boolean;
+  /**
+   * The server's own rejection reason for this row (#193) — shown inline
+   * instead of a hardcoded "backpack full", which was wrong for any other
+   * cause. Empty while the row is not rejected.
+   */
+  rejectedReason: string;
 }
 
 // equipped: slot (one of the eight SLOT_ORDER names) -> the item filling it.
@@ -310,10 +316,20 @@ export function togglePanel(): void {
  * present and the modal is not dismissed for this hex, it opens; when the hex
  * is empty of items, it closes.
  */
-export function refreshPickup(rows: Omit<PickupRow, "rejected">[], moved: boolean): void {
+export function refreshPickup(rows: Omit<PickupRow, "rejected" | "rejectedReason">[], moved: boolean): void {
   if (moved) {
     dismissed = false;
   }
+
+  // A rejected row clears when a backpack slot actually FREES (#193) — the free
+  // count going UP since the last bundle, i.e. the player dropped/consumed
+  // something — not merely "there's room now". A backpack-full rejection can
+  // only happen while full, so "freed" is the true retry signal; keying off a
+  // static non-full backpack would wrongly wipe a just-rejected row the same
+  // bundle it appeared.
+  const freeSlots = backpack().filter((e) => e === null).length;
+  const freed = lastFreeSlots >= 0 && freeSlots > lastFreeSlots;
+  lastFreeSlots = freeSlots;
 
   if (rows.length === 0) {
     setModalOpenSig(false);
@@ -326,9 +342,16 @@ export function refreshPickup(rows: Omit<PickupRow, "rejected">[], moved: boolea
   }
 
   // Carry forward rejection marks for ids still present (a rejected row stays
-  // rejected until the modal is dismissed / the player moves away).
-  const rejectedIds = new Set(pickupRows().filter((r) => r.rejected).map((r) => r.id));
-  setPickupRowsSig(rows.map((r) => ({ ...r, rejected: rejectedIds.has(r.id) })));
+  // rejected until the modal is dismissed / the player moves away / a slot frees).
+  const prevReasons = new Map(pickupRows().filter((r) => r.rejected).map((r) => [r.id, r.rejectedReason]));
+  const rejectedIds = freed ? new Set<number>() : new Set(prevReasons.keys());
+  setPickupRowsSig(
+    rows.map((r) => ({
+      ...r,
+      rejected: rejectedIds.has(r.id),
+      rejectedReason: rejectedIds.has(r.id) ? (prevReasons.get(r.id) ?? "") : "",
+    })),
+  );
   setModalOpenSig(!dismissed);
 
   // Drop taking marks for items no longer on the ground — their take resolved
@@ -344,14 +367,42 @@ export function refreshPickup(rows: Omit<PickupRow, "rejected">[], moved: boolea
 // the current hex — reset by refreshPickup when the player moves.
 let dismissed = false;
 
+// lastFreeSlots is the backpack's free-slot count at the previous bundle, so
+// refreshPickup can tell a slot FREEING (retry signal for a rejected row) from
+// a backpack that was simply never full. -1 means "no baseline yet".
+let lastFreeSlots = -1;
+
 /** Closes the modal, leaving the remaining items on the ground (spec: reopens on re-entry). */
 export function dismissPickup(): void {
   dismissed = true;
   setModalOpenSig(false);
 }
 
-/** Marks a pickup row as rejected (backpack full) — inline feedback shows, row stays. */
-export function markPickupRejected(groundItemId: number): void {
-  setPickupRowsSig(pickupRows().map((r) => (r.id === groundItemId ? { ...r, rejected: true } : r)));
+/**
+ * Marks a pickup row as rejected — inline feedback shows, row stays. `reason`
+ * is the server's own message (#193); it defaults to the backpack-full text for
+ * the by-far commonest cause and the client-only test hook.
+ */
+export function markPickupRejected(groundItemId: number, reason = "backpack full — drop something first"): void {
+  setPickupRowsSig(
+    pickupRows().map((r) => (r.id === groundItemId ? { ...r, rejected: true, rejectedReason: reason } : r)),
+  );
   clearTaking(groundItemId); // stop the spinner; the rejected message shows instead
+}
+
+/**
+ * Clears a single item's pending mark (#193) — a rejected equip/unequip/drop/
+ * drink whose signature never changed, so resolvePending would otherwise leave
+ * its spinner spinning until an unrelated map click. Unlike clearPending it
+ * leaves any *other* in-flight action's mark alone.
+ */
+export function clearOnePending(itemId: number): void {
+  const cur = pending();
+  if (!cur.has(itemId)) {
+    return;
+  }
+
+  const next = new Map(cur);
+  next.delete(itemId);
+  setPendingSig(next);
 }

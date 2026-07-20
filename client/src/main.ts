@@ -11,6 +11,7 @@ import { mountPickup } from "./gear/PickupModal";
 import { mountStatTooltip } from "./gear/StatTooltip";
 import {
   backpack as backpackSignal,
+  clearOnePending,
   clearPending,
   equipped as equippedSignal,
   markPending,
@@ -1317,6 +1318,16 @@ async function start(): Promise<void> {
     feedbackLayer.setItemAction(null);
     window.game.pendingItems = [];
   };
+  // Clears one item's pending mark (a rejected action) while leaving any other
+  // in-flight action's mark alone; the on-map ⇄ glyph stays while any remain.
+  const clearOneItemPending = (itemId: number): void => {
+    clearOnePending(itemId);
+    const keys = [...pending().keys()];
+    if (keys.length === 0) {
+      feedbackLayer.setItemAction(null);
+    }
+    window.game.pendingItems = keys;
+  };
 
   // Inventory panel toggle: the HUD button, the `i`/`c` keys, Escape, and the
   // panel's own close button all route through applyPanelOpen, which keeps
@@ -1351,22 +1362,32 @@ async function start(): Promise<void> {
     });
   });
 
+  // A rejected panel action (its reason toasts via postIntent) must retract its
+  // own pending mark: nothing changed server-side, so resolvePending — which
+  // clears on a signature change — never would, leaving the spinner + ⇄ glyph
+  // stuck until an unrelated map click (#193). clearOneItemPending clears just
+  // this item, so a second in-flight action keeps its own mark.
+  const rejectClears = (itemId: number) => (ok: boolean): void => {
+    if (!ok) {
+      clearOneItemPending(itemId);
+    }
+  };
   const characterActions = {
     equip: (itemId: number): void => {
       beginItemAction(itemId);
-      void submitEquip(identity, itemId);
+      void submitEquip(identity, itemId).then(rejectClears(itemId));
     },
     unequip: (itemId: number): void => {
       beginItemAction(itemId);
-      void submitUnequip(identity, itemId);
+      void submitUnequip(identity, itemId).then(rejectClears(itemId));
     },
     drop: (itemId: number): void => {
       beginItemAction(itemId);
-      void submitDrop(identity, itemId);
+      void submitDrop(identity, itemId).then(rejectClears(itemId));
     },
     drink: (itemId: number): void => {
       beginItemAction(itemId);
-      void submitDrink(identity, itemId);
+      void submitDrink(identity, itemId).then(rejectClears(itemId));
     },
     close: (): void => applyPanelOpen(false),
   };
@@ -1384,9 +1405,9 @@ async function start(): Promise<void> {
       markTaking(groundItemId);
       feedbackLayer.setPickup(window.game.me?.hex ?? null);
       window.game.pickupPending = true;
-      void submitPickup(identity, groundItemId).then((ok) => {
+      void submitPickup(identity, groundItemId).then(({ ok, reason }) => {
         if (!ok) {
-          markPickupRejected(groundItemId);
+          markPickupRejected(groundItemId, reason === "" ? undefined : reason);
           feedbackLayer.setPickup(null);
           window.game.pickupPending = false;
         }
@@ -1537,9 +1558,20 @@ async function start(): Promise<void> {
     cancelCommittedClear();
     window.game.committedAction = committed;
     feedbackLayer.setCommitted(committed);
-    setCommittedAttackTiles(attackTilesFor(target));
+    const committedTiles = attackTilesFor(target);
+    setCommittedAttackTiles(committedTiles);
 
-    return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
+    // On a rejected attack (stale/out-of-range target — the #130/#133 422 the
+    // client used to ignore) the reason toasts via postIntent; here we also
+    // retract the committed crosshair + lit tiles, mirroring walkTo. The
+    // reference-equality guard leaves a *newer* commit alone: a later click
+    // replaces committedAttackTiles with a different array, so a straggler
+    // reject for this target no longer matches and is a no-op (#193).
+    return submitIntent(identity, target, IntentAttack, targetEntityId).then((accepted) => {
+      if (!accepted && committedAttackTiles === committedTiles) {
+        clearCommittedIndicator();
+      }
+    });
   };
 
   // meleeAt submits a melee attack at an adjacent hostile: mechanically an
@@ -1563,9 +1595,17 @@ async function start(): Promise<void> {
     cancelCommittedClear();
     window.game.committedAction = committed;
     feedbackLayer.setCommitted(committed);
-    setCommittedAttackTiles([target]); // a melee swing hits exactly its victim's tile (#101)
+    const committedTiles = [target]; // a melee swing hits exactly its victim's tile (#101)
+    setCommittedAttackTiles(committedTiles);
 
-    return submitIntent(identity, target, IntentAttack, targetEntityId).then(() => undefined);
+    // Retract the committed swing if the server rejects it (the reason toasts
+    // via postIntent). Same reference-equality guard as attackAt: a newer
+    // commit replaces committedAttackTiles, so a straggler reject is a no-op.
+    return submitIntent(identity, target, IntentAttack, targetEntityId).then((accepted) => {
+      if (!accepted && committedAttackTiles === committedTiles) {
+        clearCommittedIndicator();
+      }
+    });
   };
 
   // clickTarget is the single decision point shared by canvas clicks and

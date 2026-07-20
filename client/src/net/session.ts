@@ -224,7 +224,21 @@ export function onIntentFeedback(fn: (msg: string) => void): void {
  * unhandledrejection handler and its "client stopped updating" crash banner
  * (#193, the false-alarm half).
  */
-async function postIntent(body: IntentRequest): Promise<boolean> {
+/** The outcome of a posted intent: accepted, or rejected with the server's reason. */
+export interface IntentOutcome {
+  ok: boolean;
+  /** The server's rejection reason on a 422; "" on accept or a network blip. */
+  reason: string;
+}
+
+/**
+ * POSTs an IntentRequest and returns the outcome with the server's reason.
+ * `toastReason` (default true) surfaces a 422 reason as a toast — a caller that
+ * shows the reason on its own surface (the pickup modal's inline row) passes
+ * false to avoid double-surfacing. A network failure always toasts a transient
+ * blip and is never re-thrown (no false "client stopped updating" banner).
+ */
+async function postIntentDetailed(body: IntentRequest, toastReason = true): Promise<IntentOutcome> {
   let resp: Response;
   try {
     resp = await fetch("/api/intent", {
@@ -235,22 +249,26 @@ async function postIntent(body: IntentRequest): Promise<boolean> {
   } catch {
     notify("couldn't reach the server — retrying…");
 
-    return false;
+    return { ok: false, reason: "" };
   }
 
   if (resp.status === 202) {
-    return true;
+    return { ok: true, reason: "" };
   }
 
   const reason = await resp
     .json()
     .then((body: ErrorResponse) => body.error)
     .catch(() => "");
-  if (reason !== "") {
+  if (reason !== "" && toastReason) {
     notify(reason);
   }
 
-  return false;
+  return { ok: false, reason };
+}
+
+async function postIntent(body: IntentRequest): Promise<boolean> {
+  return (await postIntentDetailed(body)).ok;
 }
 
 /**
@@ -346,24 +364,29 @@ export async function submitDrink(
 }
 
 /**
- * Posts a pickup intent for one ground item on the player's own hex. Resolves
- * true on a 202 accept, false on a typed rejection (backpack full, or the
- * item is no longer there) — the caller surfaces a false as per-row feedback.
+ * Posts a pickup intent for one ground item on the player's own hex. Returns
+ * the outcome: `ok` false on a typed rejection (backpack full, or the item is
+ * no longer there), with `reason` carrying the server's own message. The
+ * caller surfaces it as per-row modal feedback, so this suppresses the global
+ * toast (`toastReason: false`) to avoid double-surfacing the same reason (#193).
  */
 export async function submitPickup(
   identity: Pick<Identity, "entityId" | "token">,
   groundItemId: number,
-): Promise<boolean> {
-  return postIntent({
-    entityId: identity.entityId,
-    token: identity.token,
-    target: { q: 0, r: 0 },
-    kind: IntentPickup,
-    itemId: 0,
-    groundItemId,
-    targetEntityId: 0,
-    skillId: "",
-  });
+): Promise<IntentOutcome> {
+  return postIntentDetailed(
+    {
+      entityId: identity.entityId,
+      token: identity.token,
+      target: { q: 0, r: 0 },
+      kind: IntentPickup,
+      itemId: 0,
+      groundItemId,
+      targetEntityId: 0,
+      skillId: "",
+    },
+    false,
+  );
 }
 
 /**
