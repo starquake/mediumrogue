@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Action bar (#185)</title>
+<style>
+  :root { --fg: #cfe3c8; --dim: #5a7a5c; --bg: #0b0f0b; --accent: #7cb342; --cool: #4a7fb5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg); font-family: "Courier New", monospace; display: flex; flex-direction: column; gap: 1.6rem; align-items: flex-start; }
+  .cap { color: var(--dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.18em; }
+  .frame { border: 1px solid #2a3d2b; padding: 1rem 1.2rem; background: #0d120d; }
+  .frame h3 { margin: 0 0 0.9rem; font-size: 0.66rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.16em; font-weight: normal; }
+
+  .bar { display: flex; gap: 0.5rem; }
+  .slot {
+    width: 3.4rem; height: 3.4rem; border: 1px solid #2a3d2b; background: #0d120d;
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .slot .num { position: absolute; top: 0.15rem; left: 0.3rem; font-size: 0.62rem; color: var(--dim); }
+  .slot.filled { border-color: var(--cool); }
+  .slot .name { font-size: 0.62rem; color: var(--cool); text-align: center; line-height: 1.1; margin-top: 0.5rem; }
+  .slot.empty .name { color: #33402f; }
+  .slot.cooling { border-color: #2a3d2b; }
+  .slot.cooling .name { color: var(--dim); }
+  .slot .cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--dim); background: rgba(0,0,0,0.35); }
+  .slot.dim { opacity: 0.45; }
+
+  .note { color: var(--dim); font-size: 0.7rem; line-height: 1.6; max-width: 40rem; }
+  .note b { color: var(--fg); font-weight: normal; }
+  .note .cool { color: var(--cool); }
+</style>
+
+<div class="cap">Action bar — #185 · proposed</div>
+
+<div class="frame">
+  <h3>The bar — anchored bottom-centre, 4 slots, keys 1–4</h3>
+  <div class="bar">
+    <div class="slot filled"><span class="num">1</span><span class="name">Blink</span></div>
+    <div class="slot filled cooling"><span class="num">2</span><span class="name">Blink</span><span class="cd">2</span></div>
+    <div class="slot empty"><span class="num">3</span><span class="name">—</span></div>
+    <div class="slot empty"><span class="num">4</span><span class="name">—</span></div>
+  </div>
+  <div class="note" style="margin-top:0.8rem">
+    Four numbered slots. Slot 1 holds a ready <span class="cool">Blink</span>;
+    slot 2 shows the same skill <b>cooling</b> — dimmed with the turns-until-ready
+    over it. Press <b>1–4</b> (or click) to trigger. Actives are
+    <span class="cool">blue</span>, matching the panel.
+  </div>
+</div>
+
+<div class="frame">
+  <h3>Empty slots &amp; the one-active reality</h3>
+  <div class="bar">
+    <div class="slot filled"><span class="num">1</span><span class="name">Blink</span></div>
+    <div class="slot empty"><span class="num">2</span><span class="name">—</span></div>
+    <div class="slot empty"><span class="num">3</span><span class="name">—</span></div>
+    <div class="slot empty"><span class="num">4</span><span class="name">—</span></div>
+  </div>
+  <div class="note" style="margin-top:0.8rem">
+    <b>The honest state today:</b> only Blink exists, so a real player sees one
+    filled slot and three empty numbered outlines. That's your settled call
+    (numbered outline always). It reads as "room to grow" rather than broken —
+    but flagging it so the 75%-empty look is a deliberate choice, not a surprise.
+  </div>
+</div>
+
+<div class="frame">
+  <h3>A slot unusable for a non-cooldown reason</h3>
+  <div class="bar">
+    <div class="slot filled dim"><span class="num">1</span><span class="name">Blink</span></div>
+  </div>
+  <div class="note" style="margin-top:0.8rem">
+    Per your call: for now a slot only dims on <b>cooldown</b>. Other
+    "unusable" reasons (e.g. Blink with nowhere in sight to jump) are <b>not</b>
+    computed per-turn — that stays deferred until a skill exists whose
+    unusability is common.
+  </div>
+</div>
+
+<div class="note">
+  <b>Assignment (settled):</b> automatic — learning an active drops it into the
+  first free slot; a 5th active leaves the full bar as-is (unassigned, no
+  eviction). <b>Persistence (settled):</b> the slot layout survives a
+  reconnect (its own <code>snapshotVersion</code> bump). This mockup is only
+  for the LOOK; the mechanics are already decided.
+</div>
