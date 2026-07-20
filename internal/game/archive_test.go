@@ -239,3 +239,63 @@ func TestArchiveDoesNotCoverPartyOrQuest(t *testing.T) {
 		t.Errorf("quest #1 HolderPartyID = %d, want %d", got, want)
 	}
 }
+
+// TestArchivePreservesSkillState (#192): a swept player's learned skills,
+// unspent bank, and high-water mark survive a rejoin. Before #192 the archive
+// record had no skill fields, so restore rebuilt the entity with none — a
+// silent full respec, and worse, the next XP event re-paid every level's points
+// because pointsGrantedLevel came back 0 with xp intact. This is the coverage
+// archive_test.go lacked because it predated #124.
+func TestArchivePreservesSkillState(t *testing.T) {
+	t.Parallel()
+
+	w, clk := newTimedWorld(t)
+	w.SetDisconnectGraceForTest(archiveGrace)
+
+	me, err := w.Join("", "skiller", protocol.ClassFighter, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// A level-3-ish character with two learned skills, a spent bank, and the
+	// high-water mark already paid up to level 3.
+	w.SetXPForTest(me.EntityID, 3*protocol.XPCurveBase+10)
+	w.SetSkillStateForTest(me.EntityID, []string{skillCombatTrainingID, skillWeakSpotID}, 1, 3)
+
+	wantLearned, wantPoints, wantGranted := w.SkillStateForTest(me.EntityID)
+
+	w.StreamOpened(me.Token)
+	w.StreamClosed(me.Token)
+	clk.advance(archiveGrace + time.Second)
+
+	if !w.SweepForTest(clk.now()) {
+		t.Fatal("sweep did not remove the disconnected player")
+	}
+
+	back, err := w.Join(me.Token, "ignored", protocol.ClassRogue, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("restoring Join: %v", err)
+	}
+
+	gotLearned, gotPoints, gotGranted := w.SkillStateForTest(back.EntityID)
+
+	if got, want := len(gotLearned), len(wantLearned); got != want {
+		t.Fatalf("restored learned = %v, want %v", gotLearned, wantLearned)
+	}
+
+	for i := range wantLearned {
+		if gotLearned[i] != wantLearned[i] {
+			t.Errorf("restored learned[%d] = %q, want %q", i, gotLearned[i], wantLearned[i])
+		}
+	}
+
+	if got, want := gotPoints, wantPoints; got != want {
+		t.Errorf("restored skillPoints = %d, want %d", got, want)
+	}
+
+	// The high-water mark must survive: if it came back 0, the next XP event
+	// would re-pay every level — the refund bug.
+	if got, want := gotGranted, wantGranted; got != want {
+		t.Errorf("restored pointsGrantedLevel = %d, want %d (0 would re-pay all levels)", got, want)
+	}
+}

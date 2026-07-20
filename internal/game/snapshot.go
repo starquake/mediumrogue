@@ -43,7 +43,7 @@ import (
 // ReturningHome. A v4 snapshot's monsters would all restore with home at the
 // origin (the Hex zero value) and leash-walk there en masse, so it is
 // preserved-aside + fresh.
-const snapshotVersion = 7
+const snapshotVersion = 8
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -174,6 +174,12 @@ type characterDTO struct {
 	XP       int                        `json:"xp"`
 	Equipped map[string]itemInstanceDTO `json:"equipped"`
 	Backpack []backpackEntryDTO         `json:"backpack"`
+	// Skill state (#192, snapshotVersion 8): the archive lost these before,
+	// so a restored-from-disk archived player was silently respec'd.
+	Learned            []string         `json:"learned,omitempty"`
+	SkillPoints        int              `json:"skillPoints,omitempty"`
+	PointsGrantedLevel int              `json:"pointsGrantedLevel,omitempty"`
+	ActiveReadyTurn    map[string]int64 `json:"activeReadyTurn,omitempty"`
 }
 
 // MarshalState serializes the world's persisted state to JSON: every entity
@@ -470,6 +476,8 @@ func characterToDTO(rec characterRecord) characterDTO {
 	return characterDTO{
 		Name: rec.name, Class: rec.class, Species: rec.species, XP: rec.xp,
 		Equipped: equippedToDTO(rec.equipped), Backpack: backpackToDTO(rec.backpack),
+		Learned: rec.learned, SkillPoints: rec.skillPoints,
+		PointsGrantedLevel: rec.pointsGrantedLevel, ActiveReadyTurn: rec.activeReadyTurn,
 	}
 }
 
@@ -477,5 +485,7 @@ func characterFromDTO(cd characterDTO) characterRecord {
 	return characterRecord{
 		name: cd.Name, class: cd.Class, species: cd.Species, xp: cd.XP,
 		equipped: equippedFromDTO(cd.Equipped), backpack: backpackFromDTO(cd.Backpack),
+		learned: cd.Learned, skillPoints: cd.SkillPoints,
+		pointsGrantedLevel: cd.PointsGrantedLevel, activeReadyTurn: cd.ActiveReadyTurn,
 	}
 }

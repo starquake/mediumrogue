@@ -14,6 +14,10 @@ const (
 	// skillSurvivalistID is Blink's prerequisite, and is also seeded by
 	// wire_nil_test.go's board — shared so goconst stays quiet.
 	skillSurvivalistID = "survivalist"
+	// Shared across game_test specs (archive/snapshot/skills-wire) so the
+	// literals don't trip goconst.
+	skillCombatTrainingID = "combat-training"
+	skillWeakSpotID       = "weak-spot"
 )
 
 // blinkReady seeds a player who has learned Blink and can use it.
