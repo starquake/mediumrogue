@@ -893,3 +893,37 @@ func TestSetLoggerIsMutexGuarded(t *testing.T) {
 
 	wg.Wait()
 }
+
+// TestMonsterReachIsOnTheWire (#201): a monster's attack reach reaches the
+// client so the hover tooltip can warn about a ranged attacker before contact;
+// a melee monster sends 0. Players send 0 (their own reach is already known).
+func TestMonsterReachIsOnTheWire(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me, err := w.Join("", "viewer", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	archer := w.PlaceMonsterKindForTest(walkableNeighbor(t, w, me.Hex), "kin-archer")
+	wolf := w.PlaceMonsterKindForTest(walkableNeighbor(t, w, me.Hex), "wolf")
+
+	byID := map[int64]protocol.Entity{}
+	for _, e := range w.SnapshotFor(me.Token).Entities {
+		byID[e.ID] = e
+	}
+
+	if got, want := byID[archer].Reach, 3; got != want {
+		t.Errorf("kin-archer reach = %d, want %d", got, want)
+	}
+
+	if got, want := byID[wolf].Reach, 0; got != want {
+		t.Errorf("wolf reach = %d, want %d (melee)", got, want)
+	}
+
+	if got, want := byID[me.EntityID].Reach, 0; got != want {
+		t.Errorf("player reach = %d, want %d (players send 0)", got, want)
+	}
+}

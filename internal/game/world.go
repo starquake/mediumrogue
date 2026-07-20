@@ -3204,13 +3204,31 @@ func aggroRadiusForLocked(rng *mrand.Rand, base int, p *entity) int {
 // entityViewsLocked renders every entity for the wire, EXCEPT the own-only
 // fields (fillOwnOnlyLocked adds those for the viewer). Unsorted — the caller
 // sorts by id. Callers hold w.mu.
+// monsterReachLocked returns a monster's attack reach in hexes for the wire
+// (#201) — its kind's weapon rangeHex — or 0 for a player or a kindless
+// fixture. Players know their own weapon's reach already, so it is only a
+// threat cue for monsters.
+func monsterReachLocked(e *entity) int {
+	if e.kind != protocol.EntityMonster {
+		return 0
+	}
+
+	k := kindOf(e)
+	if k == nil || k.weaponDef == nil {
+		return 0
+	}
+
+	return k.weaponDef.rangeHex
+}
+
 func (w *World) entityViewsLocked() []protocol.Entity {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 
 	for _, e := range w.entities {
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
-			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
+			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, Reach: monsterReachLocked(e),
+			XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
 			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
 			// Empty, never nil (wire_nil_test.go): own-only fields are
 			// stamped later by fillOwnOnlyLocked and stay at their zero value

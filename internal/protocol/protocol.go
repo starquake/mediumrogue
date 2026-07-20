@@ -582,6 +582,12 @@ type Entity struct {
 	HP       int    `json:"hp"`
 	MaxHP    int    `json:"maxHp"`
 	InCombat bool   `json:"inCombat"`
+	// Reach is a MONSTER's attack range in hexes (0 = melee) — the one threat
+	// stat shown to a player before contact (#201). Its damage and damage type
+	// are deliberately NOT sent: those are learned by being hit (near-sighted
+	// combat). Players send 0 (their own reach is their equipped weapon's,
+	// already known to them).
+	Reach int `json:"reach"`
 	// XP is server-authoritative; monsters send 0, players send their actual XP.
 	XP int `json:"xp"`
 	// Level is server-authoritative; monsters send 1, players send their actual level.
