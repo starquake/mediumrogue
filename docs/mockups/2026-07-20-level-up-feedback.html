@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Level-up feedback (#202)</title>
+<style>
+  :root { --fg: #cfe3c8; --dim: #5a7a5c; --bg: #0b0f0b; --accent: #7cb342; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg);
+    font-family: "Courier New", monospace; display: flex; flex-direction: column;
+    gap: 1.6rem; align-items: flex-start;
+  }
+  .cap { color: var(--dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.18em; }
+  .frame { border: 1px solid #2a3d2b; padding: 1rem 1.2rem; background: #0d120d; width: 32rem; }
+  .frame h3 { margin: 0 0 0.9rem; font-size: 0.66rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.16em; font-weight: normal; }
+
+  /* the HUD stats line, as it renders today */
+  .hud { font-size: 0.82rem; color: var(--fg); }
+  .hud .dim { color: var(--dim); }
+
+  /* the level-up banner (proposed) */
+  .levelup {
+    margin-top: 0.7rem; display: inline-flex; align-items: center; gap: 0.7rem;
+    border: 1px solid var(--accent); background: rgba(124, 178, 66, 0.12);
+    padding: 0.4rem 0.8rem; color: var(--accent); font-size: 0.82rem;
+    letter-spacing: 0.03em; animation: none;
+  }
+  .levelup .big { font-weight: bold; letter-spacing: 0.08em; }
+  .levelup .pts { color: var(--fg); }
+  .levelup .hint { color: var(--dim); font-size: 0.72rem; }
+  .key { border: 1px solid currentColor; padding: 0 0.25rem; font-size: 0.66rem; }
+
+  /* chat/combat log line (always, even if the banner is missed) */
+  .log { margin-top: 0.9rem; font-size: 0.74rem; }
+  .log .sys { color: var(--accent); }
+  .log .dim { color: var(--dim); }
+
+  .note { color: var(--dim); font-size: 0.7rem; line-height: 1.6; max-width: 34rem; }
+  .note b { color: var(--fg); font-weight: normal; }
+</style>
+
+<div class="cap">Level-up feedback — #202 · proposed</div>
+
+<div class="frame">
+  <h3>The moment — HUD, on crossing a level</h3>
+  <div class="hud">
+    Lv <b>3</b> <span class="dim">· 12/140 XP · (2, −5)</span>
+  </div>
+  <div class="levelup">
+    <span class="big">LEVEL 3</span>
+    <span class="pts">+3 skill points</span>
+    <span class="hint">— <span class="key">K</span> to spend</span>
+  </div>
+  <div class="note" style="margin-top:0.7rem">
+    Appears the instant you cross a level (the bundle where <b>Lv</b> ticks up),
+    holds a few seconds, then fades. Its whole job: tell you points exist and
+    where to spend them — the skill system is otherwise invisible unless you
+    already press <b>K</b>.
+  </div>
+</div>
+
+<div class="frame">
+  <h3>The durable record — chat / combat log</h3>
+  <div class="log">
+    <div><span class="dim">[bubble]</span> traveler slew a wolf <span class="dim">(+20 XP)</span></div>
+    <div><span class="sys">✦ traveler reached level 3 — +3 skill points (K to spend)</span></div>
+  </div>
+  <div class="note" style="margin-top:0.8rem">
+    A banner can be missed (looking at the map); the log line can't. Same
+    <b>system</b>-sender channel as kills/deaths, styled with the accent so it
+    reads as a milestone, not chatter. This is the part that ships even if the
+    banner is cut.
+  </div>
+</div>
+
+<div class="note">
+  <b>Open for you (this is why it's `needs: your input`):</b>
+  banner + log line, or log line only?
+  Should the moment name the <b>points</b> and prompt <b>K</b>, or just announce the level?
+  Party-visible (everyone sees "traveler reached level 3") or self-only?
+</div>
