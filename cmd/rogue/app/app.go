@@ -86,6 +86,9 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 		Ticks:             ticks,
 		Chat:              chatBroker,
 		HeartbeatInterval: cfg.HeartbeatInterval,
+		ChatMinInterval:   cfg.ChatMinInterval,
+		JoinMinInterval:   cfg.JoinMinInterval,
+		SSEMaxStreams:     cfg.SSEMaxStreams,
 	})
 
 	if *check {

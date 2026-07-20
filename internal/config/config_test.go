@@ -50,6 +50,18 @@ func TestLoadDefaults(t *testing.T) {
 	if got, want := cfg.SnapshotInterval, 60*time.Second; got != want {
 		t.Errorf("SnapshotInterval = %s, want 60s", got)
 	}
+
+	if got, want := cfg.ChatMinInterval, time.Second; got != want {
+		t.Errorf("ChatMinInterval = %s, want 1s", got)
+	}
+
+	if got, want := cfg.JoinMinInterval, time.Second; got != want {
+		t.Errorf("JoinMinInterval = %s, want 1s", got)
+	}
+
+	if got, want := cfg.SSEMaxStreams, 100; got != want {
+		t.Errorf("SSEMaxStreams = %d, want 100", got)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -62,6 +74,9 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("DISCONNECT_GRACE", "10s")
 	t.Setenv("SNAPSHOT_PATH", "/tmp/rogue-snapshot.json")
 	t.Setenv("SNAPSHOT_INTERVAL", "30s")
+	t.Setenv("CHAT_MIN_INTERVAL", "2s")
+	t.Setenv("JOIN_MIN_INTERVAL", "500ms")
+	t.Setenv("SSE_MAX_STREAMS", "3")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -102,6 +117,68 @@ func TestLoadOverrides(t *testing.T) {
 
 	if got, want := cfg.SnapshotInterval, 30*time.Second; got != want {
 		t.Errorf("SnapshotInterval = %s, want 30s", got)
+	}
+
+	if got, want := cfg.ChatMinInterval, 2*time.Second; got != want {
+		t.Errorf("ChatMinInterval = %s, want 2s", got)
+	}
+
+	if got, want := cfg.JoinMinInterval, 500*time.Millisecond; got != want {
+		t.Errorf("JoinMinInterval = %s, want 500ms", got)
+	}
+
+	if got, want := cfg.SSEMaxStreams, 3; got != want {
+		t.Errorf("SSEMaxStreams = %d, want 3", got)
+	}
+}
+
+// TestLoadZeroDisablesLimits pins the limit knobs' off switch (#199): zero is
+// a VALID setting meaning "no limit" — the convention tests and the e2e
+// harness rely on — unlike the timing knobs, which reject zero.
+func TestLoadZeroDisablesLimits(t *testing.T) {
+	t.Setenv("CHAT_MIN_INTERVAL", "0s")
+	t.Setenv("JOIN_MIN_INTERVAL", "0s")
+	t.Setenv("SSE_MAX_STREAMS", "0")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if got, want := cfg.ChatMinInterval, time.Duration(0); got != want {
+		t.Errorf("ChatMinInterval = %s, want 0s", got)
+	}
+
+	if got, want := cfg.JoinMinInterval, time.Duration(0); got != want {
+		t.Errorf("JoinMinInterval = %s, want 0s", got)
+	}
+
+	if got, want := cfg.SSEMaxStreams, 0; got != want {
+		t.Errorf("SSEMaxStreams = %d, want 0", got)
+	}
+}
+
+func TestLoadRejectsNegativeChatMinInterval(t *testing.T) {
+	t.Setenv("CHAT_MIN_INTERVAL", "-1s")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a negative CHAT_MIN_INTERVAL")
+	}
+}
+
+func TestLoadRejectsNegativeJoinMinInterval(t *testing.T) {
+	t.Setenv("JOIN_MIN_INTERVAL", "-1s")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a negative JOIN_MIN_INTERVAL")
+	}
+}
+
+func TestLoadRejectsNegativeSSEMaxStreams(t *testing.T) {
+	t.Setenv("SSE_MAX_STREAMS", "-1")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a negative SSE_MAX_STREAMS")
 	}
 }
 

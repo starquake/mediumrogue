@@ -101,6 +101,40 @@ func startServerWithBubbleTuning(
 	return ts
 }
 
+// startServerWithLimits boots the handler tree with the #199 hardening knobs
+// set — the ONLY harness that enables them: every other harness builds Deps
+// without the limit fields (zero = disabled), so the rest of the suite can
+// chat and join as fast as it likes. A long turn interval keeps the clock out
+// of the way; these tests assert on HTTP statuses, not turns.
+func startServerWithLimits(
+	t *testing.T, chatMinInterval, joinMinInterval time.Duration, sseMaxStreams int,
+) *httptest.Server {
+	t.Helper()
+
+	ticks := hub.New()
+
+	world := game.NewWorld(time.Hour, time.Minute, 5*time.Millisecond, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+
+	chatBroker := newAnnouncingChatBroker(world)
+	go world.Run(t.Context())
+
+	handler := server.New(server.Deps{
+		Logger:            slog.New(slog.DiscardHandler),
+		World:             world,
+		Ticks:             ticks,
+		Chat:              chatBroker,
+		HeartbeatInterval: time.Hour,
+		ChatMinInterval:   chatMinInterval,
+		JoinMinInterval:   joinMinInterval,
+		SSEMaxStreams:     sseMaxStreams,
+	})
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	return ts
+}
+
 // startServerWithGrace boots the handler tree with an explicit (short)
 // disconnectGrace so the disconnect sweep fires within a test — the rest of the
 // suite keeps the long testDisconnectGrace default and is never swept

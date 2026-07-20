@@ -872,6 +872,28 @@ func (w *World) SenderFor(token string) (string, protocol.Hex, bool) {
 	return e.name, e.hex, true
 }
 
+// TokenKnown reports whether token belongs to a returning player — a live
+// entity or an archived character. The HTTP layer's join rate limiter (#199)
+// exempts exactly this set, mirroring the player cap's reclaim/restore
+// exemption in Join: a returning player mints no new state, so throttling
+// them would only punish reconnects.
+func (w *World) TokenKnown(token string) bool {
+	if token == "" {
+		return false
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if _, ok := w.byToken[token]; ok {
+		return true
+	}
+
+	_, ok := w.archive[token]
+
+	return ok
+}
+
 // StreamOpened marks that a live event stream opened for the entity with this
 // token (a new connection or an EventSource reconnect). A positive stream count
 // keeps the entity out of the disconnect sweep. No-op for an unknown or empty

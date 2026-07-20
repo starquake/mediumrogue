@@ -11,10 +11,27 @@ import (
 // handleJoin mints or returns the caller's entity. Idempotent for a client
 // that re-sends its stored token; a stale token (server restarted) quietly
 // becomes a fresh entity.
+//
+// New-character joins drain a global token bucket (#199): burst
+// protocol.MaxPlayers — a whole friend group joins at once — refilling one
+// slot per Deps.JoinMinInterval, so sustained entity-minting is throttled.
+// Global (not per-IP) on purpose: behind the reverse proxy every client
+// shares RemoteAddr, and whether to trust X-Forwarded-For is an open call on
+// the ticket. Returning players (live or archived token) bypass the bucket,
+// mirroring the player cap's reclaim/restore exemption in World.Join.
 func handleJoin(deps Deps) http.Handler {
+	bucket := newTokenBucket(deps.JoinMinInterval, protocol.MaxPlayers)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req protocol.JoinRequest
 		if !decodeJSON(w, r, deps.Logger, &req) {
+			return
+		}
+
+		if !deps.World.TokenKnown(req.Token) && !bucket.take() {
+			w.Header().Set("Retry-After", retryAfterSeconds(deps.JoinMinInterval))
+			respondError(w, deps.Logger, http.StatusTooManyRequests, "too many new joins, try again shortly")
+
 			return
 		}
 

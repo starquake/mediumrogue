@@ -26,6 +26,17 @@ type Deps struct {
 	// an otherwise idle stream. Threaded through Deps (not read from config
 	// here) so tests can shrink it to milliseconds.
 	HeartbeatInterval time.Duration
+	// ChatMinInterval is the per-player minimum gap between chat POSTs
+	// (#199); over-rate lines are 429ed. Zero (the tests' default — every
+	// existing harness builds Deps without it) disables the limit.
+	ChatMinInterval time.Duration
+	// JoinMinInterval is the refill rate of the global new-character join
+	// bucket (burst protocol.MaxPlayers); over-rate joins are 429ed.
+	// Reclaims/restores are exempt. Zero disables the limit.
+	JoinMinInterval time.Duration
+	// SSEMaxStreams caps concurrent SSE event streams globally (#199);
+	// over-cap connects are 503ed with Retry-After. Zero disables the cap.
+	SSEMaxStreams int
 }
 
 // New returns the root HTTP handler.

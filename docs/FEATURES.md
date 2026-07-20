@@ -964,6 +964,37 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   character-theft vector). Purpose: a future cross-machine "players
   swapped" report gets diagnosed from the server log's join/sweep/restore
   sequence instead of hypothesized.
+- **Server hardening** (#199 — DoS/resource-exhaustion bounds, all in the
+  HTTP layer so a throttled request never reaches the world):
+  - **Player cap**: `protocol.MaxPlayers` (30) — a brand-new join past it is
+    `503`; reclaims/restores are exempt (a returning player is not a new
+    seat).
+  - **Join rate limit**: new-character joins drain a **global** token bucket
+    (burst `MaxPlayers`, refilling one slot per `JOIN_MIN_INTERVAL`) — a
+    whole friend group or a post-restart mass reconnect bursts in at once,
+    sustained entity-minting is throttled with `429` + `Retry-After`.
+    Returning tokens (live or archived) bypass the bucket.
+  - **Chat rate limit**: one line per `CHAT_MIN_INTERVAL` per token (plain
+    lines and `/commands` alike, counted after authentication); over-rate
+    lines get `429` + `Retry-After`, which the client shows as a local
+    system line.
+  - **SSE stream cap**: at most `SSE_MAX_STREAMS` concurrent `/api/events`
+    streams **globally** (each open stream pays a per-tick snapshot under
+    the world lock); over-cap connects get an immediate `503` +
+    `Retry-After: 5` — an EventSource treats it as a failed connect and
+    retries — instead of silently degrading turn resolution. Global, not
+    per-IP: behind the reverse proxy every client shares `RemoteAddr`, and
+    per-IP identity (trusting `X-Forwarded-For`) is an open decision on
+    #199.
+  - **Body bounds**: JSON POST bodies are capped at 64 KiB
+    (`http.MaxBytesReader`) and must arrive within a 10s per-request read
+    deadline (a trickle defence that leaves the long-lived SSE GET
+    untouched); request headers get the server-wide 10s
+    `ReadHeaderTimeout`.
+  - All three rate/cap knobs are env vars where **`0` disables the limit**
+    (the tests' and e2e harness's switch), threaded like `TURN_INTERVAL`.
+  - The rejections use the standard JSON error body; `429`/`503` here are
+    wire-layer verdicts, not game sentinels.
 
 ---
 
@@ -982,6 +1013,9 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 | `WORLD_RADIUS` | `24` | world hex radius (~1,801 tiles) |
 | `SNAPSHOT_PATH` | `""` (disabled) | world-snapshot file path; empty disables persistence entirely |
 | `SNAPSHOT_INTERVAL` | `60s` | periodic snapshot-save cadence while persistence is enabled |
+| `CHAT_MIN_INTERVAL` | `1s` | per-player minimum gap between chat lines (#199); `0` disables |
+| `JOIN_MIN_INTERVAL` | `1s` | refill rate of the global new-character join bucket, burst `MaxPlayers` (#199); `0` disables |
+| `SSE_MAX_STREAMS` | `100` | global cap on concurrent SSE event streams (#199); `0` disables |
 
 ## 4. Game-rule constants (`internal/protocol`, compiled into both sides)
 
@@ -992,6 +1026,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 | `StackCap` | 5 | max friendly entities per hex |
 | `BackpackSize` / `ItemStackCap` | 4 / 5 | backpack entries · max identical consumables per stack |
 | `MaxNameLen` / `MaxChatLen` | 24 / 500 | input caps (runes) |
+| `MaxPlayers` | 30 | player cap (#199): new joins past it are 503; reclaims/restores exempt |
 | `FighterMaxHP` / `RogueMaxHP` / `MageMaxHP` | 30 / 16 / 14 | level-1 HP |
 | `HPGainBase` / `HPGainMin` | 8 / 1 | front-loaded HP curve: gain advancing FROM level n = `max(HPGainMin, HPGainBase-(n-1))` — 8,7,6,…,1 then +1 forever (#60 XP2) |
 | `XPCurveBase` / `QuestKillRewardPerTarget` | 100 / 20 | quadratic XP curve: total XP to **reach** level L = `XPCurveBase*(L-1)^2` (#60 XP1) & flat per-target kill-quest reward |
