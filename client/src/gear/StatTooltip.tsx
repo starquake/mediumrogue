@@ -1,4 +1,4 @@
-import { createSignal, For, Index, Show } from "solid-js";
+import { createSignal, Index, Show } from "solid-js";
 import type { JSXElement } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -116,7 +116,7 @@ function StatTooltip(): JSXElement {
         return (
           <div class="stat-tip-stack" style={{ left: `${h().x}px`, top: `${h().y}px` }}>
             <StatBlock item={item()} />
-            <For each={compares()}>{(c) => <StatBlock item={c.item} slot={c.slot} />}</For>
+            <Index each={compares()}>{(c) => <StatBlock item={c().item} slot={c().slot} />}</Index>
           </div>
         );
       }}
