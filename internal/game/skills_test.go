@@ -497,7 +497,7 @@ func TestSkillViewsAreNearSighted(t *testing.T) {
 		return strings.Join(out, ",")
 	}
 
-	got := ids(skillViewsLocked(fresh))
+	got := ids(skillViewsLocked(fresh, 0))
 	if strings.Contains(got, skillWeakSpot) {
 		t.Errorf("a fresh player's skill views = %q — must NOT include the prereq-locked %s", got, skillWeakSpot)
 	}
@@ -508,18 +508,58 @@ func TestSkillViewsAreNearSighted(t *testing.T) {
 
 	// Learning the root reveals exactly one more.
 	trained := &entity{kind: protocol.EntityPlayer, learned: []string{skillCombatTraining}}
-	if !strings.Contains(ids(skillViewsLocked(trained)), skillWeakSpot) {
+	if !strings.Contains(ids(skillViewsLocked(trained, 0)), skillWeakSpot) {
 		t.Errorf("after learning %s, views = %q — want %s revealed",
-			skillCombatTraining, ids(skillViewsLocked(trained)), skillWeakSpot)
+			skillCombatTraining, ids(skillViewsLocked(trained, 0)), skillWeakSpot)
 	}
 
 	// Monsters have no skills on the wire — as an EMPTY list, never nil.
 	// Re-derived: nil marshals to JSON null while the generated client type
 	// says it is an array, which is the crash class wire_nil_test.go guards
 	// (#167, and the waitingForIds crash on development 2026-07-19).
-	if got := skillViewsLocked(&entity{kind: protocol.EntityMonster}); got == nil {
+	if got := skillViewsLocked(&entity{kind: protocol.EntityMonster}, 0); got == nil {
 		t.Error("monster skill views = nil, want an empty slice — nil marshals to null and crashes the client")
 	} else if len(got) != 0 {
 		t.Errorf("monster skill views = %+v, want empty", got)
+	}
+}
+
+// TestActiveSkillViewCarriesState (#185): a learned active's SkillView carries
+// its cooldown, range, and live turns-until-ready so the action bar can render
+// it; a passive carries none of that.
+func TestActiveSkillViewCarriesState(t *testing.T) {
+	t.Parallel()
+
+	e := &entity{
+		kind: protocol.EntityPlayer, class: protocol.ClassFighter,
+		learned:         []string{skillSurvivalist, skillBlink},
+		activeReadyTurn: map[string]int64{skillBlink: 10},
+	}
+
+	byID := map[string]protocol.SkillView{}
+	for _, v := range skillViewsLocked(e, 7) {
+		byID[v.ID] = v
+	}
+
+	blink := byID[skillBlink]
+	if !blink.Active {
+		t.Fatal("blink SkillView not marked active")
+	}
+
+	if got, want := blink.RangeHex, 3; got != want {
+		t.Errorf("blink range = %d, want %d", got, want)
+	}
+
+	if got, want := blink.CooldownTurns, 3; got != want {
+		t.Errorf("blink cooldown = %d, want %d", got, want)
+	}
+
+	// ready turn 10, current turn 7 → 3 turns until ready.
+	if got, want := blink.TurnsUntilReady, 3; got != want {
+		t.Errorf("blink turnsUntilReady = %d, want %d", got, want)
+	}
+
+	if survivalist := byID[skillSurvivalist]; survivalist.Active {
+		t.Error("passive survivalist marked active")
 	}
 }

@@ -44,6 +44,7 @@ import {
   submitLearnSkill,
   submitPickup,
   submitUnequip,
+  submitUseSkill,
 } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty } from "./party/store";
@@ -140,13 +141,24 @@ export interface GameDebug {
    * whether it is learned. Near-sighted by construction: a locked skill is
    * never sent, so a missing id here means "not learnable yet", not "hidden".
    */
-  skills: { id: string; tree: string; learned: boolean }[];
+  skills: {
+    id: string;
+    name: string;
+    tree: string;
+    learned: boolean;
+    active: boolean;
+    cooldownTurns: number;
+    rangeHex: number;
+    turnsUntilReady: number;
+  }[];
   /** The viewer's unspent skill-point bank. */
   skillPoints: number;
   /** Whether the skills panel is open (toggled by the `k` key). */
   skillsPanelOpen: boolean;
   /** Whether the controls overlay is open (#203). */
   controlsOpen: boolean;
+  /** The action-bar skill currently armed for targeting, or null (#185). */
+  armedSkill: () => string | null;
   /** Whether the death card is showing (#204). */
   died: boolean;
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
@@ -725,6 +737,7 @@ window.game = {
   skillPoints: 0,
   skillsPanelOpen: false,
   controlsOpen: false,
+  armedSkill: (): string | null => null,
   died: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
@@ -1567,7 +1580,75 @@ async function start(): Promise<void> {
   // than staff-bonking it — its ranged weapon IS its real weapon — while a
   // bow user (rogue) melee-attacks adjacent hostiles with the dagger, the plan's
   // "weapon by distance" identity.
+  // Action bar (#185): four slots holding the player's learned ACTIVE skills,
+  // in learn order (assignment is automatic first-free-slot with no manual
+  // reordering, so the layout is fully derived from the learned set — no
+  // server slot state or snapshot bump needed). Keys 1–4 or a click arm the
+  // skill; the next map click sends it at that hex. Blink is the only active
+  // today, so a player who has learned it sees slot 1 filled, 2–4 empty.
+  const actionBarEl = mustGet("action-bar");
+  const actionSlotEls = Array.from(actionBarEl.querySelectorAll<HTMLElement>(".aslot"));
+  let armedSkill: string | null = null;
+
+  const activeSlots = (): { id: string; name: string; ready: boolean; cd: number }[] =>
+    window.game.skills
+      .filter((sk) => sk.learned && sk.active)
+      .map((sk) => ({ id: sk.id, name: sk.name, ready: sk.turnsUntilReady === 0, cd: sk.turnsUntilReady }));
+
+  function renderActionBar(): void {
+    const slots = activeSlots();
+    actionBarEl.classList.toggle("shown", slots.length > 0);
+    actionSlotEls.forEach((el, i) => {
+      const s = slots[i];
+      const lbl = el.querySelector<HTMLElement>(".lbl");
+      const existingCd = el.querySelector(".cd");
+      if (existingCd !== null) existingCd.remove();
+      el.classList.remove("filled", "cooling", "arming");
+      if (s === undefined) {
+        if (lbl !== null) lbl.textContent = "—";
+        return;
+      }
+      if (lbl !== null) lbl.textContent = s.name;
+      if (s.ready) {
+        el.classList.add("filled");
+        if (armedSkill === s.id) el.classList.add("arming");
+      } else {
+        el.classList.add("cooling");
+        const cd = document.createElement("span");
+        cd.className = "cd";
+        cd.textContent = String(s.cd);
+        el.appendChild(cd);
+      }
+    });
+  }
+
+  const cancelArm = (): void => {
+    if (armedSkill !== null) {
+      armedSkill = null;
+      renderActionBar();
+    }
+  };
+
+  const armSlot = (i: number): void => {
+    const s = activeSlots()[i];
+    if (s === undefined || !s.ready) {
+      return; // empty or cooling slot: nothing to arm
+    }
+    armedSkill = armedSkill === s.id ? null : s.id; // toggle
+    renderActionBar();
+  };
+  actionSlotEls.forEach((el, i) => el.addEventListener("click", () => armSlot(i)));
+  window.game.armedSkill = (): string | null => armedSkill;
+
   const clickTarget = (target: Hex): Promise<void> => {
+    // #185: an armed active consumes the next map click as its target.
+    if (armedSkill !== null) {
+      const skill = armedSkill;
+      armedSkill = null;
+      renderActionBar();
+      return submitUseSkill(identity, skill, target).then(() => undefined);
+    }
+
     if (window.game.inCombat) {
       const self =
         window.game.me !== null && window.game.me.hex.q === target.q && window.game.me.hex.r === target.r;
@@ -1793,9 +1874,15 @@ async function start(): Promise<void> {
         setSkills(mine.skills ?? [], mine.skillPoints ?? 0);
         window.game.skills = (mine.skills ?? []).map((s: SkillView) => ({
           id: s.id,
+          name: s.name,
           tree: s.tree,
           learned: s.learned,
+          active: s.active,
+          cooldownTurns: s.cooldownTurns,
+          rangeHex: s.rangeHex,
+          turnsUntilReady: s.turnsUntilReady,
         }));
+        renderActionBar();
         window.game.skillPoints = mine.skillPoints ?? 0;
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
@@ -2080,16 +2167,18 @@ async function start(): Promise<void> {
     onToggleInventory: toggleInventory,
     onToggleSkills: applySkillsPanel,
     onToggleHelp: toggleControlsOverlay,
+    onActionSlot: armSlot,
     // Esc closes ANY open surface (#203): the controls overlay, the character
     // panel, and the skills panel — previously only the character panel.
     onClosePanel: (): void => {
+      cancelArm();
       setControlsOverlay(false);
       applyPanelOpen(false);
       if (skillsPanelOpen()) {
         applySkillsPanel();
       }
     },
-    isPanelOpen: (): boolean => panelOpen() || skillsPanelOpen() || isControlsOverlayOpen(),
+    isPanelOpen: (): boolean => panelOpen() || skillsPanelOpen() || isControlsOverlayOpen() || armedSkill !== null,
     isBlocked: (): boolean => !startScreenEl.hidden,
   });
 

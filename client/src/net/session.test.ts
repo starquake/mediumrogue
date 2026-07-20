@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { onIntentFeedback, submitDrop } from "./session";
+import { onIntentFeedback, submitDrop, submitUseSkill } from "./session";
 
 const identity = { entityId: 1, token: "t" };
 
@@ -49,5 +49,20 @@ describe("intent rejection feedback (#193)", () => {
 
     expect(ok).toBe(true);
     expect(seen).toEqual([]);
+  });
+});
+
+describe("submitUseSkill (#185)", () => {
+  test("posts a use-skill intent carrying the skill id and target hex", async () => {
+    let body: unknown;
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      body = JSON.parse(String((init as RequestInit).body));
+      return Promise.resolve(new Response(null, { status: 202 }));
+    });
+
+    const ok = await submitUseSkill({ entityId: 1, token: "t" }, "blink", { q: 2, r: -3 });
+
+    expect(ok).toBe(true);
+    expect(body).toMatchObject({ kind: "use-skill", skillId: "blink", target: { q: 2, r: -3 } });
   });
 });
