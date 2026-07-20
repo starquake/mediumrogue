@@ -294,12 +294,15 @@ func TestDeathFloorsXPKeepsLevel(t *testing.T) {
 	}
 }
 
-// TestPlayerDyingSameTurnAsMonsterGetsNoKillXP: when a player dies on the very
-// turn a monster also dies (a mutual kill), the dead player is NOT a surviving
-// member and is awarded nothing — the XP award is credited before the death
-// loop but only to living players. Seeding the player at 190 XP makes this
-// observable: a correct floor lands at 100 (level-2 start), whereas a buggy
-// award-then-floor would reach 200 (level-3 start).
+// TestPlayerDyingSameTurnAsMonsterGetsNoKillXP (#194): when a player dies on
+// the very turn a monster also dies (a mutual kill), the dead player earns no
+// kill XP. Seeding the player at 190 XP makes it observable: a correct floor
+// lands at 100 (level-2 start); the bug (award-then-respawn) reaches ~200.
+//
+// Driven through ResolveTurnForTest — the REAL resolveBubbleTurnLocked award
+// path. The previous version used ResolveCombatOnlyForTest, which never runs
+// the award loop at all, so it passed vacuously while the live path was broken
+// (that was a false pin; #194).
 func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	t.Parallel()
 
@@ -316,16 +319,27 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	monsterHex := walkableNeighbor(t, w, me.Hex)
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
-	// One hit each is lethal in both directions: a mutual kill.
+	// Step once to form the bubble (both at full HP — the world-domain step is
+	// not lethal), so the mutual-kill step below runs through the bubble's
+	// award path rather than forming a bubble mid-step.
+	w.SetHPForTest(me.EntityID, 100)
+	w.SetHPForTest(monsterID, 100)
+	w.ResolveTurnForTest()
+
+	if _, ok := entityOfSnap(w.Snapshot(), monsterID); !ok {
+		t.Fatalf("monster gone before the mutual-kill turn — setup issue")
+	}
+
+	// Now arrange the mutual kill: one hit each is lethal in both directions.
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
 	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
+	w.SetXPForTest(me.EntityID, 190)
 
 	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {
 		t.Fatalf("SubmitIntent(melee): %v", err)
 	}
 
-	w.SetPathForTest(monsterID, []protocol.Hex{me.Hex})
-	w.ResolveCombatOnlyForTest()
+	w.ResolveTurnForTest()
 
 	snap := w.Snapshot()
 
@@ -339,10 +353,6 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	}
 
 	if got, want := player.XP, 100; got != want {
-		t.Errorf("respawned XP = %d, want %d (no kill award; floored from 190, not 210)", got, want)
-	}
-
-	if got, want := player.Level, 2; got != want {
-		t.Errorf("respawned Level = %d, want %d", got, want)
+		t.Errorf("respawned XP = %d, want %d (no kill award; a same-turn death earns nothing)", got, want)
 	}
 }
