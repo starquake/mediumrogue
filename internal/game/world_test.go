@@ -34,7 +34,15 @@ const (
 )
 
 func newWorld() *game.World {
-	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 12, hub.New())
+	return game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  testCombatPatience,
+		BubblePoll:      testBubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           hub.New(),
+	})
 }
 
 // pinToOrigin moves a freshly joined player to the origin hex and syncs the
@@ -535,9 +543,15 @@ func terrainOf(t *testing.T, w *game.World, h protocol.Hex) protocol.Terrain {
 func TestSpawnsLandInWalkableRegion(t *testing.T) {
 	t.Parallel()
 
-	w := game.NewWorld(
-		time.Millisecond, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 24, hub.New(),
-	)
+	w := game.NewWorld(game.WorldConfig{
+		Interval:        time.Millisecond,
+		CombatPatience:  testCombatPatience,
+		BubblePoll:      testBubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          24,
+		Ticks:           hub.New(),
+	})
 
 	// Many joins must all land on reachable, walkable tiles.
 	for i := range 30 {
@@ -610,9 +624,15 @@ func TestIntentWalksMultiStepPath(t *testing.T) {
 func TestSnapshotCarriesInterval(t *testing.T) {
 	t.Parallel()
 
-	w := game.NewWorld(
-		250*time.Millisecond, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 12, hub.New(),
-	)
+	w := game.NewWorld(game.WorldConfig{
+		Interval:        250 * time.Millisecond,
+		CombatPatience:  testCombatPatience,
+		BubblePoll:      testBubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           hub.New(),
+	})
 	if got, want := w.Snapshot().IntervalMs, int64(250); got != want {
 		t.Fatalf("IntervalMs = %d, want 250", got)
 	}

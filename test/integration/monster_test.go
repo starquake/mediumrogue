@@ -85,7 +85,15 @@ func TestMonstersAppearInTurnBundle(t *testing.T) {
 //nolint:paralleltest // serial by design (#22): tick loop must not be CPU-starved by parallel siblings.
 func TestMonsterHuntsPlayer(t *testing.T) {
 	ticks := hub.New()
-	world := game.NewWorld(20*time.Millisecond, time.Minute, 5*time.Millisecond, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        20 * time.Millisecond,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	chatBroker := newAnnouncingChatBroker(world)
 	go world.Run(t.Context())

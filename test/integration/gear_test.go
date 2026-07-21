@@ -188,7 +188,15 @@ func startGearServerWithMonsterRing(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        turnInterval,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	placed := 0
 	for _, h := range candidates {

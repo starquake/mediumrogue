@@ -175,29 +175,40 @@ func MonsterXPForTest(kind string) int          { return monsterDefByID[kind].xp
 func MonsterDropChanceForTest(kind string) int  { return monsterDefByID[kind].dropChance }
 func MonsterAggroRadiusForTest(kind string) int { return monsterDefByID[kind].aggroRadius }
 
-// MonsterHomeForTest returns a monster's stamped home hex (#102), so spawn
-// tests can assert every spawn path stamps home = the spawn hex.
-func (w *World) MonsterHomeForTest(id int64) protocol.Hex {
+// withEntityForTest runs fn against the entity with id under w.mu, reporting
+// whether one was found — the shared "lock, look up one entity, touch one
+// field" shape the ForTest getters and setters below repeat. A getter closes
+// over a local that fn writes; a getter that must panic (or a setter that
+// must know) on a missing entity checks the returned bool.
+func (w *World) withEntityForTest(id int64, fn func(*entity)) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if e, ok := w.entities[id]; ok {
-		return e.homeHex
+	e, ok := w.entities[id]
+	if ok {
+		fn(e)
 	}
 
-	panic("game: MonsterHomeForTest unknown entity")
+	return ok
+}
+
+// MonsterHomeForTest returns a monster's stamped home hex (#102), so spawn
+// tests can assert every spawn path stamps home = the spawn hex.
+func (w *World) MonsterHomeForTest(id int64) protocol.Hex {
+	var home protocol.Hex
+
+	if !w.withEntityForTest(id, func(e *entity) { home = e.homeHex }) {
+		panic("game: MonsterHomeForTest unknown entity")
+	}
+
+	return home
 }
 
 // SetMonsterHomeForTest overwrites a monster's home hex, so a leash test can
 // put a monster beyond its leash radius directly instead of grinding out a
 // real 20-hex chase turn by turn.
 func (w *World) SetMonsterHomeForTest(id int64, hex protocol.Hex) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.homeHex = hex
-	}
+	w.withEntityForTest(id, func(e *entity) { e.homeHex = hex })
 }
 
 // MonsterReturningForTest reports whether a monster is currently walking back
@@ -205,26 +216,20 @@ func (w *World) SetMonsterHomeForTest(id int64, hex protocol.Hex) {
 // MonsterHomeForTest: a test asking about a monster that isn't there is
 // broken, and a silent false would read as "not returning" and pass.
 func (w *World) MonsterReturningForTest(id int64) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var returning bool
 
-	if e, ok := w.entities[id]; ok {
-		return e.returningHome
+	if !w.withEntityForTest(id, func(e *entity) { returning = e.returningHome }) {
+		panic("game: MonsterReturningForTest unknown entity")
 	}
 
-	panic("game: MonsterReturningForTest unknown entity")
+	return returning
 }
 
 // SetMonsterReturningForTest overwrites a monster's returningHome flag, so a
 // test can start mid-return (e.g. the blocked-home arrival case) without
 // first staging a beyond-leash board.
 func (w *World) SetMonsterReturningForTest(id int64, returning bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.returningHome = returning
-	}
+	w.withEntityForTest(id, func(e *entity) { e.returningHome = returning })
 }
 
 // LeashRadiusForTest exposes a registered kind's effective leash radius
@@ -238,24 +243,14 @@ func LeashRadiusForTest(kind string) int {
 // place an already-joined party member onto a reach quest's goal without
 // grinding out a multi-turn path.
 func (w *World) SetHexForTest(id int64, hex protocol.Hex) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.hex = hex
-	}
+	w.withEntityForTest(id, func(e *entity) { e.hex = hex })
 }
 
 // SetHPForTest overwrites an entity's HP directly, so tests can drive exact
 // lethal-threshold scenarios (mutual kills, respawns) without grinding out
 // many turns of combat.
 func (w *World) SetHPForTest(id int64, hp int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.hp = hp
-	}
+	w.withEntityForTest(id, func(e *entity) { e.hp = hp })
 }
 
 // SetBubbleIDForTest overwrites an entity's bubbleID directly, so a regen test
@@ -265,12 +260,7 @@ func (w *World) SetHPForTest(id int64, hp int) {
 // end of ResolveTurnForTest) recalculates bubbleID from real positions, so this
 // override only holds for the resolution pass it's set before.
 func (w *World) SetBubbleIDForTest(id int64, bubbleID int64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.bubbleID = bubbleID
-	}
+	w.withEntityForTest(id, func(e *entity) { e.bubbleID = bubbleID })
 }
 
 // RegenTickForTest runs one passive-regen pass (regenPlayersLocked) over
@@ -288,25 +278,17 @@ func (w *World) RegenTickForTest() {
 // XPForTest returns an entity's current cumulative XP, so tests can assert kill
 // awards and death floors without going through Snapshot.
 func (w *World) XPForTest(id int64) int {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var xp int
 
-	if e, ok := w.entities[id]; ok {
-		return e.xp
-	}
+	w.withEntityForTest(id, func(e *entity) { xp = e.xp })
 
-	return 0
+	return xp
 }
 
 // SetXPForTest overwrites an entity's cumulative XP directly, so tests can place
 // a player near a level boundary without grinding out kills.
 func (w *World) SetXPForTest(id int64, xp int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.xp = xp
-	}
+	w.withEntityForTest(id, func(e *entity) { e.xp = xp })
 }
 
 // SetClassForTest overwrites a player entity's class directly, resyncs its max
@@ -316,42 +298,31 @@ func (w *World) SetXPForTest(id int64, xp int) {
 // different classes' close weapons against the same board without going
 // through Join.
 func (w *World) SetClassForTest(id int64, class string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
+	w.withEntityForTest(id, func(e *entity) {
 		e.class = class
 		e.equipped = nil
 		e.backpack = [protocol.BackpackSize]backpackEntry{}
 		w.grantDefaultsLocked(e)
 		syncMaxHPLocked(e)
-	}
+	})
 }
 
 // SetSpeciesForTest overwrites a player entity's species directly, so a combat
 // test can drive a species passive (human XP, elf crit, dwarf DR) on an exact
 // board without going through Join.
 func (w *World) SetSpeciesForTest(id int64, species string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.species = species
-	}
+	w.withEntityForTest(id, func(e *entity) { e.species = species })
 }
 
 // PathForTest returns an entity's queued path (nil if idle), so a
 // snapshot-restore test can assert this transient field is zeroed on a
 // restored entity without depending on its side effects during resolution.
 func (w *World) PathForTest(id int64) []protocol.Hex {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var path []protocol.Hex
 
-	if e, ok := w.entities[id]; ok {
-		return e.path
-	}
+	w.withEntityForTest(id, func(e *entity) { path = e.path })
 
-	return nil
+	return path
 }
 
 // SetAttackTargetForTest overwrites an entity's pending ranged-attack target
@@ -359,12 +330,7 @@ func (w *World) PathForTest(id int64) []protocol.Hex {
 // (normally only set mid-turn by an "attack" intent) and assert it is zeroed
 // on a restored entity.
 func (w *World) SetAttackTargetForTest(id int64, target protocol.Hex) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.attackTarget = &target
-	}
+	w.withEntityForTest(id, func(e *entity) { e.attackTarget = &target })
 }
 
 // HasAttackTargetForTest reports whether an entity currently has a pending
@@ -372,14 +338,11 @@ func (w *World) SetAttackTargetForTest(id int64, target protocol.Hex) {
 // test can assert the field's presence or absence without exposing the
 // target hex or entity id itself.
 func (w *World) HasAttackTargetForTest(id int64) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var has bool
 
-	if e, ok := w.entities[id]; ok {
-		return e.attackTarget != nil || e.attackTargetEntity != 0
-	}
+	w.withEntityForTest(id, func(e *entity) { has = e.attackTarget != nil || e.attackTargetEntity != 0 })
 
-	return false
+	return has
 }
 
 // SetAttackTargetEntityForTest overwrites an entity's pending single-target
@@ -389,13 +352,10 @@ func (w *World) HasAttackTargetForTest(id int64) bool {
 // about to sidestep beyond range) the same way SetAttackTargetForTest does
 // for the ground-targeted hex path.
 func (w *World) SetAttackTargetEntityForTest(id, targetEntityID int64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
+	w.withEntityForTest(id, func(e *entity) {
 		e.attackTargetEntity = targetEntityID
 		e.attackTarget = nil
-	}
+	})
 }
 
 // SetPathForTest overwrites an entity's queued path directly. A monster's path
@@ -406,12 +366,7 @@ func (w *World) SetAttackTargetEntityForTest(id, targetEntityID int64) {
 // ResolveCombatOnlyForTest, which does not call thinkMonstersLocked and so
 // will not immediately overwrite it.
 func (w *World) SetPathForTest(id int64, path []protocol.Hex) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
-		e.path = path
-	}
+	w.withEntityForTest(id, func(e *entity) { e.path = path })
 }
 
 // ResolveCombatOnlyForTest runs the attack/move/death phases of a turn
@@ -433,7 +388,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 		members = append(members, e)
 	}
 
-	slices.SortFunc(members, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(members, byEntityID)
 
 	byHex := make(map[protocol.Hex][]*entity, len(members))
 	for _, e := range members {
@@ -584,28 +539,24 @@ func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
 // off-hand is simply empty), so pre-keystone equip tests keep their
 // close/ranged assertions unchanged across the storage model change.
 func (w *World) EquippedSlotsForTest(id int64) (int64, int64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var main, off int64
 
-	if e, ok := w.entities[id]; ok {
-		return e.equipped[protocol.SlotMainHand].id, e.equipped[protocol.SlotOffHand].id
-	}
+	w.withEntityForTest(id, func(e *entity) {
+		main, off = e.equipped[protocol.SlotMainHand].id, e.equipped[protocol.SlotOffHand].id
+	})
 
-	return 0, 0
+	return main, off
 }
 
 // EquippedInSlotForTest returns the instance id equipped in a named typed
 // slot (slot keys are itemType strings; 0 = empty), so an inventory-slots
 // test can assert armor/jewelry equips beyond the two weapon slots.
 func (w *World) EquippedInSlotForTest(id int64, slot string) int64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var itemID int64
 
-	if e, ok := w.entities[id]; ok {
-		return e.equipped[slot].id
-	}
+	w.withEntityForTest(id, func(e *entity) { itemID = e.equipped[slot].id })
 
-	return 0
+	return itemID
 }
 
 // BackpackForTest returns an entity's backpack as (defID, count) pairs by
@@ -615,22 +566,19 @@ func (w *World) BackpackForTest(id int64) [protocol.BackpackSize]struct {
 	DefID string
 	Count int
 } {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	var out [protocol.BackpackSize]struct {
 		DefID string
 		Count int
 	}
 
-	if e, ok := w.entities[id]; ok {
+	w.withEntityForTest(id, func(e *entity) {
 		for i, be := range e.backpack {
 			if !be.empty() {
 				out[i].DefID = be.inst.defID
 				out[i].Count = be.count
 			}
 		}
-	}
+	})
 
 	return out
 }
@@ -641,25 +589,23 @@ func (w *World) BackpackForTest(id int64) [protocol.BackpackSize]struct {
 // resolves — and clears pendingEquip — synchronously within the SubmitIntent
 // call that completes its lock-in).
 func (w *World) SetPendingEquipForTest(id, itemID int64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
+	w.withEntityForTest(id, func(e *entity) {
 		e.pending = pendingItemAction{kind: protocol.IntentEquip, id: itemID}
-	}
+	})
 }
 
 // PendingEquipForTest returns an entity's queued equip item id (0 = none), so
 // a test can assert it was cleared.
 func (w *World) PendingEquipForTest(id int64) int64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var itemID int64
 
-	if e, ok := w.entities[id]; ok && e.pending.kind == protocol.IntentEquip {
-		return e.pending.id
-	}
+	w.withEntityForTest(id, func(e *entity) {
+		if e.pending.kind == protocol.IntentEquip {
+			itemID = e.pending.id
+		}
+	})
 
-	return 0
+	return itemID
 }
 
 // ReachableWalkableForTest exposes reachableWalkable — the origin-connected
@@ -740,14 +686,11 @@ func RingOfForTest(h protocol.Hex, worldRadius int) int {
 // assert on WHICH kind landed where without waiting for Entity.MonsterKind
 // to ride the wire (6c Task 4).
 func (w *World) MonsterKindForTest(id int64) string {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var kind string
 
-	if e, ok := w.entities[id]; ok {
-		return e.monsterKind
-	}
+	w.withEntityForTest(id, func(e *entity) { kind = e.monsterKind })
 
-	return ""
+	return kind
 }
 
 // MonsterRingsForTest returns the rings a registered monster kind spawns
@@ -825,56 +768,45 @@ func (w *World) SeesForTest(a, b protocol.Hex) bool {
 // round-trip can prove all three fields survive — learned ids, the unspent
 // bank, and the high-water mark that keeps the per-level grant idempotent.
 func (w *World) SetSkillStateForTest(id int64, learned []string, points, grantedLevel int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if e, ok := w.entities[id]; ok {
+	w.withEntityForTest(id, func(e *entity) {
 		e.learned = learned
 		e.skillPoints = points
 		e.pointsGrantedLevel = grantedLevel
-	}
+	})
 }
 
 // ActiveReadyTurnForTest reads an active skill's ready-again turn (#161); 0
 // means ready. Used to assert a cooldown SURVIVES a snapshot round-trip, which
 // is the whole reason v7 bumped the version.
 func (w *World) ActiveReadyTurnForTest(id int64, skill string) int64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var ready int64
 
-	e := w.entities[id]
-	if e == nil {
-		return 0
-	}
+	w.withEntityForTest(id, func(e *entity) { ready = e.activeReadyTurn[skill] })
 
-	return e.activeReadyTurn[skill]
+	return ready
 }
 
 // SkillStateForTest reads back what SetSkillStateForTest wrote.
 func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var (
+		learned      []string
+		points       int
+		grantedLevel int
+	)
 
-	e, ok := w.entities[id]
-	if !ok {
-		return nil, 0, 0
-	}
+	w.withEntityForTest(id, func(e *entity) {
+		learned, points, grantedLevel = e.learned, e.skillPoints, e.pointsGrantedLevel
+	})
 
-	return e.learned, e.skillPoints, e.pointsGrantedLevel
+	return learned, points, grantedLevel
 }
 
 // GrantSkillPointsForTest runs the per-level grant AND the level-up announce
 // for a player, mirroring the real award callers (kill/quest), so a test can
 // drive level-up feedback (#202) without staging a full combat turn.
 func (w *World) GrantSkillPointsForTest(id int64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	e := w.entities[id]
-	if e == nil {
-		return
-	}
-
-	g, level, up := grantSkillPointsLocked(e)
-	w.announceLevelUpLocked(e, g, level, up)
+	w.withEntityForTest(id, func(e *entity) {
+		g, level, up := grantSkillPointsLocked(e)
+		w.announceLevelUpLocked(e, g, level, up)
+	})
 }

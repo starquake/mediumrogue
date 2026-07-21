@@ -80,7 +80,15 @@ func startServerWithBubbleTuning(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        turnInterval,
+		CombatPatience:  combatPatience,
+		BubblePoll:      bubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	world.SpawnMonsters(monsterCount)
 
@@ -113,7 +121,15 @@ func startServerWithLimits(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(time.Hour, time.Minute, 5*time.Millisecond, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	chatBroker := newAnnouncingChatBroker(world)
 	go world.Run(t.Context())
@@ -148,7 +164,15 @@ func startServerWithGrace(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, time.Minute, 5*time.Millisecond, disconnectGrace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        turnInterval,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: disconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	chatBroker := newAnnouncingChatBroker(world)
 	go world.Run(t.Context())
@@ -202,7 +226,15 @@ func startServerWithBubbleTuningAt(
 
 	ticks := hub.New()
 
-	world := game.NewWorld(turnInterval, combatPatience, bubblePoll, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        turnInterval,
+		CombatPatience:  combatPatience,
+		BubblePoll:      bubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	for _, h := range hexes {
 		if !world.SpawnMonsterAt(h) {

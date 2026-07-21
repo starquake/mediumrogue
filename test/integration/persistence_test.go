@@ -55,9 +55,15 @@ func newPersistWorld(t *testing.T) *persistWorld {
 	t.Helper()
 
 	ticks := hub.New()
-	world := game.NewWorld(
-		15*time.Millisecond, time.Minute, 5*time.Millisecond, testDisconnectGrace, persistSeed, persistRadius, ticks,
-	)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        15 * time.Millisecond,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       persistSeed,
+		Radius:          persistRadius,
+		Ticks:           ticks,
+	})
 	broker := newAnnouncingChatBroker(world)
 
 	return &persistWorld{world: world, ticks: ticks, chat: broker}

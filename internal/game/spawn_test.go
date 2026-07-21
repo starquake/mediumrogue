@@ -228,7 +228,15 @@ func TestSpawnScattersAcrossSanctuary(t *testing.T) {
 // every other hex "too close" to it — used to force the guard-empty fallback
 // path in SpawnMonsters.
 func newSmallWorld() *game.World {
-	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 3, hub.New())
+	return game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  testCombatPatience,
+		BubblePoll:      testBubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          3,
+		Ticks:           hub.New(),
+	})
 }
 
 // TestSpawnMonstersAvoidsLivingPlayerWhenPossible (#36b): on a normal-sized

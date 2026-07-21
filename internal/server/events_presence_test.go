@@ -36,7 +36,15 @@ func TestEventsTokenTracksPresence(t *testing.T) {
 	ticks := hub.New()
 	// Fast poll + short grace so the real-time disconnect sweep fires within the
 	// test; long combat patience keeps AFK resolution out of the way.
-	world := game.NewWorld(20*time.Millisecond, time.Minute, 5*time.Millisecond, grace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        20 * time.Millisecond,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: grace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	chatBroker := chat.NewBroker()
 

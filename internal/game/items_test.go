@@ -735,7 +735,15 @@ func TestStackAndFreeEntryHelpers(t *testing.T) {
 // mirroring world_test.go's newWorld (unavailable here: that helper lives in
 // the black-box game_test package).
 func testItemsWorld() *World {
-	return NewWorld(time.Hour, time.Minute, time.Millisecond, time.Hour, 0xC0FFEE, 12, hub.New())
+	return NewWorld(WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  time.Minute,
+		BubblePoll:      time.Millisecond,
+		DisconnectGrace: time.Hour,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           hub.New(),
+	})
 }
 
 // TestJoinRogueOwnsDaggerAndShortbowEquipped: Join grants and equips a fresh

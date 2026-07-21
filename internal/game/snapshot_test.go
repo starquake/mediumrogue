@@ -21,10 +21,15 @@ const (
 func newSnapshotWorld(t *testing.T) (*game.World, *fakeClock) {
 	t.Helper()
 
-	w := game.NewWorld(
-		time.Second, testCombatPatience, testBubblePoll, testDisconnectGrace,
-		snapTestSeed, snapTestRadius, hub.New(),
-	)
+	w := game.NewWorld(game.WorldConfig{
+		Interval:        time.Second,
+		CombatPatience:  testCombatPatience,
+		BubblePoll:      testBubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       snapTestSeed,
+		Radius:          snapTestRadius,
+		Ticks:           hub.New(),
+	})
 	clk := &fakeClock{t: time.Unix(2_000_000, 0)}
 	w.SetNowForTest(clk.now)
 	w.StartClockForTest()
@@ -411,10 +416,15 @@ func TestSnapshotMismatchGates(t *testing.T) {
 			t.Fatalf("MarshalState: %v", err)
 		}
 
-		other := game.NewWorld(
-			time.Second, testCombatPatience, testBubblePoll, testDisconnectGrace,
-			snapTestSeed+1, snapTestRadius, hub.New(),
-		)
+		other := game.NewWorld(game.WorldConfig{
+			Interval:        time.Second,
+			CombatPatience:  testCombatPatience,
+			BubblePoll:      testBubblePoll,
+			DisconnectGrace: testDisconnectGrace,
+			WorldSeed:       snapTestSeed + 1,
+			Radius:          snapTestRadius,
+			Ticks:           hub.New(),
+		})
 
 		err = other.RestoreState(data)
 		if err == nil {
@@ -436,10 +446,15 @@ func TestSnapshotMismatchGates(t *testing.T) {
 			t.Fatalf("MarshalState: %v", err)
 		}
 
-		other := game.NewWorld(
-			time.Second, testCombatPatience, testBubblePoll, testDisconnectGrace,
-			snapTestSeed, snapTestRadius+1, hub.New(),
-		)
+		other := game.NewWorld(game.WorldConfig{
+			Interval:        time.Second,
+			CombatPatience:  testCombatPatience,
+			BubblePoll:      testBubblePoll,
+			DisconnectGrace: testDisconnectGrace,
+			WorldSeed:       snapTestSeed,
+			Radius:          snapTestRadius + 1,
+			Ticks:           hub.New(),
+		})
 
 		err = other.RestoreState(data)
 		if err == nil {
@@ -454,10 +469,15 @@ func TestSnapshotMismatchGates(t *testing.T) {
 	t.Run("garbage data", func(t *testing.T) {
 		t.Parallel()
 
-		other := game.NewWorld(
-			time.Second, testCombatPatience, testBubblePoll, testDisconnectGrace,
-			snapTestSeed, snapTestRadius, hub.New(),
-		)
+		other := game.NewWorld(game.WorldConfig{
+			Interval:        time.Second,
+			CombatPatience:  testCombatPatience,
+			BubblePoll:      testBubblePoll,
+			DisconnectGrace: testDisconnectGrace,
+			WorldSeed:       snapTestSeed,
+			Radius:          snapTestRadius,
+			Ticks:           hub.New(),
+		})
 
 		err := other.RestoreState([]byte("not json"))
 		if err == nil {

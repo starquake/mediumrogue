@@ -61,10 +61,7 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 
 	ticks := hub.New()
-	world := game.NewWorld(
-		cfg.TurnInterval, cfg.CombatPatience, cfg.BubblePoll, cfg.DisconnectGrace,
-		cfg.WorldSeed, cfg.WorldRadius, ticks,
-	)
+	world := newWorld(cfg, ticks)
 	world.SetLogger(logger)
 
 	// A snapshot restore already brings back the persisted monster
@@ -104,6 +101,20 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 
 	return exitOK
+}
+
+// newWorld builds the authoritative world from config, translating the config
+// knobs into game.WorldConfig (the constructor's single-struct argument).
+func newWorld(cfg *config.Config, ticks *hub.Hub) *game.World {
+	return game.NewWorld(game.WorldConfig{
+		Interval:        cfg.TurnInterval,
+		CombatPatience:  cfg.CombatPatience,
+		BubblePoll:      cfg.BubblePoll,
+		DisconnectGrace: cfg.DisconnectGrace,
+		WorldSeed:       cfg.WorldSeed,
+		Radius:          cfg.WorldRadius,
+		Ticks:           ticks,
+	})
 }
 
 // serve runs the clock and the HTTP listener until ctx is canceled (SIGINT/
