@@ -126,6 +126,10 @@ that actually need judgement.
 
 Structure, always:
 
+0. **The attribution header is the first line** (CLAUDE.md): `> 🤖 **Pull Request
+   by Claude** (AI pair-programmer working with @starquake) — opened through
+   @starquake's account.` — because `gh pr create` opens it under the maintainer's
+   account, and an unmarked PR reads as theirs.
 1. **`## Where to look`** — the **two or three** places you made a judgement
    call the maintainer might disagree with, each naming its file. A number you
    picked, a deliberate overlap, a reading that could plausibly be wrong. If

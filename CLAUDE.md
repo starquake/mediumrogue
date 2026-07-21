@@ -224,14 +224,22 @@ drift between calls; use absolute paths or `cd` to the repo root before
   github.com routes carry the viewer's session, so a
   `raw.githubusercontent.com` embed renders as a broken icon (verified
   2026-07-16, PR #120).
-- **AI-authored issue/PR comments are marked as such**: when Claude posts a
-  GitHub comment on the maintainer's behalf (via
-  `gh issue comment`/`gh pr comment --body-file`), it opens with a visible
-  attribution header — `> 🤖 **Comment by Claude** (AI pair-programmer working
-  with @starquake) — posted through @starquake's account.` — because `gh` posts
-  under the maintainer's own account. Draft the wording and get the maintainer's
-  OK before posting a substantive or public comment; keep feedback
-  engine-grounded and leave design *decisions* to the maintainer/designer.
+- **AI-authored GitHub content is marked as such**: any issue, pull request, or
+  comment Claude creates on the maintainer's behalf (via `gh issue create`,
+  `gh pr create`, `gh issue comment`/`gh pr comment --body-file`) opens with a
+  visible attribution header — because `gh` acts under the maintainer's own
+  account, so unmarked content reads as written by them. Match the header to the
+  kind (the body/PR forms are as of 2026-07-21):
+  - **Issue body** — `> 🤖 **Issue by Claude** (AI pair-programmer working with
+    @starquake) — posted through @starquake's account.`
+  - **Pull request body** — `> 🤖 **Pull Request by Claude** (AI pair-programmer
+    working with @starquake) — opened through @starquake's account.`
+  - **Comment** (issue or PR) — `> 🤖 **Comment by Claude** (AI pair-programmer
+    working with @starquake) — posted through @starquake's account.`
+
+  It is the first line of the body. Draft the wording and get the maintainer's OK
+  before posting a substantive or public comment; keep feedback engine-grounded
+  and leave design *decisions* to the maintainer/designer.
 
 ## Maintenance reminders
 
