@@ -122,6 +122,8 @@ any digit in flavour.
 | **Ember Staff**<br>`ember-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Adjacent<br> |
 | **Frostbrand**<br>`frostbrand` | weapon | ice | melee | 4 | melee | — | — | Damage 4<br> |
 | **Frostward Charm**<br>`frostward-charm` | amulet | — | — | — | melee | — | — | +50% Ice Resistance<br> |
+| **Full Restorative**<br>`full-restorative` | consumable | — | — | — | melee | — | 999 | +999 HP<br>Stacks to 5<br> |
+| **Greater Draught**<br>`greater-draught` | consumable | — | — | — | melee | — | 10 | +10 HP<br>Stacks to 5<br> |
 | **Headband of Learning**<br>`headband-of-learning` | helmet | — | — | — | melee | — | — | +5% XP<br> |
 | **Healing Potion**<br>`healing-potion` | consumable | — | — | — | melee | — | 5 | +5 HP<br>Stacks to 5<br> |
 | **Infernal Chain Mail**<br>`infernal-chain-mail` | chest | — | — | — | melee | — | — | +50% Fire Resistance<br> |
@@ -133,6 +135,7 @@ any digit in flavour.
 | **Ironhead Greatmaul**<br>`ironhead-greatmaul` | weapon<br>two-handed | blunt | melee | 9 | melee | — | — | Damage 9<br> |
 | **Leather Armor**<br>`leather-armor` | chest | — | — | — | melee | — | — | +10% Damage Resistance<br> |
 | **Longbow**<br>`longbow` | weapon | sharp | ranged | 3 | 6 | — | — | Damage 3<br>Range 6<br> |
+| **Minor Salve**<br>`minor-salve` | consumable | — | — | — | melee | — | 3 | +3 HP<br>Stacks to 5<br> |
 | **Misericorde**<br>`misericorde` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>15% chance ×2 Damage<br> |
 | **Oak Wand**<br>`oak-wand` | weapon | blunt | melee | 2 | melee | — | — | Damage 2<br> |
 | **Pack Bow**<br>`pack-bow` | weapon | sharp | ranged | 3 | 4 | — | — | Damage 3<br>Range 4<br>+3 Damage with an Ally<br> |

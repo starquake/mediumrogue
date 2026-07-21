@@ -485,6 +485,34 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: 50}},
 		},
 	},
+
+	// Content-expansion consumables (#268): the heal ladder, extending the
+	// shipped Healing Potion (5). heal is applied by the drink action
+	// (inventory.go), clamped to maxHP; each stacks to protocol.ItemStackCap.
+	{
+		// Below the Healing Potion: the cheap bandage you top up with
+		// mid-explore. Common, home/rat-tier.
+		id: idMinorSalve, name: "Minor Salve", itemType: protocol.ItemTypeConsumable,
+		heal:   3,
+		flavor: "Boiled root and candle grease. It works, mostly.",
+	},
+	{
+		// Above the Healing Potion: a real "save it for the boss" heal,
+		// frontier-tier — meaningful because death drops you to the start of
+		// your XP level.
+		id: idGreaterDraught, name: "Greater Draught", itemType: protocol.ItemTypeConsumable,
+		heal:   10,
+		flavor: "Thick as tar and twice as bitter. You feel it knit you back.",
+	},
+	{
+		// The ladder's top rung: a very rare full heal (clamped to maxHP on
+		// drink). Flagged optional in the proposal for the flat power curve,
+		// so it is gated behind the dragon's rare pool (#269) — a once-a-run
+		// relief, not a staple.
+		id: idFullRestorative, name: "Full Restorative", itemType: protocol.ItemTypeConsumable,
+		heal:   999,
+		flavor: "One swallow and the road behind you might as well not have happened.",
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:

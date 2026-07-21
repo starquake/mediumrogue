@@ -693,6 +693,18 @@ const (
 	idFrostwardCharm     = "frostward-charm"
 )
 
+// Content-expansion consumable ids (#268): the heal LADDER — a cheap salve
+// below the shipped Healing Potion (5), a frontier-tier draught above it, and
+// a very-rare full restore. heal is a def field consumed by the drink ACTION
+// (inventory.go), not a combat event, so the amount is the only thing
+// add-content can vary today (timed buff potions need a timed-effect
+// mechanic — a separate design slice).
+const (
+	idMinorSalve      = "minor-salve"
+	idGreaterDraught  = "greater-draught"
+	idFullRestorative = "full-restorative"
+)
+
 // classDefaultIDs returns the item def ids a class starts with at Join: one
 // melee-tagged weapon, plus a ranged/magic-tagged weapon for Rogue and Mage
 // (Fighter has none — no ranged/magic-tagged default, so its off-hand starts
