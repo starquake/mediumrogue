@@ -140,6 +140,18 @@ const dualWieldHandCount = 2
 const (
 	effAdd    = "add"    // n may be negative
 	effMulPct = "mulPct" // n = percent (200 = double)
+	// effLifesteal (n = percent of damage dealt) is a deal-damage RIDER that
+	// heals the ATTACKER — NOT a transform of the folded damage value. It
+	// contributes nothing to the add/mulPct fold; instead it accumulates its
+	// percent into the ruleTrace (exactly as the crit/glance boost/reduce flags
+	// are recorded), and rollDamageLocked (world.go) reads that trace to heal
+	// the attacker for n% of the damage the victim ACTUALLY TAKES, clamped to
+	// max HP and applied simultaneously with the turn's damage so a mutual kill
+	// still kills. Legal ONLY on a deal-damage card (validateRuleCards): on any
+	// other event the rider nobody reads would silently never heal. ARPG leech,
+	// never a coupled roll — a flat percentage of damage done, no
+	// attacker-versus-defender contest.
+	effLifesteal = "lifesteal"
 )
 
 type condition struct {
@@ -307,6 +319,13 @@ func targetKindHolds(ctx ruleCtx, s string) bool {
 type ruleTrace struct {
 	boostFired  bool
 	reduceFired bool
+	// lifestealPct is the summed percent of every effLifesteal card that fired
+	// in this fold (#271). Meaningful only on a deal-damage fold — the one
+	// rollDamageLocked reads to heal the attacker for that percent of the
+	// damage the victim takes. Zero for every fold with no lifesteal card, so
+	// the common case buffers nothing. Purely a rider tally: it moves no
+	// arithmetic in this fold and consumes no rng of its own.
+	lifestealPct int
 }
 
 // noteMul records a fired mulPct card into the trace: only chance-conditioned
@@ -360,6 +379,11 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 		case effMulPct:
 			muls = append(muls, c.then.n)
 			trace.noteMul(c)
+		case effLifesteal:
+			// A rider on the damage, not a transform of it: record the percent
+			// for rollDamageLocked to heal the attacker with, and touch neither
+			// add nor muls. Sums so multiple lifesteal cards stack additively.
+			trace.lifestealPct += c.then.n
 		}
 	}
 

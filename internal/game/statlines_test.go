@@ -208,3 +208,38 @@ func TestEveryShippedCardRenders(t *testing.T) {
 	check("species:dwarf", speciesCards(protocol.SpeciesDwarf))
 	check("class:rogue", classCards(protocol.ClassRogue))
 }
+
+// TestLifestealStatLine (#271): a lifesteal card renders as its own affix
+// "+N% Lifesteal", never through the damage-multiplier path (which would misread
+// its percent as "−75% Damage"), and is a benefit, not a drawback.
+func TestLifestealStatLine(t *testing.T) {
+	t.Parallel()
+
+	line := cardStatLine(ruleCard{event: evDealDamage, then: effect{kind: effLifesteal, n: 25}})
+
+	if got, want := line.text, "+25% Lifesteal"; got != want {
+		t.Errorf("lifesteal stat line = %q, want %q", got, want)
+	}
+
+	if line.drawback {
+		t.Error("lifesteal stat line flagged as a drawback, want a benefit")
+	}
+}
+
+// TestVampiricBladeRendersLifesteal: the shipped weapon's tooltip shows the leech
+// affix, so a player reads what the blade does from its card, not from prose.
+func TestVampiricBladeRendersLifesteal(t *testing.T) {
+	t.Parallel()
+
+	var found bool
+
+	for _, l := range statLinesFor(itemDefByID[idVampiricBlade]) {
+		if l.text == "+25% Lifesteal" {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Error("Vampiric Blade stat lines missing the +25% Lifesteal affix")
+	}
+}

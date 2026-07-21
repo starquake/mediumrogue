@@ -724,3 +724,38 @@ Content: **Draught of Fury** (`+25%` deal-damage / 4 turns), **Warding Tonic**
 (regenerating frontier elite), and thematic glyphs for the Serpent (cobra) and
 Hydra. New drop tables (Serpent's Antivenom, Hydra's buff potions), so no pinned
 drop seed moved.
+## Lifesteal is a deal-damage rider; offensive cards are legal on jewelry *(built 2026-07-21, #271)*
+
+Two content mechanics on the timed-effect foundation, each a small deliberate
+engine call:
+
+- **Lifesteal is a new effect verb (`lifesteal`), not a value transform.** It
+  rides the `deal-damage` fold: it contributes nothing to the `add`/`mulPct`
+  arithmetic and instead accumulates its percent into the fold's *trace* (the
+  same mechanism crit/glance use), which `rollDamageLocked` reads to heal the
+  attacker for N% of the damage the victim actually takes. Kept off the value
+  fold on purpose — an `applyRules` effect must stay a pure int fold (it runs in
+  preview/trace paths with no world to mutate), so the *heal* is a side-effecting
+  step at the combat site, keyed off the trace. It is **legal only on a
+  `deal-damage` card** (a lifesteal rider on any other event is nobody-reads,
+  so it panics at load — the four-places-must-agree guarantee). It is
+  **per-weapon** (the rider is on the card, folded per hit), so a dual-wielder
+  leeches only from the lifesteal weapon's own hit, not the whole turn. Applied
+  *with* the turn's damage and only if the attacker is still alive, so a mutual
+  kill still kills — no heal-before-death rescue. **ARPG leech**: a flat
+  percentage of damage done, never a coupled attacker-vs-defender roll. Proof
+  content: the **Vampiric Blade** (+25% Lifesteal, wraith drop).
+- **Offensive cards are allowed on jewelry (ring/amulet) — a narrow, deliberate
+  relaxation.** `validateItemNature` forbade a `deal-damage` card on any
+  non-weapon *by design* (it keeps the stat-line sign convention unambiguous).
+  Jewelry is the one exemption: a **`+crit%` ring** is the ARPG "affix on a
+  ring", and `crit%` is an **attacker-side percentage**, not a coupled roll — so
+  it is identity-legal. The relaxation is **narrow**: armor and shields stay
+  defence-only, so their sign convention (a `−N% Damage` on a chestplate can only
+  mean damage *taken*) still holds. This also closed a real wiring gap — the
+  attacker-side `deal-damage` fold only folded the *acting weapon's* rules, never
+  the attacker's worn kit, so offensive jewelry would have been a silent no-op;
+  `attackerGearCards` now folds the attacker's equipped-jewelry `deal-damage`
+  cards into **every** hit (main-hand, off-hand, ranged), the point of a crit
+  *ring* over a single crit *weapon*. Proof content: the **Ring of Precision**
+  (10% chance ×2, ghoul drop).

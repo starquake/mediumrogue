@@ -675,6 +675,43 @@ var itemDefs = []*itemDef{
 		flavor:          "Milked from the very fangs that make it necessary.",
 		cleansesHarmful: true,
 	},
+
+	// Offensive-gear slice (#271, on the timed-effect foundation): the lifesteal
+	// weapon and the first offensive jewelry.
+	{
+		// The lifesteal proof consumer (effLifesteal): every hit heals the
+		// wielder for 25% of the damage it deals (rollDamageLocked reads the
+		// deal-damage trace; the heal is clamped to max HP and lands with the
+		// turn's damage). Damage at the 1H melee anchor (4) — the leech is the
+		// point, not raw stats — so sustained fighting outlasts a plain blade
+		// without out-damaging one. Drops off the Wraith (a life-draining elite,
+		// its own table below). A deal-damage card, hence weapon-legal by
+		// validateItemNature.
+		id: idVampiricBlade, name: "Vampiric Blade", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     4,
+		flavor:     "It drinks first, and asks nothing in return.",
+		rules: []ruleCard{
+			{event: evDealDamage, then: effect{kind: effLifesteal, n: 25}},
+		},
+	},
+	{
+		// The first OFFENSIVE jewelry (#271): a per-hit crit% ring — the elf-crit
+		// card pattern (elfCards) applied to a ring instead of a weapon, made
+		// legal by the deliberate validateItemNature relaxation for jewelry
+		// (rings/amulets). Its crit applies to EVERY attack the wearer lands
+		// (attackerGearCards folds it into every hit's deal-damage roll), main-
+		// hand, off-hand, or ranged — the point of an affix ring over a single
+		// crit weapon. Renders as "10% chance ×2 Damage". Drops off the Ghoul
+		// (the assassin/precision tier that already carries the Misericorde).
+		id: idRingOfPrecision, name: "Ring of Precision", itemType: protocol.ItemTypeRing,
+		flavor: "A steadying weight on the hand that already knows where to strike.",
+		rules: []ruleCard{
+			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
+				then: effect{kind: effMulPct, n: percentBase + 100}},
+		},
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -803,6 +840,12 @@ var monsterDefs = []*monsterDef{
 			// specifically — the ghoul is where a player first WANTS a type.
 			{defID: idPilgrimsMantle, weight: 3},
 			{defID: idConsecratedMace, weight: 3},
+			// Offensive jewelry (#271): the Ring of Precision (a crit% ring) on
+			// the ghoul, the same assassin/precision tier that carries the
+			// Misericorde. Appended LAST so every earlier entry keeps its
+			// cumulative-weight position (this kind is not seed-pinned by
+			// drops_test.go — only wolf is).
+			{defID: idRingOfPrecision, weight: 2},
 		},
 		rings: []int{1, 2},
 	},
@@ -991,6 +1034,11 @@ var monsterDefs = []*monsterDef{
 			{defID: idConsecratedMace, weight: 3}, // the Holy it's weak to
 			{defID: idPilgrimsMantle, weight: 3},
 			{defID: idGreaterDraught, weight: 1},
+			// Offensive-gear slice (#271): the Vampiric Blade (a lifesteal
+			// weapon) on the life-draining wraith — thematic and frontier-elite
+			// tier. Appended LAST so every earlier entry keeps its
+			// cumulative-weight position (this kind is not seed-pinned).
+			{defID: idVampiricBlade, weight: 2},
 		},
 		rings: []int{2},
 	},
