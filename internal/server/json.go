@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -38,6 +40,24 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, dst
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(dst); err != nil {
+		// A body past the size cap is a size violation, not a syntax error:
+		// report 413 so the client blames its payload size, not its encoding.
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			respondError(w, logger, http.StatusRequestEntityTooLarge, "request body too large")
+
+			return false
+		}
+
+		respondError(w, logger, http.StatusBadRequest, "malformed JSON body")
+
+		return false
+	}
+
+	// Reject a body with anything after the first JSON value (a second value or
+	// trailing garbage): a well-formed prefix must not smuggle junk past the
+	// decoder. A clean single value leaves exactly io.EOF here.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		respondError(w, logger, http.StatusBadRequest, "malformed JSON body")
 
 		return false
