@@ -1354,8 +1354,10 @@ func TestStarterInventoryContentPinned(t *testing.T) {
 		t.Errorf("potion rules = %d, want %d (drinking is an action, not a pipeline event)", got, want)
 	}
 
-	// The Kin Archer (#179) carries the same low-weight potion as the rat.
-	wantTables := map[string]int{idKindRat: 1, idKindWolf: 2, idKindArcher: 1}
+	// The Kin Archer (#179) carries the same low-weight potion as the rat;
+	// the Goblin (#266) also carries it at weight 1 (the other expansion
+	// kinds carry the Minor Salve / Greater Draught instead).
+	wantTables := map[string]int{idKindRat: 1, idKindWolf: 2, idKindArcher: 1, idKindGoblin: 1}
 
 	for _, def := range monsterDefs {
 		weight := 0

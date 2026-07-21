@@ -117,9 +117,13 @@ any digit in flavour.
 | **Consecrated Mace**<br>`consecrated-mace` | weapon | holy | melee | 4 | melee | — | — | Damage 4<br> |
 | **Dagger**<br>`dagger` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
 | **Duelist's Saber**<br>`duelists-saber` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>10% chance ×2 Damage<br> |
+| **Ember Brand**<br>`ember-brand` | weapon | fire | melee | 4 | melee | — | — | Damage 4<br> |
 | **Ember Focus**<br>`ember-focus` | weapon | fire | magic | 3 | 4 | 1 | — | Damage 3<br>Range 4<br>AoE 1<br> |
 | **Ember Staff**<br>`ember-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Adjacent<br> |
 | **Frostbrand**<br>`frostbrand` | weapon | ice | melee | 4 | melee | — | — | Damage 4<br> |
+| **Frostward Charm**<br>`frostward-charm` | amulet | — | — | — | melee | — | — | +50% Ice Resistance<br> |
+| **Full Restorative**<br>`full-restorative` | consumable | — | — | — | melee | — | 999 | +999 HP<br>Stacks to 5<br> |
+| **Greater Draught**<br>`greater-draught` | consumable | — | — | — | melee | — | 10 | +10 HP<br>Stacks to 5<br> |
 | **Headband of Learning**<br>`headband-of-learning` | helmet | — | — | — | melee | — | — | +5% XP<br> |
 | **Healing Potion**<br>`healing-potion` | consumable | — | — | — | melee | — | 5 | +5 HP<br>Stacks to 5<br> |
 | **Infernal Chain Mail**<br>`infernal-chain-mail` | chest | — | — | — | melee | — | — | +50% Fire Resistance<br> |
@@ -127,7 +131,11 @@ any digit in flavour.
 | **Iron Plate Armor**<br>`iron-plate-armor` | chest | — | — | — | melee | — | — | +20% Damage Resistance<br>⚠ +25% Aggro Range<br> |
 | **Iron Sword**<br>`iron-sword` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
 | **Iron Warhammer**<br>`iron-warhammer` | weapon | blunt | melee | 5 | melee | — | — | Damage 5<br> |
+| **Ironbound Gauntlets**<br>`ironbound-gauntlets` | gloves | — | — | — | melee | — | — | +50% Blunt Resistance<br> |
+| **Ironhead Greatmaul**<br>`ironhead-greatmaul` | weapon<br>two-handed | blunt | melee | 9 | melee | — | — | Damage 9<br> |
 | **Leather Armor**<br>`leather-armor` | chest | — | — | — | melee | — | — | +10% Damage Resistance<br> |
+| **Longbow**<br>`longbow` | weapon | sharp | ranged | 3 | 6 | — | — | Damage 3<br>Range 6<br> |
+| **Minor Salve**<br>`minor-salve` | consumable | — | — | — | melee | — | 3 | +3 HP<br>Stacks to 5<br> |
 | **Misericorde**<br>`misericorde` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>15% chance ×2 Damage<br> |
 | **Oak Wand**<br>`oak-wand` | weapon | blunt | melee | 2 | melee | — | — | Damage 2<br> |
 | **Pack Bow**<br>`pack-bow` | weapon | sharp | ranged | 3 | 4 | — | — | Damage 3<br>Range 4<br>+3 Damage with an Ally<br> |
@@ -153,11 +161,15 @@ its weapon carries.
 | Kind | HP | Weapon | Damage | Reach | Damage type | XP | Aggro | Drop % | Cards |
 |---|---|---|---|---|---|---|---|---|---|
 | **Dragon**<br>`dragon` | 60 | Dragon Jaws | 9 | melee | fire | 150 | 12 | 100 | — |
+| **Frost Wisp**<br>`frost-wisp` | 14 | Frost Touch | 4 | melee | ice | 32 | 8 | 35 | ⚠ −50% Fire Resistance<br> |
 | **Ghoul**<br>`ghoul` | 16 | Talons | 4 | melee | chaos | 35 | 8 | 35 | ⚠ −50% Holy Resistance<br> |
+| **Goblin**<br>`goblin` | 6 | Rusty Shiv | 2 | melee | sharp | 12 | 7 | 15 | — |
 | **Kin Archer**<br>`kin-archer` | 12 | Hunter's Bow | 3 | 3 hexes | sharp | 30 | 8 | 30 | — |
 | **Rat**<br>`rat` | 4 | Claws | 1 | melee | sharp | 8 | 7 | 10 | — |
+| **Skeleton**<br>`skeleton` | 14 | Bone Club | 3 | melee | blunt | 30 | 8 | 35 | +50% Sharp Resistance<br> |
 | **Troll**<br>`troll` | 30 | Maul | 6 | melee | blunt | 60 | 8 | 50 | ⚠ −50% Fire Resistance<br> |
 | **Wolf**<br>`wolf` | 10 | Fangs | 3 | melee | sharp | 20 | 10 | 30 | — |
+| **Wraith**<br>`wraith` | 26 | Talons | 4 | melee | chaos | 70 | 8 | 45 | +50% Sharp Resistance<br>+50% Blunt Resistance<br>⚠ −50% Holy Resistance<br> |
 
 ## Before you send a proposal
 

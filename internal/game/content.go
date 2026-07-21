@@ -149,6 +149,26 @@ var itemDefs = []*itemDef{
 		damageType: protocol.DamageTypeSharp, monsterOnly: true,
 	},
 
+	// Content-expansion natural weapons (#266): the new kinds' claws. Like
+	// every monster weapon they carry NO rule cards — a kind's own cards
+	// (a skeleton's sharp resistance) belong to the kind, not to a weapon
+	// other kinds may share.
+	{
+		id: idRustyShiv, name: "Rusty Shiv", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 2,
+		damageType: protocol.DamageTypeSharp, monsterOnly: true,
+	},
+	{
+		id: idBoneClub, name: "Bone Club", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 3,
+		damageType: protocol.DamageTypeBlunt, monsterOnly: true,
+	},
+	{
+		id: idFrostTouch, name: "Frost Touch", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 4,
+		damageType: protocol.DamageTypeIce, monsterOnly: true,
+	},
+
 	// Starter drop set.
 	{
 		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeWeapon,
@@ -422,6 +442,97 @@ var itemDefs = []*itemDef{
 		damage:     4,
 		flavor:     "Every dent in it was somebody's bad night.",
 	},
+
+	// Content-expansion weapons & gear (#267): fills the gaps the shipped
+	// arsenal left — Fire was magic-only, players had no heavy 2H blunt,
+	// ranged was two bows at the same reach, and the gloves and amulet slots
+	// (and Blunt/Ice resist) were empty. Every one is existing-vocabulary
+	// content: a typed weapon (type is the point, no card), or a single-type
+	// resist card on worn kit. Damage anchors follow the keystone's
+	// "1H ≈ ½ 2H" (1H melee 4, 2H 9, bow ~3).
+	{
+		// Takes Fire off the mage's exclusive list so a fighter/rogue can
+		// answer a fire-vulnerable troll (or the new Frost Wisp). Type is the
+		// whole point — no card, same design as Frostbrand/Consecrated Mace.
+		id: idEmberBrand, name: "Ember Brand", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeFire,
+		damage:     4,
+		flavor:     "The blade keeps its own warmth, even sheathed in a snowbank.",
+	},
+	{
+		// The players' first heavy 2H blunt (Maul is monsterOnly; the
+		// Warhammer is 1H). Damage at the 2H anchor; the cost is the 2H lock
+		// (no shield, no dual-wield). Blunt's heavy hitter — the answer to the
+		// sharp-resistant Skeleton.
+		id: idIronheadGreatmaul, name: "Ironhead Greatmaul", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, twoHanded: true,
+		damageType: protocol.DamageTypeBlunt,
+		damage:     9,
+		flavor:     "Two hands, one purpose, and nothing left standing after.",
+	},
+	{
+		// The reach-for-damage tradeoff: +2 hexes over the Shortbow bought
+		// with −1 damage. rangeHex is the max the reach invariant allows
+		// (rangeHex+aoeRadius ≤ CombatRadius, validateMaxReach) — a decision
+		// on a hex grid, not a strict upgrade.
+		id: idLongbow, name: "Longbow", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagRanged},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, rangeHex: 6,
+		flavor: "Draws slow, reaches far. Patience is the whole weapon.",
+	},
+	{
+		// First content in the gloves slot, and the Blunt mirror of the Warded
+		// Gambeson's Sharp resist — a single type halved, so situational, never
+		// the "both physical" card the design refuses. Renders as
+		// "+50% Blunt Resistance".
+		id: idIronboundGauntlets, name: "Ironbound Gauntlets", itemType: protocol.ItemTypeGloves,
+		flavor: "Iron over the knuckles. A maul lands like a friendly handshake.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeBlunt}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// First content in the amulet slot, and the only resist for Ice — the
+		// one type with no resist armor at all. Pairs directly with the Frost
+		// Wisp. Renders as "+50% Ice Resistance".
+		id: idFrostwardCharm, name: "Frostward Charm", itemType: protocol.ItemTypeAmulet,
+		flavor: "Cold to the touch, and everything colder just slides off you.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeIce}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+
+	// Content-expansion consumables (#268): the heal ladder, extending the
+	// shipped Healing Potion (5). heal is applied by the drink action
+	// (inventory.go), clamped to maxHP; each stacks to protocol.ItemStackCap.
+	{
+		// Below the Healing Potion: the cheap bandage you top up with
+		// mid-explore. Common, home/rat-tier.
+		id: idMinorSalve, name: "Minor Salve", itemType: protocol.ItemTypeConsumable,
+		heal:   3,
+		flavor: "Boiled root and candle grease. It works, mostly.",
+	},
+	{
+		// Above the Healing Potion: a real "save it for the boss" heal,
+		// frontier-tier — meaningful because death drops you to the start of
+		// your XP level.
+		id: idGreaterDraught, name: "Greater Draught", itemType: protocol.ItemTypeConsumable,
+		heal:   10,
+		flavor: "Thick as tar and twice as bitter. You feel it knit you back.",
+	},
+	{
+		// The ladder's top rung: a very rare full heal (clamped to maxHP on
+		// drink). Flagged optional in the proposal for the flat power curve,
+		// so it is gated behind the dragon's rare pool (#269) — a once-a-run
+		// relief, not a staple.
+		id: idFullRestorative, name: "Full Restorative", itemType: protocol.ItemTypeConsumable,
+		heal:   999,
+		flavor: "One swallow and the road behind you might as well not have happened.",
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -463,6 +574,10 @@ var monsterDefs = []*monsterDef{
 			// table is the common source, so the first pair of boots reads as
 			// a wolf-country find.
 			{defID: idPaddedBoots, weight: 1},
+			// Content expansion (#269 table B): the Minor Salve rides the
+			// rat table as the low-tier recovery ladder's home rung. Appended
+			// LAST so every earlier entry keeps its cumulative-weight position.
+			{defID: idMinorSalve, weight: 2},
 		},
 		rings: []int{0, 1},
 	},
@@ -502,6 +617,16 @@ var monsterDefs = []*monsterDef{
 			// Warded Gambeson (sharp resist) belongs on the sharp-clawed
 			// kind a player meets first.
 			{defID: idWardedGambeson, weight: 3},
+			// Content expansion (#269 table B): the Longbow (the shooter's
+			// kind carries the reach upgrade), a rare Frostward Charm (the
+			// Frost Wisp is its common source), and the Minor Salve recovery
+			// rung. Appended LAST so every earlier entry keeps its
+			// cumulative-weight position — but the new total weight DOES move
+			// drops_test.go's killDropSeed pick, which is re-derived there
+			// (the drop def, not the seed: seed 0 stays a hit, seed 3 a miss).
+			{defID: idLongbow, weight: 3},
+			{defID: idFrostwardCharm, weight: 1},
+			{defID: idMinorSalve, weight: 2},
 		},
 		rings: []int{1},
 	},
@@ -570,6 +695,16 @@ var monsterDefs = []*monsterDef{
 			// Damage-type wave (#92): appended LAST. The Frostbrand is the
 			// game's only Ice weapon, frontier-tier loot.
 			{defID: idFrostbrand, weight: 3},
+			// Content expansion (#269 table B): the troll is the frontier
+			// heavy-weapon tier — it carries the martial fire Ember Brand,
+			// the 2H blunt Ironhead Greatmaul, the blunt-resist Ironbound
+			// Gauntlets (the blunt attacker drops its own counter), and the
+			// Greater Draught's save-for-the-boss heal. Appended LAST so every
+			// earlier entry keeps its cumulative-weight position.
+			{defID: idEmberBrand, weight: 3},
+			{defID: idIronheadGreatmaul, weight: 3},
+			{defID: idIronboundGauntlets, weight: 3},
+			{defID: idGreaterDraught, weight: 1},
 		},
 		rings: []int{2},
 	},
@@ -597,6 +732,9 @@ var monsterDefs = []*monsterDef{
 			{defID: idPackBow, weight: 8},
 			{defID: idVenomFang, weight: 4},
 			{defID: idHealingPotion, weight: 1},
+			// Content expansion (#269 table B): the shooter's kind is the
+			// common source of the reach-for-damage Longbow. Appended LAST.
+			{defID: idLongbow, weight: 4},
 		},
 		rings: []int{1, 2},
 	},
@@ -620,8 +758,99 @@ var monsterDefs = []*monsterDef{
 			// Damage-type wave (#92): appended LAST. Infernal Chain Mail —
 			// fire resistance, dropped by the one kind whose claws are fire.
 			{defID: idInfernalChainMail, weight: 2},
+			// Content expansion (#269 table B + a judgement call): the Ember
+			// Brand rides the fire-breathing dragon as rare frontier loot (its
+			// common source is the troll). The Full Restorative — the heal
+			// ladder's optional top rung — had no drop routing in #269, so it
+			// is placed here as a very-rare once-a-run relief behind the
+			// rarest encounter. Appended LAST.
+			{defID: idEmberBrand, weight: 1},
+			{defID: idFullRestorative, weight: 1},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
+	},
+
+	// Content-expansion kinds (#266): the bestiary's first RESISTANCE enemies
+	// (before this, every monster card was a vulnerability — nothing ever
+	// resisted a type, so a player only had to avoid the wrong armor, never
+	// bring the right weapon), an ice attacker (Ice landed on nobody), a
+	// second home-ring face, and a frontier elite bridging Troll (30) and
+	// Dragon (60). Appended LAST in registry order — the spawn kind-pick
+	// draws from an id-sorted per-ring list (kindsPerRing), so registry order
+	// is not seed-bearing. Each names a monsterOnly natural weapon and owns
+	// its loot table (#269 table A: its signature "answer" item weighted up,
+	// so killing it teaches the counter it enables).
+	{
+		// A weak trash mob for the sanctuary approaches — the Rat's only
+		// ring-0 company. Sharp, so the early game stays physical. No cards.
+		id: idKindGoblin, name: "Goblin",
+		maxHP: 6, weapon: idRustyShiv, xp: 12, aggroRadius: protocol.CombatRadius + 1, dropChance: 15,
+		drops: []drop{
+			{defID: idButchersCleaver, weight: 2},
+			{defID: idMinorSalve, weight: 2},
+			{defID: idHealingPotion, weight: 1},
+		},
+		rings: []int{0, 1},
+	},
+	{
+		// The first kind that RESISTS a type: blades glance off bone (sharp
+		// ×0.5), so most of the (mostly-Sharp) arsenal underperforms and the
+		// 2H blunt Greatmaul becomes the answer. Its own claws are blunt.
+		id: idKindSkeleton, name: "Skeleton",
+		maxHP: 14, weapon: idBoneClub, xp: 30, aggroRadius: 8, dropChance: 35,
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeSharp}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+		drops: []drop{
+			{defID: idIronheadGreatmaul, weight: 3}, // the blunt it's weak to
+			{defID: idIronboundGauntlets, weight: 2},
+			{defID: idIronWarhammer, weight: 2},
+		},
+		rings: []int{1, 2},
+	},
+	{
+		// The missing ice attacker (Frost Touch, ice), Fire-vulnerable — the
+		// ice mirror of "trolls fear fire". Makes Ice land on the player,
+		// gives the Frostward Charm a reason to exist, and rewards the fire
+		// arsenal.
+		id: idKindFrostWisp, name: "Frost Wisp",
+		maxHP: 14, weapon: idFrostTouch, xp: 32, aggroRadius: 8, dropChance: 35,
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
+		drops: []drop{
+			{defID: idFrostwardCharm, weight: 3}, // ice answers
+			{defID: idFrostbrand, weight: 3},
+			{defID: idMinorSalve, weight: 2},
+		},
+		rings: []int{1, 2},
+	},
+	{
+		// A frontier elite between Troll (30) and Dragon (60): mundane
+		// physical weapons barely bite (sharp ×0.5, blunt ×0.5) but it takes
+		// +50% from Holy — the first enemy that DEMANDS elemental or Holy
+		// damage, where your Sharp/Blunt kit is the wrong tool. Two
+		// physical-resist cards on a MONSTER make it harder by design (the
+		// "don't stack a both-physical resist" caution is about player armor).
+		// Chaos-aligned like the ghoul, one tier up (reuses idTalons).
+		id: idKindWraith, name: "Wraith",
+		maxHP: 26, weapon: idTalons, xp: 70, aggroRadius: 8, dropChance: 45,
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeSharp}},
+				then: effect{kind: effMulPct, n: 50}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeBlunt}},
+				then: effect{kind: effMulPct, n: 50}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeHoly}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
+		drops: []drop{
+			{defID: idConsecratedMace, weight: 3}, // the Holy it's weak to
+			{defID: idPilgrimsMantle, weight: 3},
+			{defID: idGreaterDraught, weight: 1},
+		},
+		rings: []int{2},
 	},
 }
 

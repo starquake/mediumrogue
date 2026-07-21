@@ -468,6 +468,9 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Wyrmslayer Greatsword | melee | ✅ | 9 | – | – | ×1.5 dmg vs dragons | dragon drop (100%, weight 2) |
   | Misericorde | melee | | 4 | – | – | 15% chance to deal ×2 | ghoul drop |
   | Duelist's Saber | melee | | 4 | – | – | 10% chance to deal ×2 | wolf drop |
+  | Ember Brand | melee | | 4 | – | – | — (Fire — off the mage's exclusive list) | troll (w3) / dragon (w1) drop |
+  | Ironhead Greatmaul | melee | ✅ | 9 | – | – | — (players' first heavy 2H blunt) | skeleton (w3) / troll (w3) drop |
+  | Longbow | ranged | | 3 | 6 | – | reach-for-damage: +2 range over the Shortbow for −1 damage | wolf (w3) / kin archer (w4) drop |
 
   `Rng`/`AoE` "–" = 0 (adjacent-only / single-target). Misericorde and
   Duelist's Saber are the first item-side **crit%-weapons** (fast-lane
@@ -515,12 +518,12 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 
   | Family | Types | Carried by |
   |---|---|---|
-  | Physical | **Sharp** | swords, daggers, bows, cleaver, venom fang, misericorde, saber; rat + wolf claws |
-  | Physical | **Blunt** | fists, oak wand, warhammer, mattock; troll claws |
-  | Elemental | **Fire** | ember focus, ember staff, war-mage staff; dragon claws |
-  | Elemental | **Ice** | Frostbrand |
+  | Physical | **Sharp** | swords, daggers, bows (incl. longbow), cleaver, venom fang, misericorde, saber; rat + wolf + goblin claws |
+  | Physical | **Blunt** | fists, oak wand, warhammer, mattock, ironhead greatmaul; troll + skeleton claws |
+  | Elemental | **Fire** | ember focus, ember staff, war-mage staff, ember brand; dragon claws |
+  | Elemental | **Ice** | Frostbrand; frost wisp claws |
   | Metaphysical | **Holy** | Wyrmslayer Greatsword, Consecrated Mace |
-  | Metaphysical | **Chaos** | ghoul claws |
+  | Metaphysical | **Chaos** | ghoul + wraith claws |
 
   The families, and the Holy↔Chaos / Fire↔Ice **oppositions, are an
   authoring convention — not machinery**. All six types are mechanically
@@ -528,8 +531,13 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   and the engine does not know the pair exists. Promotable to a real axis
   later only if content always ends up mirrored.
 
-  **Monster vulnerabilities**: ghoul takes **+50% from Holy**, troll **+50%
-  from Fire** ("trolls fear fire" — the identity the arc was pitched on).
+  **Monster vulnerabilities**: ghoul and wraith take **+50% from Holy**, troll
+  and frost wisp **+50% from Fire** ("trolls fear fire" — the identity the arc
+  was pitched on; the frost wisp is its ice mirror). **Monster resistances**
+  (#266, the board's first): skeleton halves **Sharp**, wraith halves **Sharp
+  and Blunt** — two physical-resist cards on one monster make it harder by
+  design (the "don't stack a both-physical resist" caution is about player
+  *armor*, not enemies).
 
   **Resist gear** (each halves exactly one type — situational where flat
   mitigation is always-on):
@@ -539,20 +547,28 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Infernal Chain Mail | chest | fire ×0.5 | dragon (w2) drop |
   | Warded Gambeson | chest | sharp ×0.5 | wolf (w3) drop |
   | Pilgrim's Mantle | chest | chaos ×0.5 | ghoul (w3) drop |
+  | Ironbound Gauntlets | gloves | blunt ×0.5 | skeleton (w2) / troll (w3) drop |
+  | Frostward Charm | amulet | ice ×0.5 | frost wisp (w3) / wolf (w1) drop |
 
-  Blunt deliberately has **no** resist: one card answering both physical
-  types would be strictly better than either elemental resist, since nearly
-  every early monster is sharp or blunt. New weapons: **Frostbrand** (ice,
-  damage 4, troll w3) and **Consecrated Mace** (holy, damage 4, ghoul w3) —
+  No card answers **both** physical types at once: one that halved Sharp and
+  Blunt together would be strictly better than either elemental resist, since
+  nearly every early monster is sharp or blunt. Each of the six types now has
+  exactly one **single**-type resist (#267 filled Blunt with the Ironbound
+  Gauntlets and Ice with the Frostward Charm, the first gloves- and
+  amulet-slot content) — situational where flat mitigation is always-on. New
+  weapons: **Frostbrand** (ice, damage 4, troll w3) and **Consecrated Mace**
+  (holy, damage 4, ghoul w3) —
   both sit at the shipped 1H anchor so the *type* is the point, not a stat
   upgrade riding along. A weapon's type shows as a **Type** line in the stat
   tooltip (character panel and pickup modal alike).
 - **Non-weapon items**: Leather Armor (chest: take-damage ×0.9, floor 1), Iron
   Plate Armor (chest: take-damage ×0.8 + aggro-range ×1.25), Padded Boots
-  (boots: aggro-range ×0.75), the three resist armors above (chest: one type
-  halved each), Headband of Learning (helmet: earn-XP ×1.05), Healing Potion
-  (consumable: drink +5 HP, stacks to 5), and the two shields above
-  (off-hand: take-damage ×0.9/×0.8).
+  (boots: aggro-range ×0.75), the three resist chest armors above (one type
+  halved each), the Ironbound Gauntlets (gloves: blunt ×0.5) and Frostward
+  Charm (amulet: ice ×0.5), Headband of Learning (helmet: earn-XP ×1.05), the
+  heal-ladder consumables (Minor Salve +3, Healing Potion +5, Greater Draught
+  +10, Full Restorative to full — each drink clamped to max HP, stacks to 5),
+  and the two shields above (off-hand: take-damage ×0.9/×0.8).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride
@@ -563,8 +579,18 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   Infernal Chain Mail on the dragon (the one kind whose claws are fire), and
   the Pilgrim's Mantle and Consecrated Mace on the ghoul — which **ends** the
   ghoul table's long-untouched streak, by design: the ghoul is where a player
-  first *wants* a damage type). Items land
-  on the death hex and render as map markers.
+  first *wants* a damage type). The content expansion (#269) routes the new
+  loot: each new kind's own table signals its counter (Skeleton → Ironhead
+  Greatmaul; Frost Wisp → Frostward Charm + Frostbrand; Wraith → Consecrated
+  Mace + Pilgrim's Mantle; Goblin → cleaver + salve), and the new gear also
+  rides existing kinds so it stays reachable — Ember Brand on troll (w3) /
+  dragon (w1), Ironhead Greatmaul on skeleton (w3) / troll (w3), Longbow on
+  wolf (w3) / kin archer (w4), Ironbound Gauntlets on skeleton (w2) / troll
+  (w3), Frostward Charm on frost wisp (w3) / wolf (w1); the recovery ladder
+  spreads across the tiers (Minor Salve on rat/wolf/goblin/frost wisp, Greater
+  Draught on wraith/troll, the very-rare Full Restorative on the dragon). The
+  wolf additions were the only ones to move a pinned drop seed, re-derived in
+  `drops_test.go`. Items land on the death hex and render as map markers.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):
@@ -634,8 +660,8 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   `Fantasy:` text — e.g. the Wyrmslayer's dragon Werdmullerix); flavor is
   cosmetic, never gameplay-affecting.
 
-### Monsters (kinds & difficulty rings — milestone 6c)
-- **Six kinds**, content data in `internal/game/content.go` (`monsterDefs`),
+### Monsters (kinds & difficulty rings — milestone 6c, expanded #266)
+- **Ten kinds**, content data in `internal/game/content.go` (`monsterDefs`),
   each with its own stats, aggro radius, XP award, and loot table. A kind
   **names its weapon** in the item registry (#179) rather than carrying a copy
   of one, so reach, damage and damage type all come from a real item:
@@ -643,11 +669,24 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Kind | Ring(s) | HP | Weapon | Dmg | Reach | XP | Aggro | Drop chance |
   |---|---|---|---|---|---|---|---|---|
   | Rat | 0–1 | 4 | Claws | 1 | melee | 8 | 7 | 10% |
+  | Goblin | 0–1 | 6 | Rusty Shiv | 2 | melee | 12 | 7 | 15% |
   | Wolf | 1 | 10 | Fangs | 3 | melee | 20 | 10 | 30% |
   | Ghoul | 1–2 | 16 | Talons | 4 | melee | 35 | 8 | 35% |
   | Kin Archer | 1–2 | 12 | Hunter's Bow | 3 | **3 hexes** | 30 | 8 | 30% |
+  | Skeleton | 1–2 | 14 | Bone Club | 3 | melee | 30 | 8 | 35% |
+  | Frost Wisp | 1–2 | 14 | Frost Touch | 4 | melee | 32 | 8 | 35% |
   | Troll | 2 | 30 | Maul | 6 | melee | 60 | 8 | 50% |
+  | Wraith | 2 | 26 | Talons | 4 | melee | 70 | 8 | 45% |
   | Dragon | 2 (capped at 1 per world) | 60 | Dragon Jaws | 9 | melee | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
+
+  **The expansion kinds (#266)** add the board's first *resistances* — before
+  them every monster card was a vulnerability, so a player only had to avoid
+  the wrong armor, never bring the right weapon. The **Skeleton** halves Sharp
+  ("bring blunt"), the **Wraith** halves both Sharp and Blunt and takes +50%
+  from Holy (the first enemy that *demands* elemental or Holy damage), the
+  **Frost Wisp** is the only Ice attacker and takes +50% from Fire (the ice
+  mirror of "trolls fear fire"), and the **Goblin** is a second home-ring face
+  (a weak sharp trash mob, no cards).
 
   **The Kin Archer is the first kind that attacks without closing** (#179). It
   shoots from up to 3 hexes — under the player Shortbow's 4, so player gear
@@ -666,8 +705,10 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   Wolf carries forward the pre-6c flat numbers exactly. Each kind renders
   with a distinct on-map dot color (`entities.ts`'s `KIND_STYLE`) plus a
   **game-icons.net glyph** drawn dark on the dot (rat, wolf-head,
-  shambling-zombie, troll, dragon-head, bowman for the Kin Archer —
-  `GLYPH_ICON_SVG`, keyed by kind id; the source filename must equal that id);
+  shambling-zombie, troll, dragon-head, bowman for the Kin Archer, and #266's
+  goblin-head, skeleton, frozen-orb for the Frost Wisp, spectre for the
+  Wraith — `GLYPH_ICON_SVG`, keyed by kind id; the source filename need not
+  match the id, but the `ICONS` map key in `gen-glyph-icons.mjs` must);
   an unrecognized kind falls back to the flat monster red with no glyph.
   Players carry the same treatment — a class glyph (crossed-swords/hood/
   pointy-hat) on their relationship-colored dot. Icons are vendored inline SVG

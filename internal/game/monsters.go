@@ -27,6 +27,19 @@ const (
 	idKindArcher = "kin-archer"
 )
 
+// Content-expansion monster-kind ids (#266): a home-ring variety mob, the
+// first RESISTANCE enemies (nothing on the board resisted a type before —
+// every card was a vulnerability), the missing ice attacker, and a frontier
+// elite between Troll (30) and Dragon (60). Each id doubles as its
+// client-side glyph key (entities.ts's KIND_STYLE / GLYPH_ICON_SVG), so a
+// rename must move the SVG mapping too.
+const (
+	idKindGoblin    = "goblin"
+	idKindSkeleton  = "skeleton"
+	idKindFrostWisp = "frost-wisp"
+	idKindWraith    = "wraith"
+)
+
 // defaultMonsterKindID is the kind SpawnMonsters/SpawnMonsterAt/
 // PlaceMonsterForTest fall back to when no kind is named — wolf, which
 // carries today's exact pre-6c numbers (10 HP, 3 damage, 20 XP, aggro 10,

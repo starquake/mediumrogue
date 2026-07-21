@@ -9,7 +9,8 @@ import (
 
 // TestMonsterRegistryHasTheExpectedKinds pins the registry's ids — a content
 // mistake that drops or renames a kind fails here first. Grew by one in #179 (the
-// Kin Archer, the first ranged kind); re-derived deliberately, since adding a
+// Kin Archer, the first ranged kind) and by four in #266 (the goblin,
+// skeleton, frost wisp and wraith); re-derived deliberately, since adding a
 // kind is exactly what this test is meant to notice.
 func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 	t.Parallel()
@@ -17,6 +18,7 @@ func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 	want := map[string]bool{
 		idKindRat: true, idKindWolf: true, idKindGhoul: true,
 		idKindTroll: true, idKindDragon: true, idKindArcher: true,
+		idKindGoblin: true, idKindSkeleton: true, idKindFrostWisp: true, idKindWraith: true,
 	}
 
 	if got, want := len(monsterDefs), len(want); got != want {
@@ -100,6 +102,15 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		// sharp resist, on the sharp-clawed kind a player meets first.
 		// Appended LAST for the same reason.
 		{defID: idWardedGambeson, weight: 3},
+		// Appended by the content expansion (#269 table B): the reach Longbow,
+		// a rare Frostward Charm, and the Minor Salve recovery rung. Appended
+		// LAST — the new total weight was re-checked against drops_test.go's
+		// killDropSeed pins (the seeds are unchanged: seed 0 still hits, seed 3
+		// still misses; and seed 0 still yields the Butcher's Cleaver, which
+		// stays weight 4 at the head of the table).
+		{defID: idLongbow, weight: 3},
+		{defID: idFrostwardCharm, weight: 1},
+		{defID: idMinorSalve, weight: 2},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {

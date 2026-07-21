@@ -612,6 +612,16 @@ const (
 	idHunterBow  = "hunter-bow"
 )
 
+// Content-expansion natural-weapon ids (#266): the new kinds' claws,
+// monsterOnly like every other natural weapon so nothing can put one in a
+// player's hands. The Wraith reuses idTalons (chaos) — one tier up from the
+// ghoul — so it needs no new weapon.
+const (
+	idRustyShiv  = "rusty-shiv"
+	idBoneClub   = "bone-club"
+	idFrostTouch = "frost-touch"
+)
+
 // Starter-drop-set item ids: named the same way as the class-default ids
 // above, and for the same reason — referenced from both the item registry
 // (content.go) and, since 6c, per-kind monster loot tables (also
@@ -678,6 +688,31 @@ const (
 const (
 	idWoodenBuckler  = "wooden-buckler"
 	idIronKiteShield = "iron-kite-shield"
+)
+
+// Content-expansion weapon & gear ids (#267): a martial Fire weapon (Fire
+// was magic-only), the players' first heavy 2H blunt, a reach-for-damage
+// bow, and the first gloves- and amulet-slot items (Blunt- and Ice-resist —
+// the two families with no resist gear). Named here for the usual reason:
+// registry entry, drop tables, and pinning tests can't drift on a typo.
+const (
+	idEmberBrand         = "ember-brand"
+	idIronheadGreatmaul  = "ironhead-greatmaul"
+	idLongbow            = "longbow"
+	idIronboundGauntlets = "ironbound-gauntlets"
+	idFrostwardCharm     = "frostward-charm"
+)
+
+// Content-expansion consumable ids (#268): the heal LADDER — a cheap salve
+// below the shipped Healing Potion (5), a frontier-tier draught above it, and
+// a very-rare full restore. heal is a def field consumed by the drink ACTION
+// (inventory.go), not a combat event, so the amount is the only thing
+// add-content can vary today (timed buff potions need a timed-effect
+// mechanic — a separate design slice).
+const (
+	idMinorSalve      = "minor-salve"
+	idGreaterDraught  = "greater-draught"
+	idFullRestorative = "full-restorative"
 )
 
 // classDefaultIDs returns the item def ids a class starts with at Join: one
