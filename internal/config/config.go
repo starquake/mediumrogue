@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -110,6 +111,14 @@ type Config struct {
 	// MONSTER_COUNT. Defaults to 0 (no monsters) so existing deployments and
 	// tests are unaffected until milestone 6.2 turns them on.
 	MonsterCount int
+	// StarterConsumables are item ids granted into every NEW player's backpack
+	// at join, from STARTER_CONSUMABLES (comma-separated). Empty by default, so
+	// production and every existing test/e2e keep the empty starting backpack —
+	// the knob exists so the #271 throwable/recall e2e can hand a fresh player a
+	// flask and a scroll deterministically (the same env-injection pattern the
+	// timing knobs use). Each id must name a registered consumable; the world
+	// fails loud at startup otherwise.
+	StarterConsumables []string
 	// CombatPatience is the AFK fallback: how long a combat time bubble waits
 	// for a straggler before resolving anyway, from COMBAT_PATIENCE.
 	CombatPatience time.Duration
@@ -203,6 +212,21 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// parseCSV splits a comma-separated env value into trimmed, non-empty items,
+// returning nil for an empty/blank string (the default). Used for
+// STARTER_CONSUMABLES.
+func parseCSV(v string) []string {
+	var out []string
+
+	for _, part := range strings.Split(v, ",") {
+		if s := strings.TrimSpace(part); s != "" {
+			out = append(out, s)
+		}
+	}
+
+	return out
+}
+
 func overrideDuration(dst *time.Duration, key string) error {
 	v := os.Getenv(key)
 	if v == "" {
@@ -237,6 +261,8 @@ func applyOverrides(cfg *Config) error {
 	if err := overrideInt(&cfg.MonsterCount, "MONSTER_COUNT"); err != nil {
 		return err
 	}
+
+	cfg.StarterConsumables = parseCSV(os.Getenv("STARTER_CONSUMABLES"))
 
 	if err := overrideDuration(&cfg.CombatPatience, "COMBAT_PATIENCE"); err != nil {
 		return err

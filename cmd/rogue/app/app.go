@@ -109,13 +109,14 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 // knobs into game.WorldConfig (the constructor's single-struct argument).
 func newWorld(cfg *config.Config, ticks *hub.Hub) *game.World {
 	return game.NewWorld(game.WorldConfig{
-		Interval:        cfg.TurnInterval,
-		CombatPatience:  cfg.CombatPatience,
-		BubblePoll:      cfg.BubblePoll,
-		DisconnectGrace: cfg.DisconnectGrace,
-		WorldSeed:       cfg.WorldSeed,
-		Radius:          cfg.WorldRadius,
-		Ticks:           ticks,
+		Interval:           cfg.TurnInterval,
+		CombatPatience:     cfg.CombatPatience,
+		BubblePoll:         cfg.BubblePoll,
+		DisconnectGrace:    cfg.DisconnectGrace,
+		WorldSeed:          cfg.WorldSeed,
+		Radius:             cfg.WorldRadius,
+		Ticks:              ticks,
+		StarterConsumables: cfg.StarterConsumables,
 	})
 }
 

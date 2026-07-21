@@ -46,6 +46,12 @@ const (
 	// It reuses the existing evTakeDamage event and effMulPct verb — pure
 	// content, no new pipeline kind.
 	idEffectWard = "ward"
+	// idEffectBurning is the lingering fire DoT (#271, slice 5): a harmful
+	// evEndOfTurn effAdd (negative magnitude drains HP each turn), applied to
+	// every entity caught in a Flask of Alchemist's Fire's blast. Reuses the
+	// same event/verb the poison DoT does — a second harmful DoT flavor, not a
+	// new pipeline kind — so an Antivenom cleanses it too.
+	idEffectBurning = "burning"
 )
 
 // effectDefs is the timed-effect content registry (#271). Three defs, two of
@@ -76,6 +82,7 @@ var effectDefs = []*effectDef{
 	{id: idEffectRegen, name: "Regeneration", event: evEndOfTurn, effect: effAdd},
 	{id: idEffectFrenzy, name: "Frenzy", event: evDealDamage, effect: effMulPct},
 	{id: idEffectWard, name: "Ward", event: evTakeDamage, effect: effMulPct},
+	{id: idEffectBurning, name: "Burning", event: evEndOfTurn, effect: effAdd, harmful: true},
 }
 
 // speciesCards returns a species' passive rule cards (nil for monsters'
@@ -711,6 +718,34 @@ var itemDefs = []*itemDef{
 			{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
 				then: effect{kind: effMulPct, n: percentBase + 100}},
 		},
+	},
+
+	// Targeted consumables (#271, slice 5): the throwable flask and the recall
+	// scroll — proof consumers of the new targeted-action path. Both heal 0 and
+	// apply nothing on drink; their whole value is the thrown blast / the
+	// teleport.
+	{
+		// A thrown fire flask: shatters on the aim hex, dealing fire damage to
+		// every opposing entity in a 1-hex blast (AoE always hits) and leaving a
+		// short burning DoT on each. Fire, so a fire-vulnerable troll takes it
+		// harder — the damage folds through the same pipeline every hit does.
+		// Reach 4+1 = 5 ≤ CombatRadius (validateMaxReach).
+		id: idFlaskOfFire, name: "Flask of Alchemist's Fire", itemType: protocol.ItemTypeConsumable,
+		flavor: "Do not shake. Do not drop. Do, by all means, throw.",
+		//nolint:mnd // authored content: 6 fire in a 1-hex blast at range 4, plus −3/turn burning for 3 turns.
+		throw: &throwPayload{
+			rangeHex: 4, aoeRadius: 1, damage: 6, damageType: protocol.DamageTypeFire,
+			onLand: []appliedEffect{{effectID: idEffectBurning, magnitude: -3, turns: 3}},
+		},
+	},
+	{
+		// A scroll of recall: read it and you are gone, whisked to a safe hex in
+		// the shared sanctuary. Reuses the Blink teleport (#161); the destination
+		// is the sanctuary until per-player beds land. An escape tool, not an
+		// attack — no aim, no damage.
+		id: idScrollOfRecall, name: "Scroll of Recall", itemType: protocol.ItemTypeConsumable,
+		flavor: "The long way home, folded into a word.",
+		recall: true,
 	},
 }
 
