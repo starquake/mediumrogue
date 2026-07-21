@@ -29,6 +29,19 @@ The test is in the label itself: **if it says "your", it is a gate.** No colour
 legend, no memorised list — a label you have never seen before still sorts
 correctly.
 
+**Do not re-ask permission on a work label — not even a big or scary one.**
+Size, architectural weight, or serialization/design risk does NOT downgrade a
+`needs: build` (or `needs: spec`/`needs: plan`) to a gate. You start it *now*.
+If the build carries load-bearing decisions, you make them and **surface them in
+the draft PR for review** — the PR review plus the `ready to merge` label IS the
+sign-off. Converting a work label back into a "should I kick this off, or hold?"
+question re-invents a gate the maintainer already opened, and stalls their own
+authorised work. (2026-07-21: held #271's `needs: build` mechanics slice and
+asked "kick it off now, or park it?" — the maintainer: *"why don't you pick up
+the needs build now?"* The rule was already here; the build being large and
+architectural is exactly when the pull to re-ask is strongest and must be
+resisted.)
+
 ## The autonomy contract — do not cross
 
 - **Never decide design direction.** Open questions are surfaced TO the
