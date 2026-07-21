@@ -74,6 +74,58 @@ func TestStreamOpenClose(t *testing.T) {
 	}
 }
 
+// TestSubmitIntentRefreshesGrace: a player whose only event stream was reaped
+// (streams == 0) but who keeps submitting intents refreshes the disconnect
+// grace, so an actively-playing client is never swept mid-session (#209).
+// Without the refresh the grace clock keeps running from the stream close and
+// the still-clicking player is swept out from under them.
+func TestSubmitIntentRefreshesGrace(t *testing.T) {
+	t.Parallel()
+
+	w, clk := newTimedWorld(t)
+	w.SetDisconnectGraceForTest(presenceGrace)
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.StreamOpened(me.Token)
+	w.StreamClosed(me.Token) // disconnectedAt = t0, grace running
+
+	// Keep playing: within the grace, submit a valid move. Proof of life must
+	// push the grace clock forward to the intent time.
+	clk.advance(presenceGrace - time.Second)
+
+	target := walkableNeighbor(t, w, me.Hex)
+
+	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: target}
+	if err := w.SubmitIntent(req); err != nil {
+		t.Fatalf("SubmitIntent: %v", err)
+	}
+
+	got, ok := w.DisconnectedAtForTest(me.Token)
+	if !ok {
+		t.Fatalf("DisconnectedAtForTest: no entity for token")
+	}
+
+	if want := clk.now(); !got.Equal(want) {
+		t.Errorf("disconnectedAt after intent = %v, want intent time %v (grace not refreshed)", got, want)
+	}
+
+	// Past the ORIGINAL grace but within a fresh grace measured from the
+	// intent: the still-playing player must survive the sweep.
+	clk.advance(2 * time.Second)
+
+	if got, want := w.SweepForTest(clk.now()), false; got != want {
+		t.Errorf("SweepForTest removed = %v, want %v (intent refreshed the grace)", got, want)
+	}
+
+	if _, ok := entityOfSnap(w.Snapshot(), me.EntityID); !ok {
+		t.Errorf("actively-playing player %d swept despite a recent intent", me.EntityID)
+	}
+}
+
 // TestSweepRemovesPastGrace: a player with no open stream for longer than the
 // grace is removed — gone from the snapshot and from byToken.
 func TestSweepRemovesPastGrace(t *testing.T) {

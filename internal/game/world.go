@@ -1034,6 +1034,16 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 		return err
 	}
 
+	// An accepted intent is proof of life: refresh the disconnect grace so a
+	// player who keeps playing after their SSE stream was reaped (a proxy idle
+	// timeout, say) is not swept mid-session (#209). Only meaningful while the
+	// stream count is zero — with a stream open the sweep ignores
+	// disconnectedAt anyway — so refreshing only the disconnected case keeps
+	// the field's "grace-clock anchor" meaning intact.
+	if e.streams == 0 {
+		e.disconnectedAt = w.now()
+	}
+
 	// Lock-in: inside a combat bubble, submitting an intent commits this player
 	// for the bubble's action-gated turn. Once every player member has locked
 	// in, the bubble resolves immediately (rather than waiting for the poll or
@@ -1363,6 +1373,18 @@ func entityNameLocked(e *entity) string {
 // caller that isn't a player's own stream; the SSE handler calls SnapshotFor.
 func (w *World) Snapshot() protocol.TurnEvent {
 	return w.SnapshotFor("")
+}
+
+// Turn returns the current world turn number. Cheap (just the counter under the
+// lock) so an SSE writer can skip the full per-viewer SnapshotFor build on a
+// coalesced no-op wake whose turn it already sent (#209). The turn counter only
+// ever increases, so a value that differs from a client's last-sent watermark
+// always means a genuinely newer bundle is due.
+func (w *World) Turn() int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.turn
 }
 
 // SnapshotFor renders the turn bundle as the holder of viewerToken sees it.
