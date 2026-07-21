@@ -106,7 +106,7 @@ func (w *World) entitiesSlice() []*entity {
 		out = append(out, e)
 	}
 
-	slices.SortFunc(out, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(out, byEntityID)
 
 	return out
 }
@@ -157,7 +157,7 @@ func connectedComponents(ents []*entity, sees func(a, b protocol.Hex) bool) [][]
 		comps = append(comps, g)
 	}
 
-	slices.SortFunc(comps, func(a, b []*entity) int { return int(a[0].id - b[0].id) })
+	slices.SortFunc(comps, func(a, b []*entity) int { return byEntityID(a[0], b[0]) })
 
 	return comps
 }

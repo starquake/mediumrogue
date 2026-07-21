@@ -37,7 +37,15 @@ func startServerWithKindAt(t *testing.T, kind string, hex protocol.Hex) *httptes
 
 	ticks := hub.New()
 
-	world := game.NewWorld(15*time.Millisecond, time.Minute, 5*time.Millisecond, testDisconnectGrace, 0xC0FFEE, 12, ticks)
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        15 * time.Millisecond,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
 
 	if !world.SpawnMonsterKindAt(hex, kind) {
 		t.Fatalf("SpawnMonsterKindAt(%v, %q) = false, want a monster (not walkable or over StackCap)", hex, kind)

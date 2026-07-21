@@ -22,7 +22,15 @@ import (
 func newLeashWorld(t *testing.T) *game.World {
 	t.Helper()
 
-	return game.NewWorld(time.Hour, testCombatPatience, testBubblePoll, testDisconnectGrace, 0xC0FFEE, 20, hub.New())
+	return game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  testCombatPatience,
+		BubblePoll:      testBubblePoll,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          20,
+		Ticks:           hub.New(),
+	})
 }
 
 // ratLeash returns the rat kind's effective leash radius, derived from the

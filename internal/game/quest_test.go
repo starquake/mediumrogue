@@ -848,7 +848,15 @@ func reachQuest(t *testing.T, w *game.World) (int64, protocol.Hex) {
 func TestQuestBoardTinyWorldDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
-	w := game.NewWorld(time.Hour, time.Second, time.Millisecond, time.Minute, 0xC0FFEE, 2, hub.New())
+	w := game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  time.Second,
+		BubblePoll:      time.Millisecond,
+		DisconnectGrace: time.Minute,
+		WorldSeed:       0xC0FFEE,
+		Radius:          2,
+		Ticks:           hub.New(),
+	})
 
 	quests := w.Snapshot().Quests
 	if got, want := len(quests), 6; got != want {

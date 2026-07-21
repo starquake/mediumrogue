@@ -21,7 +21,15 @@ import (
 func TestBubbleViewWaitingIsEmptyNotNilWhenEveryoneIsReady(t *testing.T) {
 	t.Parallel()
 
-	w := NewWorld(time.Hour, time.Minute, time.Second, time.Minute, 1, 4, hub.New())
+	w := NewWorld(WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  time.Minute,
+		BubblePoll:      time.Second,
+		DisconnectGrace: time.Minute,
+		WorldSeed:       1,
+		Radius:          4,
+		Ticks:           hub.New(),
+	})
 
 	player := &entity{id: 1, kind: protocol.EntityPlayer, hp: 10, maxHP: 10}
 	monster := &entity{id: 2, kind: protocol.EntityMonster, hp: 5, maxHP: 5, monsterKind: idKindWolf}

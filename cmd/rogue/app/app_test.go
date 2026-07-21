@@ -28,7 +28,15 @@ func newAppTestWorld() *game.World {
 // the rejected-snapshot test can build a snapshot that genuinely mismatches
 // the loading world's configuration.
 func newAppTestWorldRadius(radius int) *game.World {
-	return game.NewWorld(time.Second, time.Minute, 5*time.Millisecond, time.Hour, 0xC0FFEE, radius, hub.New())
+	return game.NewWorld(game.WorldConfig{
+		Interval:        time.Second,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: time.Hour,
+		WorldSeed:       0xC0FFEE,
+		Radius:          radius,
+		Ticks:           hub.New(),
+	})
 }
 
 func TestLoadSnapshotDisabledIsNoOp(t *testing.T) {

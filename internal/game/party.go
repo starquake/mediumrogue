@@ -19,15 +19,28 @@ var (
 	ErrPartyNotJoined  = errors.New("not joined")
 )
 
+// playerByTokenLocked resolves the joined player entity for token, or
+// ErrPartyNotJoined for an unknown or empty token — the shared guard the
+// party and quest intents open with (the HTTP layer maps it to 422).
+// Callers hold w.mu.
+func (w *World) playerByTokenLocked(token string) (*entity, error) {
+	e, ok := w.byToken[token]
+	if !ok || token == "" {
+		return nil, ErrPartyNotJoined
+	}
+
+	return e, nil
+}
+
 // PartyInvite records a pending invite from the token holder to the nearest
 // player named targetName. Returns the chat announcement to broadcast.
 func (w *World) PartyInvite(token, targetName string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	inviter, ok := w.byToken[token]
-	if !ok || token == "" {
-		return "", ErrPartyNotJoined
+	inviter, err := w.playerByTokenLocked(token)
+	if err != nil {
+		return "", err
 	}
 
 	targetName = strings.TrimSpace(targetName)
@@ -51,9 +64,9 @@ func (w *World) PartyAccept(token string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	accepter, ok := w.byToken[token]
-	if !ok || token == "" {
-		return "", ErrPartyNotJoined
+	accepter, err := w.playerByTokenLocked(token)
+	if err != nil {
+		return "", err
 	}
 
 	inviterID, ok := w.pendingInvites[accepter.id]
@@ -99,9 +112,9 @@ func (w *World) PartyLeave(token string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	e, ok := w.byToken[token]
-	if !ok || token == "" {
-		return "", ErrPartyNotJoined
+	e, err := w.playerByTokenLocked(token)
+	if err != nil {
+		return "", err
 	}
 
 	if e.partyID == 0 {

@@ -336,9 +336,8 @@ type World struct {
 
 	// combatPatience is how long a combat bubble waits for an unready player
 	// before auto-resolving its turn; bubblePoll is the control loop's polling
-	// cadence for checking bubble readiness and world-tick elapse. Both have
-	// sensible defaults set in NewWorld; milestone 6.4 Task 4 threads them from
-	// config (a clean seam — they are not yet in NewWorld's signature).
+	// cadence for checking bubble readiness and world-tick elapse. Both are set
+	// from config in NewWorld (via WorldConfig).
 	combatPatience time.Duration
 	bubblePoll     time.Duration
 	// disconnectGrace is how long a disconnected player's entity lingers before
@@ -505,17 +504,36 @@ func archiveLocked(e *entity) characterRecord {
 	}
 }
 
+// WorldConfig carries NewWorld's construction parameters as one value, so the
+// list gains a future knob without widening the constructor at every call site
+// (the reason #237's server-hardening options went here rather than into a
+// wider positional signature — mirrors internal/server's Deps). Fields map
+// one-to-one to the former positional args; no field defaults, so a caller
+// still spells out every value it means.
+type WorldConfig struct {
+	// Interval is the world-clock turn cadence.
+	Interval time.Duration
+	// CombatPatience is the AFK fallback before a combat bubble resolves
+	// without a straggler.
+	CombatPatience time.Duration
+	// BubblePoll is the control-loop cadence (see Run).
+	BubblePoll time.Duration
+	// DisconnectGrace is how long a disconnected player's entity lingers
+	// before the world sweeps it.
+	DisconnectGrace time.Duration
+	// WorldSeed seeds the procedural map and quests.
+	WorldSeed uint64
+	// Radius is the map radius in hexes.
+	Radius int
+	// Ticks is the hub the world publishes resolved turns on.
+	Ticks *hub.Hub
+}
+
 // NewWorld builds the world from a procedurally generated map (GenerateMap,
-// seeded by worldSeed/radius — see internal/game/worldgen.go).
-// combatPatience is the AFK fallback before a combat bubble resolves without a
-// straggler; bubblePoll is the control-loop cadence (see Run); disconnectGrace
-// is how long a disconnected player's entity lingers before the world sweeps
-// it. Run must be started for turns to advance.
-func NewWorld(
-	interval, combatPatience, bubblePoll, disconnectGrace time.Duration,
-	worldSeed uint64, radius int, ticks *hub.Hub,
-) *World {
-	worldMap := GenerateMap(worldSeed, radius)
+// seeded by cfg.WorldSeed/cfg.Radius — see internal/game/worldgen.go). Run
+// must be started for turns to advance.
+func NewWorld(cfg WorldConfig) *World {
+	worldMap := GenerateMap(cfg.WorldSeed, cfg.Radius)
 
 	terrain := make(map[protocol.Hex]protocol.Terrain, len(worldMap.Tiles))
 	for _, t := range worldMap.Tiles {
@@ -531,17 +549,17 @@ func NewWorld(
 	worldID := newWorldID()
 
 	return &World{
-		interval:        interval,
-		ticks:           ticks,
-		combatPatience:  combatPatience,
-		bubblePoll:      bubblePoll,
-		disconnectGrace: disconnectGrace,
+		interval:        cfg.Interval,
+		ticks:           cfg.Ticks,
+		combatPatience:  cfg.CombatPatience,
+		bubblePoll:      cfg.BubblePoll,
+		disconnectGrace: cfg.DisconnectGrace,
 		now:             time.Now,
 		logger:          slog.Default(),
 		terrain:         terrain,
 		worldMap:        worldMap,
-		radius:          radius,
-		worldSeed:       worldSeed,
+		radius:          cfg.Radius,
+		worldSeed:       cfg.WorldSeed,
 		worldID:         worldID,
 		spawnable:       reachableWalkable(worldMap),
 		entities:        make(map[int64]*entity),
@@ -549,7 +567,7 @@ func NewWorld(
 		pendingInvites:  make(map[int64]int64),
 		bubbles:         make(map[int64]*bubble),
 		seed:            seed,
-		quests:          generateQuests(worldSeed, worldMap),
+		quests:          generateQuests(cfg.WorldSeed, worldMap),
 		announce:        func(string, string) {},
 		groundItems:     make(map[protocol.Hex][]groundStack),
 		archive:         make(map[string]characterRecord),
@@ -1387,13 +1405,7 @@ func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 
 	for hex, stacks := range w.groundItems {
 		for _, gs := range stacks {
-			def := itemDefByID[gs.inst.defID]
-			groundItems = append(groundItems, protocol.GroundItemView{
-				ID: gs.inst.id, Hex: hex, DefID: gs.inst.defID, Name: def.name, Type: def.itemType, Count: gs.count,
-				// Detail fields (#139), read straight off the def like itemViewOf.
-				Tags: wireTags(def), DamageType: def.damageType, TwoHanded: def.twoHanded,
-				Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Stats: statViewsFor(def), Flavor: def.flavor,
-			})
+			groundItems = append(groundItems, groundItemViewOf(gs.inst, hex, gs.count))
 		}
 	}
 
@@ -1494,6 +1506,28 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 		Equipped: equipped, Count: count,
 	}
 }
+
+// groundItemViewOf projects a ground stack onto the wire. It reuses
+// itemViewOf's detail projection (the #139 Tags/DamageType/…/Flavor block) so
+// the owned-item view and the ground-item view read a def identically and
+// can't drift — the only fields unique to a ground stack are its Hex and the
+// unequipped/unowned framing (slot "" → Type is the def's itemType,
+// Equipped false).
+func groundItemViewOf(inst itemInstance, hex protocol.Hex, count int) protocol.GroundItemView {
+	iv := itemViewOf(inst, "", count)
+
+	return protocol.GroundItemView{
+		ID: iv.ID, Hex: hex, DefID: iv.DefID, Name: iv.Name, Type: iv.Type, Count: iv.Count,
+		Tags: iv.Tags, DamageType: iv.DamageType, TwoHanded: iv.TwoHanded,
+		Damage: iv.Damage, RangeHex: iv.RangeHex, AoERadius: iv.AoERadius, Stats: iv.Stats, Flavor: iv.Flavor,
+	}
+}
+
+// byEntityID orders entities by ascending id — the deterministic tiebreak the
+// simulation applies to every map-derived entity slice before drawing from an
+// rng (map iteration order is unspecified; the determinism rule requires a
+// sort first). Passed to slices.SortFunc wherever entities are ordered.
+func byEntityID(a, b *entity) int { return int(a.id - b.id) }
 
 // opposing reports whether a and b are of different factions (player vs
 // monster). Same-faction entities stack; opposing ones can't share a hex.
@@ -1882,7 +1916,7 @@ func (w *World) domainMembersLocked() []*entity {
 		}
 	}
 
-	slices.SortFunc(out, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(out, byEntityID)
 
 	return out
 }
@@ -1899,7 +1933,7 @@ func (w *World) bubbleMembersLocked(b *bubble) []*entity {
 		}
 	}
 
-	slices.SortFunc(out, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(out, byEntityID)
 
 	return out
 }
@@ -2031,7 +2065,7 @@ func (w *World) movePhaseLocked(
 		}
 	}
 
-	slices.SortFunc(movers, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(movers, byEntityID)
 	rng.Shuffle(len(movers), func(i, j int) { movers[i], movers[j] = movers[j], movers[i] })
 
 	for _, m := range movers {
@@ -2065,7 +2099,7 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 		}
 	}
 
-	slices.SortFunc(casters, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(casters, byEntityID)
 
 	for _, e := range casters {
 		id, target := e.activeSkill, *e.activeTarget
@@ -2178,7 +2212,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		// populated by ranging w.entities (a map), whose iteration order is
 		// unspecified and varies per range — without this sort, victim choice
 		// would depend on that incidental order instead of the seed alone.
-		slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
+		slices.SortFunc(victims, byEntityID)
 
 		victim := victims[rng.IntN(len(victims))]
 
@@ -2249,7 +2283,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		}
 	}
 
-	slices.SortFunc(shooters, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(shooters, byEntityID)
 
 	for _, e := range shooters {
 		targetEntityID := e.attackTargetEntity
@@ -2465,7 +2499,7 @@ func (w *World) stackVictimLocked(
 		return nil
 	}
 
-	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(victims, byEntityID)
 
 	return victims[rng.IntN(len(victims))]
 }
@@ -2510,7 +2544,7 @@ func (w *World) resolveAoELocked(
 		}
 	}
 
-	slices.SortFunc(victims, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(victims, byEntityID)
 
 	for _, o := range victims {
 		dealt := w.rollDamageLocked(rng, attacker, o, weapon, dmg)
@@ -2753,7 +2787,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 
 	// Sort by id so simultaneous respawns claim spawn hexes in a deterministic
 	// order (the map range above is unordered) — keeps a full turn reproducible.
-	slices.SortFunc(dead, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(dead, byEntityID)
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
@@ -3439,7 +3473,7 @@ func (w *World) allPlayersLocked() []*entity {
 		}
 	}
 
-	slices.SortFunc(players, func(a, b *entity) int { return int(a.id - b.id) })
+	slices.SortFunc(players, byEntityID)
 
 	return players
 }

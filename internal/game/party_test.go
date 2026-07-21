@@ -13,7 +13,15 @@ import (
 func newPartyWorld(t *testing.T) *game.World {
 	t.Helper()
 
-	return game.NewWorld(time.Hour, time.Second, time.Millisecond, time.Minute, 0xC0FFEE, 12, hub.New())
+	return game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  time.Second,
+		BubblePoll:      time.Millisecond,
+		DisconnectGrace: time.Minute,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           hub.New(),
+	})
 }
 
 func joinNamed(t *testing.T, w *game.World, name string) protocol.JoinResponse {

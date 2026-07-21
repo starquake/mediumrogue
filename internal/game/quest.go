@@ -137,9 +137,9 @@ func (w *World) QuestTake(token string, questID int64) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	e, ok := w.byToken[token]
-	if !ok || token == "" {
-		return "", ErrPartyNotJoined
+	e, err := w.playerByTokenLocked(token)
+	if err != nil {
+		return "", err
 	}
 
 	q := w.questByIDLocked(questID)
@@ -181,9 +181,9 @@ func (w *World) QuestAbandon(token string, questID int64) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	e, ok := w.byToken[token]
-	if !ok || token == "" {
-		return "", ErrPartyNotJoined
+	e, err := w.playerByTokenLocked(token)
+	if err != nil {
+		return "", err
 	}
 
 	q := w.questByIDLocked(questID)
