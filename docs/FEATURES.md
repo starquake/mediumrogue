@@ -581,7 +581,11 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   Charm (amulet: ice ×0.5), Headband of Learning (helmet: earn-XP ×1.05), the
   heal-ladder consumables (Minor Salve +3, Healing Potion +5, Greater Draught
   +10, Full Restorative to full — each drink clamped to max HP, stacks to 5),
-  and the two shields above (off-hand: take-damage ×0.9/×0.8).
+  the timed-effect consumables (#271, slice 2 — **Draught of Fury** +25%
+  deal-damage for 4 turns, **Warding Tonic** +25% damage resistance for 4
+  turns, **Antivenom** cures harmful effects — see **Timed / lingering
+  effects** below), and the two shields above (off-hand: take-damage
+  ×0.9/×0.8).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride
@@ -602,8 +606,13 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   (w3), Frostward Charm on frost wisp (w3) / wolf (w1); the recovery ladder
   spreads across the tiers (Minor Salve on rat/wolf/goblin/frost wisp, Greater
   Draught on wraith/troll, the very-rare Full Restorative on the dragon). The
-  wolf additions were the only ones to move a pinned drop seed, re-derived in
-  `drops_test.go`. Items land on the death hex and render as map markers.
+  timed-effect content (#271, slice 2) routes the same way — the **Antivenom**
+  rides the **Serpent** (the poison monster drops its own cure), and the buff
+  potions ride the **Hydra**'s own new table (Draught of Fury w3, Warding Tonic
+  w3, Greater Draught w1); both tables are new, so no existing pinned drop seed
+  moves. The wolf additions were the only ones to move a pinned drop seed,
+  re-derived in `drops_test.go`. Items land on the death hex and render as map
+  markers.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):
@@ -675,7 +684,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   cosmetic, never gameplay-affecting.
 
 ### Monsters (kinds & difficulty rings — milestone 6c, expanded #266, #271)
-- **Eleven kinds**, content data in `internal/game/content.go` (`monsterDefs`),
+- **Twelve kinds**, content data in `internal/game/content.go` (`monsterDefs`),
   each with its own stats, aggro radius, XP award, and loot table. A kind
   **names its weapon** in the item registry (#179) rather than carrying a copy
   of one, so reach, damage and damage type all come from a real item:
@@ -690,6 +699,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Kin Archer | 1–2 | 12 | Hunter's Bow | 3 | **3 hexes** | 30 | 8 | 30% |
   | Skeleton | 1–2 | 14 | Bone Club | 3 | melee | 30 | 8 | 35% |
   | Frost Wisp | 1–2 | 14 | Frost Touch | 4 | melee | 32 | 8 | 35% |
+  | Hydra | 2 | 24 | Hydra Fangs | 4 | melee | 55 | 8 | 45% |
   | Troll | 2 | 30 | Maul | 6 | melee | 60 | 8 | 50% |
   | Wraith | 2 | 26 | Talons | 4 | melee | 70 | 8 | 45% |
   | Dragon | 2 (capped at 1 per world) | 60 | Dragon Jaws | 9 | melee | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
@@ -704,11 +714,20 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   (a weak sharp trash mob, no cards).
 
   **The Serpent is the first kind whose attack applies a lingering effect**
-  (#271): its bite (`Venom Sting`, monsterOnly) poisons the victim — a small
-  HP drain each end-of-turn for a few turns, refreshed on every hit (see the
-  **Timed / lingering effects** entry). It drops the **Bloodrage Cleaver**
-  (the timed-buff proof
-  weapon), so one encounter teaches both halves of the mechanism.
+  (#271, slice 1): its bite (`Venom Sting`, monsterOnly) poisons the victim — a
+  small HP drain each end-of-turn for a few turns, refreshed on every hit (see
+  the **Timed / lingering effects** entry). It drops the **Bloodrage Cleaver**
+  (the timed-buff proof weapon) and its own **Antivenom** cure, so one
+  encounter teaches both the DoT and the counter to it.
+
+  **The Hydra regenerates as it fights** (#271, slice 2): its bite
+  (`Hydra Fangs`, monsterOnly) self-applies a **regen** effect — a flat +3 HP
+  each end-of-turn for a few turns, refreshed on every bite — so drawn-out, low
+  damage never finishes it and bursting it down does. This is a fixed regen, not
+  damage-proportional lifesteal (a later slice's new pipeline kind). It is the
+  live proof of the `end-of-turn` heal direction the foundation only exercised
+  in a white-box test, and its own table carries the buff potions (Draught of
+  Fury, Warding Tonic) plus a Greater Draught.
 
   **The Kin Archer is the first kind that attacks without closing** (#179). It
   shoots from up to 3 hexes — under the player Shortbow's 4, so player gear
@@ -718,18 +737,21 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   which is a softlock rather than a difficulty knob.
 
   Monster natural weapons (`Claws`, `Fangs`, `Talons`, `Maul`, `Dragon Jaws`,
-  `Hunter's Bow`) are ordinary registry weapons carrying `monsterOnly` — a
-  load-time validator panics if one is ever reachable through a drop table or
-  a class default. They carry **no rule cards**: a kind's own cards
-  (a troll's fire vulnerability) belong to the kind, not to a weapon other
-  kinds may share.
+  `Hunter's Bow`, `Venom Sting`, `Hydra Fangs`) are ordinary registry weapons
+  carrying `monsterOnly` — a load-time validator panics if one is ever reachable
+  through a drop table or a class default. They carry **no rule cards**: a
+  kind's own cards (a troll's fire vulnerability) belong to the kind, not to a
+  weapon other kinds may share. Two carry an **on-hit timed effect** instead
+  (#271): the Serpent's `Venom Sting` poisons its victim, the Hydra's
+  `Hydra Fangs` regenerates its wielder.
 
   Wolf carries forward the pre-6c flat numbers exactly. Each kind renders
   with a distinct on-map dot color (`entities.ts`'s `KIND_STYLE`) plus a
   **game-icons.net glyph** drawn dark on the dot (rat, wolf-head,
   shambling-zombie, troll, dragon-head, bowman for the Kin Archer, and #266's
   goblin-head, skeleton, frozen-orb for the Frost Wisp, spectre for the
-  Wraith — `GLYPH_ICON_SVG`, keyed by kind id; the source filename need not
+  Wraith, plus #271's cobra for the Serpent and hydra for the Hydra —
+  `GLYPH_ICON_SVG`, keyed by kind id; the source filename need not
   match the id, but the `ICONS` map key in `gen-glyph-icons.mjs` must);
   an unrecognized kind falls back to the flat monster red with no glyph.
   Players carry the same treatment — a class glyph (crossed-swords/hood/
@@ -981,25 +1003,39 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   cards fired, which is how crit/glance reach the wire (see §2's per-hit
   combat moments). `applyRules` is a thin wrapper over it; tracing is
   observational — same card order, same rng draws, no arithmetic change.
-- **Timed / lingering effects** (`internal/game/effects.go`, #271, slice 1 —
-  the foundation for buff potions / poison enemies / regen / summoners, which
-  land in later #271 slices): each entity carries a list of **active timed
-  effects** — pure data `{effectDefId, magnitude, turnsRemaining}`, never a
-  closure, **persisted in the snapshot** (`snapshotVersion` 9). An effect is a
-  rule card that is active for N turns, folded by the same pipeline: a **buff**
-  folds at `deal-damage`/`take-damage`/…; a **DoT/regen** folds at the new
-  `end-of-turn` event, where the end-of-turn tick (`tickEffectsLocked`, run once
-  per turn resolution) applies the per-turn HP delta (a DoT drains — can be
-  lethal, reaped by the same death pass; a regen heals — capped at max HP) and
+- **Timed / lingering effects** (`internal/game/effects.go`, #271, slices 1–2):
+  each entity carries a list of **active timed effects** — pure data
+  `{effectDefId, magnitude, turnsRemaining}`, never a closure, **persisted in
+  the snapshot** (`snapshotVersion` 9). An effect is a rule card that is active
+  for N turns, folded by the same pipeline: a **buff** folds at
+  `deal-damage`/`take-damage`/…; a **DoT/regen** folds at the `end-of-turn`
+  event, where the end-of-turn tick (`tickEffectsLocked`, run once per turn
+  resolution) applies the per-turn HP delta (a DoT drains — can be lethal,
+  reaped by the same death pass; a regen heals — capped at max HP) and
   advances/expires every effect's counter. Deterministic and **rng-free**, so no
   seeded pin moves. **Stacking**: a re-applied same-def effect **refreshes** its
   timer and magnitude (never stacks N copies) — an ARPG bounded modifier, not a
-  TTRPG status (no save, no roll; see design-decisions.md). Effects are applied
-  by pure-data **on-hit riders** on a weapon (`itemDef.onHit`), collected at
-  `rollDamageLocked` and applied after the tick so a fresh effect takes hold
-  next turn. Proof content: the **Serpent** (poison bite → victim DoT) and the
-  **Bloodrage Cleaver** (self-buff-on-hit → `+15%` deal-damage for 2 turns,
-  refreshed each swing). Cleared on a player respawn.
+  TTRPG status (no save, no roll; see design-decisions.md). The **effect defs**
+  (`effectDefs`, content) are `poison` (harmful DoT), `regen` (heal), `frenzy`
+  (deal-damage buff) and `ward` (take-damage/resist buff); `poison` is the only
+  one flagged **harmful**, which is what the cleanse path keys on.
+  - **Two application triggers**, both pure-data riders (no combat-site special
+    case): a weapon's **on-hit rider** (`itemDef.onHit`) applies an effect when
+    a melee hit lands — collected at `rollDamageLocked`, applied *after* the tick
+    so a fresh effect first bites next turn; and a consumable's **drink riders**
+    (`itemDef.appliesEffect` / `cleansesHarmful`) apply an effect (or clear
+    effects) *now*, on drink (`drinkItemLocked`) — a Warding Tonic must turn
+    aside the incoming blow the turn it is drunk, and a drink is already the
+    player's whole turn in a bubble.
+  - **Cleanse is harmful-only** (`clearHarmfulEffectsLocked`): an Antivenom
+    strips every effect whose def is `harmful` (the poison) and leaves your own
+    buffs intact — curing the poison must not also strip the buff you drank.
+  - Proof content: **on-hit** — the **Serpent** (poison bite → victim DoT), the
+    **Bloodrage Cleaver** (self-buff-on-hit → `+15%` deal-damage for 2 turns),
+    and slice 2's **Hydra** (regen bite → self-heal `+3` HP/turn for 3 turns —
+    the live `end-of-turn` heal consumer); **on-drink** — the **Draught of Fury**
+    (`+25%` deal-damage for 4 turns), the **Warding Tonic** (`+25%` resistance
+    for 4 turns), and the **Antivenom** (cleanse). Cleared on a player respawn.
 - **Determinism**: per-resolution PCG rng seeded (worldSeed, turn); map
   iteration sorted before any rng draw; spawn randomness on separate
   fixed streams. Fully reproducible turns.

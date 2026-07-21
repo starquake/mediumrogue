@@ -49,6 +49,12 @@ func TestStatLinesForShippedContent(t *testing.T) {
 		idIronPlateArmor:     {"+20% Damage Resistance", "+25% Aggro Range"},
 		// A consumable's heal is not a card at all (#175).
 		idHealingPotion: {"+5 HP", "Stacks to 5"},
+		// Buff/antidote consumables (#271, slice 2) carry a timed-effect payload,
+		// not rule cards — rendered from the effect's own card plus its duration,
+		// or a fixed cleanse line. A buff potion heals 0, so it has no HP line.
+		idDraughtOfFury: {"+25% Damage for 4 turns"},
+		idWardingTonic:  {"+25% Damage Resistance for 4 turns"},
+		idAntivenom:     {"Cures harmful effects"},
 	}
 
 	for id, wantLines := range want {

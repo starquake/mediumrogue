@@ -21,8 +21,8 @@ Icons © their authors, licensed **CC BY 3.0**
 
 | Icon | Author |
 |---|---|
-| crossed-swords, hood, pointy-hat, wolf-head, dragon-head | Lorc |
-| rat, shambling-zombie | Delapouite |
-| troll | Skoll |
+| crossed-swords, hood, pointy-hat, wolf-head, dragon-head, frozen-orb, spectre, kin-archer, hydra | Lorc |
+| rat, shambling-zombie, goblin-head, serpent (cobra) | Delapouite |
+| troll, skeleton | Skoll |
 
 The attribution is also shown in-app on the start screen.

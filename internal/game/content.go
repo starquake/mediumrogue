@@ -41,6 +41,11 @@ const (
 	idEffectPoison = "poison"
 	idEffectFrenzy = "frenzy"
 	idEffectRegen  = "regen"
+	// idEffectWard is the timed defensive buff (#271, slice 2): a take-damage
+	// mulPct folded on the victim side, applied by the Warding Tonic on drink.
+	// It reuses the existing evTakeDamage event and effMulPct verb — pure
+	// content, no new pipeline kind.
+	idEffectWard = "ward"
 )
 
 // effectDefs is the timed-effect content registry (#271). Three defs, two of
@@ -51,19 +56,26 @@ const (
 //     applies it to the attacker). Exercises the fold-into-combat path.
 //   - regen: a heal-over-turn — a POSITIVE effAdd folded at end-of-turn. The
 //     SECOND evEndOfTurn consumer (its heal direction), proving the event folds
-//     both ways. It has no on-hit content trigger in this slice — the regen
-//     potion / regenerating monster that applies it is a later #271 slice — so
-//     it is exercised by a white-box test (effects_test.go), the documented
-//     second-consumer path.
+//     both ways. Slice 2 gives it a live trigger: the Hydra's bite self-applies
+//     it (idHydraFangs.onHit, toSelf), so the regenerating monster is real
+//     content, not only a white-box test.
+//   - ward: a timed DEFENSIVE buff (#271, slice 2) — a take-damage mulPct folded
+//     victim-side, applied by the Warding Tonic on drink. Reuses evTakeDamage +
+//     effMulPct, so it is content, not a new pipeline kind.
+//
+// poison is the only HARMFUL def (a DoT that drains you); the buffs (frenzy,
+// ward) and regen are beneficial, so the cleanse path (Antivenom,
+// clearHarmfulEffectsLocked) strips the poison and leaves them.
 //
 // magnitude and duration are per-INSTANCE (set where the effect is applied), so
 // the defs carry no numbers — nothing here to tune, hence no mnd suppression.
 //
 //nolint:gochecknoglobals // fixed effect-def registry, effectively const; validated at init.
 var effectDefs = []*effectDef{
-	{id: idEffectPoison, name: "Poison", event: evEndOfTurn, effect: effAdd},
+	{id: idEffectPoison, name: "Poison", event: evEndOfTurn, effect: effAdd, harmful: true},
 	{id: idEffectRegen, name: "Regeneration", event: evEndOfTurn, effect: effAdd},
 	{id: idEffectFrenzy, name: "Frenzy", event: evDealDamage, effect: effMulPct},
+	{id: idEffectWard, name: "Ward", event: evTakeDamage, effect: effMulPct},
 }
 
 // speciesCards returns a species' passive rule cards (nil for monsters'
@@ -604,6 +616,65 @@ var itemDefs = []*itemDef{
 			{effectID: idEffectPoison, magnitude: -2, turns: 3},
 		},
 	},
+
+	// Timed-effect CONTENT (#271, slice 2) — appended LAST so no earlier
+	// registry entry moves, mirroring the drop-table protocol.
+
+	// The Hydra's bite (#271, slice 2): the live REGEN consumer. Its onHit
+	// self-applies a regen effect (toSelf), so the Hydra heals +3 HP/turn for a
+	// few turns after each bite — flat, fixed regen, NOT damage-proportional
+	// lifesteal (that is a later #271 slice's new pipeline kind). monsterOnly,
+	// like every natural weapon. Damage at the mid-tier melee anchor; the regen
+	// is the gimmick, not the raw hit.
+	{
+		id: idHydraFangs, name: "Hydra Fangs", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     4, monsterOnly: true,
+		//nolint:mnd // authored content: +3 HP/turn (a positive effAdd) for 3 turns, refreshed on hit.
+		onHit: []appliedEffect{
+			{effectID: idEffectRegen, magnitude: 3, turns: 3, toSelf: true},
+		},
+	},
+
+	// Buff potions (#271, slice 2): consumables that apply a timed self-buff on
+	// DRINK (appliesEffect — the drink counterpart of a weapon's onHit rider).
+	// A drink is the player's whole turn inside a combat bubble, so a buff is a
+	// deliberate tempo trade, not a free power spike. Both heal 0 — a pure buff,
+	// exercising the "a consumable need not heal" payload path.
+	{
+		// A short, strong offensive buff: swing harder for a few turns after
+		// drinking. frenzy is the deal-damage mulPct the Bloodrage Cleaver also
+		// applies — the potion is a second, drink-triggered source of it.
+		id: idDraughtOfFury, name: "Draught of Fury", itemType: protocol.ItemTypeConsumable,
+		flavor: "Bottled aggression. It does not ask what you intend to hit.",
+		//nolint:mnd // authored content: +25% deal-damage (frenzy) for 4 turns on drink.
+		appliesEffect: []appliedEffect{
+			{effectID: idEffectFrenzy, magnitude: percentBase + 25, turns: 4},
+		},
+	},
+	{
+		// The defensive mirror: take less damage for a few turns. ward is a
+		// take-damage mulPct (percentBase-25 => −25% damage taken), folded
+		// victim-side, so it protects against the incoming hit the turn it is
+		// drunk — a real defensive tempo play (drinking is the whole turn).
+		id: idWardingTonic, name: "Warding Tonic", itemType: protocol.ItemTypeConsumable,
+		flavor: "A skin of bitter draught that turns the next blow aside.",
+		//nolint:mnd // authored content: +25% damage resistance (ward) for 4 turns on drink.
+		appliesEffect: []appliedEffect{
+			{effectID: idEffectWard, magnitude: percentBase - 25, turns: 4},
+		},
+	},
+	{
+		// Antivenom (#271, slice 2): the cleanse. On drink it strips every
+		// HARMFUL timed effect (the Serpent's poison) and nothing else — your
+		// own buffs survive (clearHarmfulEffectsLocked; the "harmful only"
+		// decision is documented there and in design-decisions.md). It carries
+		// no heal: its whole value is the cure.
+		id: idAntivenom, name: "Antivenom", itemType: protocol.ItemTypeConsumable,
+		flavor:          "Milked from the very fangs that make it necessary.",
+		cleansesHarmful: true,
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -939,8 +1010,33 @@ var monsterDefs = []*monsterDef{
 		drops: []drop{
 			{defID: idBloodrageCleaver, weight: 2},
 			{defID: idMinorSalve, weight: 2},
+			// Antivenom (#271, slice 2): the poison monster drops its own cure —
+			// killing a Serpent teaches the counter to its bite. Appended LAST so
+			// every earlier entry keeps its cumulative-weight position (the Serpent
+			// table is not seed-pinned, but the protocol holds regardless).
+			{defID: idAntivenom, weight: 2},
 		},
 		rings: []int{1},
+	},
+
+	// Timed-effect foundation proof REGEN enemy (#271, slice 2): the live
+	// evEndOfTurn heal consumer. Its bite (idHydraFangs) self-applies a regen
+	// effect, so the Hydra knits itself back together as it fights — a frontier
+	// gimmick that punishes low, drawn-out damage and rewards bursting it down.
+	// A mid-frontier elite (below the Wraith's 26 HP and the Dragon's 60): the
+	// regen, not raw stats, is the threat. Its own NEW table carries the buff
+	// potions (Draught of Fury, Warding Tonic) plus a Greater Draught, so a
+	// tough fight funds the tools that make the next one easier. New table, so
+	// no existing seeded drop pin moves.
+	{
+		id: idKindHydra, name: "Hydra",
+		maxHP: 24, weapon: idHydraFangs, xp: 55, aggroRadius: 8, dropChance: 45,
+		drops: []drop{
+			{defID: idDraughtOfFury, weight: 3},
+			{defID: idWardingTonic, weight: 3},
+			{defID: idGreaterDraught, weight: 1},
+		},
+		rings: []int{2},
 	},
 }
 

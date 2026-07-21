@@ -70,6 +70,18 @@ type itemDef struct {
 	// vast majority carry none. It is pure data, so a new poison/rage weapon is
 	// a registry row, not a combat-site edit.
 	onHit []appliedEffect
+	// appliesEffect are the timed effects (#271, slice 2) a CONSUMABLE applies
+	// to the DRINKER on drink — a Draught of Fury's frenzy, a Warding Tonic's
+	// ward. The drink counterpart of a weapon's onHit rider: same pure-data
+	// appliedEffect, same applyTimedEffectLocked, a different trigger (drink,
+	// not a landed hit). A drink always targets the drinker, so toSelf is
+	// meaningless here and must stay unset (validateItemAppliesEffect).
+	// Consumables only; the drink action wires it (drinkItemLocked).
+	appliesEffect []appliedEffect
+	// cleansesHarmful marks a CONSUMABLE that, on drink, strips every HARMFUL
+	// timed effect from the drinker (a poison DoT) while leaving buffs intact —
+	// an Antivenom (#271, slice 2, clearHarmfulEffectsLocked). Consumables only.
+	cleansesHarmful bool
 }
 
 // hasTag reports whether this def's weapon tags include tag (always false
@@ -637,6 +649,24 @@ const (
 	idBloodrageCleaver = "bloodrage-cleaver"
 )
 
+// idHydraFangs is the Hydra's monsterOnly natural weapon (#271, slice 2): its
+// bite self-applies a regen effect (onHit toSelf), so the Hydra knits itself
+// back together as it fights — the live regenerating-monster consumer of the
+// evEndOfTurn heal direction that slice 1 only exercised in a white-box test.
+const idHydraFangs = "hydra-fangs"
+
+// Timed-effect content consumable ids (#271, slice 2): the buff potions and the
+// antidote — the drink-triggered half of the timed-effect foundation. A Draught
+// of Fury applies a frenzy (+deal-damage) buff, a Warding Tonic a ward
+// (+resistance) buff, and an Antivenom cleanses harmful effects (poison). Named
+// here for the usual reason: the registry entries (content.go) and the Serpent/
+// Hydra drop tables can't drift on a typo.
+const (
+	idDraughtOfFury = "draught-of-fury"
+	idWardingTonic  = "warding-tonic"
+	idAntivenom     = "antivenom"
+)
+
 // Starter-drop-set item ids: named the same way as the class-default ids
 // above, and for the same reason — referenced from both the item registry
 // (content.go) and, since 6c, per-kind monster loot tables (also
@@ -809,12 +839,42 @@ func validateItemDefs(defs []*itemDef) {
 		seen[def.id] = true
 
 		validateItemType(def)
-		validateItemHeal(def)
+		validateConsumablePayload(def)
 		validateItemCombatStats(def)
 		validateItemNature(def)
 		validateFlavorHasNoStats("item "+def.id, def.flavor)
 		validateRuleCards(def.id, def.rules)
 		validateItemOnHit(def)
+		validateItemAppliesEffect(def)
+	}
+}
+
+// validateItemAppliesEffect panics if a def carries drink-applied effects it may
+// not (#271, slice 2): appliesEffect is a consumable-only rider (it fires on
+// drink, not a landed hit), and every entry must name a registered effectDef
+// with a positive duration and must NOT set toSelf — a drink always targets the
+// drinker, so toSelf would be a meaningless, misleading flag. Mirrors
+// validateItemOnHit's shape; effectDefByID is already built by the time any item
+// validates (buildEffectIndex runs before mustValidateContent — content.go's
+// init).
+func validateItemAppliesEffect(def *itemDef) {
+	if len(def.appliesEffect) > 0 && def.itemType != protocol.ItemTypeConsumable {
+		panic("game: non-consumable item " + def.id +
+			" must not set appliesEffect (drink-applied effects fire on drink)")
+	}
+
+	for _, ae := range def.appliesEffect {
+		if _, ok := effectDefByID[ae.effectID]; !ok {
+			panic("game: item " + def.id + " appliesEffect names unknown effect " + ae.effectID)
+		}
+
+		if ae.turns <= 0 {
+			panic("game: item " + def.id + " appliesEffect effect " + ae.effectID + " must have turns > 0")
+		}
+
+		if ae.toSelf {
+			panic("game: item " + def.id + " appliesEffect must not set toSelf (a drink targets the drinker)")
+		}
 	}
 }
 
@@ -941,14 +1001,21 @@ func validateWeaponTags(def *itemDef) {
 	}
 }
 
-// validateItemHeal panics if a consumable's heal is not positive, or if any
-// non-consumable def sets heal at all — heal is a consumable def field
-// (drink, task 2, is an action), never a combat pipeline event, so it must
-// never leak onto gear.
-func validateItemHeal(def *itemDef) {
+// validateConsumablePayload panics on a malformed consumable payload (#271,
+// slice 2, generalizing the old heal-only check): a consumable must DO
+// something — heal, apply a timed effect (appliesEffect), or cleanse harmful
+// effects (cleansesHarmful) — and heal may not be negative. A non-consumable
+// must carry NO payload at all: heal, appliesEffect, and cleansesHarmful are
+// all drink fields (the drink ACTION, drinkItemLocked, applies them), never
+// combat pipeline events, so none may leak onto equipped gear.
+func validateConsumablePayload(def *itemDef) {
 	if def.itemType == protocol.ItemTypeConsumable {
-		if def.heal <= 0 {
-			panic("game: consumable " + def.id + " must have heal > 0")
+		if def.heal < 0 {
+			panic("game: consumable " + def.id + " must not have negative heal")
+		}
+
+		if def.heal == 0 && len(def.appliesEffect) == 0 && !def.cleansesHarmful {
+			panic("game: consumable " + def.id + " does nothing (needs heal, appliesEffect, or cleansesHarmful)")
 		}
 
 		return
@@ -956,6 +1023,14 @@ func validateItemHeal(def *itemDef) {
 
 	if def.heal != 0 {
 		panic("game: gear item " + def.id + " must not set heal (consumables only)")
+	}
+
+	if len(def.appliesEffect) != 0 {
+		panic("game: gear item " + def.id + " must not set appliesEffect (consumables only)")
+	}
+
+	if def.cleansesHarmful {
+		panic("game: gear item " + def.id + " must not set cleansesHarmful (consumables only)")
 	}
 }
 

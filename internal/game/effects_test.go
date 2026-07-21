@@ -17,6 +17,7 @@ const (
 	effectPoison = "poison"
 	effectFrenzy = "frenzy"
 	effectRegen  = "regen"
+	effectWard   = "ward" // #271, slice 2: the timed defensive buff (take-damage mulPct).
 )
 
 // TestApplyTimedEffectRefreshesNotStacks pins the stacking decision (#271):
@@ -259,6 +260,66 @@ func TestBloodrageCleaverSelfBuffsOnHit(t *testing.T) {
 
 	if got, want := turns, 2; got != want {
 		t.Errorf("frenzy turnsRemaining = %d, want %d (full duration; applied after this turn's tick)", got, want)
+	}
+}
+
+// TestHydraBiteSelfAppliesRegenOnHit is the live REGEN proof consumer (#271,
+// slice 2): the Hydra's bite (idHydraFangs, toSelf) self-applies a regen effect,
+// so the monster knits itself back together as it fights — the second real
+// evEndOfTurn consumer the foundation left as a white-box test. Application is
+// AFTER the tick (applyPendingOnHitLocked), so the bite turn only lands the
+// effect; the heal starts next turn, at full duration — exactly mirroring the
+// Serpent's poison timing but in the heal direction. A follow-up tick proves the
+// heal actually restores HP.
+func TestHydraBiteSelfAppliesRegenOnHit(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.SetHPForTest(me.EntityID, protocol.FighterMaxHP)
+
+	hydraHex := walkableNeighbor(t, w, me.Hex)
+	hydraID := w.PlaceMonsterKindForTest(hydraHex, "hydra")
+
+	const hurtBy = 10
+
+	wounded := game.MonsterMaxHPForTest("hydra") - hurtBy
+	w.SetHPForTest(hydraID, wounded)
+
+	// Drive the hydra's bite by walking it into the player's hex (the
+	// walk-into-melee path), mirroring TestSerpentBiteAppliesPoisonOnHit.
+	w.SetPathForTest(hydraID, []protocol.Hex{me.Hex})
+	w.ResolveCombatOnlyForTest()
+
+	mag, turns, ok := w.EffectForTest(hydraID, effectRegen)
+	if !ok {
+		t.Fatal("hydra bite did not self-apply a regen effect")
+	}
+
+	if got, want := mag, 3; got != want {
+		t.Errorf("regen magnitude = %d, want %d", got, want)
+	}
+
+	if got, want := turns, 3; got != want {
+		t.Errorf("regen turnsRemaining = %d, want %d (full duration; applied after this turn's tick)", got, want)
+	}
+
+	// The bite dealt no self-heal yet (application is after the tick), so the
+	// hydra is still exactly wounded.
+	if got, want := w.HPForTest(hydraID), wounded; got != want {
+		t.Errorf("hydra hp after its own bite = %d, want %d (regen heals next turn, not this one)", got, want)
+	}
+
+	// Next end-of-turn tick: the regen restores its magnitude.
+	w.TickEffectsForTest()
+
+	if got, want := w.HPForTest(hydraID), wounded+3; got != want {
+		t.Errorf("hydra hp after regen tick = %d, want %d (healed 3)", got, want)
 	}
 }
 

@@ -63,6 +63,13 @@ type effectDef struct {
 	// effect is the effect verb (effAdd / effMulPct) whose n the instance
 	// magnitude fills.
 	effect string
+	// harmful marks a DETRIMENTAL effect — a poison DoT, a future weaken/curse
+	// — so the cleanse path (a drink of Antivenom, clearHarmfulEffectsLocked)
+	// can strip the bad effects while leaving a player's own buffs (frenzy,
+	// ward, regen) intact. Pure data, defaulting false: an effect is beneficial
+	// unless its def says otherwise. It classifies the def, never the sign of a
+	// particular magnitude — a poison is harmful whatever number it drains.
+	harmful bool
 }
 
 // effectDefByID is the id→def lookup built from effectDefs (content.go) at
@@ -179,6 +186,31 @@ func applyTimedEffectLocked(e *entity, defID string, magnitude, turns int) {
 	slices.SortFunc(e.effects, func(a, b timedEffect) int {
 		return cmp.Compare(a.defID, b.defID)
 	})
+}
+
+// clearHarmfulEffectsLocked removes every active HARMFUL timed effect from e
+// (an effectDef with harmful set — a poison DoT), leaving beneficial effects
+// (frenzy, ward, regen) untouched, and returns how many were removed. It is the
+// cleanse counterpart of applyTimedEffectLocked: a drink of Antivenom
+// (drinkItemLocked) calls it. Design decision (#271, slice 2): an antidote
+// clears only HARMFUL effects, not everything — curing your poison must not
+// also strip the buff you just drank. A non-harmful effect is never a "problem"
+// to be cleansed. The list stays sorted (a delete preserves order) and drops
+// back to nil when emptied, mirroring tickEffectsLocked. Callers hold w.mu.
+func clearHarmfulEffectsLocked(e *entity) int {
+	before := len(e.effects)
+
+	e.effects = slices.DeleteFunc(e.effects, func(te timedEffect) bool {
+		def := effectDefByID[te.defID]
+
+		return def != nil && def.harmful
+	})
+
+	if len(e.effects) == 0 {
+		e.effects = nil
+	}
+
+	return before - len(e.effects)
 }
 
 // tickEffectsLocked is the end-of-turn tick: for every member it folds the
