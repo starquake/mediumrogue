@@ -167,6 +167,14 @@ drift between calls; use absolute paths or `cd` to the repo root before
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and
   wait — adding it is the maintainer's signal.
+- **Dependabot PRs are the one exception — they auto-merge on a green build**,
+  no label needed (`.github/workflows/dependabot-automerge.yml`): GitHub's native
+  auto-merge holds each until the ruleset's required checks (`lint`/`test`/`e2e`)
+  pass, then squash-merges it. Dependency bumps are low-risk and the build is the
+  gate the maintainer chose, so a board pass leaves Dependabot PRs alone — they
+  land themselves. **The `/tools` ecosystem is excluded**: a tools bump needs its
+  version mirrored to the Makefile pin by hand first (see `.github/dependabot.yml`),
+  so the workflow only comments and leaves it for manual review.
 - **The `needs:*` labels are the handoff baton** — exactly one per issue names
   the next action and whose court it's in. **Gate labels**
   (`needs: your input` / `needs: your sign-off`) stop the work and are the
