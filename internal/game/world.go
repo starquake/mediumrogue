@@ -1606,6 +1606,7 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 		Stats:    statViewsFor(def),
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
+		Throwable: def.isThrowable(), Recall: def.recall,
 	}
 }
 

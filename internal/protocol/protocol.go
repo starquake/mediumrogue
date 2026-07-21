@@ -576,6 +576,14 @@ type ItemView struct {
 	// Count is the stack size for a consumable backpack stack (1..ItemStackCap);
 	// always 1 for gear.
 	Count int `json:"count"`
+	// Throwable marks a consumable that is HURLED at a target hex (IntentThrow)
+	// rather than drunk — a flask (#271). The client arms it and consumes the
+	// next map click as the aim hex. Always false for non-throwable items.
+	Throwable bool `json:"throwable"`
+	// Recall marks a consumable that TELEPORTS the user to safety on use
+	// (IntentRecall) — a scroll of recall (#271). The client offers a recall
+	// action instead of drink. Always false for non-recall items.
+	Recall bool `json:"recall"`
 }
 
 // GroundItemView is one dropped stack lying on the map, waiting to be picked

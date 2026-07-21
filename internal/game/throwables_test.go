@@ -255,6 +255,7 @@ func TestThrowOutOfRangeRejected(t *testing.T) {
 
 	origin := protocol.Hex{Q: 0, R: 0}
 	farHex := protocol.Hex{Q: flaskRange + 1, R: 0}
+
 	line := []protocol.Hex{origin}
 	for q := 1; q <= flaskRange+1; q++ {
 		line = append(line, protocol.Hex{Q: q, R: 0})

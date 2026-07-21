@@ -89,6 +89,10 @@ export interface BackpackEntry extends ItemStats {
   name: string;
   type: string;
   count: number;
+  /** A throwable flask (#271): the cell offers THROW (arm-then-click) not drink. */
+  throwable: boolean;
+  /** A scroll of recall (#271): the cell offers RECALL not drink. */
+  recall: boolean;
 }
 
 /** One row of the per-hex pickup modal. */
@@ -250,7 +254,16 @@ export function setInventory(items: ItemView[]): void {
     if (it.equipped) {
       eq[it.type] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type, ...stats };
     } else if (next < pack.length) {
-      pack[next] = { id: Number(it.id), defId: it.defId, name: it.name, type: it.type, count: it.count, ...stats };
+      pack[next] = {
+        id: Number(it.id),
+        defId: it.defId,
+        name: it.name,
+        type: it.type,
+        count: it.count,
+        throwable: it.throwable,
+        recall: it.recall,
+        ...stats,
+      };
       next++;
     }
   }

@@ -80,6 +80,43 @@ func statLinesFor(def *itemDef) []statLine {
 	}
 
 	out = append(out, consumableEffectStatLines(def)...)
+	out = append(out, throwStatLines(def)...)
+
+	if def.recall {
+		out = append(out, statLine{text: "Recall to safety"})
+	}
+
+	return out
+}
+
+// throwStatLines renders a throwable flask's payload (#271): its typed AoE
+// damage, throw range and blast radius, and any on-land timed effect — so the
+// tooltip and the designer guide read a flask's numbers off the same registry
+// the resolution does, never a hand-written line. Empty for a non-throwable.
+func throwStatLines(def *itemDef) []statLine {
+	if def.throw == nil {
+		return nil
+	}
+
+	t := def.throw
+
+	var out []statLine
+
+	if t.damage != 0 {
+		out = append(out, statLine{text: "Throw Damage " + strconv.Itoa(t.damage) + " " + titleWord(t.damageType)})
+	}
+
+	out = append(out, statLine{text: "Throw Range " + strconv.Itoa(t.rangeHex)})
+
+	if t.aoeRadius != 0 {
+		out = append(out, statLine{text: "Blast " + strconv.Itoa(t.aoeRadius)})
+	}
+
+	for _, ae := range t.onLand {
+		line := cardStatLine(timedEffect{defID: ae.effectID, magnitude: ae.magnitude}.card())
+		line.text += " " + turnsText(ae.turns)
+		out = append(out, line)
+	}
 
 	return out
 }

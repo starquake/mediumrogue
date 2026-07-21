@@ -844,6 +844,18 @@ export interface ItemView {
    * always 1 for gear.
    */
   count: number /* int */;
+  /**
+   * Throwable marks a consumable that is HURLED at a target hex (IntentThrow)
+   * rather than drunk — a flask (#271). The client arms it and consumes the
+   * next map click as the aim hex. Always false for non-throwable items.
+   */
+  throwable: boolean;
+  /**
+   * Recall marks a consumable that TELEPORTS the user to safety on use
+   * (IntentRecall) — a scroll of recall (#271). The client offers a recall
+   * action instead of drink. Always false for non-recall items.
+   */
+  recall: boolean;
 }
 /**
  * GroundItemView is one dropped stack lying on the map, waiting to be picked

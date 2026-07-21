@@ -218,7 +218,7 @@ func envOr(key, fallback string) string {
 func parseCSV(v string) []string {
 	var out []string
 
-	for _, part := range strings.Split(v, ",") {
+	for part := range strings.SplitSeq(v, ",") {
 		if s := strings.TrimSpace(part); s != "" {
 			out = append(out, s)
 		}

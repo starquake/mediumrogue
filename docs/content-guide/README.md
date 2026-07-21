@@ -125,6 +125,7 @@ any digit in flavour.
 | **Ember Brand**<br>`ember-brand` | weapon | fire | melee | 4 | melee | — | — | Damage 4<br> |
 | **Ember Focus**<br>`ember-focus` | weapon | fire | magic | 3 | 4 | 1 | — | Damage 3<br>Range 4<br>AoE 1<br> |
 | **Ember Staff**<br>`ember-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Adjacent<br> |
+| **Flask of Alchemist's Fire**<br>`flask-of-fire` | consumable | — | — | — | melee | — | — | Throw Damage 6 Fire<br>Throw Range 4<br>Blast 1<br>−3 Damage for 3 turns<br> |
 | **Frostbrand**<br>`frostbrand` | weapon | ice | melee | 4 | melee | — | — | Damage 4<br> |
 | **Frostward Charm**<br>`frostward-charm` | amulet | — | — | — | melee | — | — | +50% Ice Resistance<br> |
 | **Full Restorative**<br>`full-restorative` | consumable | — | — | — | melee | — | 999 | +999 HP<br>Stacks to 5<br> |
@@ -147,6 +148,7 @@ any digit in flavour.
 | **Padded Boots**<br>`padded-boots` | boots | — | — | — | melee | — | — | −25% Aggro Range<br> |
 | **Pilgrim's Mantle**<br>`pilgrims-mantle` | chest | — | — | — | melee | — | — | +50% Chaos Resistance<br> |
 | **Ring of Precision**<br>`ring-of-precision` | ring | — | — | — | melee | — | — | 10% chance ×2 Damage<br> |
+| **Scroll of Recall**<br>`scroll-of-recall` | consumable | — | — | — | melee | — | — | Recall to safety<br> |
 | **Shortbow**<br>`shortbow` | weapon | sharp | ranged | 4 | 4 | — | — | Damage 4<br>Range 4<br> |
 | **Vampiric Blade**<br>`vampiric-blade` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>+25% Lifesteal<br> |
 | **Venom Fang**<br>`venom-fang` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+4 Damage vs Full HP<br> |
