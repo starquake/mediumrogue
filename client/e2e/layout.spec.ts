@@ -18,7 +18,7 @@ test("worst-case HUD + open panels fit 1920×1080 without overlap", async ({ pag
   await expect.poll(() => page.evaluate(() => window.game.turn >= 1)).toBe(true);
 
   // Open the character panel and put real lines in chat. (#273: `i` is the
-  // panel key now — `c` was reassigned to recenter the survey camera.)
+  // panel key — `c` is also a panel alias (#274 follow camera has no recenter).)
   await page.keyboard.press("i");
   await expect.poll(() => page.evaluate(() => window.game.panelOpen)).toBe(true);
   await page.fill("#chat-input", "layout guard line");

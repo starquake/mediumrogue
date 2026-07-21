@@ -73,7 +73,8 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - Flat-top hex grid, axial coordinates, grid-locked. **Click-to-move**
   (server BFS pathfinding, one hex per turn, re-validated each turn). Movement
   is **click/tap only** — the old QWE/ASD single-step keys were dropped by the
-  survey-camera experiment (#273); WASD now pans the camera (see Camera below).
+  survey-camera experiment (#273/#274); the camera follows the player and the
+  mouse-wheel zooms (see the Camera bullet below). WASD is unbound.
   Up to **5 friendly entities stack** per hex (a full party moves as one blob;
   count badge rendered).
 - **A blocked walk detours instead of stalling** (#96): when a queued path's
@@ -97,21 +98,20 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 - **Keyboard controls are ignored while typing** (item 10, playtest batch 2,
   bug fix): a focused input/textarea/contenteditable (chat, in particular —
   w/a/s/d/c are ordinary letters too) or the start screen being visible
-  suppresses every control key (wait, panels, and the camera pan/recenter).
+  suppresses every control key (wait and the panel/skills/help keys).
 - **SPACE = wait** (item 11, playtest batch 2): the same own-hex move a
   click already waits/cancels with — clears any queued path, and inside a
   bubble it locks in this turn's action like any other move intent.
-- **Survey camera** (#273, client-only feel experiment): the world container
-  is player-locked and re-centers every frame, with two overlays. **Mouse-wheel
-  smooth zoom** scales the whole scene toward a wheel-driven `targetZoom` eased
-  frame-rate-independently (`1 - e^(-rate·dt)`), clamped to **[0.5, 2.5]**
-  (`ZOOM_MIN`/`ZOOM_MAX`); wheel scroll over the canvas zooms instead of
-  scrolling the page. **WASD pans** a persistent screen-space offset on top of
-  the follow (`CAMERA_PAN_SPEED` px/s while held) to survey the big world while
-  zoomed out; the offset is zeroed — **recentering on the player** — whenever
-  you issue a move (any click/tap) or press **`C`**. `window.game` exposes
-  `zoom` and `pan` (plus the existing `camera`) for tests; screen↔world
-  transforms divide/multiply by `zoom` and fold the pan into `camera`.
+- **Follow camera + wheel zoom** (#273/#274, Grim-Dawn/Diablo style): the
+  camera **re-centres on the player every frame** (the player is always
+  screen-centred) and adds **mouse-wheel smooth zoom** — there is **no manual
+  panning and no recenter key**. The zoom scales the whole scene toward a
+  wheel-driven `targetZoom` eased frame-rate-independently (`1 - e^(-rate·dt)`),
+  clamped to **[0.5, 2.5]** (`ZOOM_MIN`/`ZOOM_MAX`) and applied around the
+  followed player; wheel scroll over the canvas zooms instead of scrolling the
+  page. `window.game` exposes `camera` (the world container's live screen
+  offset, which follows the player and folds in zoom) and `zoom` for tests;
+  screen↔world transforms multiply/divide by `zoom` (no pan term).
 - **Player name labels** (item 8, playtest batch 2): a small always-on name
   tag above every PLAYER dot (not monsters — they get hover info instead,
   item 13), styled like the count badge and moving with the dot's tween.
@@ -386,7 +386,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   **sanctuary** (any walkable, capacity-available hex within
   `SanctuaryRadius`, guarded against landing on/adjacent to a living
   monster — same `spawnHexLocked` tiers as a fresh join, Q9); the camera
-  **cuts** to the respawn instead of panning.
+  **follows** the player, so it re-centres on the respawn automatically.
 - **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
 - **HUD stats line** (item 9, playtest batch 2; XP portion reworked for the
@@ -609,12 +609,12 @@ because the off-hand takes both a shield and a dual-wielded weapon.
     `aoeRadius`.
   - **drink** — a consumable: applies its heal (clamped to max HP) and
     decrements the stack; an emptied stack frees its entry.
-- **Keybindings** — `I` toggles the character panel, `Esc` closes it (a genuine
+- **Keybindings** — `I` or `C` toggles the character panel, `Esc` closes it (a genuine
   no-op while already closed, never a toggle); both share the control keys'
   typing-focus guard (`client/src/input/keys.ts`), so typing "i"/Escape into
-  chat or the join-name field never touches the panel. (`C` was a second toggle
-  key until #273 reassigned it to camera-recenter — see Movement → Survey
-  camera.)
+  chat or the join-name field never touches the panel. (`C` is a second toggle
+  key alongside `I` — #273 briefly gave it to camera-recenter, but #274's pure
+  follow camera has no recenter, so `C` is a panel alias again.)
 - **Client** — a toggleable **paper-doll** panel (`I` key + a HUD button
   + an in-panel × whose tooltip lists the ways to close it; default closed since
   it is large): the eight named hexes (Helmet, Amulet, Gloves, Ring, Main Hand,
@@ -805,7 +805,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 - **Procedural generation**: seeded value-noise biomes (elevation+moisture →
   grass/forest/water), rock rim, forced origin clearing, spawns restricted
   to the origin-connected walkable region. Fixed default seed → identical
-  world every restart. Camera follows the player.
+  world every restart. The camera follows the player (see Movement).
 
 ### World persistence (milestone 10a, default OFF)
 - **Periodic + shutdown JSON snapshot** behind `SNAPSHOT_PATH` (default `""`

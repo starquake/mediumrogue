@@ -95,24 +95,19 @@ export interface GameDebug {
   /** This client's entity, server-authoritative position. Null until joined. */
   me: { id: number; hex: Hex } | null;
   /**
-   * The world container's screen offset — follows `me` so it stays centred,
-   * folding in both the zoom (`× zoom` around the player) and the WASD pan
-   * offset (#273). This is `world.position`, the exact translate a
-   * screen→world un-projection must subtract.
+   * The world container's live screen offset (`world.position`) under the
+   * follow camera (#273/#274): it re-centres on `me` every frame and folds in
+   * the zoom scale (`− playerPixel × zoom`). This is the exact translate a
+   * screen→world un-projection must subtract, and an entity's live screen pixel
+   * is `rect.left + camera.x + hexPixel.x × zoom`.
    */
   camera: { x: number; y: number };
   /**
-   * The current survey-camera zoom, eased toward the wheel's target each frame
-   * (#273). 1 = unzoomed; clamped to [0.5, 2.5]. A screen→world un-projection
+   * The current follow-camera zoom, eased toward the wheel's target each frame
+   * (#273/#274). 1 = unzoomed; clamped to [0.5, 2.5]. A screen→world un-projection
    * divides by this after subtracting `camera`; hexToScreen multiplies by it.
    */
   zoom: number;
-  /**
-   * The persistent WASD pan offset in screen pixels (#273), already folded into
-   * `camera` above — exposed separately so a test can assert the pan moved (or
-   * that a recenter/move zeroed it). {0,0} means centred on the player.
-   */
-  pan: { x: number; y: number };
   /** Runtime turn interval from the latest bundle, in ms. */
   intervalMs: number;
   /** Count of named heartbeat frames received — proves the keep-alive is observable. */

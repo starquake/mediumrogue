@@ -65,9 +65,10 @@ test("hovering a monster shows its kind, and its HP only within CombatRadius", a
     const canvas = document.querySelector("canvas")!;
     const rect = canvas.getBoundingClientRect();
     const { x, y } = hexToPixel(monster.hex);
-    // #273: world.position (camera) folds in zoom+pan; the world point is then
-    // scaled by zoom. Defaults zoom=1/pan=0 so this is identity when nothing
-    // zoomed — matching main.ts's own hexToScreen inverse.
+    // #273/#274: window.game.camera is world.position (the follow camera's live
+    // screen offset, centred on the player); the world point is then scaled by
+    // zoom. Read fresh each time — matching main.ts's own hexToScreen inverse.
+    // Identity translate at the default zoom=1.
     const clientX = rect.left + window.game.camera.x + x * window.game.zoom;
     const clientY = rect.top + window.game.camera.y + y * window.game.zoom;
     canvas.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY, bubbles: true }));
@@ -242,8 +243,8 @@ test("tooltip clears itself when the hovered monster leaves its hex under a stil
           const rect = canvas.getBoundingClientRect();
           const x = HEX_SIZE * 1.5 * target.hex.q;
           const y = HEX_SIZE * ((Math.sqrt(3) / 2) * target.hex.q + Math.sqrt(3) * target.hex.r);
-          // #273: scale the world point by zoom (camera already folds in
-          // zoom+pan); identity at the default zoom=1.
+          // #273/#274: scale the world point by zoom (window.game.camera is the
+          // follow camera's live screen offset, centred on the player).
           canvas.dispatchEvent(
             new PointerEvent("pointermove", {
               clientX: rect.left + window.game.camera.x + x * window.game.zoom,
