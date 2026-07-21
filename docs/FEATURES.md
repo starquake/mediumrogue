@@ -531,8 +531,13 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   and the engine does not know the pair exists. Promotable to a real axis
   later only if content always ends up mirrored.
 
-  **Monster vulnerabilities**: ghoul takes **+50% from Holy**, troll **+50%
-  from Fire** ("trolls fear fire" — the identity the arc was pitched on).
+  **Monster vulnerabilities**: ghoul and wraith take **+50% from Holy**, troll
+  and frost wisp **+50% from Fire** ("trolls fear fire" — the identity the arc
+  was pitched on; the frost wisp is its ice mirror). **Monster resistances**
+  (#266, the board's first): skeleton halves **Sharp**, wraith halves **Sharp
+  and Blunt** — two physical-resist cards on one monster make it harder by
+  design (the "don't stack a both-physical resist" caution is about player
+  *armor*, not enemies).
 
   **Resist gear** (each halves exactly one type — situational where flat
   mitigation is always-on):
@@ -645,8 +650,8 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   `Fantasy:` text — e.g. the Wyrmslayer's dragon Werdmullerix); flavor is
   cosmetic, never gameplay-affecting.
 
-### Monsters (kinds & difficulty rings — milestone 6c)
-- **Six kinds**, content data in `internal/game/content.go` (`monsterDefs`),
+### Monsters (kinds & difficulty rings — milestone 6c, expanded #266)
+- **Ten kinds**, content data in `internal/game/content.go` (`monsterDefs`),
   each with its own stats, aggro radius, XP award, and loot table. A kind
   **names its weapon** in the item registry (#179) rather than carrying a copy
   of one, so reach, damage and damage type all come from a real item:
@@ -654,11 +659,24 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Kind | Ring(s) | HP | Weapon | Dmg | Reach | XP | Aggro | Drop chance |
   |---|---|---|---|---|---|---|---|---|
   | Rat | 0–1 | 4 | Claws | 1 | melee | 8 | 7 | 10% |
+  | Goblin | 0–1 | 6 | Rusty Shiv | 2 | melee | 12 | 7 | 15% |
   | Wolf | 1 | 10 | Fangs | 3 | melee | 20 | 10 | 30% |
   | Ghoul | 1–2 | 16 | Talons | 4 | melee | 35 | 8 | 35% |
   | Kin Archer | 1–2 | 12 | Hunter's Bow | 3 | **3 hexes** | 30 | 8 | 30% |
+  | Skeleton | 1–2 | 14 | Bone Club | 3 | melee | 30 | 8 | 35% |
+  | Frost Wisp | 1–2 | 14 | Frost Touch | 4 | melee | 32 | 8 | 35% |
   | Troll | 2 | 30 | Maul | 6 | melee | 60 | 8 | 50% |
+  | Wraith | 2 | 26 | Talons | 4 | melee | 70 | 8 | 45% |
   | Dragon | 2 (capped at 1 per world) | 60 | Dragon Jaws | 9 | melee | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
+
+  **The expansion kinds (#266)** add the board's first *resistances* — before
+  them every monster card was a vulnerability, so a player only had to avoid
+  the wrong armor, never bring the right weapon. The **Skeleton** halves Sharp
+  ("bring blunt"), the **Wraith** halves both Sharp and Blunt and takes +50%
+  from Holy (the first enemy that *demands* elemental or Holy damage), the
+  **Frost Wisp** is the only Ice attacker and takes +50% from Fire (the ice
+  mirror of "trolls fear fire"), and the **Goblin** is a second home-ring face
+  (a weak sharp trash mob, no cards).
 
   **The Kin Archer is the first kind that attacks without closing** (#179). It
   shoots from up to 3 hexes — under the player Shortbow's 4, so player gear
@@ -677,8 +695,10 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   Wolf carries forward the pre-6c flat numbers exactly. Each kind renders
   with a distinct on-map dot color (`entities.ts`'s `KIND_STYLE`) plus a
   **game-icons.net glyph** drawn dark on the dot (rat, wolf-head,
-  shambling-zombie, troll, dragon-head, bowman for the Kin Archer —
-  `GLYPH_ICON_SVG`, keyed by kind id; the source filename must equal that id);
+  shambling-zombie, troll, dragon-head, bowman for the Kin Archer, and #266's
+  goblin-head, skeleton, frozen-orb for the Frost Wisp, spectre for the
+  Wraith — `GLYPH_ICON_SVG`, keyed by kind id; the source filename need not
+  match the id, but the `ICONS` map key in `gen-glyph-icons.mjs` must);
   an unrecognized kind falls back to the flat monster red with no glyph.
   Players carry the same treatment — a class glyph (crossed-swords/hood/
   pointy-hat) on their relationship-colored dot. Icons are vendored inline SVG

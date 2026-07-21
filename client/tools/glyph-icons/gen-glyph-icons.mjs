@@ -21,6 +21,12 @@ const ICONS = {
   // it up directly), so the file is kin-archer.svg though the source icon is
   // called bowman.
   "kin-archer": { file: "kin-archer.svg", author: "Lorc" },
+  // Content-expansion kinds (#266). Each key must equal the monster-kind id
+  // (content.go's monsterDefs), which entities.ts looks up directly.
+  goblin: { file: "goblin-head.svg", author: "Delapouite" },
+  skeleton: { file: "skeleton.svg", author: "Skoll" },
+  "frost-wisp": { file: "frozen-orb.svg", author: "Lorc" },
+  wraith: { file: "spectre.svg", author: "Lorc" },
 };
 
 const svgDir = new URL("./svg/", import.meta.url);

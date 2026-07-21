@@ -67,6 +67,13 @@ const KIND_STYLE: Record<string, { color: number }> = {
   ghoul: { color: 0x7cbf6a },
   troll: { color: 0xd68a3f },
   dragon: { color: 0xd63fc9 },
+  // Content-expansion kinds (#266): a sickly olive goblin, bone-white
+  // skeleton, icy-cyan frost wisp, and spectral-violet wraith — each
+  // distinct from the kinds above and from the player dot colors.
+  goblin: { color: 0x6f8f3f },
+  skeleton: { color: 0xcfc9b0 },
+  "frost-wisp": { color: 0x5fb8d6 },
+  wraith: { color: 0x9a7fd0 },
 };
 
 interface Dot {

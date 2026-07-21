@@ -149,6 +149,26 @@ var itemDefs = []*itemDef{
 		damageType: protocol.DamageTypeSharp, monsterOnly: true,
 	},
 
+	// Content-expansion natural weapons (#266): the new kinds' claws. Like
+	// every monster weapon they carry NO rule cards — a kind's own cards
+	// (a skeleton's sharp resistance) belong to the kind, not to a weapon
+	// other kinds may share.
+	{
+		id: idRustyShiv, name: "Rusty Shiv", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 2,
+		damageType: protocol.DamageTypeSharp, monsterOnly: true,
+	},
+	{
+		id: idBoneClub, name: "Bone Club", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 3,
+		damageType: protocol.DamageTypeBlunt, monsterOnly: true,
+	},
+	{
+		id: idFrostTouch, name: "Frost Touch", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, damage: 4,
+		damageType: protocol.DamageTypeIce, monsterOnly: true,
+	},
+
 	// Starter drop set.
 	{
 		id: idButchersCleaver, name: "Butcher's Cleaver", itemType: protocol.ItemTypeWeapon,
@@ -713,6 +733,89 @@ var monsterDefs = []*monsterDef{
 			{defID: idInfernalChainMail, weight: 2},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
+	},
+
+	// Content-expansion kinds (#266): the bestiary's first RESISTANCE enemies
+	// (before this, every monster card was a vulnerability — nothing ever
+	// resisted a type, so a player only had to avoid the wrong armor, never
+	// bring the right weapon), an ice attacker (Ice landed on nobody), a
+	// second home-ring face, and a frontier elite bridging Troll (30) and
+	// Dragon (60). Appended LAST in registry order — the spawn kind-pick
+	// draws from an id-sorted per-ring list (kindsPerRing), so registry order
+	// is not seed-bearing. Each names a monsterOnly natural weapon and owns
+	// its loot table (#269 table A: its signature "answer" item weighted up,
+	// so killing it teaches the counter it enables).
+	{
+		// A weak trash mob for the sanctuary approaches — the Rat's only
+		// ring-0 company. Sharp, so the early game stays physical. No cards.
+		id: idKindGoblin, name: "Goblin",
+		maxHP: 6, weapon: idRustyShiv, xp: 12, aggroRadius: protocol.CombatRadius + 1, dropChance: 15,
+		drops: []drop{
+			{defID: idButchersCleaver, weight: 2},
+			{defID: idMinorSalve, weight: 2},
+			{defID: idHealingPotion, weight: 1},
+		},
+		rings: []int{0, 1},
+	},
+	{
+		// The first kind that RESISTS a type: blades glance off bone (sharp
+		// ×0.5), so most of the (mostly-Sharp) arsenal underperforms and the
+		// 2H blunt Greatmaul becomes the answer. Its own claws are blunt.
+		id: idKindSkeleton, name: "Skeleton",
+		maxHP: 14, weapon: idBoneClub, xp: 30, aggroRadius: 8, dropChance: 35,
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeSharp}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+		drops: []drop{
+			{defID: idIronheadGreatmaul, weight: 3}, // the blunt it's weak to
+			{defID: idIronboundGauntlets, weight: 2},
+			{defID: idIronWarhammer, weight: 2},
+		},
+		rings: []int{1, 2},
+	},
+	{
+		// The missing ice attacker (Frost Touch, ice), Fire-vulnerable — the
+		// ice mirror of "trolls fear fire". Makes Ice land on the player,
+		// gives the Frostward Charm a reason to exist, and rewards the fire
+		// arsenal.
+		id: idKindFrostWisp, name: "Frost Wisp",
+		maxHP: 14, weapon: idFrostTouch, xp: 32, aggroRadius: 8, dropChance: 35,
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
+		drops: []drop{
+			{defID: idFrostwardCharm, weight: 3}, // ice answers
+			{defID: idFrostbrand, weight: 3},
+			{defID: idMinorSalve, weight: 2},
+		},
+		rings: []int{1, 2},
+	},
+	{
+		// A frontier elite between Troll (30) and Dragon (60): mundane
+		// physical weapons barely bite (sharp ×0.5, blunt ×0.5) but it takes
+		// +50% from Holy — the first enemy that DEMANDS elemental or Holy
+		// damage, where your Sharp/Blunt kit is the wrong tool. Two
+		// physical-resist cards on a MONSTER make it harder by design (the
+		// "don't stack a both-physical resist" caution is about player armor).
+		// Chaos-aligned like the ghoul, one tier up (reuses idTalons).
+		id: idKindWraith, name: "Wraith",
+		maxHP: 26, weapon: idTalons, xp: 70, aggroRadius: 8, dropChance: 45,
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeSharp}},
+				then: effect{kind: effMulPct, n: 50}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeBlunt}},
+				then: effect{kind: effMulPct, n: 50}},
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeHoly}},
+				then: effect{kind: effMulPct, n: percentBase + 50}},
+		},
+		drops: []drop{
+			{defID: idConsecratedMace, weight: 3}, // the Holy it's weak to
+			{defID: idPilgrimsMantle, weight: 3},
+			{defID: idGreaterDraught, weight: 1},
+		},
+		rings: []int{2},
 	},
 }
 

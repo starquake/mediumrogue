@@ -612,6 +612,16 @@ const (
 	idHunterBow  = "hunter-bow"
 )
 
+// Content-expansion natural-weapon ids (#266): the new kinds' claws,
+// monsterOnly like every other natural weapon so nothing can put one in a
+// player's hands. The Wraith reuses idTalons (chaos) — one tier up from the
+// ghoul — so it needs no new weapon.
+const (
+	idRustyShiv  = "rusty-shiv"
+	idBoneClub   = "bone-club"
+	idFrostTouch = "frost-touch"
+)
+
 // Starter-drop-set item ids: named the same way as the class-default ids
 // above, and for the same reason — referenced from both the item registry
 // (content.go) and, since 6c, per-kind monster loot tables (also
