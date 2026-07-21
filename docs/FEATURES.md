@@ -681,7 +681,11 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   **HP is distance-gated** (item 6, playtest batch 3): the HP line only
   shows when the hovered monster is within `CombatRadius` of my own
   entity — name only beyond that (scouting doesn't read exact health
-  through the fog of distance).
+  through the fog of distance). Content is re-resolved on each turn bundle
+  as well as on cursor movement (#205), so a monster that moves off/onto the
+  hovered hex, takes damage, or dies under a **stationary** cursor updates
+  (or clears) the tooltip immediately instead of lingering stale until the
+  next mouse move.
 - **Difficulty rings**: the map bands into 3 concentric rings by hex
   distance from the origin (`RingCount`) — at the default `WORLD_RADIUS=24`
   that's ring 0 = 0–7 (home), ring 1 = 8–15, ring 2 = 16–24 (frontier).

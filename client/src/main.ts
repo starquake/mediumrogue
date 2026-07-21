@@ -1144,6 +1144,50 @@ async function start(): Promise<void> {
 
   window.game.hoverTile = (q, r): void => setHoveredHex({ q, r });
 
+  // Enemy hover tooltip content (item 13, playtest batch 2; #205). The hex
+  // currently under the tooltip scan (#208: pointermove fires per pixel, but
+  // resolving the monster + writing the content only needs to run on a hex
+  // change) — shared with onTurn, which re-resolves it each bundle.
+  let tooltipHex: Hex | null = null;
+  // Resolve the monster under `hex` from the LATEST bundle's state and write
+  // (or hide) the tooltip's kind/HP lines. Position (left/top) is not touched
+  // here — it follows the cursor, set per-pixel in pointermove. Called both on
+  // a hex change (pointermove) and on every turn bundle for the still-hovered
+  // hex (#205): a monster that moves off/onto the hovered hex, or whose HP
+  // changes or who dies, under a STATIONARY cursor would otherwise leave stale
+  // content lingering until the next mouse move.
+  const refreshTooltipContent = (hex: Hex): void => {
+    const monster = window.game.positions.find(
+      (p) => p.kind === EntityMonster && p.hex.q === hex.q && p.hex.r === hex.r,
+    );
+    if (monster === undefined) {
+      hoverTooltipEl.hidden = true;
+      return;
+    }
+    // Hover gating (item 6, playtest feedback batch 3): the HP line only shows
+    // within CombatRadius of my own entity — scouting a distant monster
+    // shouldn't read its exact health through the fog of distance. Beyond that
+    // (or before I've joined) it's name-only.
+    const me = window.game.me;
+    const inRange = me !== null && hexDistance(me.hex, monster.hex) <= CombatRadius;
+
+    hoverTooltipKindEl.textContent = monster.name;
+    if (inRange) {
+      const hp = window.game.hp[monster.id] ?? 0;
+      const maxHp = window.game.maxHp[monster.id] ?? 0;
+      // Reach is the one threat stat shown before contact (#201): a ranged
+      // monster (Kin Archer) reads "reach 3" so you see it outranges you;
+      // melee reads nothing extra. Damage and type are learned by being hit.
+      const reach = monster.reach > 0 ? ` · reach ${monster.reach}` : "";
+      hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}${reach}`;
+      hoverTooltipHPEl.hidden = false;
+    } else {
+      hoverTooltipHPEl.textContent = "";
+      hoverTooltipHPEl.hidden = true;
+    }
+    hoverTooltipEl.hidden = false;
+  };
+
   // Ground-loot layer sits under the entity layer (added first) — a dropped
   // item never occludes a player/monster dot standing over it.
   const groundItemLayer = new GroundItemLayer();
@@ -2161,6 +2205,16 @@ async function start(): Promise<void> {
       refreshAttackHighlight();
       refreshHoverMove();
 
+      // #205: the enemy hover tooltip's content is otherwise recomputed only on
+      // cursor movement, so a monster that moves off/onto the hovered hex, or
+      // whose HP changes or who dies, under a STATIONARY cursor leaves a stale
+      // tooltip until the next mouse move. Re-resolve the still-hovered hex from
+      // this bundle's state (hides the tooltip when the monster left or died).
+      // The cursor hasn't moved, so its screen position is untouched.
+      if (tooltipHex !== null) {
+        refreshTooltipContent(tooltipHex);
+      }
+
       // LAST line of the handler, deliberately: reaching it is the only proof
       // that the whole bundle was applied. Anything that throws above leaves
       // turnApplied behind turnReceived, which is what the HUD and the e2e
@@ -2246,14 +2300,6 @@ async function start(): Promise<void> {
     clickTarget(pixelToHex({ x: worldX, y: worldY }));
   });
 
-  // Last hex the tooltip scan ran for (#208): pointermove fires per pixel,
-  // and the monster lookup below (`positions.find` + tooltip content writes)
-  // was the client's one per-pixel O(n) — it only needs to run when the
-  // hovered HEX changes. Tracked separately from setHoveredHex's own guard,
-  // which also serves the window.game.hoverTile e2e hook (no cursor, no
-  // tooltip) and pointerleave.
-  let tooltipHex: Hex | null = null;
-
   app.canvas.addEventListener("pointermove", (ev: PointerEvent): void => {
     const rect = app.canvas.getBoundingClientRect();
     const worldX = ev.clientX - rect.left - world.position.x;
@@ -2272,41 +2318,13 @@ async function start(): Promise<void> {
     // Enemy hover tooltip (item 13, playtest batch 2): kind display name +
     // "HP cur/max", near the cursor. pointer-events: none on the tooltip
     // itself (index.html) means it can never intercept the click it's
-    // floating over. Content is recomputed only on a hex change (#208);
-    // the cheap left/top writes below stay per-pixel so the tooltip keeps
+    // floating over. Content is recomputed only on a hex change (#208) —
+    // and, under a still cursor, on each turn bundle (#205, in onTurn); the
+    // cheap left/top writes below stay per-pixel so the tooltip keeps
     // following the cursor within a hex.
-    //
-    // Hover gating (item 6, playtest feedback batch 3): the HP line only
-    // shows within CombatRadius of my own entity — scouting a distant
-    // monster shouldn't read its exact health through the fog of distance.
-    // Beyond that (or before I've joined) it's name-only.
     if (tooltipHex === null || hover.q !== tooltipHex.q || hover.r !== tooltipHex.r) {
       tooltipHex = hover;
-      const monster = window.game.positions.find(
-        (p) => p.kind === EntityMonster && p.hex.q === hover.q && p.hex.r === hover.r,
-      );
-      if (monster === undefined) {
-        hoverTooltipEl.hidden = true;
-      } else {
-        const me = window.game.me;
-        const inRange = me !== null && hexDistance(me.hex, monster.hex) <= CombatRadius;
-
-        hoverTooltipKindEl.textContent = monster.name;
-        if (inRange) {
-          const hp = window.game.hp[monster.id] ?? 0;
-          const maxHp = window.game.maxHp[monster.id] ?? 0;
-          // Reach is the one threat stat shown before contact (#201): a ranged
-          // monster (Kin Archer) reads "reach 3" so you see it outranges you;
-          // melee reads nothing extra. Damage and type are learned by being hit.
-          const reach = monster.reach > 0 ? ` · reach ${monster.reach}` : "";
-          hoverTooltipHPEl.textContent = `HP ${hp}/${maxHp}${reach}`;
-          hoverTooltipHPEl.hidden = false;
-        } else {
-          hoverTooltipHPEl.textContent = "";
-          hoverTooltipHPEl.hidden = true;
-        }
-        hoverTooltipEl.hidden = false;
-      }
+      refreshTooltipContent(hover);
     }
     if (!hoverTooltipEl.hidden) {
       hoverTooltipEl.style.left = `${ev.clientX + 14}px`;
