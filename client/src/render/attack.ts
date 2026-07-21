@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 
 import type { Hex } from "../protocol.gen";
-import { hexCorners, hexToPixel, HEX_SIZE } from "./hex";
+import { drawHexTile, HEX_SIZE } from "./hex";
 
 // Ember orange — hostile/attack family (red-side of the palette, like the
 // melee tint and attack flash) but hot enough to read as "this exact tile
@@ -47,10 +47,12 @@ export class AttackHighlightLayer {
   }
 
   private tile(h: Hex, fillAlpha: number, strokeAlpha: number, strokeWidth: number): void {
-    const corners = hexCorners(hexToPixel(h), HEX_SIZE - 5);
-    this.gfx
-      .poly(corners)
-      .fill({ color: ATTACK_TILE_COLOR, alpha: fillAlpha })
-      .stroke({ width: strokeWidth, color: ATTACK_TILE_COLOR, alpha: strokeAlpha });
+    drawHexTile(this.gfx, h, {
+      size: HEX_SIZE - 5,
+      color: ATTACK_TILE_COLOR,
+      fillAlpha,
+      strokeWidth,
+      strokeAlpha,
+    });
   }
 }

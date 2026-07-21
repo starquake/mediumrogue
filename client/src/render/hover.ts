@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 
 import type { Hex } from "../protocol.gen";
-import { hexCorners, hexToPixel, HEX_SIZE } from "./hex";
+import { drawHexTile, HEX_SIZE } from "./hex";
 
 // Pale ice — the "would walk here" hover, out of combat (#135). Same blue
 // family as my dot, the destination ring, and the move-reach tint (a hover IS
@@ -43,10 +43,6 @@ export class HoverHighlightLayer {
     }
 
     const color = tile.kind === "wait" ? WAIT_COLOR : WALK_COLOR;
-    const corners = hexCorners(hexToPixel(tile.hex), HEX_SIZE - 2);
-    this.gfx
-      .poly(corners)
-      .fill({ color, alpha: 0.14 })
-      .stroke({ width: 2.5, color, alpha: 0.95 });
+    drawHexTile(this.gfx, tile.hex, { size: HEX_SIZE - 2, color, fillAlpha: 0.14, strokeWidth: 2.5, strokeAlpha: 0.95 });
   }
 }
