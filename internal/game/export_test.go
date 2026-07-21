@@ -275,6 +275,79 @@ func (w *World) RegenTickForTest() {
 	w.regenPlayersLocked(w.domainMembersLocked())
 }
 
+// ApplyEffectForTest applies (or refreshes) a timed effect on an entity
+// (#271), so a test can drive the effect foundation directly without staging a
+// full poison/rage combat. Mirrors applyTimedEffectLocked's refresh-not-stack
+// semantics.
+func (w *World) ApplyEffectForTest(id int64, defID string, magnitude, turns int) {
+	w.withEntityForTest(id, func(e *entity) { applyTimedEffectLocked(e, defID, magnitude, turns) })
+}
+
+// EffectForTest reports an entity's active timed effect of the given def:
+// its magnitude, remaining turns, and whether it is present at all — so a test
+// can assert application, refresh, and expiry.
+func (w *World) EffectForTest(id int64, defID string) (int, int, bool) {
+	var (
+		magnitude, turnsRemaining int
+		ok                        bool
+	)
+
+	w.withEntityForTest(id, func(e *entity) {
+		for _, te := range e.effects {
+			if te.defID == defID {
+				magnitude, turnsRemaining, ok = te.magnitude, te.turnsRemaining, true
+
+				return
+			}
+		}
+	})
+
+	return magnitude, turnsRemaining, ok
+}
+
+// EffectCountForTest returns how many active timed effects an entity carries,
+// so a test can assert refresh keeps the count at one and expiry drops it.
+func (w *World) EffectCountForTest(id int64) int {
+	var n int
+
+	w.withEntityForTest(id, func(e *entity) { n = len(e.effects) })
+
+	return n
+}
+
+// TickEffectsForTest runs one end-of-turn effect tick (tickEffectsLocked) over
+// EVERY current entity — id-sorted for determinism — without resolving combat,
+// moves, deaths, or advancing the turn, so a test can isolate the DoT/regen
+// tick from the rest of a resolution.
+func (w *World) TickEffectsForTest() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	ids := make([]int64, 0, len(w.entities))
+	for id := range w.entities {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	members := make([]*entity, 0, len(ids))
+	for _, id := range ids {
+		members = append(members, w.entities[id])
+	}
+
+	w.tickEffectsLocked(members)
+}
+
+// HPForTest returns an entity's current HP directly, so an effect test can
+// assert a DoT drain or a regen heal without going through a snapshot.
+func (w *World) HPForTest(id int64) int {
+	var hp int
+
+	w.withEntityForTest(id, func(e *entity) { hp = e.hp })
+
+	return hp
+}
+
 // XPForTest returns an entity's current cumulative XP, so tests can assert kill
 // awards and death floors without going through Snapshot.
 func (w *World) XPForTest(id int64) int {
@@ -395,9 +468,15 @@ func (w *World) ResolveCombatOnlyForTest() {
 		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
+	w.pendingOnHit = nil
+
 	attacks, attacked := w.collectMeleeAttacksLocked(byHex, members)
 	w.attackLocked(rng, byHex, attacks)
 	w.movePhaseLocked(rng, byHex, members, attacked)
+	// #271: mirror resolveCombatLocked — tick, then apply this turn's fresh
+	// on-hit effects (so they take hold next turn), then reap deaths.
+	w.tickEffectsLocked(members)
+	w.applyPendingOnHitLocked()
 	w.resolveDeathsLocked(rng, members)
 
 	w.advanceTurnLocked()

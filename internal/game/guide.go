@@ -126,6 +126,11 @@ var guideDescriptions = map[string]GuideVocabEntry{
 		Param:       "—",
 		Description: "How far a monster notices you from. Clamped to ≥1, so noticeability can never reach zero.",
 	},
+	evEndOfTurn: {
+		Param: "—",
+		Description: "A per-turn HP delta from an entity's active timed effects (a DoT drains, a regen restores). " +
+			"Base 0, no rng, applied once each turn — heals clamp to max HP, drains can be lethal.",
+	},
 
 	// Conditions — when a card fires. Decoupled by design: a condition asks
 	// about ONE side's state, never attacker-versus-defender.
@@ -215,7 +220,7 @@ func vocabFor(kind string) GuideVocabEntry {
 //
 //nolint:gochecknoglobals // authored display order, effectively const.
 var (
-	guideEvents     = []string{evDealDamage, evTakeDamage, evEarnXP, evAggroRange}
+	guideEvents     = []string{evDealDamage, evTakeDamage, evEarnXP, evAggroRange, evEndOfTurn}
 	guideConditions = []string{
 		condChance, condDamageType, condWeaponTagged, condTargetKind, condAttackerSpecies,
 		condShieldEquipped, condDualWielding, condTargetAdjacent, condAllyInBubble,

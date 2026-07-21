@@ -325,6 +325,14 @@ type entity struct {
 	// resumes when the monster re-enters the world domain. Persisted (it is
 	// multi-turn behavioral state, not a per-turn transient like path).
 	returningHome bool
+	// effects are this entity's ACTIVE TIMED EFFECTS (#271, effects.go): pure
+	// data {defID, magnitude, turnsRemaining} the pipeline folds while active
+	// and tickEffectsLocked advances/expires each turn. Kept SORTED by defID
+	// (applyTimedEffectLocked) so the fold order is deterministic. Multi-turn
+	// state like returningHome — PERSISTED (a poisoned monster stays poisoned
+	// across a restart), not a per-turn transient; cleared on a player respawn
+	// (resolveDeathsLocked). Both players and monsters carry them.
+	effects []timedEffect
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -434,6 +442,13 @@ type World struct {
 	// crit/glance moments. Transient cosmetics: deliberately NOT persisted in
 	// the snapshot (like entity.path), so no snapshot version bump.
 	recentHits []hitRecord
+	// pendingOnHit buffers the on-hit timed-effect applications (#271) that the
+	// CURRENT resolution's hits collect in rollDamageLocked, drained by
+	// applyPendingOnHitLocked after the end-of-turn tick (so a fresh effect
+	// takes hold next turn). Purely intra-resolution scratch: reset at the top
+	// of resolveCombatLocked and cleared on drain, never carried across a
+	// resolution and never persisted.
+	pendingOnHit []pendingEffectApply
 }
 
 // hitRecord is one landed hit, kept for the turn bundle's Hits view (#114).
@@ -1797,9 +1812,21 @@ func (w *World) resolveCombatLocked(
 	// picks + damage folds draw first, the mover shuffle draws after.
 	attacks, attacked := w.collectMeleeAttacksLocked(byHex, members)
 
+	w.pendingOnHit = nil // #271: this resolution's on-hit effects buffer starts empty.
+
 	w.attackLocked(rng, byHex, attacks)
 
 	w.movePhaseLocked(rng, byHex, members, attacked)
+
+	// End-of-turn timed-effect tick (#271): advance/expire every member's
+	// active effects and apply the per-turn ones (a DoT drains, a regen heals)
+	// AFTER attacks and moves but BEFORE deaths — so a DoT that reaches 0 is
+	// reaped by the same resolveDeathsLocked pass (a DoT kill in a bubble awards
+	// XP and rolls loot like any other), and rng-free so no seeded pin moves.
+	// This turn's fresh on-hit effects (buffered by rollDamageLocked) apply
+	// AFTER the tick, so they first take hold next turn.
+	w.tickEffectsLocked(members)
+	w.applyPendingOnHitLocked()
 
 	return w.resolveDeathsLocked(rng, members)
 }
@@ -1857,15 +1884,24 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	// replaced that carry no cards of their own — so the same cards arrive in
 	// the same positions, and every pinned seed survives. Adding a card to a
 	// natural weapon would shift them; do that deliberately, not by accident.
+	//
+	// Active timed effects append LAST (#271, activeEffectCards) — after skills,
+	// mirroring skills' own "append last so every pre-existing card keeps its
+	// rng-stream position" contract. Effect cards carry no chance condition, so
+	// they consume no rng; the append is nil for an unbuffed attacker, so no
+	// existing seeded pin can move.
 	attackerCards := slices.Concat(
 		speciesCards(attacker.species), weapon.rules, kindCards(attacker), skillCards(attacker),
+		activeEffectCards(attacker),
 	)
 	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)
 
-	// Species, then class, then gear: chance conditions consume the turn rng
-	// in card order, so this concat order is contractual for determinism.
+	// Species, then class, then gear, then skills, then active effects (last,
+	// same rng-position contract as above): chance conditions consume the turn
+	// rng in card order, so this concat order is contractual for determinism.
 	victimCards := slices.Concat(
 		speciesCards(victim.species), classCards(victim.class), victimGearCards(victim), skillCards(victim),
+		activeEffectCards(victim),
 	)
 
 	taken, takeTrace := applyRulesTraced(evTakeDamage, dealt, victimCards, ctx)
@@ -1882,6 +1918,15 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 		turn: w.turn + 1, attacker: attacker.id, victim: victim.id, amount: taken,
 		crit: dealTrace.boostFired, glance: takeTrace.reduceFired,
 	})
+
+	// On-hit timed effects (#271): every landed hit — melee (both paths),
+	// ranged, AoE — flows through here, so this is the one place a weapon's
+	// onHit riders are collected. They are BUFFERED (applyPendingOnHitLocked
+	// drains them after the end-of-turn tick), never applied inline: a self-buff
+	// must not fold into the same turn's later hits, and a DoT must not drain
+	// the turn it lands. A weapon with no onHit (all but the #271 proof
+	// consumers) appends nothing.
+	w.pendingOnHit = collectOnHitEffects(w.pendingOnHit, attacker, victim, weapon)
 
 	return taken
 }
@@ -2260,6 +2305,22 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	for id, dmg := range damage {
 		w.entities[id].hp -= dmg
 	}
+}
+
+// applyPendingOnHitLocked applies the on-hit timed effects (#271) that this
+// resolution's hits collected in w.pendingOnHit (rollDamageLocked, the single
+// choke point every landed hit flows through — melee both paths, ranged, AoE),
+// then clears the buffer. Called AFTER the end-of-turn tick so a freshly
+// applied effect uniformly takes hold NEXT turn: a self-buff first folds into
+// next turn's hits, a DoT first drains on next turn's tick. Order is
+// deterministic — the hits were collected in the resolution's fixed rng-order.
+// Callers hold w.mu.
+func (w *World) applyPendingOnHitLocked() {
+	for _, oh := range w.pendingOnHit {
+		applyTimedEffectLocked(oh.target, oh.ae.effectID, oh.ae.magnitude, oh.ae.turns)
+	}
+
+	w.pendingOnHit = nil
 }
 
 // resolveRangedLocked folds every pending queued attack intent into the
@@ -2845,6 +2906,9 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 		e.hp = e.maxHP
 		e.path = nil
 		e.pending = pendingItemAction{}
+		// A respawn is a fresh body: lingering poison/buff effects (#271) do
+		// not carry over the death that reset the HP bar.
+		e.effects = nil
 	}
 
 	return slain, diedPlayers

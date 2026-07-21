@@ -8,7 +8,8 @@ without writing code. Game-design background lives in
 `combat-modifier-pipeline` decision (plan §8, milestone 6b).*
 
 > **Status:** the pipeline is **live** (milestone 6b.4). Events implemented:
-> `deal-damage`, `take-damage`, `earn-XP`, and `aggro-range` (shipped in 6c)
+> `deal-damage`, `take-damage`, `earn-XP`, `aggro-range` (shipped in 6c), and
+> `end-of-turn` (timed effects, #271)
 > — the three species bonuses and gear's rule-carrying items all run through
 > it today (`internal/game/rules.go`). Every attack also carries one of six
 > **damage types** (#92), which resistance and vulnerability cards key on via
@@ -96,6 +97,7 @@ These are the moments the engine will expose. Every rule must name one:
 | **take-damage** | yes | …an incoming hit's damage is applied to you | dwarf toughness, armor, shields, vulnerabilities |
 | **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
 | **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards. Live content since #88: Padded Boots (×0.75), Iron Plate Armor (×1.25). Gear-only — no species card feeds it. The fold is clamped ≥1 |
+| **end-of-turn** | yes | …an entity's active **timed effects** apply their per-turn HP change (#271) | a poison DoT (negative add), a regen (positive add). Base 0, no rng; a heal clamps to max HP, a drain can be lethal. Timed effects are applied by a weapon's `onHit` rider, then fold here each turn until they expire |
 | **crit-check** | not yet | …an attacker's chance to land a **critical hit** is computed | `crit%` weapon stats, elf precision (today a `deal-damage` chance card — see note) |
 | **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
 

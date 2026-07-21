@@ -39,6 +39,19 @@ const (
 	evTakeDamage = "take-damage"
 	evEarnXP     = "earn-xp"
 	evAggroRange = "aggro-range"
+	// evEndOfTurn folds the per-turn effects of an entity's ACTIVE TIMED
+	// EFFECTS (#271, effects.go) into a single HP delta, once per turn
+	// resolution (tickEffectsLocked, driven from resolveCombatLocked). base is
+	// 0; the fold sums the deltas of every active effect that hooks this event
+	// — a DoT contributes a negative effAdd, a regen a positive one — and the
+	// tick applies the result (clamped to maxHP on the heal side; the DoT side
+	// may reach 0 and die, reaped by the same resolveDeathsLocked pass). Like
+	// earn-xp it folds WITHOUT rng, so validateRuleCondition rejects a chance
+	// condition on an evEndOfTurn card (the fold builds a bare ruleCtx with no
+	// rng, which conditionHolds would nil-deref). It has no event-level clamp
+	// in applyRulesTraced — the HP clamp lives at the apply site, because a
+	// per-turn drain must be able to fold to a lethal negative.
+	evEndOfTurn = "end-of-turn"
 )
 
 // Condition kinds. chance consumes the turn rng (deterministic: cards are

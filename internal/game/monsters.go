@@ -40,6 +40,14 @@ const (
 	idKindWraith    = "wraith"
 )
 
+// idKindSerpent is the timed-effect foundation's proof DoT enemy (#271): its
+// bite (idVenomSting) applies a poison-over-time effect to its victim. Named
+// here for the usual reason — registry, combat, and its test can't drift on a
+// typo. Like every kind id it doubles as a client glyph key (entities.ts's
+// KIND_STYLE); it has a color there but no icon yet (a safe hostile-dot
+// fallback), the effect-icon polish being a later #271 slice.
+const idKindSerpent = "serpent"
+
 // defaultMonsterKindID is the kind SpawnMonsters/SpawnMonsterAt/
 // PlaceMonsterForTest fall back to when no kind is named — wolf, which
 // carries today's exact pre-6c numbers (10 HP, 3 damage, 20 XP, aggro 10,
