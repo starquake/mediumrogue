@@ -166,6 +166,18 @@ drift between calls; use absolute paths or `cd` to the repo root before
   (`git checkout main && git pull --ff-only`) only *after* the agents finish,
   never mid-run — inspect `git status`/`git diff` before any reset, since the
   files sitting there may be an agent's live work.
+- **Overlapping slices still BUILD in parallel — only the MERGE serializes.**
+  Shared files (`content.go`, `rules.go`, a registry, a seeded-pin test) do NOT
+  force sequential *builds*: a worktree isolates the filesystem, so N agents
+  editing the same file all build and pass CI concurrently on their own copies.
+  The serialization is at merge only — the first lands, then each other PR
+  rebases onto the grown `main` (resolve the textual overlap; re-derive only
+  genuinely-shifted seeded pins — append new drop rows LAST so existing pins
+  survive, per the determinism rule). So don't hold parallelizable work as "one
+  at a time" just because files overlap — fan it out and own the rebase cascade
+  at merge. (2026-07-21: called #271's remaining mechanics "strictly
+  sequential"; @starquake: *"can't you do it on multiple worktrees?"* — right:
+  build parallel, merge serial.)
 - **Merge gate:** only merge a PR carrying the **`ready to merge`** label —
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and
