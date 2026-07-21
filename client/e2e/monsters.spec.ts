@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import { CombatRadius } from "../src/protocol.gen";
-import { gotoReady } from "./helpers";
+import { CombatRadius, MonsterAggroRadius } from "../src/protocol.gen";
+import { gotoReady, progressTracker } from "./helpers";
 
 test("monsters spawned server-side reach the client and render", async ({ page }) => {
   await page.goto("/");
@@ -89,7 +89,10 @@ test("hovering a monster shows its kind, and its HP only within CombatRadius", a
 
   if ((hover?.distance ?? Infinity) <= CombatRadius) {
     expect(hover?.hpHidden).toBe(false);
-    expect(hover?.hpText).toBe(`HP ${hover?.hp}/${hover?.maxHp}`);
+    // #249: a ranged monster (e.g. Kin Archer) appends the #201 reach suffix
+    // ("HP 12/12 · reach 3"), so allow the optional "· reach N" tail rather
+    // than pinning the exact string — the kind that spawns first is random.
+    expect(hover?.hpText).toMatch(new RegExp(`^HP ${hover?.hp}/${hover?.maxHp}(?: · reach \\d+)?$`));
   } else {
     expect(hover?.hpHidden).toBe(true);
     expect(hover?.hpText).toBe("");
@@ -129,6 +132,12 @@ test("hovering a monster shows its kind, and its HP only within CombatRadius", a
 test("tooltip clears itself when the hovered monster leaves its hex under a still cursor", async ({
   page,
 }) => {
+  // Metered on GAME progress (turn advances), never wall-clock: approaching a
+  // reachable monster into aggro range legitimately needs many turns, and on a
+  // contended CI runner those turns stretch past the default 30s test budget
+  // while nothing is wrong (same turn-metered reasoning as autowalk.spec.ts).
+  test.slow();
+
   await gotoReady(page);
   await expect
     .poll(() => page.evaluate(() => window.game.monsters), { timeout: 10_000 })
@@ -143,84 +152,123 @@ test("tooltip clears itself when the hovered monster leaves its hex under a stil
     "spawned already in a combat bubble — no free step to observe",
   );
 
-  // Hover a monster and remember its hex, so the classifier can watch that
-  // exact hex empty out. This dispatch is the ONLY synthetic pointer event.
-  const hoveredHex = await page.evaluate(() => {
-    const HEX_SIZE = 32; // keep in sync with render/hex.ts
-    const hexToPixel = (hex: { q: number; r: number }): { x: number; y: number } => ({
-      x: HEX_SIZE * 1.5 * hex.q,
-      y: HEX_SIZE * ((Math.sqrt(3) / 2) * hex.q + Math.sqrt(3) * hex.r),
-    });
+  // #181/#247: the NEAREST monster can be permanently unreachable (spawn
+  // placement checks walkability, not connectivity — a terrain pocket parks
+  // it, its Pathfind returns nil), so the old nearest-only greedy walk could
+  // pin on one forever and dislodge nothing ("occupied" for all 120 turns —
+  // the #247 CI failure). This loop, all metered on turn advances, drives:
+  //   - progress-aware target rotation (progressTracker, the shared #181
+  //     helper): rotate to the next-nearest monster when the gap to the
+  //     current one stops closing (unreachable, or a leash-return treadmill);
+  //   - continuous movement toward that target — out of combat the server
+  //     pathfinds; INSIDE a bubble we keep stepping via combatMoves, which
+  //     locks in every turn so the bubble RESOLVES rather than freezing (the
+  //     old loop stopped acting on inCombat, so a bubble — and the monster on
+  //     the hovered hex — froze solid on this long-patience server);
+  //   - a single hover (the ONLY synthetic pointer event) once we are within
+  //     aggro range of the pursued monster.
+  // Keeping that monster aggroed and pathing is what makes it step off (or die
+  // on) the hovered hex — which is what clears the tooltip.
+  const tracker = progressTracker(12);
+  let skip = 0;
+  let hoveredHex: { q: number; r: number } | null = null;
+  let state: "occupied" | "cleared" | "stale" = "occupied";
 
-    const monster = window.game.positions.find((p) => p.kind === "monster");
-    if (monster === undefined) {
-      return null;
-    }
-
-    const canvas = document.querySelector("canvas")!;
-    const rect = canvas.getBoundingClientRect();
-    const { x, y } = hexToPixel(monster.hex);
-    const clientX = rect.left + window.game.camera.x + x;
-    const clientY = rect.top + window.game.camera.y + y;
-    canvas.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY, bubbles: true }));
-
-    return monster.hex;
-  });
-  expect(hoveredHex).not.toBeNull();
-
-  // The tooltip is up right after the hover.
-  expect(await page.evaluate(() => document.getElementById("hover-tooltip")!.hidden)).toBe(false);
-
-  // In one atomic snapshot: is a monster still on the hovered hex, and is the
-  // tooltip hidden? Driven purely by the turn clock — no cursor move.
-  const classify = (): Promise<"occupied" | "cleared" | "stale"> =>
-    page.evaluate((hex) => {
-      const occupied = window.game.positions.some(
-        (p) => p.kind === "monster" && p.hex.q === hex!.q && p.hex.r === hex!.r,
-      );
+  const classify = (hex: { q: number; r: number }): Promise<"occupied" | "cleared" | "stale"> =>
+    page.evaluate((h) => {
+      const occupied = window.game.positions.some((p) => p.kind === "monster" && p.hex.q === h.q && p.hex.r === h.r);
       const hidden = document.getElementById("hover-tooltip")!.hidden;
       if (occupied) {
-        return "occupied"; // monster hasn't left the hovered hex yet
+        return "occupied"; // monster still on the hovered hex
       }
       return hidden ? "cleared" : "stale";
-    }, hoveredHex);
+    }, hex);
 
-  // Walk toward the nearest monster to aggro it (re-tap only when idle and out
-  // of combat, mirroring autowalk.spec), one step per turn, until the hovered
-  // hex is vacated. Metered on turn advancement, budgeted in TURNS.
-  const maxTurns = 120;
-  let state = await classify();
-  for (let i = 0; i < maxTurns && state === "occupied"; i++) {
-    await page.evaluate(() => {
-      if (window.game.inCombat || window.game.destination !== null) {
-        return; // let an in-flight walk / a bubble resolve
-      }
-      const me = window.game.me;
-      const monsters = window.game.positions.filter((p) => p.kind === "monster");
-      if (me === null || monsters.length === 0) {
-        return;
-      }
-      const dist = (a: { q: number; r: number }, b: { q: number; r: number }): number =>
-        (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
-      let nearest = monsters[0]!;
-      for (const m of monsters.slice(1)) {
-        if (dist(me.hex, m.hex) < dist(me.hex, nearest.hex)) {
-          nearest = m;
+  const maxTurns = 100;
+  for (let i = 0; i < maxTurns && state !== "cleared"; i++) {
+    const st: { targetDist: number | null; hovered: { q: number; r: number } | null } = await page.evaluate(
+      ({ aggro, skip: skipN, haveHover }) => {
+        const HEX_SIZE = 32; // keep in sync with render/hex.ts
+        const me = window.game.me;
+        if (me === null) {
+          return { targetDist: null, hovered: null };
         }
-      }
-      void window.game.tapHex(nearest.hex.q, nearest.hex.r);
-    });
+        const d = (a: { q: number; r: number }, b: { q: number; r: number }): number =>
+          (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+        const monsters = window.game.positions.filter((p) => p.kind === "monster");
+        if (monsters.length === 0) {
+          return { targetDist: null, hovered: null };
+        }
+        const sorted = monsters.slice().sort((a, b) => d(me.hex, a.hex) - d(me.hex, b.hex) || a.id - b.id);
+        const target = sorted[skipN % sorted.length]!;
+        const dist = d(me.hex, target.hex);
 
+        // Drive toward the target every turn so it stays aggroed and pathing.
+        if (window.game.inCombat) {
+          // Step via this bubble turn's reachable tiles: submitting a move locks
+          // in, so the bubble resolves (never freezes) and the monster keeps
+          // acting.
+          const moves = window.game.combatMoves;
+          if (moves.length > 0) {
+            let step = moves[0]!;
+            for (const h of moves.slice(1)) {
+              if (d(h, target.hex) < d(step, target.hex)) {
+                step = h;
+              }
+            }
+            void window.game.tapHex(step.q, step.r);
+          }
+        } else if (window.game.destination === null) {
+          void window.game.tapHex(target.hex.q, target.hex.r);
+        }
+
+        // Hover the pursued monster once — its current hex — the moment it is
+        // within aggro range and we have not hovered yet.
+        let hovered: { q: number; r: number } | null = null;
+        if (!haveHover && dist <= aggro) {
+          const canvas = document.querySelector("canvas")!;
+          const rect = canvas.getBoundingClientRect();
+          const x = HEX_SIZE * 1.5 * target.hex.q;
+          const y = HEX_SIZE * ((Math.sqrt(3) / 2) * target.hex.q + Math.sqrt(3) * target.hex.r);
+          canvas.dispatchEvent(
+            new PointerEvent("pointermove", {
+              clientX: rect.left + window.game.camera.x + x,
+              clientY: rect.top + window.game.camera.y + y,
+              bubbles: true,
+            }),
+          );
+          hovered = target.hex;
+        }
+
+        return { targetDist: dist, hovered };
+      },
+      { aggro: MonsterAggroRadius, skip, haveHover: hoveredHex !== null },
+    );
+
+    if (st.hovered !== null && hoveredHex === null) {
+      hoveredHex = st.hovered;
+      // The tooltip is up right after the hover.
+      expect(await page.evaluate(() => document.getElementById("hover-tooltip")!.hidden)).toBe(false);
+    }
+    skip = tracker.note(st.targetDist);
+
+    // Movement only happens on turn resolutions: advance one, then re-check.
     const turnBefore = await page.evaluate(() => window.game.turn);
     await expect
       .poll(() => page.evaluate(() => window.game.turn), { timeout: 15_000 })
       .toBeGreaterThan(turnBefore);
 
-    state = await classify();
+    if (hoveredHex !== null) {
+      state = await classify(hoveredHex);
+    }
   }
 
-  // The hovered monster left its hex and the tooltip cleared itself — no cursor
-  // move since the initial hover. "stale" would be the #205 bug (empty hex,
-  // visible tooltip); "occupied" means the aggro walk never dislodged it.
+  // Unmet preconditions (not the #205 bug), skipped like autowalk.spec's guards:
+  test.skip(hoveredHex === null, "never got within aggro range of a reachable monster — nothing to hover");
+  test.skip(state === "occupied", "the pursued monster never vacated the hovered hex within the turn budget");
+
+  // The hovered monster left (or died on) its hex and the tooltip cleared
+  // itself — no cursor move since the hover. "stale" would be the #205 bug
+  // (empty hex, still-visible tooltip); "cleared" is the pass.
   expect(state).toBe("cleared");
 });

@@ -289,7 +289,33 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
   const hitPoll = expect
     .poll(
       async () => {
-        hit = await page.evaluate(() => window.game.hits[0] ?? null);
+        hit = await page.evaluate((monsterKind) => {
+          // #181-class de-race: the short-patience bubble can resolve and
+          // collapse before any hit rides the bundle, dropping us out of
+          // combat — a passive hits[0] read then starves forever (the mage-hit
+          // CI flake). If we've fallen out of combat, re-engage the nearest
+          // monster (same pattern as the shot poll above) so combat resumes and
+          // a real hit — ours or the monster's on us — can still land.
+          if (!window.game.inCombat) {
+            const me = window.game.me;
+            if (me !== null) {
+              const d = (a: { q: number; r: number }, b: { q: number; r: number }): number =>
+                (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+              const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+              if (monsters.length > 0) {
+                let nearest = monsters[0]!;
+                for (const m of monsters.slice(1)) {
+                  if (d(me.hex, m.hex) < d(me.hex, nearest.hex)) {
+                    nearest = m;
+                  }
+                }
+                void window.game.tapHex(nearest.hex.q, nearest.hex.r);
+              }
+            }
+          }
+
+          return window.game.hits[0] ?? null;
+        }, EntityMonster);
 
         return hit !== null;
       },
