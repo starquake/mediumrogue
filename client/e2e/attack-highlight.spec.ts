@@ -22,6 +22,22 @@ declare global {
 // window.game state flip; the synchronous ones (hoverTile, tapHex's
 // committed set) read their result inside the same page.evaluate that
 // triggers them, so no bundle can slip in between.
+//
+// #181: both approach loops below are PROGRESS-AWARE, because the naive
+// versions starved. Root cause, captured live at MONSTER_COUNT=2: the loops
+// pinned on the NEAREST monster and stepped greedily one hex at a time —
+// but a nearest monster can be permanently unreachable (spawn placement
+// checks walkability, not connectivity, so a monster can sit in a terrain
+// pocket — its own Pathfind returns nil and it parks forever), and greedy
+// stepping deadlocks on any equal-distance local minimum (the captured
+// failure: rogue oscillating between two distance-5 hexes for 20s, one hex
+// outside bow range, behind an obstacle). Under --repeat-each parallelism
+// the abandoned players of sibling instances pile onto the same corridor
+// and make the jam stable. The fixes: rotate to the next-nearest monster
+// when position stops changing, tabu the recently-visited hexes so an
+// equal-distance pair can't trap the stepper, and re-engage via the
+// server's real pathfinding whenever we're out of combat (fresh join,
+// fled bubble, or death-respawn).
 
 const dist = (a: Hex, b: Hex): number => {
   const dq = a.q - b.q;
@@ -31,50 +47,149 @@ const dist = (a: Hex, b: Hex): number => {
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
 };
 
-// chaseIntoCombat re-picks the nearest monster each poll and taps toward it
-// until the client reports a combat bubble — the combat.spec.ts loop, shared
-// by both tests here.
+// dumpState logs the live client state when an approach poll starves —
+// #181 went two full passes without a diagnosis because the timeouts
+// carried no state; this makes the next sighting self-describing in the
+// CI log (search for "STARVED").
+const dumpState = async (page: import("@playwright/test").Page, label: string): Promise<void> => {
+  const dump = await page.evaluate(
+    (monsterKind) => ({
+      me: window.game.me,
+      died: window.game.died,
+      inCombat: window.game.inCombat,
+      connected: window.game.connected,
+      turn: window.game.turn,
+      combatMoves: window.game.combatMoves,
+      monstersCounter: window.game.monsters,
+      monsters: window.game.positions.filter((p) => p.kind === monsterKind).map((p) => ({ id: p.id, hex: p.hex })),
+      positionsCount: window.game.positions.length,
+    }),
+    EntityMonster,
+  );
+  console.log(`STARVED[${label}] ` + JSON.stringify(dump));
+};
+
+// progressTracker rotates targets on stalled DISTANCE, not stalled position:
+// a monster walking away (leash-return home) at the shared 1-hex-per-turn
+// speed is an uncatchable treadmill — the chaser moves every turn yet never
+// closes, which a position-based stuck check can never see (a captured #181
+// failure mode: 20s of healthy walking, gap pinned at 10). If the best
+// distance ever achieved toward the current target hasn't improved within
+// `window` polls, switch to the next-nearest monster.
+const progressTracker = (window: number): { note: (targetDist: number | null) => number } => {
+  let best: number | null = null;
+  let stalePolls = 0;
+  let skip = 0;
+
+  return {
+    note: (targetDist: number | null): number => {
+      if (targetDist === null) {
+        return skip; // no target/self yet: nothing to measure
+      }
+
+      if (best === null || targetDist < best) {
+        best = targetDist;
+        stalePolls = 0;
+      } else {
+        stalePolls += 1;
+        if (stalePolls >= window) {
+          skip += 1;
+          best = null;
+          stalePolls = 0;
+        }
+      }
+
+      return skip;
+    },
+  };
+};
+
+// chaseIntoCombat drives the player until the client reports a combat
+// bubble. Out of combat every tap goes to a monster's own hex, so the
+// SERVER pathfinds the route (it walks around terrain; bodies never block
+// out-of-combat movement). Progress-aware per the #181 header: when the
+// gap to the current target stops shrinking (unreachable pocket, jammed
+// route, or the treadmill above), rotate to the next-nearest monster.
 const chaseIntoCombat = async (page: import("@playwright/test").Page): Promise<void> => {
-  await expect
+  const tracker = progressTracker(10);
+  let skip = 0;
+
+  const poll = expect
     .poll(
-      () =>
-        page.evaluate((monsterKind) => {
-          if (window.game.inCombat) {
-            return true;
-          }
-
-          const me = window.game.me;
-          if (me === null) {
-            return false;
-          }
-
-          const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
-          if (monsters.length === 0) {
-            return false;
-          }
-
-          const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
-            const dq = a.q - b.q;
-            const dr = a.r - b.r;
-
-            return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
-          };
-
-          let nearest = monsters[0]!;
-          for (const m of monsters.slice(1)) {
-            if (d(me.hex, m.hex) < d(me.hex, nearest.hex)) {
-              nearest = m;
+      async () => {
+        const st = await page.evaluate(
+          ({ monsterKind, skip: skipN }) => {
+            if (window.game.inCombat) {
+              return { done: true, targetDist: null };
             }
-          }
 
-          void window.game.tapHex(nearest.hex.q, nearest.hex.r);
+            const me = window.game.me;
+            if (me === null) {
+              return { done: false, targetDist: null };
+            }
 
-          return false;
-        }, EntityMonster),
+            const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
+              const dq = a.q - b.q;
+              const dr = a.r - b.r;
+
+              return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
+            };
+
+            const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+            if (monsters.length === 0) {
+              return { done: false, targetDist: null };
+            }
+
+            const sorted = monsters
+              .slice()
+              .sort((a, b) => d(me.hex, a.hex) - d(me.hex, b.hex) || a.id - b.id);
+            const target = sorted[skipN % sorted.length]!;
+
+            void window.game.tapHex(target.hex.q, target.hex.r);
+
+            return { done: false, targetDist: d(me.hex, target.hex) };
+          },
+          { monsterKind: EntityMonster, skip },
+        );
+
+        if (st.done) {
+          return true;
+        }
+
+        skip = tracker.note(st.targetDist);
+
+        return false;
+      },
       { timeout: 20_000, intervals: [300] },
     )
     .toBe(true);
+
+  try {
+    await poll;
+  } catch (err) {
+    await dumpState(page, "chase");
+    throw err;
+  }
 };
+
+// Whatever a test leaves behind keeps ACTING: entities never leave the world
+// (#21), and a standing move intent whose next step is monster-held keeps
+// melee-swinging every bubble turn. On this SHARED server that lets the
+// abandoned player of one instance grind down the monster pool that sibling
+// instances still need (#181's depletion path). A tap on our own hex is a
+// wait intent — the server clears path AND attack targets — so each test
+// hands back an inert body, pass or fail.
+test.afterEach(async ({ page }) => {
+  try {
+    await page.evaluate(() => {
+      const me = window.game.me;
+
+      return me === null ? undefined : window.game.tapHex(me.hex.q, me.hex.r);
+    });
+  } catch {
+    // page already gone (crash/teardown) — nothing to disengage.
+  }
+});
 
 test("mage: hovering an AoE target highlights the blast disc; clicking keeps the disc lit with NO centre crosshair until the turn resolves", async ({
   page,
@@ -113,18 +228,66 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
   // tints + #101 ember own the in-combat hover. (hover.spec.ts covers the
   // walk/wait/rock routing out of combat on a monster-free server; this is the
   // in-combat → null half, which needs a real bubble.)
-  const inCombatHover = await page.evaluate(() => {
-    const me = window.game.me!;
-    window.game.hoverTile(me.hex.q, me.hex.r);
-    return window.game.hoverMoveTile;
-  });
-  expect(inCombatHover).toBeNull();
+  //
+  // #181: captured atomically inside a re-engaging poll. The bubble can
+  // collapse between chaseIntoCombat and this hover (a monster dies — likelier
+  // with fewer of them), dropping us out of combat, where hovering our own hex
+  // IS a valid wait move and hoverMoveTile is non-null — a spurious failure of
+  // an in-combat-only assertion. The poll captures {inCombat, hoverMoveTile}
+  // in ONE evaluate and only settles while inCombat is true, so the value we
+  // assert on is a genuine in-combat reading; a real regression (in-combat
+  // hover returning a tile) still fails the toBeNull below.
+  let inCombatHover: unknown = null;
+  const hoverPoll = expect
+    .poll(
+      async () => {
+        const res = await page.evaluate((monsterKind) => {
+          const me = window.game.me;
+          if (me === null) {
+            return { inCombat: false, hoverMoveTile: null };
+          }
 
-  // A reachable move tile exists once in combat (the overlay's own e2e
-  // covers it; here it anchors the hover target construction below).
-  await expect
-    .poll(() => page.evaluate(() => !window.game.inCombat || window.game.combatMoves.length > 0))
+          if (!window.game.inCombat) {
+            const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
+              const dq = a.q - b.q;
+              const dr = a.r - b.r;
+
+              return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
+            };
+            const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+            if (monsters.length > 0) {
+              let nearest = monsters[0]!;
+              for (const m of monsters.slice(1)) {
+                if (d(me.hex, m.hex) < d(me.hex, nearest.hex)) {
+                  nearest = m;
+                }
+              }
+              void window.game.tapHex(nearest.hex.q, nearest.hex.r);
+            }
+
+            return { inCombat: false, hoverMoveTile: null };
+          }
+
+          window.game.hoverTile(me.hex.q, me.hex.r);
+
+          return { inCombat: true, hoverMoveTile: window.game.hoverMoveTile };
+        }, EntityMonster);
+
+        inCombatHover = res.hoverMoveTile;
+
+        return res.inCombat;
+      },
+      { timeout: 20_000, intervals: [200] },
+    )
     .toBe(true);
+
+  try {
+    await hoverPoll;
+  } catch (err) {
+    await dumpState(page, "mage-incombat-hover");
+    throw err;
+  }
+  expect(inCombatHover).toBeNull();
 
   // Pick the AoE target, hover it, AND commit it — all in ONE evaluate. A
   // distance-2 hex is never a move/melee tile itself (those are distance 1),
@@ -137,56 +300,106 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
   // (the committedAction then reads {kind:"move"}, flaking under --repeat-each).
   // The committed indicator is planted synchronously by tapHex (before the
   // intent POST settles), so it reads back in the same evaluate.
-  const shot = await page.evaluate(() => {
-    const me = window.game.me;
-    if (me === null || !window.game.inCombat || window.game.combatMoves.length === 0) {
-      return null;
-    }
+  //
+  // #181: the whole capture is POLLED, not a one-shot evaluate. The old code
+  // ran the standalone precondition poll (which accepts !inCombat, so it
+  // passes the instant a collapsing bubble drops us out) and then a single
+  // shot evaluate that returned null whenever combat/moves/a-dist-2-target
+  // weren't ALL true at that exact instant — a null that failed the test.
+  // Fewer monsters make the bubble collapse sooner, so this surfaced under
+  // load. Polling re-engages if we're knocked out of combat and retries the
+  // atomic pick+commit until it lands consistently; the committed read still
+  // rides the same evaluate as the tap, so no bundle slips between them.
+  let shot: {
+    target: Hex;
+    anchor: Hex;
+    hoverTiles: Hex[];
+    committedTiles: Hex[];
+    committedAction: { kind: string; target: Hex } | null;
+  } | null = null;
 
-    const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
-      const dq = a.q - b.q;
-      const dr = a.r - b.r;
+  const shotPoll = expect
+    .poll(
+      async () => {
+        shot = await page.evaluate((monsterKind) => {
+          const me = window.game.me;
+          if (me === null) {
+            return null;
+          }
 
-      return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
-    };
+          const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
+            const dq = a.q - b.q;
+            const dr = a.r - b.r;
 
-    const anchor = window.game.combatMoves.find((h) => d(me.hex, h) === 1);
-    if (anchor === undefined) {
-      return null;
-    }
+            return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
+          };
 
-    const dirs = [
-      { q: 1, r: 0 },
-      { q: 1, r: -1 },
-      { q: 0, r: -1 },
-      { q: -1, r: 0 },
-      { q: -1, r: 1 },
-      { q: 0, r: 1 },
-    ];
-    for (const dir of dirs) {
-      const target = { q: anchor.q + dir.q, r: anchor.r + dir.r };
-      if (d(me.hex, target) !== 2) {
-        continue;
-      }
+          if (!window.game.inCombat || window.game.combatMoves.length === 0) {
+            // Knocked out of combat (a collapsed bubble): re-engage the
+            // nearest monster and let the server route us back into one.
+            const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+            if (monsters.length > 0) {
+              let nearest = monsters[0]!;
+              for (const m of monsters.slice(1)) {
+                if (d(me.hex, m.hex) < d(me.hex, nearest.hex)) {
+                  nearest = m;
+                }
+              }
+              void window.game.tapHex(nearest.hex.q, nearest.hex.r);
+            }
 
-      window.game.hoverTile(target.q, target.r);
-      const hoverTiles = window.game.hoverAttackTiles;
+            return null;
+          }
 
-      void window.game.tapHex(target.q, target.r);
+          const anchor = window.game.combatMoves.find((h) => d(me.hex, h) === 1);
+          if (anchor === undefined) {
+            return null;
+          }
 
-      return {
-        target,
-        anchor,
-        hoverTiles,
-        committedTiles: window.game.committedAttackTiles,
-        committedAction: window.game.committedAction,
-      };
-    }
+          const dirs = [
+            { q: 1, r: 0 },
+            { q: 1, r: -1 },
+            { q: 0, r: -1 },
+            { q: -1, r: 0 },
+            { q: -1, r: 1 },
+            { q: 0, r: 1 },
+          ];
+          for (const dir of dirs) {
+            const target = { q: anchor.q + dir.q, r: anchor.r + dir.r };
+            if (d(me.hex, target) !== 2) {
+              continue;
+            }
 
-    return null;
-  });
+            window.game.hoverTile(target.q, target.r);
+            const hoverTiles = window.game.hoverAttackTiles;
 
-  expect(shot).not.toBeNull();
+            void window.game.tapHex(target.q, target.r);
+
+            return {
+              target,
+              anchor,
+              hoverTiles,
+              committedTiles: window.game.committedAttackTiles,
+              committedAction: window.game.committedAction,
+            };
+          }
+
+          return null;
+        }, EntityMonster);
+
+        return shot !== null;
+      },
+      { timeout: 20_000, intervals: [200] },
+    )
+    .toBe(true);
+
+  try {
+    await shotPoll;
+  } catch (err) {
+    await dumpState(page, "mage-shot");
+    throw err;
+  }
+
   const { target, anchor, hoverTiles, committedTiles, committedAction } = shot!;
 
   // Hover lights the blast disc: every tile within the weapon's aoeRadius (1)
@@ -218,7 +431,7 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
   // re-reading it afterwards, or a quiet bundle landing in between yields
   // undefined (a real race this spec hit under --repeat-each).
   let hit: HitView | null = null;
-  await expect
+  const hitPoll = expect
     .poll(
       async () => {
         hit = await page.evaluate(() => window.game.hits[0] ?? null);
@@ -229,6 +442,13 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
     )
     .toBe(true);
 
+  try {
+    await hitPoll;
+  } catch (err) {
+    await dumpState(page, "mage-hit");
+    throw err;
+  }
+
   expect(typeof hit!.crit).toBe("boolean");
   expect(typeof hit!.glance).toBe("boolean");
   expect(hit!.amount).toBeGreaterThan(0);
@@ -238,41 +458,61 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
 test("rogue: hovering a hostile in bow range highlights exactly its tile; a plain move tile highlights nothing", async ({
   page,
 }) => {
+  // Same game-progress metering as the mage test above: the two approach
+  // polls alone are budgeted 20s each, which the default 30s test timeout
+  // cannot contain even when every poll is making healthy progress.
+  test.slow();
+
   await page.addInitScript(() => {
     localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "rogue" }));
   });
 
   await page.goto("/");
 
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
-  await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassRogue);
-  await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
+  try {
+    await expect
+      .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
+      .toBe(true);
+    await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassRogue);
+    await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
+  } catch (err) {
+    await dumpState(page, "rogue-join");
+    throw err;
+  }
 
   await chaseIntoCombat(page);
 
-  // Poll until a monster sits within bow range (4), then hover it — pick,
-  // hover, and read in ONE evaluate so the positions can't shift under us.
-  // A single-target weapon (and the adjacent melee swing alike) lights
-  // EXACTLY the victim's tile — never a disc.
+  // Poll until a monster sits within bow range (4) AND hovering it lights
+  // something, then read the tiles — pick, hover, and read in ONE evaluate
+  // so the positions can't shift under us. A single-target weapon (and the
+  // adjacent melee swing alike) lights EXACTLY the victim's tile — never a
+  // disc; the exactness is asserted OUTSIDE the poll so a real regression
+  // (a disc, the wrong tile) still fails loudly instead of timing out.
   //
   // Entering a bubble only guarantees CombatRadius (6), not bow range (4),
   // and a monster already busy fighting someone else may never close the
-  // gap on its own — so keep STEPPING toward the nearest one until it is in
-  // range, exactly as ranged.spec.ts does. Without this the poll waits
-  // passively and times out whenever the monster has another target
-  // (reproduced under --repeat-each=3 --workers=9).
+  // gap on its own — so keep STEPPING toward one until it is in range,
+  // exactly as ranged.spec.ts does. The stepping is progress-aware per the
+  // #181 header: strictly-closing steps first, tabu on recently-visited
+  // hexes (an equal-distance tile pair otherwise traps the greedy step in
+  // a permanent oscillation — the captured deadlock), rotation to the
+  // next-nearest monster when our hex stops changing, and out-of-combat
+  // re-engagement (death-respawn lands us out of the bubble; the old loop
+  // bailed to null forever there).
   const BOW_RANGE = 4;
+  let visited: Hex[] = [];
+  const tracker = progressTracker(10);
+  let skip = 0;
   let single: { hex: Hex; tiles: Hex[] } | null = null;
-  await expect
+
+  const bowPoll = expect
     .poll(
       async () => {
-        single = await page.evaluate(
-          ({ monsterKind, bowRange }) => {
+        const st = await page.evaluate(
+          ({ monsterKind, bowRange, skip: skipN, avoid }) => {
             const me = window.game.me;
-            if (me === null || !window.game.inCombat) {
-              return null;
+            if (me === null) {
+              return { done: false as const, targetDist: null };
             }
 
             const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
@@ -284,45 +524,96 @@ test("rogue: hovering a hostile in bow range highlights exactly its tile; a plai
 
             const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
             if (monsters.length === 0) {
-              return null;
+              return { done: false as const, targetDist: null };
             }
 
-            let nearest = monsters[0]!;
-            for (const m of monsters.slice(1)) {
-              if (d(me.hex, m.hex) < d(me.hex, nearest.hex)) {
-                nearest = m;
+            const sorted = monsters
+              .slice()
+              .sort((a, b) => d(me.hex, a.hex) - d(me.hex, b.hex) || a.id - b.id);
+            const target = sorted[skipN % sorted.length]!;
+            const distTo = d(me.hex, target.hex);
+
+            if (distTo <= bowRange && window.game.inCombat) {
+              window.game.hoverTile(target.hex.q, target.hex.r);
+              const tiles = window.game.hoverAttackTiles;
+              if (tiles.length > 0) {
+                return { done: true as const, hex: target.hex, tiles };
               }
+              // In range but nothing lights (e.g. the target sits in another
+              // resolving domain): report no progress so rotation kicks in.
+              return { done: false as const, targetDist: null };
             }
 
-            // Still out of bow range: step onto the reachable tile that
-            // closes the most distance and try again next poll.
-            if (d(me.hex, nearest.hex) > bowRange) {
-              if (window.game.combatMoves.length > 0) {
-                let step = window.game.combatMoves[0]!;
-                for (const h of window.game.combatMoves.slice(1)) {
-                  if (d(h, nearest.hex) < d(step, nearest.hex)) {
-                    step = h;
-                  }
+            if (!window.game.inCombat) {
+              // Fresh join, fled bubble, or death-respawn: tap the monster's
+              // own hex and let the server pathfind the route.
+              void window.game.tapHex(target.hex.q, target.hex.r);
+
+              return { done: false as const, targetDist: distTo };
+            }
+
+            // In combat and out of range: single-step via this bubble turn's
+            // reachable tiles. Strictly-closing steps first; otherwise any
+            // not-recently-visited tile (the tabu that breaks equal-distance
+            // oscillation); otherwise anything — never stand still.
+            const moves = window.game.combatMoves;
+            if (moves.length > 0) {
+              const avoided = (h: { q: number; r: number }): boolean =>
+                avoid.some((a) => a.q === h.q && a.r === h.r);
+
+              let cands = moves.filter((h) => d(h, target.hex) < distTo);
+              if (cands.length === 0) {
+                cands = moves.filter((h) => !avoided(h));
+              }
+              if (cands.length === 0) {
+                cands = moves;
+              }
+
+              let step = cands[0]!;
+              for (const h of cands.slice(1)) {
+                if (d(h, target.hex) < d(step, target.hex)) {
+                  step = h;
                 }
-
-                void window.game.tapHex(step.q, step.r);
               }
 
-              return null;
+              void window.game.tapHex(step.q, step.r);
             }
 
-            window.game.hoverTile(nearest.hex.q, nearest.hex.r);
-
-            return { hex: nearest.hex, tiles: window.game.hoverAttackTiles };
+            return { done: false as const, targetDist: distTo, at: me.hex };
           },
-          { monsterKind: EntityMonster, bowRange: BOW_RANGE },
+          { monsterKind: EntityMonster, bowRange: BOW_RANGE, skip, avoid: visited },
         );
 
-        return single !== null;
+        if (st.done) {
+          single = { hex: st.hex, tiles: st.tiles };
+
+          return true;
+        }
+
+        // Tabu the in-combat hexes we've stood on so the greedy stepper can't
+        // oscillate between an equal-distance pair.
+        if ("at" in st && st.at !== undefined && !visited.some((v) => v.q === st.at!.q && v.r === st.at!.r)) {
+          visited.push(st.at);
+        }
+
+        const prevSkip = skip;
+        skip = tracker.note(st.targetDist);
+        if (skip !== prevSkip) {
+          visited = []; // fresh tabu for the fresh target
+        }
+
+        return false;
       },
       { timeout: 20_000, intervals: [300] },
     )
     .toBe(true);
+
+  try {
+    await bowPoll;
+  } catch (err) {
+    await dumpState(page, "bow-range");
+    throw err;
+  }
 
   expect(single!.tiles).toEqual([single!.hex]);
 
