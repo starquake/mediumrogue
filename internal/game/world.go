@@ -449,6 +449,16 @@ type World struct {
 	// of resolveCombatLocked and cleared on drain, never carried across a
 	// resolution and never persisted.
 	pendingOnHit []pendingEffectApply
+	// pendingLifesteal buffers the lifesteal HP each attacker earns THIS
+	// resolution (#271): rollDamageLocked accumulates attacker-id -> heal (a
+	// percent of the damage each hit's victim takes, effLifesteal), and
+	// attackLocked applies it in the SAME pass that applies damage — so a
+	// vampiric-blade wielder heals as its hits land, but a mutual kill still
+	// kills (damage is applied first; a dead attacker does not leech). Per-entity
+	// heals are independent and clamp-to-maxHP, so the map's iteration order is
+	// irrelevant. Like pendingOnHit: reset at the top of resolveCombatLocked,
+	// cleared on apply, never carried across a resolution and never persisted.
+	pendingLifesteal map[int64]int
 }
 
 // hitRecord is one landed hit, kept for the turn bundle's Hits view (#114).
@@ -1812,7 +1822,8 @@ func (w *World) resolveCombatLocked(
 	// picks + damage folds draw first, the mover shuffle draws after.
 	attacks, attacked := w.collectMeleeAttacksLocked(byHex, members)
 
-	w.pendingOnHit = nil // #271: this resolution's on-hit effects buffer starts empty.
+	w.pendingOnHit = nil     // #271: this resolution's on-hit effects buffer starts empty.
+	w.pendingLifesteal = nil // #271: this resolution's lifesteal buffer starts empty.
 
 	w.attackLocked(rng, byHex, attacks)
 
@@ -1890,9 +1901,18 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	// rng-stream position" contract. Effect cards carry no chance condition, so
 	// they consume no rng; the append is nil for an unbuffed attacker, so no
 	// existing seeded pin can move.
+	//
+	// Attacker gear cards (#271, attackerGearCards) append LAST OF ALL — the
+	// offensive deal-damage cards jewelry may now carry (a +crit% ring). The
+	// attacker's OWN worn kit, unlike the acting weapon (weapon.rules) above,
+	// was never folded on the deal-damage side before, because only weapons
+	// carried offensive cards; crit-jewelry (validateItemNature relaxation)
+	// changes that, and a crit card consumes rng, so it appends after every
+	// pre-existing source to keep all pinned seeds' positions. Nil for an
+	// attacker wearing no offensive jewelry, so no existing pin can move.
 	attackerCards := slices.Concat(
 		speciesCards(attacker.species), weapon.rules, kindCards(attacker), skillCards(attacker),
-		activeEffectCards(attacker),
+		activeEffectCards(attacker), attackerGearCards(attacker),
 	)
 	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)
 
@@ -1928,6 +1948,22 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	// consumers) appends nothing.
 	w.pendingOnHit = collectOnHitEffects(w.pendingOnHit, attacker, victim, weapon)
 
+	// Lifesteal (#271): a deal-damage rider read from the trace, not a transform
+	// of the damage. The attacker heals for lifestealPct% of the damage the
+	// victim actually TAKES (taken, post-mitigation) — buffered here and applied
+	// in attackLocked's damage pass so the heal lands simultaneously with the
+	// turn's damage. Integer-truncated, so a small hit can leech nothing. No
+	// lifesteal card means a zero percent and no buffer entry.
+	if pct := dealTrace.lifestealPct; pct > 0 && taken > 0 {
+		if heal := taken * pct / percentBase; heal > 0 {
+			if w.pendingLifesteal == nil {
+				w.pendingLifesteal = make(map[int64]int)
+			}
+
+			w.pendingLifesteal[attacker.id] += heal
+		}
+	}
+
 	return taken
 }
 
@@ -1949,6 +1985,45 @@ func victimGearCards(e *entity) []ruleCard {
 	}
 
 	return equippedRuleCards(e)
+}
+
+// attackerGearCards returns the attacker's equipped-jewelry deal-damage cards
+// (#271) — the offensive affixes only jewelry may carry (a +crit% ring,
+// validateItemNature). It is the attacker-side counterpart of victimGearCards:
+// where the take-damage fold folds the whole worn kit, the deal-damage fold
+// historically folded only the ACTING weapon (weapon.rules), because armor
+// carried no offensive cards. Crit-jewelry breaks that assumption, so this
+// gathers the deal-damage cards from every equipped slot EXCEPT the hands (each
+// held weapon folds its own rules per-hit already) — which, since only jewelry
+// may carry a deal-damage card, is exactly the ring and amulet. Folded in
+// canonicalSlotOrder for determinism; nil for a monster (never equips) or an
+// attacker wearing no offensive jewelry, so the common case appends nothing and
+// no seeded pin can move.
+func attackerGearCards(e *entity) []ruleCard {
+	if e.kind == protocol.EntityMonster {
+		return nil
+	}
+
+	var cards []ruleCard
+
+	for _, slot := range canonicalSlotOrder {
+		if slot == protocol.SlotMainHand || slot == protocol.SlotOffHand {
+			continue // held weapons fold their own rules per-hit (weapon.rules)
+		}
+
+		def := e.equippedDefIn(slot)
+		if def == nil {
+			continue
+		}
+
+		for _, c := range def.rules {
+			if c.event == evDealDamage {
+				cards = append(cards, c)
+			}
+		}
+	}
+
+	return cards
 }
 
 // kindCards returns monster e's KIND's own rule cards — its identity
@@ -2305,6 +2380,26 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	for id, dmg := range damage {
 		w.entities[id].hp -= dmg
 	}
+
+	w.applyLifestealLocked()
+}
+
+// applyLifestealLocked heals each attacker for the lifesteal HP it earned this
+// resolution (#271, w.pendingLifesteal), then clears the buffer. Called from
+// attackLocked AFTER the turn's damage is applied, so the leech co-occurs with
+// the damage that produced it: an attacker whom that same damage pass just
+// killed (hp <= 0) does NOT heal back — a mutual kill still kills. Each heal is
+// clamped to the attacker's max HP. Per-entity and independent, so the map's
+// iteration order cannot change any result (no rng, nothing to sort). Callers
+// hold w.mu.
+func (w *World) applyLifestealLocked() {
+	for id, heal := range w.pendingLifesteal {
+		if e, ok := w.entities[id]; ok && e.hp > 0 {
+			e.hp = min(e.hp+heal, e.maxHP)
+		}
+	}
+
+	w.pendingLifesteal = nil
 }
 
 // applyPendingOnHitLocked applies the on-hit timed effects (#271) that this

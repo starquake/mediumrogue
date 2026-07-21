@@ -93,13 +93,13 @@ These are the moments the engine will expose. Every rule must name one:
 
 | Event | Live? | The moment… | Example rules that hook here |
 |---|---|---|---|
-| **deal-damage** | yes | …your hit's damage number is computed | weapon enchantments, **"bonus vs undead"** (shipped as **Wyrmslayer Greatsword**, ×1.5 vs dragons — see `targetKind` below), damage buffs, **elf's crit** (a chance-conditioned ×2 — see the note below) |
+| **deal-damage** | yes | …your hit's damage number is computed | weapon enchantments, **"bonus vs undead"** (shipped as **Wyrmslayer Greatsword**, ×1.5 vs dragons — see `targetKind` below), damage buffs, **elf's crit** (a chance-conditioned ×2 — see the note below), **lifesteal** (the `lifesteal` effect verb — shipped as the **Vampiric Blade**, heal 25% of the hit's damage; #271) |
 | **take-damage** | yes | …an incoming hit's damage is applied to you | dwarf toughness, armor, shields, vulnerabilities |
 | **earn-XP** | yes | …an XP award is computed for you | human fast-learner, an XP-boosting trinket |
 | **aggro-range** | yes | …a WORLD-domain monster's notice radius is computed for a player | per-kind base radius (monster kinds, milestone 6c) folded through the player's own noticeability cards. Live content since #88: Padded Boots (×0.75), Iron Plate Armor (×1.25). Gear-only — no species card feeds it. The fold is clamped ≥1 |
 | **end-of-turn** | yes | …an entity's active **timed effects** apply their per-turn HP change (#271) | a poison DoT (negative add), a regen (positive add). Base 0, no rng; a heal clamps to max HP, a drain can be lethal. Timed effects are applied by a weapon's `onHit` rider, then fold here each turn until they expire |
 | **crit-check** | not yet | …an attacker's chance to land a **critical hit** is computed | `crit%` weapon stats, elf precision (today a `deal-damage` chance card — see note) |
-| **on-kill** | not yet | …you (or your bubble) just killed something | lifesteal ("heal 2 on kill"), kill-triggered buffs |
+| **on-kill** | not yet | …you (or your bubble) just killed something | heal-on-kill ("heal 2 on kill"), kill-triggered buffs (distinct from **deal-damage lifesteal**, which already ships — see that row) |
 
 `crit-check` and `on-kill` are documented here so designs can be written
 against them now, but nothing calls them yet. **Combat is ARPG and

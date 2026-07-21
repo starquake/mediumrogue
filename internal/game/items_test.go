@@ -1040,6 +1040,98 @@ func TestValidateItemDefsPanicsOnUnknownRuleKinds(t *testing.T) {
 	}
 }
 
+// TestValidateItemNatureAllowsCritJewelry (#271): jewelry (ring/amulet) is the
+// one wearable family allowed to carry an offensive (deal-damage) card — the
+// ARPG "+crit% ring" affix. Both slots validate cleanly.
+func TestValidateItemNatureAllowsCritJewelry(t *testing.T) {
+	t.Parallel()
+
+	for _, itemType := range []string{protocol.ItemTypeRing, protocol.ItemTypeAmulet} {
+		t.Run(itemType, func(t *testing.T) {
+			t.Parallel()
+
+			validateItemDefs([]*itemDef{{
+				id: "trinket-of-precision", itemType: itemType,
+				rules: []ruleCard{
+					{event: evDealDamage, when: []condition{{kind: condChance, n: 10}},
+						then: effect{kind: effMulPct, n: percentBase + 100}},
+				},
+			}})
+		})
+	}
+}
+
+// TestValidateItemNatureStillRejectsOffensiveArmor (#271): the jewelry
+// relaxation is NARROW — armor and shields stay defence-only, so a deal-damage
+// card on a chestpiece still panics. The door is not blown open.
+func TestValidateItemNatureStillRejectsOffensiveArmor(t *testing.T) {
+	t.Parallel()
+
+	for _, itemType := range []string{protocol.ItemTypeChest, protocol.ItemTypeBoots, protocol.ItemTypeShield} {
+		t.Run(itemType, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("validateItemDefs did not panic on a deal-damage card on %s", itemType)
+				}
+			}()
+
+			validateItemDefs([]*itemDef{{
+				id: "cursed-plate", itemType: itemType,
+				rules: []ruleCard{
+					{event: evDealDamage, then: effect{kind: effMulPct, n: percentBase + 50}},
+				},
+			}})
+		})
+	}
+}
+
+// TestValidateItemDefsAcceptsLifestealWeapon (#271): a weapon carrying a
+// deal-damage lifesteal card validates cleanly — the effLifesteal effect kind
+// is real vocabulary, and lifesteal on deal-damage is its legal home.
+func TestValidateItemDefsAcceptsLifestealWeapon(t *testing.T) {
+	t.Parallel()
+
+	validateItemDefs([]*itemDef{{
+		id: "leech-blade", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp, damage: 4,
+		rules: []ruleCard{
+			{event: evDealDamage, then: effect{kind: effLifesteal, n: 25}},
+		},
+	}})
+}
+
+// TestValidateRuleCardsRejectsLifestealOffDealDamage (#271): lifesteal is read
+// ONLY from the deal-damage fold's trace (rollDamageLocked); on any other event
+// the rider nobody reads would silently never heal, so it fails at load. This is
+// the four-places-must-agree guarantee: the effect kind is not just known, it is
+// bound to the one event that consumes it.
+func TestValidateRuleCardsRejectsLifestealOffDealDamage(t *testing.T) {
+	t.Parallel()
+
+	for _, event := range []string{evTakeDamage, evEarnXP, evAggroRange} {
+		t.Run(event, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("validateRuleCards did not panic on a lifesteal card at %s", event)
+				}
+
+				if msg, ok := r.(string); ok && !strings.Contains(msg, "lifesteal") {
+					t.Errorf("panic = %q, should mention lifesteal", msg)
+				}
+			}()
+
+			validateRuleCards("leech-armor", []ruleCard{
+				{event: event, then: effect{kind: effLifesteal, n: 25}},
+			})
+		})
+	}
+}
+
 // TestValidateItemDefsAcceptsAggroRangeEvent (#36): validateRuleCards must
 // accept evAggroRange as a known event — a future sneaky/loud item's rule
 // card should validate cleanly at load, not panic on an "unknown event" it

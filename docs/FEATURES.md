@@ -348,6 +348,7 @@ The vocabulary:
 |---|---|
 | defensive card (`take-damage`) | **resistance** — `+50% Chaos Resistance`, `+20% Damage Resistance` |
 | offensive card (`deal-damage`) | **damage** — `+10% Melee Damage`, `×2 Damage vs Adjacent` |
+| lifesteal card (`deal-damage` + `lifesteal`) | its own affix — `+25% Lifesteal` (always a benefit, never a drawback) |
 | utility card (`earn-xp`, `aggro-range`) | names its own subject — `+5% XP`, `−20% Aggro Range` |
 | base stats (not cards) | `Damage 4`, `Range 4`, `AoE 1`, `+5 HP`, `Stacks to 5` |
 
@@ -361,10 +362,15 @@ the number shown is the number that stacks.
 each — `+20% Damage Resistance · +25% Aggro Range` — which is what the flag
 exists for.
 
-**Item nature is enforced at load**: a `deal-damage` card belongs on a weapon,
-a `take-damage` card on worn kit, and a mixed item panics at process start.
+**Item nature is enforced at load**: a `deal-damage` card belongs on a weapon
+**or on jewelry** (ring/amulet — the ARPG "affix on a ring", #271), a
+`take-damage` card on worn kit, and a mixed item panics at process start.
 Utility cards are exempt. The nature lives on the item's *type*, not its slot,
-because the off-hand takes both a shield and a dual-wielded weapon.
+because the off-hand takes both a shield and a dual-wielded weapon. The jewelry
+exemption is **narrow and deliberate**: armor and shields stay defence-only, so
+their sign convention (a `−N% Damage` on a chestplate can only mean damage
+*taken*) still holds. A crit% ring is attacker-side percentage, not a coupled
+roll, so it is ARPG-legal on jewelry.
 
 ### Progression, XP & death
 - XP from kills: **every player in the bubble gets the full amount per kill
@@ -484,13 +490,18 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Ember Brand | melee | | 4 | – | – | — (Fire — off the mage's exclusive list) | troll (w3) / dragon (w1) drop |
   | Ironhead Greatmaul | melee | ✅ | 9 | – | – | — (players' first heavy 2H blunt) | skeleton (w3) / troll (w3) drop |
   | Longbow | ranged | | 3 | 6 | – | reach-for-damage: +2 range over the Shortbow for −1 damage | wolf (w3) / kin archer (w4) drop |
+  | Vampiric Blade | melee | | 4 | – | – | +25% Lifesteal (heals the wielder for 25% of the damage it deals) | wraith drop (w2) |
 
   `Rng`/`AoE` "–" = 0 (adjacent-only / single-target). Misericorde and
   Duelist's Saber are the first item-side **crit%-weapons** (fast-lane
   batch, #69 Q5) — the elf-crit `deal-damage`+`chance` card pattern applied
   to gear instead of a species passive; both are now equippable by any
   class (gates dropped) though the "rogue"/"fighter" naming is a flavor
-  holdover from before #56.
+  holdover from before #56. The **Vampiric Blade** (#271) is the first
+  **lifesteal** weapon: its `deal-damage`+`lifesteal` card heals the wielder
+  for a % of the damage the blade deals (per-weapon — only its own hit
+  leeches, not a whole dual-wield turn), clamped to max HP, applied with the
+  turn's damage so a mutual kill still kills.
 - **Shields (#90, S4 of #55)** — the trade: a shield holds your off-hand
   (~half of dual-wield's melee output) in exchange for a flat `take-damage
   −N` on **every** hit, floor 1 (`applyRules`' event-level clamp); the −N
@@ -574,6 +585,15 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   both sit at the shipped 1H anchor so the *type* is the point, not a stat
   upgrade riding along. A weapon's type shows as a **Type** line in the stat
   tooltip (character panel and pickup modal alike).
+
+  **Offensive jewelry** (#271): the **Ring of Precision** (ring: `10% chance
+  ×2 Damage`) is the first jewelry to carry an **offensive** (`deal-damage`)
+  card — the ARPG "affix on a ring". Its crit% applies to **every** attack the
+  wearer lands (main-hand, off-hand, and ranged — the attacker's equipped
+  jewelry `deal-damage` cards fold into every hit's roll), the point of a crit
+  *ring* over a single crit *weapon*. Drops off the ghoul (w2). The jewelry
+  offensive exemption is narrow (see the *Item nature* note above): armor and
+  shields stay defence-only.
 - **Non-weapon items**: Leather Armor (chest: take-damage ×0.9, floor 1), Iron
   Plate Armor (chest: take-damage ×0.8 + aggro-range ×1.25), Padded Boots
   (boots: aggro-range ×0.75), the three resist chest armors above (one type
@@ -610,9 +630,12 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   rides the **Serpent** (the poison monster drops its own cure), and the buff
   potions ride the **Hydra**'s own new table (Draught of Fury w3, Warding Tonic
   w3, Greater Draught w1); both tables are new, so no existing pinned drop seed
-  moves. The wolf additions were the only ones to move a pinned drop seed,
-  re-derived in `drops_test.go`. Items land on the death hex and render as map
-  markers.
+  moves. The offensive-gear slice (#271) routes its two items on the same
+  append-LAST rule, on kinds no seeded drop test pins: the **Ring of Precision**
+  on the ghoul (w2 — its assassin/precision tier already carries the Misericorde)
+  and the **Vampiric Blade** on the wraith (w2 — a life-draining elite). The wolf
+  additions were the only ones to move a pinned drop seed, re-derived in
+  `drops_test.go`. Items land on the death hex and render as map markers.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):
@@ -989,7 +1012,11 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   validated against the six types; works both ways: on a take-damage card it
   is the type landing on you (every resist and vulnerability), on a
   deal-damage card it is the type of the weapon you are swinging, which is
-  how weapon-flavoured passives like "+10% blunt damage" are expressed). Effects: `add`, `mulPct`. Fold
+  how weapon-flavoured passives like "+10% blunt damage" are expressed). Effects:
+  `add`, `mulPct`, `lifesteal` (`deal-damage` only — a rider that heals the
+  attacker for N% of the damage a hit deals, read from the fold's trace and
+  applied at `rollDamageLocked`; touches neither `add` nor `mulPct`, so it moves
+  no damage number and consumes no rng — #271). Fold
   order: all adds → **percentages add within the fold** (every `mulPct`
   card's delta from 100% sums into one combined percentage, applied with a
   single truncation — #61 principle 14, roadmap Q8, fast-lane batch) → event

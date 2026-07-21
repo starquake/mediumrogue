@@ -197,6 +197,11 @@ var guideDescriptions = map[string]GuideVocabEntry{
 		Param:       "n = percent (200 = double)",
 		Description: "Scales by n%. Percentages sum within one fold and apply once — never compounding pairwise.",
 	},
+	effLifesteal: {
+		Param: "n = percent of damage dealt",
+		Description: "Heals the attacker for n% of the damage the hit deals. A deal-damage rider: it does not " +
+			"change the damage, it leeches from it. Never a coupled roll.",
+	},
 }
 
 // vocabFor builds one vocabulary entry, panicking if the kind is undocumented.
@@ -226,7 +231,7 @@ var (
 		condShieldEquipped, condDualWielding, condTargetAdjacent, condAllyInBubble,
 		condTargetHPFull, condTargetHPBelowPct, condTargetHPBelowFlat,
 	}
-	guideEffects = []string{effAdd, effMulPct}
+	guideEffects = []string{effAdd, effMulPct, effLifesteal}
 )
 
 // validateGuideVocabulary panics if the guide documents a term the real

@@ -176,6 +176,17 @@ func isDefensiveType(t string) bool {
 	return t != protocol.ItemTypeWeapon && t != protocol.ItemTypeConsumable
 }
 
+// isJewelryType reports whether an item type is jewelry — a ring or amulet.
+// Jewelry is the ONE wearable family allowed to carry an offensive
+// (deal-damage) card besides a weapon (#271, validateItemNature): the ARPG
+// "affix on a ring" pattern (a +crit% ring), where crit% is an attacker-side
+// percentage, never a coupled roll. Deliberately NOT extended to armor or
+// shields — those stay defence-only, so the stat line's sign convention still
+// holds for them (a "−N% Damage" on a chestplate can only mean damage taken).
+func isJewelryType(t string) bool {
+	return t == protocol.ItemTypeRing || t == protocol.ItemTypeAmulet
+}
+
 // validItemType reports whether t is one of the taxonomy's 9 known types.
 func validItemType(t string) bool {
 	switch t {
@@ -667,6 +678,19 @@ const (
 	idAntivenom     = "antivenom"
 )
 
+// Offensive-gear ids (#271, the lifesteal + crit-jewelry slice on the
+// timed-effect foundation): idVampiricBlade is the player lifesteal weapon (its
+// deal-damage card heals the wielder for a % of damage dealt — the effLifesteal
+// effect kind's proof consumer); idRingOfPrecision is the first jewelry to carry
+// an offensive card (a per-hit crit%), the deliberate validateItemNature
+// relaxation's proof consumer. Named here for the usual reason: the registry
+// entry (content.go), the wraith/ghoul drop tables (content.go), and their
+// pinning tests can't drift on a typo.
+const (
+	idVampiricBlade   = "vampiric-blade"
+	idRingOfPrecision = "ring-of-precision"
+)
+
 // Starter-drop-set item ids: named the same way as the class-default ids
 // above, and for the same reason — referenced from both the item registry
 // (content.go) and, since 6c, per-kind monster loot tables (also
@@ -931,13 +955,19 @@ func validateFlavorHasNoStats(owner, flavor string) {
 // Utility events (earn-xp, aggro-range) are deliberately EXEMPT: they name
 // their own subject and their sign is literal, so they are legal on anything
 // (#171 Q5 — Iron Plate Armor's aggro-range card is the shipped example).
+//
+// Jewelry (ring/amulet) is the ONE wearable exemption on the offensive side
+// (#271): it may carry a deal-damage card — the ARPG "+crit% ring" affix. A
+// crit% card is a chance-conditioned mulPct on deal-damage; it renders as
+// "N% chance ×2 Damage", a benefit read the same way on a ring as on a weapon,
+// so the sign convention survives. Armor and shields stay defence-only.
 func validateItemNature(def *itemDef) {
 	for _, c := range def.rules {
 		switch c.event {
 		case evDealDamage:
-			if !isOffensiveType(def.itemType) {
+			if !isOffensiveType(def.itemType) && !isJewelryType(def.itemType) {
 				panic("game: " + def.itemType + " item " + def.id +
-					" carries a deal-damage card — offensive cards belong on weapons (#171)")
+					" carries a deal-damage card — offensive cards belong on weapons or jewelry (#171, #271)")
 			}
 		case evTakeDamage:
 			if !isDefensiveType(def.itemType) {
@@ -1087,6 +1117,13 @@ func validateRuleCards(owner string, cards []ruleCard) {
 
 		switch c.then.kind {
 		case effAdd, effMulPct:
+		case effLifesteal:
+			// Lifesteal is read ONLY from the deal-damage fold's trace
+			// (rollDamageLocked); on any other event the rider nobody reads would
+			// silently never heal — a content bug, so it fails at load (#271).
+			if c.event != evDealDamage {
+				panic("game: " + owner + " lifesteal rule card must be a deal-damage card (has event " + c.event + ")")
+			}
 		default:
 			panic("game: " + owner + " rule card has unknown effect " + c.then.kind)
 		}

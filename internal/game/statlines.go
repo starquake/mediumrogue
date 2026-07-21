@@ -118,6 +118,14 @@ func turnsText(turns int) string {
 
 // cardStatLine renders one rule card: [chance prefix] amount subject [suffix].
 func cardStatLine(c ruleCard) statLine {
+	// Lifesteal is a rider, not a value transform (#271): it names its own
+	// subject and its sign is always a benefit, so it renders on its own path
+	// rather than through amountText/subjectText (which would read its percent
+	// as a damage multiplier and mislabel it "−75% Damage").
+	if c.then.kind == effLifesteal {
+		return lifestealStatLine(c)
+	}
+
 	text := amountText(c.then, c.event) + " " + subjectText(c)
 
 	if prefix := chancePrefix(c.when); prefix != "" {
@@ -129,6 +137,19 @@ func cardStatLine(c ruleCard) statLine {
 	}
 
 	return statLine{text: text, drawback: isDrawback(c)}
+}
+
+// lifestealStatLine renders an effLifesteal card as "+N% Lifesteal" (the ARPG
+// leech affix, always a benefit), keeping any chance prefix a gated lifesteal
+// card would carry. Never a drawback: a positive leech only helps the wielder.
+func lifestealStatLine(c ruleCard) statLine {
+	text := "+" + strconv.Itoa(c.then.n) + "% Lifesteal"
+
+	if prefix := chancePrefix(c.when); prefix != "" {
+		text = prefix + " " + text
+	}
+
+	return statLine{text: text, drawback: false}
 }
 
 // amountText renders the effect's magnitude: "+3", "−1", "×2", "+10%", "−50%".

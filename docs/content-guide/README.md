@@ -76,6 +76,7 @@ percentage sums and applies once**. Percentages never compound pairwise — two
 |---|---|---|
 | `add` | n (may be negative) | Adds n. Every add in a fold sums first, before any percentage applies. |
 | `mulPct` | n = percent (200 = double) | Scales by n%. Percentages sum within one fold and apply once — never compounding pairwise. |
+| `lifesteal` | n = percent of damage dealt | Heals the attacker for n% of the damage the hit deals. A deal-damage rider: it does not change the damage, it leeches from it. Never a coupled roll. |
 
 ### Damage types and weapon tags
 
@@ -145,7 +146,9 @@ any digit in flavour.
 | **Pack Bow**<br>`pack-bow` | weapon | sharp | ranged | 3 | 4 | — | — | Damage 3<br>Range 4<br>+3 Damage with an Ally<br> |
 | **Padded Boots**<br>`padded-boots` | boots | — | — | — | melee | — | — | −25% Aggro Range<br> |
 | **Pilgrim's Mantle**<br>`pilgrims-mantle` | chest | — | — | — | melee | — | — | +50% Chaos Resistance<br> |
+| **Ring of Precision**<br>`ring-of-precision` | ring | — | — | — | melee | — | — | 10% chance ×2 Damage<br> |
 | **Shortbow**<br>`shortbow` | weapon | sharp | ranged | 4 | 4 | — | — | Damage 4<br>Range 4<br> |
+| **Vampiric Blade**<br>`vampiric-blade` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>+25% Lifesteal<br> |
 | **Venom Fang**<br>`venom-fang` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+4 Damage vs Full HP<br> |
 | **Staff of the War Mage**<br>`war-mage-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Below 6 HP<br> |
 | **Warded Gambeson**<br>`warded-gambeson` | chest | — | — | — | melee | — | — | +50% Sharp Resistance<br> |
