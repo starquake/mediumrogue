@@ -1,0 +1,42 @@
+name: Dependabot auto-merge
+
+# Auto-merge Dependabot PRs once the ruleset's required build checks
+# (lint / test / e2e) pass. GitHub's native auto-merge holds the PR until those
+# checks are green, so a failing build is never merged — "merge if the build
+# succeeds", nothing more. The /tools ecosystem is excluded on purpose: a tools
+# bump must be mirrored to the matching Makefile version pin by hand first
+# (see .github/dependabot.yml), so those are left for manual review.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    # Only Dependabot's own PRs — never a human's.
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge (squash) — GitHub merges when required checks pass
+        if: ${{ steps.meta.outputs.directory != '/tools' }}
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Flag a /tools bump for manual review (needs a Makefile mirror)
+        if: ${{ steps.meta.outputs.directory == '/tools' }}
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "🤖 Auto-merge skipped for a \`/tools\` bump: mirror this version to the matching pin in the Makefile, then merge by hand. (See .github/dependabot.yml.)"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
