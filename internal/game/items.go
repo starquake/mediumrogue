@@ -680,6 +680,19 @@ const (
 	idIronKiteShield = "iron-kite-shield"
 )
 
+// Content-expansion weapon & gear ids (#267): a martial Fire weapon (Fire
+// was magic-only), the players' first heavy 2H blunt, a reach-for-damage
+// bow, and the first gloves- and amulet-slot items (Blunt- and Ice-resist —
+// the two families with no resist gear). Named here for the usual reason:
+// registry entry, drop tables, and pinning tests can't drift on a typo.
+const (
+	idEmberBrand         = "ember-brand"
+	idIronheadGreatmaul  = "ironhead-greatmaul"
+	idLongbow            = "longbow"
+	idIronboundGauntlets = "ironbound-gauntlets"
+	idFrostwardCharm     = "frostward-charm"
+)
+
 // classDefaultIDs returns the item def ids a class starts with at Join: one
 // melee-tagged weapon, plus a ranged/magic-tagged weapon for Rogue and Mage
 // (Fighter has none — no ranged/magic-tagged default, so its off-hand starts

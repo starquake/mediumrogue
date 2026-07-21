@@ -117,9 +117,11 @@ any digit in flavour.
 | **Consecrated Mace**<br>`consecrated-mace` | weapon | holy | melee | 4 | melee | — | — | Damage 4<br> |
 | **Dagger**<br>`dagger` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
 | **Duelist's Saber**<br>`duelists-saber` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>10% chance ×2 Damage<br> |
+| **Ember Brand**<br>`ember-brand` | weapon | fire | melee | 4 | melee | — | — | Damage 4<br> |
 | **Ember Focus**<br>`ember-focus` | weapon | fire | magic | 3 | 4 | 1 | — | Damage 3<br>Range 4<br>AoE 1<br> |
 | **Ember Staff**<br>`ember-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Adjacent<br> |
 | **Frostbrand**<br>`frostbrand` | weapon | ice | melee | 4 | melee | — | — | Damage 4<br> |
+| **Frostward Charm**<br>`frostward-charm` | amulet | — | — | — | melee | — | — | +50% Ice Resistance<br> |
 | **Headband of Learning**<br>`headband-of-learning` | helmet | — | — | — | melee | — | — | +5% XP<br> |
 | **Healing Potion**<br>`healing-potion` | consumable | — | — | — | melee | — | 5 | +5 HP<br>Stacks to 5<br> |
 | **Infernal Chain Mail**<br>`infernal-chain-mail` | chest | — | — | — | melee | — | — | +50% Fire Resistance<br> |
@@ -127,7 +129,10 @@ any digit in flavour.
 | **Iron Plate Armor**<br>`iron-plate-armor` | chest | — | — | — | melee | — | — | +20% Damage Resistance<br>⚠ +25% Aggro Range<br> |
 | **Iron Sword**<br>`iron-sword` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
 | **Iron Warhammer**<br>`iron-warhammer` | weapon | blunt | melee | 5 | melee | — | — | Damage 5<br> |
+| **Ironbound Gauntlets**<br>`ironbound-gauntlets` | gloves | — | — | — | melee | — | — | +50% Blunt Resistance<br> |
+| **Ironhead Greatmaul**<br>`ironhead-greatmaul` | weapon<br>two-handed | blunt | melee | 9 | melee | — | — | Damage 9<br> |
 | **Leather Armor**<br>`leather-armor` | chest | — | — | — | melee | — | — | +10% Damage Resistance<br> |
+| **Longbow**<br>`longbow` | weapon | sharp | ranged | 3 | 6 | — | — | Damage 3<br>Range 6<br> |
 | **Misericorde**<br>`misericorde` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>15% chance ×2 Damage<br> |
 | **Oak Wand**<br>`oak-wand` | weapon | blunt | melee | 2 | melee | — | — | Damage 2<br> |
 | **Pack Bow**<br>`pack-bow` | weapon | sharp | ranged | 3 | 4 | — | — | Damage 3<br>Range 4<br>+3 Damage with an Ally<br> |

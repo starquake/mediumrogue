@@ -468,6 +468,9 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Wyrmslayer Greatsword | melee | ✅ | 9 | – | – | ×1.5 dmg vs dragons | dragon drop (100%, weight 2) |
   | Misericorde | melee | | 4 | – | – | 15% chance to deal ×2 | ghoul drop |
   | Duelist's Saber | melee | | 4 | – | – | 10% chance to deal ×2 | wolf drop |
+  | Ember Brand | melee | | 4 | – | – | — (Fire — off the mage's exclusive list) | troll (w3) / dragon (w1) drop |
+  | Ironhead Greatmaul | melee | ✅ | 9 | – | – | — (players' first heavy 2H blunt) | skeleton (w3) / troll (w3) drop |
+  | Longbow | ranged | | 3 | 6 | – | reach-for-damage: +2 range over the Shortbow for −1 damage | wolf (w3) / kin archer (w4) drop |
 
   `Rng`/`AoE` "–" = 0 (adjacent-only / single-target). Misericorde and
   Duelist's Saber are the first item-side **crit%-weapons** (fast-lane
@@ -515,12 +518,12 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 
   | Family | Types | Carried by |
   |---|---|---|
-  | Physical | **Sharp** | swords, daggers, bows, cleaver, venom fang, misericorde, saber; rat + wolf claws |
-  | Physical | **Blunt** | fists, oak wand, warhammer, mattock; troll claws |
-  | Elemental | **Fire** | ember focus, ember staff, war-mage staff; dragon claws |
-  | Elemental | **Ice** | Frostbrand |
+  | Physical | **Sharp** | swords, daggers, bows (incl. longbow), cleaver, venom fang, misericorde, saber; rat + wolf + goblin claws |
+  | Physical | **Blunt** | fists, oak wand, warhammer, mattock, ironhead greatmaul; troll + skeleton claws |
+  | Elemental | **Fire** | ember focus, ember staff, war-mage staff, ember brand; dragon claws |
+  | Elemental | **Ice** | Frostbrand; frost wisp claws |
   | Metaphysical | **Holy** | Wyrmslayer Greatsword, Consecrated Mace |
-  | Metaphysical | **Chaos** | ghoul claws |
+  | Metaphysical | **Chaos** | ghoul + wraith claws |
 
   The families, and the Holy↔Chaos / Fire↔Ice **oppositions, are an
   authoring convention — not machinery**. All six types are mechanically
@@ -539,20 +542,28 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   | Infernal Chain Mail | chest | fire ×0.5 | dragon (w2) drop |
   | Warded Gambeson | chest | sharp ×0.5 | wolf (w3) drop |
   | Pilgrim's Mantle | chest | chaos ×0.5 | ghoul (w3) drop |
+  | Ironbound Gauntlets | gloves | blunt ×0.5 | skeleton (w2) / troll (w3) drop |
+  | Frostward Charm | amulet | ice ×0.5 | frost wisp (w3) / wolf (w1) drop |
 
-  Blunt deliberately has **no** resist: one card answering both physical
-  types would be strictly better than either elemental resist, since nearly
-  every early monster is sharp or blunt. New weapons: **Frostbrand** (ice,
-  damage 4, troll w3) and **Consecrated Mace** (holy, damage 4, ghoul w3) —
+  No card answers **both** physical types at once: one that halved Sharp and
+  Blunt together would be strictly better than either elemental resist, since
+  nearly every early monster is sharp or blunt. Each of the six types now has
+  exactly one **single**-type resist (#267 filled Blunt with the Ironbound
+  Gauntlets and Ice with the Frostward Charm, the first gloves- and
+  amulet-slot content) — situational where flat mitigation is always-on. New
+  weapons: **Frostbrand** (ice, damage 4, troll w3) and **Consecrated Mace**
+  (holy, damage 4, ghoul w3) —
   both sit at the shipped 1H anchor so the *type* is the point, not a stat
   upgrade riding along. A weapon's type shows as a **Type** line in the stat
   tooltip (character panel and pickup modal alike).
 - **Non-weapon items**: Leather Armor (chest: take-damage ×0.9, floor 1), Iron
   Plate Armor (chest: take-damage ×0.8 + aggro-range ×1.25), Padded Boots
-  (boots: aggro-range ×0.75), the three resist armors above (chest: one type
-  halved each), Headband of Learning (helmet: earn-XP ×1.05), Healing Potion
-  (consumable: drink +5 HP, stacks to 5), and the two shields above
-  (off-hand: take-damage ×0.9/×0.8).
+  (boots: aggro-range ×0.75), the three resist chest armors above (one type
+  halved each), the Ironbound Gauntlets (gloves: blunt ×0.5) and Frostward
+  Charm (amulet: ice ×0.5), Headband of Learning (helmet: earn-XP ×1.05), the
+  heal-ladder consumables (Minor Salve +3, Healing Potion +5, Greater Draught
+  +10, Full Restorative to full — each drink clamped to max HP, stacks to 5),
+  and the two shields above (off-hand: take-damage ×0.9/×0.8).
 - **Drops are monster-side** (milestone 6c): each monster **kind** owns its
   chance-to-drop and its weighted table (`monsterDef.drops`); a slain monster
   rolls its own chance (10–100%) and picks from its own table (potions ride

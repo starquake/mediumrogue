@@ -422,6 +422,69 @@ var itemDefs = []*itemDef{
 		damage:     4,
 		flavor:     "Every dent in it was somebody's bad night.",
 	},
+
+	// Content-expansion weapons & gear (#267): fills the gaps the shipped
+	// arsenal left — Fire was magic-only, players had no heavy 2H blunt,
+	// ranged was two bows at the same reach, and the gloves and amulet slots
+	// (and Blunt/Ice resist) were empty. Every one is existing-vocabulary
+	// content: a typed weapon (type is the point, no card), or a single-type
+	// resist card on worn kit. Damage anchors follow the keystone's
+	// "1H ≈ ½ 2H" (1H melee 4, 2H 9, bow ~3).
+	{
+		// Takes Fire off the mage's exclusive list so a fighter/rogue can
+		// answer a fire-vulnerable troll (or the new Frost Wisp). Type is the
+		// whole point — no card, same design as Frostbrand/Consecrated Mace.
+		id: idEmberBrand, name: "Ember Brand", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeFire,
+		damage:     4,
+		flavor:     "The blade keeps its own warmth, even sheathed in a snowbank.",
+	},
+	{
+		// The players' first heavy 2H blunt (Maul is monsterOnly; the
+		// Warhammer is 1H). Damage at the 2H anchor; the cost is the 2H lock
+		// (no shield, no dual-wield). Blunt's heavy hitter — the answer to the
+		// sharp-resistant Skeleton.
+		id: idIronheadGreatmaul, name: "Ironhead Greatmaul", itemType: protocol.ItemTypeWeapon,
+		tags: []string{protocol.WeaponTagMelee}, twoHanded: true,
+		damageType: protocol.DamageTypeBlunt,
+		damage:     9,
+		flavor:     "Two hands, one purpose, and nothing left standing after.",
+	},
+	{
+		// The reach-for-damage tradeoff: +2 hexes over the Shortbow bought
+		// with −1 damage. rangeHex is the max the reach invariant allows
+		// (rangeHex+aoeRadius ≤ CombatRadius, validateMaxReach) — a decision
+		// on a hex grid, not a strict upgrade.
+		id: idLongbow, name: "Longbow", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagRanged},
+		damageType: protocol.DamageTypeSharp,
+		damage:     3, rangeHex: 6,
+		flavor: "Draws slow, reaches far. Patience is the whole weapon.",
+	},
+	{
+		// First content in the gloves slot, and the Blunt mirror of the Warded
+		// Gambeson's Sharp resist — a single type halved, so situational, never
+		// the "both physical" card the design refuses. Renders as
+		// "+50% Blunt Resistance".
+		id: idIronboundGauntlets, name: "Ironbound Gauntlets", itemType: protocol.ItemTypeGloves,
+		flavor: "Iron over the knuckles. A maul lands like a friendly handshake.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeBlunt}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
+	{
+		// First content in the amulet slot, and the only resist for Ice — the
+		// one type with no resist armor at all. Pairs directly with the Frost
+		// Wisp. Renders as "+50% Ice Resistance".
+		id: idFrostwardCharm, name: "Frostward Charm", itemType: protocol.ItemTypeAmulet,
+		flavor: "Cold to the touch, and everything colder just slides off you.",
+		rules: []ruleCard{
+			{event: evTakeDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeIce}},
+				then: effect{kind: effMulPct, n: 50}},
+		},
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
