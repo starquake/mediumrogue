@@ -74,6 +74,10 @@ const KIND_STYLE: Record<string, { color: number }> = {
   skeleton: { color: 0xcfc9b0 },
   "frost-wisp": { color: 0x5fb8d6 },
   wraith: { color: 0x9a7fd0 },
+  // Timed-effect foundation (#271): a venom-green serpent. It has a color but
+  // no glyph icon yet (the safe hostile-dot fallback) — the effect-icon polish
+  // is a later #271 slice.
+  serpent: { color: 0x4faf6a },
 };
 
 interface Dot {

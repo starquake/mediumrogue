@@ -51,6 +51,7 @@ percentage sums and applies once**. Percentages never compound pairwise — two
 | `take-damage` | — | A hit's damage, victim side — resistances and vulnerabilities. Cards here belong on worn kit. |
 | `earn-xp` | — | An XP award, before it lands. Folds without rng, so chance conditions are rejected. |
 | `aggro-range` | — | How far a monster notices you from. Clamped to ≥1, so noticeability can never reach zero. |
+| `end-of-turn` | — | A per-turn HP delta from an entity's active timed effects (a DoT drains, a regen restores). Base 0, no rng, applied once each turn — heals clamp to max HP, drains can be lethal. |
 
 ### Conditions — when a card fires
 
@@ -113,6 +114,7 @@ any digit in flavour.
 | Item | Type | Damage type | Tags | Damage | Range | AoE | Heal | Stat lines |
 |---|---|---|---|---|---|---|---|---|
 | **Ancient Dwarven Mattock**<br>`ancient-dwarven-mattock` | weapon | blunt | melee | 4 | melee | — | — | Damage 4<br>+3 Damage (Dwarf)<br> |
+| **Bloodrage Cleaver**<br>`bloodrage-cleaver` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
 | **Butcher's Cleaver**<br>`butchers-cleaver` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+3 Damage vs Below 50% HP<br> |
 | **Consecrated Mace**<br>`consecrated-mace` | weapon | holy | melee | 4 | melee | — | — | Damage 4<br> |
 | **Dagger**<br>`dagger` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
@@ -166,6 +168,7 @@ its weapon carries.
 | **Goblin**<br>`goblin` | 6 | Rusty Shiv | 2 | melee | sharp | 12 | 7 | 15 | — |
 | **Kin Archer**<br>`kin-archer` | 12 | Hunter's Bow | 3 | 3 hexes | sharp | 30 | 8 | 30 | — |
 | **Rat**<br>`rat` | 4 | Claws | 1 | melee | sharp | 8 | 7 | 10 | — |
+| **Serpent**<br>`serpent` | 8 | Venom Sting | 2 | melee | sharp | 16 | 8 | 30 | — |
 | **Skeleton**<br>`skeleton` | 14 | Bone Club | 3 | melee | blunt | 30 | 8 | 35 | +50% Sharp Resistance<br> |
 | **Troll**<br>`troll` | 30 | Maul | 6 | melee | blunt | 60 | 8 | 50 | ⚠ −50% Fire Resistance<br> |
 | **Wolf**<br>`wolf` | 10 | Fangs | 3 | melee | sharp | 20 | 10 | 30 | — |

@@ -43,7 +43,12 @@ import (
 // ReturningHome. A v4 snapshot's monsters would all restore with home at the
 // origin (the Hex zero value) and leash-walk there en masse, so it is
 // preserved-aside + fresh.
-const snapshotVersion = 8
+// v9 (timed-effect foundation, #271): entityDTO gains Effects — an entity's
+// active lingering effects (poison/buff/regen), multi-turn state that must
+// survive a restart (a poisoned monster stays poisoned). A v8 snapshot simply
+// has no such field, so restored entities would silently lose in-flight
+// effects; the version gate preserves-aside + fresh instead.
+const snapshotVersion = 9
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -133,6 +138,18 @@ type entityDTO struct {
 	// ActiveReadyTurn is each active skill's ready-again turn (#161, v7). A
 	// cooldown that reset on restart would make a restart a free reset.
 	ActiveReadyTurn map[string]int64 `json:"activeReadyTurn,omitempty"`
+	// Effects are the entity's active timed effects (#271, v9): multi-turn
+	// state (like HomeHex/ReturningHome), so a restart must not drop a poison
+	// mid-drain or a buff mid-duration. Omitted when empty — the common case.
+	Effects []timedEffectDTO `json:"effects,omitempty"`
+}
+
+// timedEffectDTO mirrors timedEffect (effects.go) for the wire-decoupled disk
+// format — JSON tags live here, never on the unexported entity/effect structs.
+type timedEffectDTO struct {
+	DefID          string `json:"defId"`
+	Magnitude      int    `json:"magnitude"`
+	TurnsRemaining int    `json:"turnsRemaining"`
 }
 
 // groundStackDTO mirrors groundStack: a dropped item instance plus its stack
@@ -392,8 +409,37 @@ func entityToDTO(e *entity) entityDTO {
 		Equipped: equippedToDTO(e.equipped), Backpack: backpackToDTO(e.backpack),
 		HomeHex: e.homeHex, ReturningHome: e.returningHome,
 		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
-		ActiveReadyTurn: e.activeReadyTurn,
+		ActiveReadyTurn: e.activeReadyTurn, Effects: timedEffectsToDTO(e.effects),
 	}
+}
+
+// timedEffectsToDTO/timedEffectsFromDTO round-trip an entity's active timed
+// effects (#271). Nil in, nil out — an entity with no effects serializes the
+// field away (omitempty) and restores to the same clean zero value.
+func timedEffectsToDTO(effects []timedEffect) []timedEffectDTO {
+	if len(effects) == 0 {
+		return nil
+	}
+
+	dtos := make([]timedEffectDTO, len(effects))
+	for i, te := range effects {
+		dtos[i] = timedEffectDTO{DefID: te.defID, Magnitude: te.magnitude, TurnsRemaining: te.turnsRemaining}
+	}
+
+	return dtos
+}
+
+func timedEffectsFromDTO(dtos []timedEffectDTO) []timedEffect {
+	if len(dtos) == 0 {
+		return nil
+	}
+
+	effects := make([]timedEffect, len(dtos))
+	for i, d := range dtos {
+		effects[i] = timedEffect{defID: d.DefID, magnitude: d.Magnitude, turnsRemaining: d.TurnsRemaining}
+	}
+
+	return effects
 }
 
 // entityFromDTO rebuilds an entity from its DTO. The caller (RestoreState)
@@ -409,7 +455,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
 		homeHex: ed.HomeHex, returningHome: ed.ReturningHome,
 		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,
-		activeReadyTurn: ed.ActiveReadyTurn,
+		activeReadyTurn: ed.ActiveReadyTurn, effects: timedEffectsFromDTO(ed.Effects),
 	}
 }
 

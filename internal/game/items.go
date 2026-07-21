@@ -64,6 +64,12 @@ type itemDef struct {
 	// def — drinking is an action (task 2), not a combat pipeline event.
 	heal  int
 	rules []ruleCard
+	// onHit are the timed effects (#271, effects.go) this weapon applies when a
+	// melee hit with it lands — a poison DoT on the victim, or a self-buff on
+	// the attacker (appliedEffect.toSelf). Weapons only (validateItemDefs); the
+	// vast majority carry none. It is pure data, so a new poison/rage weapon is
+	// a registry row, not a combat-site edit.
+	onHit []appliedEffect
 }
 
 // hasTag reports whether this def's weapon tags include tag (always false
@@ -622,6 +628,15 @@ const (
 	idFrostTouch = "frost-touch"
 )
 
+// Timed-effect foundation ids (#271, slice 1): idVenomSting is the Serpent's
+// monsterOnly poison bite (its onHit applies a DoT to the victim);
+// idBloodrageCleaver is the player-equippable rage weapon whose onHit self-buffs
+// the attacker's damage. The two proof consumers of the timed-effect mechanism.
+const (
+	idVenomSting       = "venom-sting"
+	idBloodrageCleaver = "bloodrage-cleaver"
+)
+
 // Starter-drop-set item ids: named the same way as the class-default ids
 // above, and for the same reason — referenced from both the item registry
 // (content.go) and, since 6c, per-kind monster loot tables (also
@@ -799,6 +814,30 @@ func validateItemDefs(defs []*itemDef) {
 		validateItemNature(def)
 		validateFlavorHasNoStats("item "+def.id, def.flavor)
 		validateRuleCards(def.id, def.rules)
+		validateItemOnHit(def)
+	}
+}
+
+// validateItemOnHit panics if a def carries on-hit timed effects it may not
+// (#271): onHit is a weapon-only rider (it fires when a melee hit lands), and
+// every entry must name a registered effectDef with a positive duration — an
+// unknown effect id or a zero-turn rider would silently no-op in play, so it
+// fails at process start instead. effectDefByID is already built by the time
+// any item validates (buildEffectIndex runs before mustValidateContent —
+// content.go's init).
+func validateItemOnHit(def *itemDef) {
+	if len(def.onHit) > 0 && !def.isWeapon() {
+		panic("game: non-weapon item " + def.id + " must not set onHit (on-hit effects fire on a melee hit)")
+	}
+
+	for _, ae := range def.onHit {
+		if _, ok := effectDefByID[ae.effectID]; !ok {
+			panic("game: item " + def.id + " onHit names unknown effect " + ae.effectID)
+		}
+
+		if ae.turns <= 0 {
+			panic("game: item " + def.id + " onHit effect " + ae.effectID + " must have turns > 0")
+		}
 	}
 }
 
@@ -962,7 +1001,7 @@ func validateItemCombatStats(def *itemDef) {
 func validateRuleCards(owner string, cards []ruleCard) {
 	for _, c := range cards {
 		switch c.event {
-		case evDealDamage, evTakeDamage, evEarnXP, evAggroRange:
+		case evDealDamage, evTakeDamage, evEarnXP, evAggroRange, evEndOfTurn:
 		default:
 			panic("game: " + owner + " rule card has unknown event " + c.event)
 		}
@@ -1019,8 +1058,14 @@ func validateRuleCondition(owner, event string, cond condition) {
 		panic("game: " + owner + " rule card has unknown condition " + cond.kind)
 	}
 
-	if event == evEarnXP && cond.kind == condChance {
-		panic("game: " + owner + " earn-xp rule card has a chance condition (earn-xp folds run without rng)")
+	// earn-xp and end-of-turn both fold WITHOUT an rng (resolveBubbleTurnLocked's
+	// award loop and tickEffectsLocked build a bare ruleCtx), so a chance
+	// condition on either would nil-deref conditionHolds' ctx.rng the first time
+	// it rolled, mid-turn. Reject at load; lift per-event once a fold threads a
+	// real rng.
+	if cond.kind == condChance && (event == evEarnXP || event == evEndOfTurn) {
+		panic("game: " + owner + " " + event + " rule card has a chance condition (" +
+			event + " folds run without rng)")
 	}
 }
 
@@ -1077,6 +1122,10 @@ func validateMonsterOnlyItems(kinds []*monsterDef, byID map[string]*itemDef) {
 }
 
 func mustValidateContent() {
+	// Effect defs validate FIRST: item onHit riders (validateItemOnHit) resolve
+	// effect ids against effectDefByID, so a malformed effect def should fail on
+	// its own terms before an item is blamed for naming it.
+	validateEffectDefs(effectDefs)
 	validateItemDefs(itemDefs)
 	validateMaxReach(itemDefs)
 	validateMonsterDefs(monsterDefs)

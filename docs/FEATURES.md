@@ -674,8 +674,8 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   `Fantasy:` text — e.g. the Wyrmslayer's dragon Werdmullerix); flavor is
   cosmetic, never gameplay-affecting.
 
-### Monsters (kinds & difficulty rings — milestone 6c, expanded #266)
-- **Ten kinds**, content data in `internal/game/content.go` (`monsterDefs`),
+### Monsters (kinds & difficulty rings — milestone 6c, expanded #266, #271)
+- **Eleven kinds**, content data in `internal/game/content.go` (`monsterDefs`),
   each with its own stats, aggro radius, XP award, and loot table. A kind
   **names its weapon** in the item registry (#179) rather than carrying a copy
   of one, so reach, damage and damage type all come from a real item:
@@ -684,6 +684,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   |---|---|---|---|---|---|---|---|---|
   | Rat | 0–1 | 4 | Claws | 1 | melee | 8 | 7 | 10% |
   | Goblin | 0–1 | 6 | Rusty Shiv | 2 | melee | 12 | 7 | 15% |
+  | Serpent | 1 | 8 | Venom Sting | 2 | melee | 16 | 8 | 30% |
   | Wolf | 1 | 10 | Fangs | 3 | melee | 20 | 10 | 30% |
   | Ghoul | 1–2 | 16 | Talons | 4 | melee | 35 | 8 | 35% |
   | Kin Archer | 1–2 | 12 | Hunter's Bow | 3 | **3 hexes** | 30 | 8 | 30% |
@@ -701,6 +702,13 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   **Frost Wisp** is the only Ice attacker and takes +50% from Fire (the ice
   mirror of "trolls fear fire"), and the **Goblin** is a second home-ring face
   (a weak sharp trash mob, no cards).
+
+  **The Serpent is the first kind whose attack applies a lingering effect**
+  (#271): its bite (`Venom Sting`, monsterOnly) poisons the victim — a small
+  HP drain each end-of-turn for a few turns, refreshed on every hit (see the
+  **Timed / lingering effects** entry). It drops the **Bloodrage Cleaver**
+  (the timed-buff proof
+  weapon), so one encounter teaches both halves of the mechanism.
 
   **The Kin Archer is the first kind that attacks without closing** (#179). It
   shoots from up to 3 hexes — under the player Shortbow's 4, so player gear
@@ -948,7 +956,9 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   through **rule cards** (pure serializable data — no closures; the SQLite
   prerequisite). Events live: `deal-damage`, `take-damage`, `earn-xp`,
   `aggro-range` (per-kind aggro radius folds through it since 6c; live
-  content since #88 — the noticeability gear above; clamped ≥1).
+  content since #88 — the noticeability gear above; clamped ≥1),
+  `end-of-turn` (#271 — folds an entity's active **timed effects** into a
+  per-turn HP delta, base 0, no rng; see Timed effects below).
   Conditions: `chance`, `targetHPBelowPct`, `targetHPBelowFlat`,
   `targetHPFull`, `allyInBubble`, `targetAdjacent`, `attackerSpecies`,
   `targetKind` (victim is a monster of a specific registered kind — 6c,
@@ -971,6 +981,25 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   cards fired, which is how crit/glance reach the wire (see §2's per-hit
   combat moments). `applyRules` is a thin wrapper over it; tracing is
   observational — same card order, same rng draws, no arithmetic change.
+- **Timed / lingering effects** (`internal/game/effects.go`, #271, slice 1 —
+  the foundation for buff potions / poison enemies / regen / summoners, which
+  land in later #271 slices): each entity carries a list of **active timed
+  effects** — pure data `{effectDefId, magnitude, turnsRemaining}`, never a
+  closure, **persisted in the snapshot** (`snapshotVersion` 9). An effect is a
+  rule card that is active for N turns, folded by the same pipeline: a **buff**
+  folds at `deal-damage`/`take-damage`/…; a **DoT/regen** folds at the new
+  `end-of-turn` event, where the end-of-turn tick (`tickEffectsLocked`, run once
+  per turn resolution) applies the per-turn HP delta (a DoT drains — can be
+  lethal, reaped by the same death pass; a regen heals — capped at max HP) and
+  advances/expires every effect's counter. Deterministic and **rng-free**, so no
+  seeded pin moves. **Stacking**: a re-applied same-def effect **refreshes** its
+  timer and magnitude (never stacks N copies) — an ARPG bounded modifier, not a
+  TTRPG status (no save, no roll; see design-decisions.md). Effects are applied
+  by pure-data **on-hit riders** on a weapon (`itemDef.onHit`), collected at
+  `rollDamageLocked` and applied after the tick so a fresh effect takes hold
+  next turn. Proof content: the **Serpent** (poison bite → victim DoT) and the
+  **Bloodrage Cleaver** (self-buff-on-hit → `+15%` deal-damage for 2 turns,
+  refreshed each swing). Cleared on a player respawn.
 - **Determinism**: per-resolution PCG rng seeded (worldSeed, turn); map
   iteration sorted before any rng draw; spawn randomness on separate
   fixed streams. Fully reproducible turns.

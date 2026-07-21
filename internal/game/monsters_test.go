@@ -19,6 +19,7 @@ func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 		idKindRat: true, idKindWolf: true, idKindGhoul: true,
 		idKindTroll: true, idKindDragon: true, idKindArcher: true,
 		idKindGoblin: true, idKindSkeleton: true, idKindFrostWisp: true, idKindWraith: true,
+		idKindSerpent: true,
 	}
 
 	if got, want := len(monsterDefs), len(want); got != want {

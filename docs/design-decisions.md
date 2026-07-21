@@ -628,3 +628,58 @@ occluded. Domain membership, by contrast, is a resolution-time property, so
 absent from `byHex`. This actions the deferred "LOS on attacks" slice as the
 bug fix it turned out to be, restoring the invariant literally: reach ⊆
 see-able ⊆ same-bubble.
+
+## Timed / lingering effects are modifier cards with a turn counter *(built 2026-07-21, #271 slice 1)*
+
+The foundation the rest of #271 (buff potions, poison/DoT enemies, regenerating
+monsters, summoners) stacks on: a **per-entity list of active timed effects**
+the combat pipeline folds and an end-of-turn tick advances. The load-bearing
+call was holding the ARPG line — this is the exact zone a "condition/status with
+a save" wants to grow into (`game-identity.md`). The five decisions:
+
+- **An effect is a modifier + a turn counter, not a TTRPG status.** A timed
+  effect is pure data `{effectDefId, magnitude, turnsRemaining}` (never a
+  closure — the SQLite-serialization prerequisite a rule card has). It is folded
+  by the *same* modifier pipeline: a buff is "a rule card that is active for N
+  turns", synthesized from the effect def's structure (event, effect verb) and
+  the instance's magnitude. **No save, no `d20`, no coupled roll** — duration is
+  a plain turn count, and there is nothing to roll to shorten it.
+- **Tick timing: end-of-turn, once per turn resolution.** `tickEffectsLocked`
+  runs inside `resolveCombatLocked` (both the world domain and every bubble),
+  *after* attacks and moves and *before* `resolveDeathsLocked` — so a DoT that
+  drops an entity to 0 is reaped by the same death pass a melee kill is (a DoT
+  kill in a bubble awards XP and rolls loot like any other). It is **rng-free**
+  (flat per-turn amounts, `end-of-turn` folds without an rng like `earn-xp`), so
+  it consumes nothing from the turn's stream and no seeded pin moves.
+- **Stacking: refresh, not stack (the deliberate ARPG choice).** A re-applied
+  same-def effect **overwrites its magnitude and resets its timer** rather than
+  adding a second copy. The pipeline *adds* percentages within a fold, so N
+  stacked copies would compound toward the runaway vertical scaling the
+  flat-power-curve identity explicitly refuses — refresh keeps each source
+  bounded to one modifier. Different-def effects still coexist (poison + buff at
+  once); refresh is per-def. An on-hit effect applies *after* the tick, so a
+  fresh effect uniformly takes hold next turn (a buff first folds next turn, a
+  DoT first drains next turn).
+- **One new pipeline kind: the `end-of-turn` event.** Adding it followed the
+  `new-pipeline-kind` four-places rule (const + fold site + `validateRuleCards`
+  + the generated guide). It reuses `effAdd` for both directions — a DoT is a
+  negative add, a regen a positive one — so no new *effect verb* was needed, and
+  a "while effect active" *condition* was deliberately **not** added: an active
+  effect gates itself by being present in the list. Its two consumers are the
+  poison DoT (real content) and the regen heal (the heal direction, exercised by
+  a white-box test; its content trigger — a regen potion / regenerating monster
+  — is a later #271 slice). Applying an effect is a separate side-effecting step
+  (pure-data `onHit` riders on a weapon, collected at `rollDamageLocked`), **not**
+  a pipeline effect verb — `applyRules` must stay a pure int fold.
+- **Serialization: persisted, versioned, no migration.** Active effects are
+  multi-turn state (like a monster's home/leash), so they ride the snapshot on a
+  snapshot-private DTO (`timedEffectDTO`, JSON tags on the DTO, never the entity
+  struct) and **`snapshotVersion` bumped 8 → 9** — a v8 snapshot is rejected,
+  preserved-aside, and the world starts fresh, per the no-backward-compat rule.
+  Cleared on a player respawn (a fresh body).
+
+Proof content (kept minimal — full buff-potion / poison-enemy content is later
+#271 slices): the **Serpent** (a home-ring enemy whose bite applies a poison
+DoT) and the **Bloodrage Cleaver** (a rage weapon whose hits self-buff the
+wielder's damage), the two proof consumers of the on-hit mechanism and the two
+fold directions (`end-of-turn` DoT + `deal-damage` buff).

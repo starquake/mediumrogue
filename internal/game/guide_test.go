@@ -91,6 +91,13 @@ func TestGuideDocumentsEveryVocabularyKindInUse(t *testing.T) {
 	for _, def := range skillDefs {
 		check("skill "+def.id, def.rules)
 	}
+
+	// Effect defs (#271) fold synthesized cards, so their vocabulary must reach
+	// the guide too — otherwise a new effect kind (e.g. the evEndOfTurn event)
+	// could ship undocumented.
+	for _, def := range effectDefs {
+		check("effect "+def.id, []ruleCard{{event: def.event, when: def.when, then: effect{kind: def.effect, n: 1}}})
+	}
 }
 
 // TestGuideStatsComeFromStatlines: the guide renders stat text through the SAME

@@ -32,6 +32,40 @@ var (
 	}
 )
 
+// Timed-effect def ids (#271, slice 1). An effect def is the STRUCTURAL half
+// of a timed effect (which event it folds at, which verb) — the per-application
+// magnitude and duration live on the instance (effects.go). Named here for the
+// usual reason: registry, on-hit riders (itemDefs.onHit), and their tests can't
+// drift on a typo.
+const (
+	idEffectPoison = "poison"
+	idEffectFrenzy = "frenzy"
+	idEffectRegen  = "regen"
+)
+
+// effectDefs is the timed-effect content registry (#271). Three defs, two of
+// which back the slice's proof consumers:
+//   - poison: a DoT — a negative effAdd folded at end-of-turn (the Serpent's
+//     bite applies it, idVenomSting.onHit). The first evEndOfTurn consumer.
+//   - frenzy: a self-buff — a deal-damage mulPct (idBloodrageCleaver.onHit
+//     applies it to the attacker). Exercises the fold-into-combat path.
+//   - regen: a heal-over-turn — a POSITIVE effAdd folded at end-of-turn. The
+//     SECOND evEndOfTurn consumer (its heal direction), proving the event folds
+//     both ways. It has no on-hit content trigger in this slice — the regen
+//     potion / regenerating monster that applies it is a later #271 slice — so
+//     it is exercised by a white-box test (effects_test.go), the documented
+//     second-consumer path.
+//
+// magnitude and duration are per-INSTANCE (set where the effect is applied), so
+// the defs carry no numbers — nothing here to tune, hence no mnd suppression.
+//
+//nolint:gochecknoglobals // fixed effect-def registry, effectively const; validated at init.
+var effectDefs = []*effectDef{
+	{id: idEffectPoison, name: "Poison", event: evEndOfTurn, effect: effAdd},
+	{id: idEffectRegen, name: "Regeneration", event: evEndOfTurn, effect: effAdd},
+	{id: idEffectFrenzy, name: "Frenzy", event: evDealDamage, effect: effMulPct},
+}
+
 // speciesCards returns a species' passive rule cards (nil for monsters'
 // empty species).
 func speciesCards(species string) []ruleCard {
@@ -533,6 +567,43 @@ var itemDefs = []*itemDef{
 		heal:   999,
 		flavor: "One swallow and the road behind you might as well not have happened.",
 	},
+
+	// Timed-effect foundation proof weapons (#271, slice 1). Both carry an
+	// onHit rider (effects.go) instead of a rule card: the effect they apply is
+	// a lingering, turn-counted modifier, not an instant fold. The Bloodrage
+	// Cleaver is the player-side proof (a self-buff-on-hit — pure ARPG "rage
+	// stacks", refresh-not-stack per the design); the Venom Sting is the
+	// Serpent's monsterOnly bite (a DoT on the victim). Full buff-potion / DoT
+	// content is a later #271 slice — these two exist to prove the mechanism.
+	{
+		// A rage weapon: each landed hit refreshes a short "+damage for a couple
+		// turns" self-buff, so sustained aggression hits harder than opening.
+		// Damage at the 1H melee anchor (4) — the buff is the point, not raw
+		// stats. Drops off the Serpent (its own table, below).
+		id: idBloodrageCleaver, name: "Bloodrage Cleaver", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     4,
+		flavor:     "The longer the fight, the better it likes you.",
+		//nolint:mnd // authored content: +15% deal-damage buff for 2 turns, refreshed on hit.
+		onHit: []appliedEffect{
+			{effectID: idEffectFrenzy, magnitude: percentBase + 15, turns: 2, toSelf: true},
+		},
+	},
+	{
+		// The Serpent's bite: a small poison that ticks each end-of-turn for a
+		// few turns, refreshed on every hit — so staying adjacent to a serpent
+		// bleeds you steadily even between its swings. monsterOnly, like every
+		// natural weapon.
+		id: idVenomSting, name: "Venom Sting", itemType: protocol.ItemTypeWeapon,
+		tags:       []string{protocol.WeaponTagMelee},
+		damageType: protocol.DamageTypeSharp,
+		damage:     2, monsterOnly: true,
+		//nolint:mnd // authored content: -2 HP/turn (a negative effAdd) for 3 turns, refreshed on hit.
+		onHit: []appliedEffect{
+			{effectID: idEffectPoison, magnitude: -2, turns: 3},
+		},
+	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
@@ -852,6 +923,25 @@ var monsterDefs = []*monsterDef{
 		},
 		rings: []int{2},
 	},
+
+	// Timed-effect foundation proof enemy (#271, slice 1): the first monster
+	// whose attack applies a LINGERING effect rather than only instant damage.
+	// Its bite (idVenomSting) poisons the victim — a small HP drain each
+	// end-of-turn for a few turns, refreshed on every hit — so it teaches the
+	// DoT foundation in play. Calibrated near the Goblin/Rat home tier: weak in
+	// raw HP and hit, the poison is the whole threat. Drops the Bloodrage
+	// Cleaver (the buff-weapon proof) so both halves of the mechanism are
+	// reachable from one encounter. Its own table is NEW, so no existing seeded
+	// drop pin moves.
+	{
+		id: idKindSerpent, name: "Serpent",
+		maxHP: 8, weapon: idVenomSting, xp: 16, aggroRadius: 8, dropChance: 30,
+		drops: []drop{
+			{defID: idBloodrageCleaver, weight: 2},
+			{defID: idMinorSalve, weight: 2},
+		},
+		rings: []int{1},
+	},
 }
 
 // init builds the derived lookup tables and validates the registry
@@ -865,6 +955,7 @@ func init() {
 		itemDefByID[def.id] = def
 	}
 
+	buildEffectIndex()
 	buildMonsterIndex()
 	buildSkillIndex()
 
