@@ -71,9 +71,11 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 
 ### Movement
 - Flat-top hex grid, axial coordinates, grid-locked. **Click-to-move**
-  (server BFS pathfinding, one hex per turn, re-validated each turn) or
-  **QWE/ASD** keys for single steps. Up to **5 friendly entities stack** per
-  hex (a full party moves as one blob; count badge rendered).
+  (server BFS pathfinding, one hex per turn, re-validated each turn). Movement
+  is **click/tap only** — the old QWE/ASD single-step keys were dropped by the
+  survey-camera experiment (#273); WASD now pans the camera (see Camera below).
+  Up to **5 friendly entities stack** per hex (a full party moves as one blob;
+  count badge rendered).
 - **A blocked walk detours instead of stalling** (#96): when a queued path's
   next hex is closed — hostile-held, or same-faction at `StackCap` — a
   **player** re-routes around it and still advances that turn. Only occupancy
@@ -92,13 +94,24 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   flee path queued inside a fight): out in the world any monster within
   `CombatRadius` forms a bubble, which hard-cancels a multi-hex route (#103)
   before a hostile could stand on its next step.
-- **Movement keys are ignored while typing** (item 10, playtest batch 2, bug
-  fix): a focused input/textarea/contenteditable (chat, in particular — w/a/
-  s/d are ordinary letters too) or the start screen being visible suppresses
-  the QWE/ASD handler.
+- **Keyboard controls are ignored while typing** (item 10, playtest batch 2,
+  bug fix): a focused input/textarea/contenteditable (chat, in particular —
+  w/a/s/d/c are ordinary letters too) or the start screen being visible
+  suppresses every control key (wait, panels, and the camera pan/recenter).
 - **SPACE = wait** (item 11, playtest batch 2): the same own-hex move a
   click already waits/cancels with — clears any queued path, and inside a
   bubble it locks in this turn's action like any other move intent.
+- **Survey camera** (#273, client-only feel experiment): the world container
+  is player-locked and re-centers every frame, with two overlays. **Mouse-wheel
+  smooth zoom** scales the whole scene toward a wheel-driven `targetZoom` eased
+  frame-rate-independently (`1 - e^(-rate·dt)`), clamped to **[0.5, 2.5]**
+  (`ZOOM_MIN`/`ZOOM_MAX`); wheel scroll over the canvas zooms instead of
+  scrolling the page. **WASD pans** a persistent screen-space offset on top of
+  the follow (`CAMERA_PAN_SPEED` px/s while held) to survey the big world while
+  zoomed out; the offset is zeroed — **recentering on the player** — whenever
+  you issue a move (any click/tap) or press **`C`**. `window.game` exposes
+  `zoom` and `pan` (plus the existing `camera`) for tests; screen↔world
+  transforms divide/multiply by `zoom` and fold the pan into `camera`.
 - **Player name labels** (item 8, playtest batch 2): a small always-on name
   tag above every PLAYER dot (not monsters — they get hover info instead,
   item 13), styled like the count badge and moving with the dot's tween.
@@ -596,14 +609,15 @@ because the off-hand takes both a shield and a dual-wielded weapon.
     `aoeRadius`.
   - **drink** — a consumable: applies its heal (clamped to max HP) and
     decrements the stack; an emptied stack frees its entry.
-- **Keybindings** — `C` or `I` toggles the character panel (either key,
-  interchangeably), `Esc` closes it (a genuine no-op while already closed,
-  never a toggle); all three share the movement keys' typing-focus guard
-  (`client/src/input/keys.ts`), so typing "c"/"i"/Escape into chat or the
-  join-name field never touches the panel.
-- **Client** — a toggleable **paper-doll** panel (`C`/`I` keys + a HUD button
-  + an in-panel × whose tooltip lists all three; default closed since it is
-  large): the eight named hexes (Helmet, Amulet, Gloves, Ring, Main Hand,
+- **Keybindings** — `I` toggles the character panel, `Esc` closes it (a genuine
+  no-op while already closed, never a toggle); both share the control keys'
+  typing-focus guard (`client/src/input/keys.ts`), so typing "i"/Escape into
+  chat or the join-name field never touches the panel. (`C` was a second toggle
+  key until #273 reassigned it to camera-recenter — see Movement → Survey
+  camera.)
+- **Client** — a toggleable **paper-doll** panel (`I` key + a HUD button
+  + an in-panel × whose tooltip lists the ways to close it; default closed since
+  it is large): the eight named hexes (Helmet, Amulet, Gloves, Ring, Main Hand,
   Chest, Off-Hand, Boots) on the approved ARPG mockup's Vitruvian layout —
   the off-hand hex **greys out** with a "two-handed grip" ghost label and is
   unclickable while a two-handed weapon occupies main-hand — plus a 4-cell

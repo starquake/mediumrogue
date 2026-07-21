@@ -150,8 +150,8 @@ function CharacterPanel(props: { actions: CharacterActions }): JSXElement {
       <div id="character-panel">
         <div class="title panel-head">
           <span>Character</span>
-          <span class="keyhint">C / I toggles · Esc closes</span>
-          <button type="button" class="panel-close" title="close (C / I / Esc)" onClick={() => props.actions.close()}>
+          <span class="keyhint">I toggles · Esc closes</span>
+          <button type="button" class="panel-close" title="close (I / Esc)" onClick={() => props.actions.close()}>
             ×
           </button>
         </div>
