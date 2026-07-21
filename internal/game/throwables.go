@@ -1,9 +1,8 @@
 package game
 
 import (
-	"slices"
-
 	mrand "math/rand/v2"
+	"slices"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
