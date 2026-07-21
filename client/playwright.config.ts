@@ -76,19 +76,24 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // two tests (mage, then rogue) — melee-feedback's private-server + short
   // patience reasoning applies verbatim.
   //
-  // 3 -> 12 monsters (#181): BOTH tests share this one server, and each leaves
-  // a player fighting when it ends. An abandoned player keeps swinging, so
-  // monsters can die before the other test has found one — and each test needs
-  // to reach a live monster and land a hit. That starves silently: the poll
-  // just times out. CI is slower than a laptop, which widens the window, and
-  // this file has now flaked in CI on two DIFFERENT tests while passing 12/12
-  // locally under heavier parallelism.
-  //
-  // UNPROVEN: the failure has never reproduced locally, so this is a
-  // hypothesis-driven mitigation, not a demonstrated fix. It is cheap and it
-  // removes a real starvation path; if the flake returns, the next lead is the
-  // shared-server/abandoned-player coupling itself, not the count.
-  { name: "attack-highlight", monsters: 12, env: { COMBAT_PATIENCE: "700ms" } },
+  // #181 (the bow-range flake): #191 bumped this 3 -> 12 as an explicitly
+  // UNPROVEN mitigation, guessing at monster depletion. Root-caused since
+  // (reproduced locally at MONSTER_COUNT=2, --repeat-each=10 --workers=16:
+  // up to 8/20 rogue-bow-range timeouts on a bad spawn; 0/100 after) and the
+  // cause is TEST-side, not the count: the approach loops pinned on the
+  // NEAREST monster and stepped greedily, so an unreachable monster (spawn
+  // checks walkability, not connectivity — a terrain pocket parks one
+  // forever), an equal-distance oscillation, or a leash-return treadmill
+  // (everything moves 1 hex/turn, so a fleeing target is uncatchable) each
+  // hung the poll for its full 20s. The mage test additionally read combat
+  // state one-shot after the bubble could have collapsed. All fixed in the
+  // spec: progress-aware target rotation, tabu stepping, out-of-combat
+  // re-engagement, poll-retried in-combat captures, and an afterEach that
+  // disengages the abandoned player (a wait intent clears its attack, so it
+  // stops grinding the shared monster pool). Count restored to 3, matching
+  // the sibling monster specs; the robustness fix is count-independent
+  // (proven at 2).
+  { name: "attack-highlight", monsters: 3, env: { COMBAT_PATIENCE: "700ms" } },
   { name: "ranged", monsters: 3 },
   { name: "monsters", monsters: 3 },
   // kinds needs several distinct monster kinds actually spawned to prove
