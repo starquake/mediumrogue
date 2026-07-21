@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bufio"
-	"encoding/json"
 	"slices"
 	"testing"
 	"time"
@@ -31,28 +30,6 @@ func bubbleWithMember(bundle protocol.TurnEvent, id int64) (protocol.BubbleView,
 	}
 
 	return protocol.BubbleView{}, false
-}
-
-// decodeBundle reads and unmarshals the next SSE TURN frame. The stream
-// interleaves chat announces (kill summaries, deaths, pickups) and named
-// heartbeats with turn bundles — anything that isn't a turn frame is
-// skipped, not mis-decoded as an empty bundle.
-func decodeBundle(t *testing.T, r *bufio.Reader) protocol.TurnEvent {
-	t.Helper()
-
-	for {
-		frames := readFrames(t, r, 1)
-		if frames[0].event != protocol.EventTurn {
-			continue
-		}
-
-		var bundle protocol.TurnEvent
-		if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
-			t.Fatalf("unmarshal bundle %q: %v", frames[0].data, err)
-		}
-
-		return bundle
-	}
 }
 
 // TestCombatBubbleFreezesOverHTTP exercises milestone 6.4's headline behavior
@@ -101,7 +78,7 @@ func TestCombatBubbleFreezesOverHTTP(t *testing.T) {
 	formDeadline := time.Now().Add(10 * time.Second)
 
 	for time.Now().Before(formDeadline) {
-		bundle := decodeBundle(t, reader)
+		bundle := decodeTurnFrame(t, reader)
 
 		myEntity, ok := entityOf(bundle, me.EntityID)
 		if !ok {
@@ -152,7 +129,7 @@ func TestCombatBubbleFreezesOverHTTP(t *testing.T) {
 	lastTurn := freezeTurn
 
 	for i := range bundlesToObserve {
-		bundle := decodeBundle(t, reader)
+		bundle := decodeTurnFrame(t, reader)
 
 		if got, want := bundle.Turn, lastTurn; got <= want {
 			t.Fatalf("bundle %d: world turn = %d, want > %d (the world clock must keep running)", i, got, want)
@@ -197,7 +174,7 @@ func TestCombatBubbleFreezesOverHTTP(t *testing.T) {
 	joinDeadline := time.Now().Add(10 * time.Second)
 
 	for time.Now().Before(joinDeadline) {
-		bundle := decodeBundle(t, reader)
+		bundle := decodeTurnFrame(t, reader)
 
 		b, found := bubbleWithMember(bundle, me.EntityID)
 		if !found {

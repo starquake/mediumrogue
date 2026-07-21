@@ -3,7 +3,6 @@ package integration_test
 import (
 	"bufio"
 	"encoding/json"
-	"log/slog"
 	"net/http/httptest"
 	"slices"
 	"testing"
@@ -51,18 +50,7 @@ func startServerWithKindAt(t *testing.T, kind string, hex protocol.Hex) *httptes
 		t.Fatalf("SpawnMonsterKindAt(%v, %q) = false, want a monster (not walkable or over StackCap)", hex, kind)
 	}
 
-	chatBroker := newAnnouncingChatBroker(world)
-	go world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger: slog.New(slog.DiscardHandler), World: world, Ticks: ticks, Chat: chatBroker,
-		HeartbeatInterval: time.Hour,
-	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
-
-	return ts
+	return serveWorld(t, world, ticks, server.Deps{HeartbeatInterval: time.Hour})
 }
 
 // decodeAnyFrame reads one SSE frame and, if it's a turn or a chat frame,

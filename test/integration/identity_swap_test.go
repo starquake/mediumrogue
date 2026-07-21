@@ -13,8 +13,6 @@ package integration_test
 // playtest report described.
 
 import (
-	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -27,18 +25,9 @@ import (
 func joinAs(t *testing.T, ts *httptest.Server, token, name, class string) protocol.JoinResponse {
 	t.Helper()
 
-	resp := postJSON(t, ts, "/api/join",
-		protocol.JoinRequest{Token: token, Name: name, Class: class, Species: protocol.SpeciesHuman})
-	if got, want := resp.StatusCode, http.StatusOK; got != want {
-		t.Fatalf("join(%q) status = %d, want 200", name, got)
-	}
-
-	var joined protocol.JoinResponse
-	if err := json.NewDecoder(resp.Body).Decode(&joined); err != nil {
-		t.Fatalf("decode join(%q) response: %v", name, err)
-	}
-
-	return joined
+	return joinWith(t, ts, protocol.JoinRequest{
+		Token: token, Name: name, Class: class, Species: protocol.SpeciesHuman,
+	})
 }
 
 func TestTwoClientsSweepBetweenNeverSwapIdentities(t *testing.T) {
@@ -60,12 +49,12 @@ func TestTwoClientsSweepBetweenNeverSwapIdentities(t *testing.T) {
 	obs, _ := openStream(t, ts, observer.Token)
 
 	aliceStream, closeAlice := openStream(t, ts, alice.Token)
-	if _, ok := entityOf(decodeBundle(t, aliceStream), alice.EntityID); !ok {
+	if _, ok := entityOf(decodeTurnFrame(t, aliceStream), alice.EntityID); !ok {
 		t.Fatalf("alice %d absent from its own first bundle", alice.EntityID)
 	}
 
 	bobStream, closeBob := openStream(t, ts, bob.Token)
-	if _, ok := entityOf(decodeBundle(t, bobStream), bob.EntityID); !ok {
+	if _, ok := entityOf(decodeTurnFrame(t, bobStream), bob.EntityID); !ok {
 		t.Fatalf("bob %d absent from its own first bundle", bob.EntityID)
 	}
 
@@ -78,7 +67,7 @@ func TestTwoClientsSweepBetweenNeverSwapIdentities(t *testing.T) {
 	waitForAbsence(t, obs, alice.EntityID, time.Now().Add(5*time.Second))
 
 	// Bob must still be exactly bob: present, same entity id, same name.
-	bundle := decodeBundle(t, obs)
+	bundle := decodeTurnFrame(t, obs)
 
 	bobStill, ok := entityOf(bundle, bob.EntityID)
 	if !ok {
@@ -106,7 +95,7 @@ func TestTwoClientsSweepBetweenNeverSwapIdentities(t *testing.T) {
 
 	waitForPresence(t, obs, aliceRejoin.EntityID, time.Now().Add(5*time.Second))
 
-	bundle = decodeBundle(t, obs)
+	bundle = decodeTurnFrame(t, obs)
 
 	restoredAlice, ok := entityOf(bundle, aliceRejoin.EntityID)
 	if !ok {

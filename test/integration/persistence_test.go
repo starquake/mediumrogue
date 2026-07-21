@@ -11,7 +11,6 @@ package integration_test
 import (
 	"bufio"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/starquake/mediumrogue/internal/chat"
 	"github.com/starquake/mediumrogue/internal/game"
 	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -37,20 +35,18 @@ const (
 	persistRadius = 12
 )
 
-// persistWorld bundles a *game.World with the pieces needed to wire an HTTP
-// handler for it (ticks hub, chat broker) without starting the control loop
-// yet — so a caller can place monsters or call RestoreState (both of which
-// require a not-yet-running world) before calling serve.
+// persistWorld bundles a *game.World with its ticks hub, held without starting
+// the control loop yet — so a caller can place monsters or call RestoreState
+// (both of which require a not-yet-running world) before calling serve.
 type persistWorld struct {
 	world *game.World
 	ticks *hub.Hub
-	chat  *chat.Broker
 }
 
-// newPersistWorld builds (but does not start) a world, wired with an
-// announcing chat broker exactly like cmd/rogue/app — SetAnnounce's contract
-// requires installing the hook before Run starts, so this must happen before
-// serve, not after.
+// newPersistWorld builds (but does not start) a world for a restart test. The
+// announcing chat broker is wired by serve (via serveWorld) right before
+// Run — SetAnnounce's before-Run contract still holds, and nothing between
+// build and serve announces (monster placement and RestoreState do not).
 func newPersistWorld(t *testing.T) *persistWorld {
 	t.Helper()
 
@@ -64,9 +60,8 @@ func newPersistWorld(t *testing.T) *persistWorld {
 		Radius:          persistRadius,
 		Ticks:           ticks,
 	})
-	broker := newAnnouncingChatBroker(world)
 
-	return &persistWorld{world: world, ticks: ticks, chat: broker}
+	return &persistWorld{world: world, ticks: ticks}
 }
 
 // serve starts pw's control loop and an httptest.Server in front of it —
@@ -74,17 +69,7 @@ func newPersistWorld(t *testing.T) *persistWorld {
 func (pw *persistWorld) serve(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	go pw.world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger: slog.New(slog.DiscardHandler), World: pw.world, Ticks: pw.ticks, Chat: pw.chat,
-		HeartbeatInterval: time.Hour,
-	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
-
-	return ts
+	return serveWorld(t, pw.world, pw.ticks, server.Deps{HeartbeatInterval: time.Hour})
 }
 
 // monsterVital is the (kind, HP) pair a restart must reproduce exactly for
