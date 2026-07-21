@@ -159,6 +159,14 @@ func parseLastEventID(r *http.Request) int64 {
 // was already sent (a coalesced wake-up with no new turn is a no-op).
 // Returns the turn number now on the wire.
 func writeTurn(w http.ResponseWriter, deps Deps, flusher http.Flusher, lastSent int64, viewerToken string) int64 {
+	// Cheap gate before the expensive per-viewer bundle: a coalesced no-op wake
+	// (or a reconnect already at the current watermark) skips SnapshotFor and
+	// its marshal entirely (#209). The turn can only advance between this read
+	// and SnapshotFor, so a bundle we do build is never staler than this check.
+	if deps.World.Turn() == lastSent {
+		return lastSent
+	}
+
 	snapshot := deps.World.SnapshotFor(viewerToken)
 
 	turn := snapshot.Turn
