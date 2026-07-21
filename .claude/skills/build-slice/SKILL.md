@@ -18,9 +18,21 @@ maintainer has OK'd it. If either is missing, stop and route to the
 
 ## Setup
 
-- Branch from up-to-date `main` (`git checkout main && git pull --ff-only`),
-  named for the slice. Open the PR early (draft) referencing the issue —
-  `Closes #NN` if the slice completes it.
+- Branch from up-to-date `main`, named for the slice. Open the PR early (draft)
+  referencing the issue — `Closes #NN` if the slice completes it.
+  **If you are running in an isolated worktree** (parallel/orchestrated build):
+  `cd` to your worktree path and run every `git` command there — branch, commit,
+  and push from inside it. Do **not** `git checkout` / `git checkout -b` in the
+  shared repo root: that moves the shared checkout's HEAD onto your branch and
+  can strand another agent's live work on it (2026-07-21: three agents ran
+  `git checkout -b` against the shared root, hijacking it — one commit even
+  landed on a sibling's branch). A worktree isolates the filesystem, not your
+  `git` habits — point them at the worktree.
+- **If you run `make e2e`, do not `pkill`/`fuser` the shared Playwright ports
+  (8123+).** When builds run in parallel, another agent's e2e server lives on
+  those ports; clearing the range kills its run (2026-07-21). If a port is busy,
+  point your own webServer at an isolated range instead of freeing the shared
+  one.
 - **Label**: the maintainer's OK just moved the issue into your court — set
   `needs: build` on it (removing `needs: your sign-off`:
   `gh issue edit <n> --add-label "needs: build" --remove-label
@@ -91,6 +103,20 @@ maintainer has OK'd it. If either is missing, stop and route to the
    few seconds after a push. Local-green is not mergeable. A flake (e.g. #117's autowalk timeout) on an unrelated
    diff: confirm it's known, re-run the job, note the recurrence.
 
+   **Watch CI *synchronously, within this turn* — never background the watch and
+   end.** If you are a subagent, arming a background watcher and stopping does
+   NOT get you woken when it finishes: unlike the main session, a subagent is not
+   re-invoked by its own background task, so the slice silently stalls with CI
+   unread and the Next-steps comment unposted (2026-07-21: five build agents each
+   said "the watcher will notify me" and ended mid-flight, every one needing a
+   nudge to finish). Poll in a foreground loop until every job is terminal, then
+   finish the slice in the same turn:
+
+   ```bash
+   while gh pr checks <n> --json bucket -q '.[].bucket' | grep -q pending; do sleep 30; done
+   gh pr checks <n> --json name,bucket -q '.[] | "\(.bucket)\t\(.name)"'  # read every job
+   ```
+
 ## The PR body: REVIEW is the bottleneck, not throughput
 
 The maintainer reviews every PR alone (2026-07-19: *"1. reviewing"*). So a PR
@@ -100,6 +126,10 @@ that actually need judgement.
 
 Structure, always:
 
+0. **The attribution header is the first line** (CLAUDE.md): `> 🤖 **Pull Request
+   by Claude** (AI pair-programmer working with @starquake) — opened through
+   @starquake's account.` — because `gh pr create` opens it under the maintainer's
+   account, and an unmarked PR reads as theirs.
 1. **`## Where to look`** — the **two or three** places you made a judgement
    call the maintainer might disagree with, each naming its file. A number you
    picked, a deliberate overlap, a reading that could plausibly be wrong. If
@@ -139,6 +169,16 @@ scanning past it.
   `content.go`, never memory), `design-decisions.md` for decided direction,
   plus a stale-claim sweep (`grep -rn "<topic>" docs/`).
 - `make e2e` if the client changed at all.
+- **A NEW e2e test that drives movement, combat, or the turn clock gets a load
+  run before you mark it ready** — `cd client && npx playwright test <spec>
+  --repeat-each=6 --workers=9`. CI runs each test once, on a fast idle runner, so
+  a timing/AI race hides there and only surfaces later — under load, or on a
+  *different* PR's slower run — where it reads as someone else's flake. The de-race
+  rule (CLAUDE.md) is how you fix a flake once it bites; this is how you keep the
+  one you just wrote from biting at all (2026-07-21: #205's tooltip-clears test
+  and an attack-highlight case passed their own CI, then failed a docs-only PR
+  and stalled two others — both were unreachable-nearest-monster races a load run
+  reproduces immediately). If it can't survive the load run, fix it now, not after.
 - `gh pr ready <n>`, watch CI, then STOP. **Do not merge** — the
   `ready to merge` label is the maintainer's; the `merge-pr` skill handles
   the landing when they add it.
