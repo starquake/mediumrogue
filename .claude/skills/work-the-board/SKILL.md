@@ -306,6 +306,14 @@ done
 
 Two things that make it behave:
 
+- **Both signals are mandatory — a label-only monitor is a silent trap.** The
+  watch covers *two* things: new maintainer comments AND `ready to merge`. Ship
+  it with only the label poll and every maintainer comment on a gated issue
+  goes unseen — the loop looks healthy while an answer sits unread. (2026-07-21:
+  a monitor armed with only the `ready to merge` poll dropped @starquake's
+  per-IP answer on #199; it sat unanswered until they asked in chat why nothing
+  had moved. If you hand-roll the monitor, keep the comment poll in it; never
+  trim it to "just the labels".)
 - **Diff the label set.** Emitting the current set every cycle spams a
   notification per minute for any PR that sits unmerged, and monitors that
   flood get stopped automatically.
