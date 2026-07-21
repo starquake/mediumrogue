@@ -635,7 +635,12 @@ roll, so it is ARPG-legal on jewelry.
   on the ghoul (w2 — its assassin/precision tier already carries the Misericorde)
   and the **Vampiric Blade** on the wraith (w2 — a life-draining elite). The wolf
   additions were the only ones to move a pinned drop seed, re-derived in
-  `drops_test.go`. Items land on the death hex and render as map markers.
+  `drops_test.go`. Items land on the death hex and render as map markers. The
+  **targeted consumables** (#271, slice 5 — **Flask of Alchemist's Fire**,
+  **Scroll of Recall**) are **not** on any drop table yet: they are reachable
+  through the `STARTER_CONSUMABLES` starter kit (see §3), with drop-table
+  placement deferred to a content pass so this action-path slice stays off the
+  shared drop registries.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):
@@ -667,6 +672,29 @@ roll, so it is ARPG-legal on jewelry.
     `aoeRadius`.
   - **drink** — a consumable: applies its heal (clamped to max HP) and
     decrements the stack; an emptied stack frees its entry.
+  - **throw** (#271) — a **throwable flask** is a *targeted* combat action, not
+    a drink: `IntentThrow` names the flask (`ItemID`) and an aim hex (`Target`).
+    Resolved in the turn pipeline like a ranged/AoE attack — **range- and
+    line-of-sight-gated** (out of range → 422 `ErrOutOfRange`, blocked → 422
+    `ErrNoLineOfSight`, non-throwable item → 422 `ErrNotThrowable`) — on landing
+    it deals its damage to **every** opposing-faction entity in the blast
+    (**AoE always hits**, no to-hit roll) and applies any **on-land timed
+    effect** (a DoT, buffered so it first bites next turn, cleansable like any
+    harmful effect). The flask is consumed **at resolution**, so a later intent
+    the same turn cancels the throw and keeps it. Reach (range + radius) obeys
+    the `CombatRadius` cap. *Proof consumer:* **Flask of Alchemist's Fire** (6
+    fire in a 1-hex blast at range 4, plus a −3/turn **Burning** DoT for 3
+    turns). Client: clicking a flask's backpack cell **arms** it (the cell reads
+    "throw", `window.game.armedThrow` = its id) and closes the panel; the next
+    map click is the aim.
+  - **recall** (#271) — a **scroll of recall** teleports the user to a safe hex
+    in the shared **sanctuary** (`IntentRecall`, `ItemID`; no target). It reuses
+    the **Blink** teleport (#161): occupancy/`StackCap` respected, the scroll
+    consumed only on a *successful* recall (a blocked/saturated destination
+    fizzles and keeps it), resolved in the move phase. The sanctuary is every
+    player's shared "home" until per-player beds land. Non-recall item → 422
+    `ErrNotRecallable`. *Proof consumer:* **Scroll of Recall**. Client: its
+    backpack cell reads "recall" and fires immediately.
 - **Keybindings** — `I` or `C` toggles the character panel, `Esc` closes it (a genuine
   no-op while already closed, never a toggle); both share the control keys'
   typing-focus guard (`client/src/input/keys.ts`), so typing "i"/Escape into
@@ -983,7 +1011,7 @@ roll, so it is ARPG-legal on jewelry.
   under one mutex; per-domain turn loops). Coalescing hub: a tick means
   "fetch latest state", never a delta.
 - **Wire**: POST `/api/join`, `/api/intent`
-  (move/attack/equip/unequip/drop/pickup/drink), `/api/chat`;
+  (move/attack/equip/unequip/drop/pickup/drink/learn-skill/use-skill/throw/recall), `/api/chat`;
   GET `/api/map` (once), `/api/events` (SSE: full-snapshot turn bundles with
   turn-number ids, chat events, named heartbeats). Reconnect =
   resync-to-latest (`Last-Event-ID` as watermark only). JSON everywhere.
@@ -1070,14 +1098,19 @@ roll, so it is ARPG-legal on jewelry.
   (`effectDefs`, content) are `poison` (harmful DoT), `regen` (heal), `frenzy`
   (deal-damage buff) and `ward` (take-damage/resist buff); `poison` is the only
   one flagged **harmful**, which is what the cleanse path keys on.
-  - **Two application triggers**, both pure-data riders (no combat-site special
+  - **Three application triggers**, all pure-data riders (no combat-site special
     case): a weapon's **on-hit rider** (`itemDef.onHit`) applies an effect when
     a melee hit lands — collected at `rollDamageLocked`, applied *after* the tick
-    so a fresh effect first bites next turn; and a consumable's **drink riders**
+    so a fresh effect first bites next turn; a consumable's **drink riders**
     (`itemDef.appliesEffect` / `cleansesHarmful`) apply an effect (or clear
     effects) *now*, on drink (`drinkItemLocked`) — a Warding Tonic must turn
     aside the incoming blow the turn it is drunk, and a drink is already the
-    player's whole turn in a bubble.
+    player's whole turn in a bubble; and a throwable's **on-land rider**
+    (`throwPayload.onLand`, #271) applies an effect to every blast victim — routed
+    through the same buffered on-hit path (the synthesized flask weapon's
+    `onHit`), so a thrown DoT (the **Burning** effect, `−3/turn` for 3 turns)
+    also first bites next turn and is cleansed by an Antivenom like any harmful
+    effect.
   - **Cleanse is harmful-only** (`clearHarmfulEffectsLocked`): an Antivenom
     strips every effect whose def is `harmful` (the poison) and leaves your own
     buffs intact — curing the poison must not also strip the buff you drank.
@@ -1216,6 +1249,7 @@ roll, so it is ARPG-legal on jewelry.
 | `TURN_INTERVAL` | `4s` | world-turn period (tests shrink it) |
 | `HEARTBEAT_INTERVAL` | `15s` | SSE keep-alive cadence |
 | `MONSTER_COUNT` | `0` | monsters spawned at startup |
+| `STARTER_CONSUMABLES` | `""` (none) | comma-separated consumable ids granted into every **new** player's backpack at join (#271); each id must be a registered consumable or the world fails loud at startup. Empty in production; used by the throwable/recall e2e to deterministically hand a fresh player a flask + scroll |
 | `COMBAT_PATIENCE` | `30s` | bubble AFK fallback before auto-resolve |
 | `BUBBLE_POLL` | `100ms` | control-loop poll (must be < TURN_INTERVAL) |
 | `DISCONNECT_GRACE` | `20s` | despawn delay for disconnected players |

@@ -39,6 +39,8 @@ const (
 	combatEventDrink  = "drink"
 	combatEventXP     = "xp_award"
 	combatEventSummon = "summon"
+	combatEventThrow  = "throw"  // #271: a thrown flask landed.
+	combatEventRecall = "recall" // #271: a recall scroll teleported its user.
 )
 
 // identityLogMsg is the slog message every identity-lifecycle log line
@@ -149,6 +151,13 @@ var (
 	ErrItemNotEquipped = errors.New("item is not equipped")
 	// ErrNotDrinkable rejects a drink intent naming a non-consumable item.
 	ErrNotDrinkable = errors.New("item is not drinkable")
+	// ErrNotThrowable rejects a throw intent naming an item that is not a
+	// throwable consumable (a flask with a throw payload) — #271. A well-formed
+	// request the world says no to, so a 422.
+	ErrNotThrowable = errors.New("item is not throwable")
+	// ErrNotRecallable rejects a recall intent naming an item that is not a
+	// recall consumable (a scroll of recall) — #271. Also a 422.
+	ErrNotRecallable = errors.New("item is not a recall scroll")
 	// ErrNotEquippable rejects an equip intent naming an item whose type has
 	// no equip slot at all (a consumable — drink, not equip, is its action).
 	// Class gates are gone (gear keystone, #56): anyone may equip anything
@@ -253,6 +262,18 @@ type entity struct {
 	// (#161) — transient like path and attackTarget, never snapshotted.
 	activeSkill  string
 	activeTarget *protocol.Hex
+	// throwItem/throwTarget are this turn's queued throw (#271): the owned
+	// throwable consumable's instance id and its aim hex. 0/nil for none.
+	// Resolved in the attack phase (resolveThrowsLocked) — a throw is a
+	// targeted combat action, consumed at resolution. Transient like
+	// attackTarget; never snapshotted, cleared on death.
+	throwItem   int64
+	throwTarget *protocol.Hex
+	// recallItem is this turn's queued recall (#271): the owned recall
+	// consumable's instance id, or 0 for none. Resolved in the move phase
+	// (resolveRecallsLocked) as a teleport to a safe sanctuary hex, reusing the
+	// Blink teleport path. Transient; never snapshotted, cleared on death.
+	recallItem int64
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
@@ -384,6 +405,10 @@ type World struct {
 	// radius is the world's hex radius (from Config.WorldRadius), the loop
 	// bound for spawnHexLocked's outward spiral.
 	radius int
+	// starterConsumables are consumable item ids granted into every new
+	// player's backpack at join (#271, WorldConfig.StarterConsumables). Empty in
+	// production; set by the throwable/recall e2e. Validated in NewWorld.
+	starterConsumables []string
 	// worldSeed is the procedural-map generation seed (Config.WorldSeed),
 	// kept (in addition to feeding GenerateMap/generateQuests at
 	// construction) so a snapshot restore can gate on it: a snapshot taken
@@ -566,6 +591,12 @@ type WorldConfig struct {
 	Radius int
 	// Ticks is the hub the world publishes resolved turns on.
 	Ticks *hub.Hub
+	// StarterConsumables are consumable item ids granted into every new
+	// player's backpack at join (#271, config STARTER_CONSUMABLES). Empty in
+	// production; set by the throwable/recall e2e to hand a fresh player a flask
+	// and a scroll deterministically. Each id must name a registered consumable
+	// — NewWorld panics otherwise (fail-loud, like a bad class default).
+	StarterConsumables []string
 }
 
 // NewWorld builds the world from a procedurally generated map (GenerateMap,
@@ -587,29 +618,32 @@ func NewWorld(cfg WorldConfig) *World {
 
 	worldID := newWorldID()
 
+	validateStarterConsumables(cfg.StarterConsumables)
+
 	return &World{
-		interval:        cfg.Interval,
-		ticks:           cfg.Ticks,
-		combatPatience:  cfg.CombatPatience,
-		bubblePoll:      cfg.BubblePoll,
-		disconnectGrace: cfg.DisconnectGrace,
-		now:             time.Now,
-		logger:          slog.Default(),
-		terrain:         terrain,
-		worldMap:        worldMap,
-		radius:          cfg.Radius,
-		worldSeed:       cfg.WorldSeed,
-		worldID:         worldID,
-		spawnable:       reachableWalkable(worldMap),
-		entities:        make(map[int64]*entity),
-		byToken:         make(map[string]*entity),
-		pendingInvites:  make(map[int64]int64),
-		bubbles:         make(map[int64]*bubble),
-		seed:            seed,
-		quests:          generateQuests(cfg.WorldSeed, worldMap),
-		announce:        func(string, string) {},
-		groundItems:     make(map[protocol.Hex][]groundStack),
-		archive:         make(map[string]characterRecord),
+		interval:           cfg.Interval,
+		ticks:              cfg.Ticks,
+		combatPatience:     cfg.CombatPatience,
+		bubblePoll:         cfg.BubblePoll,
+		disconnectGrace:    cfg.DisconnectGrace,
+		now:                time.Now,
+		logger:             slog.Default(),
+		terrain:            terrain,
+		worldMap:           worldMap,
+		radius:             cfg.Radius,
+		worldSeed:          cfg.WorldSeed,
+		worldID:            worldID,
+		spawnable:          reachableWalkable(worldMap),
+		starterConsumables: cfg.StarterConsumables,
+		entities:           make(map[int64]*entity),
+		byToken:            make(map[string]*entity),
+		pendingInvites:     make(map[int64]int64),
+		bubbles:            make(map[int64]*bubble),
+		seed:               seed,
+		quests:             generateQuests(cfg.WorldSeed, worldMap),
+		announce:           func(string, string) {},
+		groundItems:        make(map[protocol.Hex][]groundStack),
+		archive:            make(map[string]characterRecord),
 	}
 }
 
@@ -1133,6 +1167,10 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 		return w.learnSkillLocked(e, req.SkillID)
 	case protocol.IntentUseSkill:
 		return w.useSkillLocked(e, req.SkillID, req.Target)
+	case protocol.IntentThrow:
+		return w.queueThrowLocked(e, req.ItemID, req.Target)
+	case protocol.IntentRecall:
+		return w.queueRecallLocked(e, req.ItemID)
 	default:
 		return ErrInvalidIntentKind
 	}
@@ -1172,6 +1210,7 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
 	e.pending = pendingItemAction{}
+	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271: a move cancels a queued throw/recall.
 
 	return nil
 }
@@ -1259,6 +1298,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 		e.attackTarget = nil
 		e.path = nil
 		e.pending = pendingItemAction{}
+		e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
 
 		return nil
 	}
@@ -1285,6 +1325,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 	e.attackTarget = &t
 	e.path = nil
 	e.pending = pendingItemAction{}
+	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
 
 	return nil
 }
@@ -1565,6 +1606,7 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 		Stats:    statViewsFor(def),
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
+		Throwable: def.isThrowable(), Recall: def.recall,
 	}
 }
 
@@ -2222,6 +2264,9 @@ func (w *World) movePhaseLocked(
 	// destination is judged against the same pre-move board every other
 	// intent is judged against (#104).
 	w.resolveActivesLocked(byHex, members, attacked)
+	// Recall (#271) is a teleport like Blink — resolved here alongside actives,
+	// before ordinary movement, reusing the same teleport mechanism.
+	w.resolveRecallsLocked(byHex, members, attacked)
 
 	movers := make([]*entity, 0, len(members))
 
@@ -2400,6 +2445,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
+	w.resolveThrowsLocked(rng, byHex, damage) // #271: thrown flasks land in the same shared map.
 
 	for id, dmg := range damage {
 		w.entities[id].hp -= dmg
@@ -3025,6 +3071,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 		e.hp = e.maxHP
 		e.path = nil
 		e.pending = pendingItemAction{}
+		e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271: no queued throw/recall on a fresh body.
 		// A respawn is a fresh body: lingering poison/buff effects (#271) do
 		// not carry over the death that reset the HP bar.
 		e.effects = nil

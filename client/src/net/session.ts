@@ -5,6 +5,8 @@ import {
   IntentEquip,
   IntentLearnSkill,
   IntentPickup,
+  IntentRecall,
+  IntentThrow,
   IntentUnequip,
   IntentUseSkill,
 } from "../protocol.gen";
@@ -451,5 +453,49 @@ export async function submitUseSkill(
     groundItemId: 0,
     targetEntityId: 0,
     skillId,
+  });
+}
+
+/**
+ * Throws an owned flask at a target hex (#271) — a targeted combat action,
+ * like a ranged/AoE attack sourced from a consumable. The server validates
+ * owned/throwable/range/LOS and, on a rejection, surfaces the reason via the
+ * #193 toast; the flask is consumed at resolution. A false here is a no-op.
+ */
+export async function submitThrow(
+  identity: Pick<Identity, "entityId" | "token">,
+  itemId: number,
+  target: Hex,
+): Promise<boolean> {
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target,
+    kind: IntentThrow,
+    itemId,
+    groundItemId: 0,
+    targetEntityId: 0,
+    skillId: "",
+  });
+}
+
+/**
+ * Uses an owned scroll of recall (#271) — teleports the user to a safe hex in
+ * the shared sanctuary. No target hex (recall is self-targeted); the scroll is
+ * consumed at resolution.
+ */
+export async function submitRecall(
+  identity: Pick<Identity, "entityId" | "token">,
+  itemId: number,
+): Promise<boolean> {
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target: { q: 0, r: 0 },
+    kind: IntentRecall,
+    itemId,
+    groundItemId: 0,
+    targetEntityId: 0,
+    skillId: "",
   });
 }

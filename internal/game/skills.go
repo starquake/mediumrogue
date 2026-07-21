@@ -467,6 +467,7 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error 
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
+	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
 	e.activeSkill = id
 	e.activeTarget = &target
 

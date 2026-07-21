@@ -56,6 +56,12 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // about a fresh character's own state, and a wandering monster would only
   // add a bubble that blocks learning.
   { name: "skills" },
+  // throwables (#271): the targeted-consumable client paths (arm-then-throw,
+  // recall). Monster-free — the spec asserts the ARM→click→throw and recall
+  // consumption, not combat damage. STARTER_CONSUMABLES hands a fresh join a
+  // flask and a scroll (the only deterministic way to get a consumable into
+  // the monster-free e2e world — see inventory.spec.ts).
+  { name: "throwables", env: { STARTER_CONSUMABLES: "flask-of-fire,scroll-of-recall" } },
   // client-alive (#170): the regression guard for #167 — bundles keep being
   // APPLIED after an inventory action. Monster-free: the failure is in the
   // client's own turn handler, not in combat.

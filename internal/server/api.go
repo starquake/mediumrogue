@@ -77,6 +77,9 @@ func intentErrorStatus(err error) (int, bool) {
 		errors.Is(err, game.ErrInvalidIntentKind), errors.Is(err, game.ErrItemNotOwned),
 		errors.Is(err, game.ErrBackpackFull),
 		errors.Is(err, game.ErrItemNotEquipped), errors.Is(err, game.ErrNotDrinkable),
+		// Throw/recall rejections (#271): a non-throwable/non-recall item, out of
+		// range, or no line of sight — well-formed requests the world says no to.
+		errors.Is(err, game.ErrNotThrowable), errors.Is(err, game.ErrNotRecallable),
 		errors.Is(err, game.ErrNotEquippable), errors.Is(err, game.ErrNoSuchGroundItem),
 		errors.Is(err, game.ErrNoSuchSkill), errors.Is(err, game.ErrSkillAlreadyLearned),
 		errors.Is(err, game.ErrSkillPrereqUnmet), errors.Is(err, game.ErrNoSkillPoints),

@@ -798,3 +798,58 @@ while bubbled, raises weak **Risen** adds on nearby free hexes. The decisions:
 - **ARPG, not TTRPG.** Summoning is a deterministic spawn behavior — no summon
   check, no save, no roll to resist the add. The threat is attrition (the swarm),
   not a stat-check.
+
+## Targeted-consumable actions: throw & recall *(built 2026-07-21, #271 slice 5)*
+
+The two consumables the `add-content` recipe could not build because the engine
+had no action/targeting path for them: a **throwable flask** (hurled at a hex,
+blasts a radius) and a **scroll of recall** (teleport to safety). Two new intent
+kinds, `IntentThrow` and `IntentRecall` — the most protocol/action-heavy #271
+slice, and the most independent of the sibling content slices.
+
+- **A throw/recall is a COMBAT action, not an inventory action.** The existing
+  five inventory actions (equip/unequip/drop/pickup/drink) follow the
+  free-outside/turn-inside rule (`commitItemActionLocked`) — applied instantly
+  out of combat. Throw and recall do **not**: like an attack or a Blink they are
+  resolved in the turn pipeline against the evolving board (a throw needs the
+  shared damage map + turn rng; a recall reuses the teleport mechanism), never
+  applied at submit. They clear any queued move/attack and are the entity's
+  whole turn; the flask/scroll is consumed **at resolution**, so a later intent
+  the same window cancels the action and keeps the item.
+- **A throw is a ranged/AoE attack sourced from an item.** It reuses
+  `resolveAoELocked` via a pure-data weapon *synthesized* from the flask's
+  `throwPayload` (damage type + on-land effect), so the blast folds through the
+  same pipeline every hit uses (a fire flask bites a fire-vulnerable troll
+  harder) and its DoT rides the same buffered `onHit` path (first bites next
+  turn, cleansable). **AoE always hits** every opposing entity in radius (the
+  ARPG identity — no to-hit roll), **range- and LOS-gated** at submit (the #195
+  invariant: reach ≤ `CombatRadius`, so a monster can never be throw-killed at
+  world cadence through a wall). No friendly fire.
+- **Recall is "blink to home", not a new teleport engine.** It reuses the Blink
+  (#161) teleport, but the destination is **server-chosen** — a guarded safe hex
+  in the shared **sanctuary** (`spawnHexLocked`, the join/respawn placement) —
+  not a client target, so there is no range/LOS check (recall breaks contact
+  from anywhere). Occupancy/`StackCap` respected (#196 lesson); the scroll is
+  spent only on a *successful* recall. The sanctuary is every player's shared
+  home until per-player **beds** land (a future slice), at which point recall
+  becomes recall-to-bed — documented so the choice is deliberate, not an
+  accident.
+- **New intent-path sentinels are 422, never 500.** `ErrNotThrowable` /
+  `ErrNotRecallable` join the mapped set (`TestEveryIntentSentinelIsMapped`);
+  an out-of-range or LOS-blocked throw reuses `ErrOutOfRange` /
+  `ErrNoLineOfSight`. Every well-formed rejection the world says no to is a 422.
+- **Content placement: a config-gated starter kit, not a drop table.** This
+  slice is the action-path *mechanism*, so its two proof consumers (**Flask of
+  Alchemist's Fire**, **Scroll of Recall**) are reachable through a new
+  `STARTER_CONSUMABLES` knob (empty in production; set by the e2e) rather than
+  drop rows — keeping the slice off the shared drop registries (the sibling
+  slices touch those) and giving the client feature a deterministic, non-flaky
+  e2e without inventing a spawn hook. In-world drop placement is a follow-up
+  content pass. The one new effect def, **Burning** (a fire DoT), reuses
+  `end-of-turn` + `add` — content, not new vocabulary.
+- **Client: arm-then-click, reusing the #185 action-bar pattern.** A flask's
+  backpack cell **arms** its throw (`window.game.armedThrow` = its id, panel
+  closes); the next map click is the aim, routed through the same `clickTarget`
+  the Blink arming uses. A recall scroll's cell fires immediately. `ItemView`
+  gained `throwable`/`recall` booleans so the client renders the right verb
+  without hardcoding def ids.

@@ -75,6 +75,8 @@ export interface GameDebug {
   controlsOpen: boolean;
   /** The action-bar skill currently armed for targeting, or null (#185). */
   armedSkill: () => string | null;
+  /** The flask instance id whose throw is armed for targeting, or null (#271). */
+  armedThrow: number | null;
   /** Whether the death card is showing (#204). */
   died: boolean;
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */

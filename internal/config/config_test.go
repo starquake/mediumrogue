@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -71,6 +72,12 @@ func TestLoadDefaults(t *testing.T) {
 	if got, want := cfg.PerIPSSEStreams, 0; got != want {
 		t.Errorf("PerIPSSEStreams = %d, want 0 (per-IP cap off by default)", got)
 	}
+
+	// No starter consumables by default — production and existing tests keep the
+	// empty starting backpack (#271).
+	if got := cfg.StarterConsumables; len(got) != 0 {
+		t.Errorf("StarterConsumables = %v, want empty by default", got)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -88,6 +95,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("SSE_MAX_STREAMS", "3")
 	t.Setenv("TRUST_PROXY_IP", "true")
 	t.Setenv("PER_IP_SSE_STREAMS", "9")
+	t.Setenv("STARTER_CONSUMABLES", " flask-of-fire , scroll-of-recall ,")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -148,6 +156,12 @@ func TestLoadOverrides(t *testing.T) {
 
 	if got, want := cfg.PerIPSSEStreams, 9; got != want {
 		t.Errorf("PerIPSSEStreams = %d, want 9", got)
+	}
+
+	// STARTER_CONSUMABLES parses to trimmed, non-empty ids (the trailing/empty
+	// field and surrounding spaces are dropped) — #271.
+	if got, want := cfg.StarterConsumables, []string{"flask-of-fire", "scroll-of-recall"}; !slices.Equal(got, want) {
+		t.Errorf("StarterConsumables = %v, want %v", got, want)
 	}
 }
 

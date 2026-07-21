@@ -82,6 +82,46 @@ type itemDef struct {
 	// timed effect from the drinker (a poison DoT) while leaving buffs intact —
 	// an Antivenom (#271, slice 2, clearHarmfulEffectsLocked). Consumables only.
 	cleansesHarmful bool
+	// throw is a CONSUMABLE's thrown payload (#271): non-nil marks the item a
+	// throwable flask (IntentThrow) and describes what happens where it lands —
+	// its throw range, blast radius, damage + damage type, and any on-land timed
+	// effect. Pure data (a new throwable is a registry row, not a combat-site
+	// edit), consumables only (validateThrowPayload). A consumable may be
+	// throwable, drinkable, or both — an item that only throws heals 0 and
+	// applies nothing on drink.
+	throw *throwPayload
+	// recall marks a CONSUMABLE that, on use (IntentRecall), teleports the user
+	// to a safe sanctuary hex — a scroll of recall (#271). Pure data,
+	// consumables only (validateRecall). Distinct from the throw payload: recall
+	// targets the user, needs no aim hex, and reuses the Blink teleport path.
+	recall bool
+}
+
+// throwPayload is a thrown consumable's pure-data effect (#271): what a flask
+// does where it lands. It is the throw counterpart of a weapon's combat stats
+// (damage/rangeHex/aoeRadius) — kept as its own struct rather than reusing
+// itemDef's weapon-only fields so validateItemCombatStats can keep forbidding
+// those on non-weapons. Serializable (no closures): a throwable is content.
+type throwPayload struct {
+	// rangeHex is the furthest hex the flask can be thrown, from the thrower's
+	// own hex. Must be > 0.
+	rangeHex int
+	// aoeRadius is the blast radius around the landing hex; every opposing-
+	// faction entity within it takes the hit (AoE always hits — no to-hit roll,
+	// per the ARPG identity). 0 = the landing hex only.
+	aoeRadius int
+	// damage is the base hit dealt to each entity in the blast, folded through
+	// the same pipeline every hit uses (resistances/vulnerabilities of
+	// damageType apply). May be 0 for a pure-DoT flask (a caltrop cloud).
+	damage int
+	// damageType is the protocol.DamageType* the throw deals — so a fire flask
+	// bites a fire-vulnerable troll harder. Required (validateThrowPayload).
+	damageType string
+	// onLand are timed effects applied to each blast victim on landing — a
+	// lingering DoT (effects.go's appliedEffect). Buffered like a weapon's
+	// onHit so a fresh DoT first bites next turn. toSelf must stay unset (a
+	// throw targets the victims, never the thrower).
+	onLand []appliedEffect
 }
 
 // hasTag reports whether this def's weapon tags include tag (always false
@@ -691,6 +731,15 @@ const (
 	idRingOfPrecision = "ring-of-precision"
 )
 
+// Targeted-consumable ids (#271, slice 5): the throwable flask and the recall
+// scroll — the proof consumers of the new targeted-action path. Named here for
+// the usual reason (registry + starter-kit config + tests can't drift on a
+// typo).
+const (
+	idFlaskOfFire    = "flask-of-fire"
+	idScrollOfRecall = "scroll-of-recall"
+)
+
 // Starter-drop-set item ids: named the same way as the class-default ids
 // above, and for the same reason — referenced from both the item registry
 // (content.go) and, since 6c, per-kind monster loot tables (also
@@ -844,6 +893,38 @@ func (w *World) grantDefaultsLocked(e *entity) {
 
 		e.toggleEquip(inst, slot)
 	}
+
+	w.grantStarterConsumablesLocked(e)
+}
+
+// grantStarterConsumablesLocked drops one of each configured starter consumable
+// (#271, w.starterConsumables) into e's backpack. Empty in production; set by
+// the throwable/recall e2e so a fresh player has a flask and a scroll without
+// relying on a monster drop. Ids are validated at NewWorld
+// (validateStarterConsumables), so a lookup here always resolves. Each grants a
+// single unit as its own stack — takeStackLocked merges duplicates and respects
+// the stack cap. Callers hold w.mu.
+func (w *World) grantStarterConsumablesLocked(e *entity) {
+	for _, defID := range w.starterConsumables {
+		w.nextID++
+		e.takeStackLocked(itemInstance{id: w.nextID, defID: defID}, 1)
+	}
+}
+
+// validateStarterConsumables panics if any configured starter-consumable id is
+// not a registered consumable (#271) — fail-loud at startup, mirroring the
+// class-default guard, so a typo in STARTER_CONSUMABLES never silently no-ops.
+func validateStarterConsumables(ids []string) {
+	for _, id := range ids {
+		def, ok := itemDefByID[id]
+		if !ok {
+			panic("game: STARTER_CONSUMABLES id " + id + " is not a registered item")
+		}
+
+		if def.itemType != protocol.ItemTypeConsumable {
+			panic("game: STARTER_CONSUMABLES id " + id + " is not a consumable")
+		}
+	}
 }
 
 // validateItemDefs panics on a content bug in defs: a duplicate id, an
@@ -870,6 +951,68 @@ func validateItemDefs(defs []*itemDef) {
 		validateRuleCards(def.id, def.rules)
 		validateItemOnHit(def)
 		validateItemAppliesEffect(def)
+		validateThrowPayload(def)
+		validateRecall(def)
+	}
+}
+
+// isThrowable reports whether this def is a throwable flask (#271): a
+// consumable carrying a throw payload. validateThrowPayload guarantees the
+// payload is consumable-only, so the itemType check is belt-and-braces.
+func (d *itemDef) isThrowable() bool { return d.throw != nil }
+
+// validateThrowPayload panics if a def's throw payload is malformed (#271): a
+// throw is a consumable-only rider (it fires on IntentThrow), needs a positive
+// range and a real damage type, may not have negative damage or radius, must
+// keep its reach (range + radius) within a combat bubble (validateMaxReach
+// enforces the shared cap too), and every on-land effect must name a
+// registered effectDef with a positive duration and must NOT set toSelf (a
+// throw hits the blast victims, never the thrower). Mirrors
+// validateItemAppliesEffect's shape.
+func validateThrowPayload(def *itemDef) {
+	if def.throw == nil {
+		return
+	}
+
+	if def.itemType != protocol.ItemTypeConsumable {
+		panic("game: non-consumable item " + def.id + " must not set a throw payload (throwables are consumables)")
+	}
+
+	t := def.throw
+	if t.rangeHex <= 0 {
+		panic("game: throwable " + def.id + " must have rangeHex > 0")
+	}
+
+	if t.aoeRadius < 0 || t.damage < 0 {
+		panic("game: throwable " + def.id + " must not have negative aoeRadius or damage")
+	}
+
+	if !validDamageType(t.damageType) {
+		panic("game: throwable " + def.id + " has unknown or missing damage type " + t.damageType)
+	}
+
+	for _, ae := range t.onLand {
+		if _, ok := effectDefByID[ae.effectID]; !ok {
+			panic("game: throwable " + def.id + " onLand names unknown effect " + ae.effectID)
+		}
+
+		if ae.turns <= 0 {
+			panic("game: throwable " + def.id + " onLand effect " + ae.effectID + " must have turns > 0")
+		}
+
+		if ae.toSelf {
+			panic("game: throwable " + def.id + " onLand must not set toSelf (a throw hits the blast victims)")
+		}
+	}
+}
+
+// validateRecall panics if a non-consumable carries the recall flag (#271):
+// recall is a consumable-only rider (its action, IntentRecall, consumes one
+// unit like a drink). A recall consumable needs no other payload — its whole
+// value is the teleport — which validateConsumablePayload allows.
+func validateRecall(def *itemDef) {
+	if def.recall && def.itemType != protocol.ItemTypeConsumable {
+		panic("game: non-consumable item " + def.id + " must not set recall (recall scrolls are consumables)")
 	}
 }
 
@@ -1044,8 +1187,10 @@ func validateConsumablePayload(def *itemDef) {
 			panic("game: consumable " + def.id + " must not have negative heal")
 		}
 
-		if def.heal == 0 && len(def.appliesEffect) == 0 && !def.cleansesHarmful {
-			panic("game: consumable " + def.id + " does nothing (needs heal, appliesEffect, or cleansesHarmful)")
+		if def.heal == 0 && len(def.appliesEffect) == 0 && !def.cleansesHarmful &&
+			def.throw == nil && !def.recall {
+			panic("game: consumable " + def.id +
+				" does nothing (needs heal, appliesEffect, cleansesHarmful, throw, or recall)")
 		}
 
 		return
@@ -1191,6 +1336,15 @@ func validateMaxReach(defs []*itemDef) {
 	for _, def := range defs {
 		if reach := def.rangeHex + def.aoeRadius; reach > protocol.CombatRadius {
 			panic("game: item " + def.id + " reach exceeds CombatRadius")
+		}
+
+		// A throwable's reach (#271) obeys the same invariant: a flask lands its
+		// blast only inside a combat bubble, so a monster can never be
+		// throw-killed at world cadence (no kill-XP) through the reach gap.
+		if def.throw != nil {
+			if reach := def.throw.rangeHex + def.throw.aoeRadius; reach > protocol.CombatRadius {
+				panic("game: throwable " + def.id + " reach exceeds CombatRadius")
+			}
 		}
 	}
 }

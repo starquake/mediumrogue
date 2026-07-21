@@ -175,6 +175,23 @@ const (
 	// at IntentRequest.Target — #161. It is the turn's action, exactly like a
 	// move: it does not stack with one, and it is not a bonus action.
 	IntentUseSkill = "use-skill"
+	// IntentThrow hurls an owned throwable consumable (IntentRequest.ItemID) at
+	// IntentRequest.Target — #271. It is a TARGETED combat action, resolved in
+	// the turn pipeline exactly like a ranged/AoE attack (not applied instantly
+	// like a drink): on landing it deals its damage to every opposing-faction
+	// entity within its blast radius (AoE always hits — no to-hit roll) and
+	// applies any on-land timed effect (a lingering DoT). Range- and
+	// line-of-sight-gated; the flask is consumed at resolution. Like an attack
+	// it clears any queued move/attack and is the entity's whole turn.
+	IntentThrow = "throw"
+	// IntentRecall consumes an owned recall consumable (IntentRequest.ItemID) to
+	// teleport the user to a safe hex in the shared sanctuary — #271, "blink to
+	// home". It reuses the teleport resolution the active-skill Blink introduced
+	// (#161): the destination is a guarded safe hex (respecting occupancy /
+	// StackCap), not a client-chosen target, so IntentRequest.Target is unused.
+	// Resolved in the move phase like Blink; the scroll is consumed on a
+	// successful recall.
+	IntentRecall = "recall"
 )
 
 // The item taxonomy (gear keystone, #55/#56): one weapon type carrying
@@ -559,6 +576,14 @@ type ItemView struct {
 	// Count is the stack size for a consumable backpack stack (1..ItemStackCap);
 	// always 1 for gear.
 	Count int `json:"count"`
+	// Throwable marks a consumable that is HURLED at a target hex (IntentThrow)
+	// rather than drunk — a flask (#271). The client arms it and consumes the
+	// next map click as the aim hex. Always false for non-throwable items.
+	Throwable bool `json:"throwable"`
+	// Recall marks a consumable that TELEPORTS the user to safety on use
+	// (IntentRecall) — a scroll of recall (#271). The client offers a recall
+	// action instead of drink. Always false for non-recall items.
+	Recall bool `json:"recall"`
 }
 
 // GroundItemView is one dropped stack lying on the map, waiting to be picked
@@ -666,11 +691,14 @@ type IntentRequest struct {
 	EntityID int64  `json:"entityId"`
 	Token    string `json:"token"`
 	// Kind is the intent type. Required: one of the Intent* constants (move,
-	// attack, equip, unequip, drop, pickup, drink).
-	Kind   string `json:"kind"`
-	Target Hex    `json:"target"`
-	// ItemID names the OWNED item an inventory action targets. Equip,
-	// unequip, drop, and drink intents only.
+	// attack, equip, unequip, drop, pickup, drink, throw, recall).
+	Kind string `json:"kind"`
+	// Target is the destination/aim hex: a move's walkable goal, an attack's
+	// target hex, or a THROW's aim hex (#271). Unused by recall, which teleports
+	// to a server-chosen safe hex.
+	Target Hex `json:"target"`
+	// ItemID names the OWNED item an inventory action targets. Equip, unequip,
+	// drop, drink, throw (the thrown flask), and recall (the scroll) intents.
 	ItemID int64 `json:"itemId"`
 	// SkillID names the skill a learn-skill intent spends a point on (#124).
 	SkillID string `json:"skillId"`

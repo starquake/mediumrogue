@@ -34,6 +34,11 @@ type pendingItemAction struct {
 // clears any queued move/attack — you act on your inventory, you don't also
 // move or shoot this turn. Callers hold w.mu.
 func (w *World) commitItemActionLocked(e *entity, kind string, id int64, apply func() error) error {
+	// #271: an inventory action cancels a queued throw/recall either way — an
+	// immediate action outside a bubble must not leave a throw to resolve next
+	// world turn, and inside one the pending action is the turn's action.
+	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0
+
 	if e.bubbleID == 0 {
 		e.pending = pendingItemAction{}
 
@@ -354,6 +359,29 @@ func (w *World) drinkItemLocked(e *entity, itemID int64) error {
 		"hp", e.hp, "cleared", cleared, "buffs", len(def.appliesEffect))
 
 	return nil
+}
+
+// consumeBackpackUnitLocked spends one unit of the owned consumable stack with
+// the given instance id, freeing the entry when the last unit is used, and
+// reports whether a unit was actually consumed (#271, shared by the throw and
+// recall resolution paths). It is the stack-decrement half of drinkItemLocked
+// without the heal/effect payload — a throw's payload lands on the blast
+// victims, a recall's is the teleport itself. False means the stack is gone (a
+// stale queued action whose item was already consumed this pass) — the caller
+// fizzles rather than erroring, matching applyPendingItemLocked. Callers hold
+// w.mu.
+func (*World) consumeBackpackUnitLocked(e *entity, itemID int64) bool {
+	idx := e.findBackpackIndex(itemID)
+	if idx < 0 {
+		return false
+	}
+
+	e.backpack[idx].count--
+	if e.backpack[idx].count <= 0 {
+		e.backpack[idx] = backpackEntry{}
+	}
+
+	return true
 }
 
 // ownedDefLocked resolves an owned item instance and its def, or
