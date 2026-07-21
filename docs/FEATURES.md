@@ -975,26 +975,52 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   sequence instead of hypothesized.
 - **Server hardening** (#199 — DoS/resource-exhaustion bounds, all in the
   HTTP layer so a throttled request never reaches the world):
-  - **Player cap**: `protocol.MaxPlayers` (30) — a brand-new join past it is
+  - **Player cap**: `protocol.MaxPlayers` (64) — a brand-new join past it is
     `503`; reclaims/restores are exempt (a returning player is not a new
-    seat).
+    seat). Sized with headroom for the target deployment: a shared-network
+    house of ~32 players (room to grow), all potentially from one address.
   - **Join rate limit**: new-character joins drain a **global** token bucket
     (burst `MaxPlayers`, refilling one slot per `JOIN_MIN_INTERVAL`) — a
-    whole friend group or a post-restart mass reconnect bursts in at once,
-    sustained entity-minting is throttled with `429` + `Retry-After`.
-    Returning tokens (live or archived) bypass the bucket.
+    whole friend group or a post-restart mass reconnect (up to a full
+    `MaxPlayers`-strong wave) bursts in at once, sustained entity-minting is
+    throttled with `429` + `Retry-After`. Returning tokens (live or archived)
+    bypass the bucket.
   - **Chat rate limit**: one line per `CHAT_MIN_INTERVAL` per token (plain
     lines and `/commands` alike; a rejected input — empty, too long — spends
     no budget); over-rate lines get `429` + `Retry-After`, which the client
     shows as a local system line.
-  - **SSE stream cap**: at most `SSE_MAX_STREAMS` concurrent `/api/events`
-    streams **globally** (each open stream pays a per-tick snapshot under
-    the world lock); over-cap connects get an immediate `503` +
+  - **SSE stream cap**: at most `SSE_MAX_STREAMS` (256) concurrent
+    `/api/events` streams **globally** (each open stream pays a per-tick
+    snapshot under the world lock); over-cap connects get an immediate `503` +
     `Retry-After: 5` — an EventSource treats it as a failed connect and
-    retries — instead of silently degrading turn resolution. Global, not
-    per-IP: behind the reverse proxy every client shares `RemoteAddr`, and
-    per-IP identity (trusting `X-Forwarded-For`) is an open decision on
-    #199.
+    retries — instead of silently degrading turn resolution. Sized above the
+    full `MaxPlayers` seat count for reconnect churn: during the disconnect
+    grace a reconnecting player can transiently hold an old and a new stream
+    at once.
+  - **Per-IP SSE cap** (opt-in, `TRUST_PROXY_IP` + `PER_IP_SSE_STREAMS`,
+    both **off by default**): an *optional fairness* layer on top of the
+    global cap so one client IP can't hog every global slot — at most
+    `PER_IP_SSE_STREAMS` concurrent `/api/events` streams per client IP,
+    over-cap rejected with the **same** `503` + `Retry-After: 5` as the global
+    cap (identical "stream-cap-full" semantics, scoped per IP; an EventSource
+    reacts to both the same way). It ships **fully disabled**:
+    `PER_IP_SSE_STREAMS` defaults to **0** (no per-IP limit), so even turning
+    on `TRUST_PROXY_IP` alone never caps a shared-IP house — because per-IP
+    fairness is *meaningless, even harmful* when legitimate players share one
+    IP (the target deployment: ~32 players from one shared-network address).
+    An operator enables it **only** for a deployment whose players have
+    distinct IPs, by setting an explicit `PER_IP_SSE_STREAMS=<n>` **and**
+    `TRUST_PROXY_IP=true`. When on, the client IP is the **last**
+    `X-Forwarded-For` entry — the one the sole trusted proxy (SWAG, nginx
+    `$proxy_add_x_forwarded_for`) appends for the peer that connected to it;
+    earlier entries are client-supplied and spoofable. If the header is
+    absent it falls back to `RemoteAddr` (one shared bucket — a stricter cap,
+    still safe). With `TRUST_PROXY_IP` off, `X-Forwarded-For` is never read at
+    all (behind a proxy `RemoteAddr` is the shared proxy IP, so a per-IP cap
+    on it would be one bucket for everyone). **Security warning:** enable
+    `TRUST_PROXY_IP` **only** where the app port is reachable *exclusively*
+    via the trusted proxy — if the port is also directly reachable, any client
+    can spoof `X-Forwarded-For` and dodge the cap.
   - **Body bounds**: JSON POST bodies are capped at 64 KiB
     (`http.MaxBytesReader`) and must arrive within a 10s per-request read
     deadline (a trickle defence that leaves the long-lived SSE GET
@@ -1003,8 +1029,9 @@ because the off-hand takes both a shield and a dual-wielded weapon.
     not a `400` "malformed JSON" that would misdirect the client to its
     encoding); a body carrying **more than one JSON value** (a valid prefix
     plus trailing garbage) is rejected `400` rather than silently accepted.
-  - All three rate/cap knobs are env vars where **`0` disables the limit**
-    (the tests' and e2e harness's switch), threaded like `TURN_INTERVAL`.
+  - The rate/cap knobs are env vars where **`0` disables the limit**
+    (the tests' and e2e harness's switch), threaded like `TURN_INTERVAL`;
+    `TRUST_PROXY_IP` is a bool, default off.
   - The rejections use the standard JSON error body; `429`/`503` here are
     wire-layer verdicts, not game sentinels.
 
@@ -1027,7 +1054,9 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 | `SNAPSHOT_INTERVAL` | `60s` | periodic snapshot-save cadence while persistence is enabled |
 | `CHAT_MIN_INTERVAL` | `1s` | per-player minimum gap between chat lines (#199); `0` disables |
 | `JOIN_MIN_INTERVAL` | `1s` | refill rate of the global new-character join bucket, burst `MaxPlayers` (#199); `0` disables |
-| `SSE_MAX_STREAMS` | `100` | global cap on concurrent SSE event streams (#199); `0` disables |
+| `SSE_MAX_STREAMS` | `256` | global cap on concurrent SSE event streams (#199); `0` disables |
+| `TRUST_PROXY_IP` | `false` | trust `X-Forwarded-For` to enforce the per-IP SSE cap (#199); enable **only** where the app port is reachable exclusively via the proxy — otherwise the header is spoofable |
+| `PER_IP_SSE_STREAMS` | `0` (disabled) | per-IP concurrent SSE stream cap, applied only when `TRUST_PROXY_IP` is on (#199); off by default because it's harmful when players share one IP — set an explicit `<n>` only for distinct-IP deployments |
 
 ## 4. Game-rule constants (`internal/protocol`, compiled into both sides)
 
@@ -1038,7 +1067,7 @@ because the off-hand takes both a shield and a dual-wielded weapon.
 | `StackCap` | 5 | max friendly entities per hex |
 | `BackpackSize` / `ItemStackCap` | 4 / 5 | backpack entries · max identical consumables per stack |
 | `MaxNameLen` / `MaxChatLen` | 24 / 500 | input caps (runes) |
-| `MaxPlayers` | 30 | player cap (#199): new joins past it are 503; reclaims/restores exempt |
+| `MaxPlayers` | 64 | player cap (#199): new joins past it are 503; reclaims/restores exempt — sized for a shared-network house of ~32 with headroom |
 | `FighterMaxHP` / `RogueMaxHP` / `MageMaxHP` | 30 / 16 / 14 | level-1 HP |
 | `HPGainBase` / `HPGainMin` | 8 / 1 | front-loaded HP curve: gain advancing FROM level n = `max(HPGainMin, HPGainBase-(n-1))` — 8,7,6,…,1 then +1 forever (#60 XP2) |
 | `XPCurveBase` / `QuestKillRewardPerTarget` | 100 / 20 | quadratic XP curve: total XP to **reach** level L = `XPCurveBase*(L-1)^2` (#60 XP1) & flat per-target kill-quest reward |

@@ -59,8 +59,17 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("JoinMinInterval = %s, want 1s", got)
 	}
 
-	if got, want := cfg.SSEMaxStreams, 100; got != want {
-		t.Errorf("SSEMaxStreams = %d, want 100", got)
+	if got, want := cfg.SSEMaxStreams, 256; got != want {
+		t.Errorf("SSEMaxStreams = %d, want 256", got)
+	}
+
+	if got, want := cfg.TrustProxyIP, false; got != want {
+		t.Errorf("TrustProxyIP = %v, want false", got)
+	}
+
+	// Per-IP cap ships disabled: fairness is harmful when players share one IP.
+	if got, want := cfg.PerIPSSEStreams, 0; got != want {
+		t.Errorf("PerIPSSEStreams = %d, want 0 (per-IP cap off by default)", got)
 	}
 }
 
@@ -77,6 +86,8 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("CHAT_MIN_INTERVAL", "2s")
 	t.Setenv("JOIN_MIN_INTERVAL", "500ms")
 	t.Setenv("SSE_MAX_STREAMS", "3")
+	t.Setenv("TRUST_PROXY_IP", "true")
+	t.Setenv("PER_IP_SSE_STREAMS", "9")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -130,6 +141,14 @@ func TestLoadOverrides(t *testing.T) {
 	if got, want := cfg.SSEMaxStreams, 3; got != want {
 		t.Errorf("SSEMaxStreams = %d, want 3", got)
 	}
+
+	if got, want := cfg.TrustProxyIP, true; got != want {
+		t.Errorf("TrustProxyIP = %v, want true", got)
+	}
+
+	if got, want := cfg.PerIPSSEStreams, 9; got != want {
+		t.Errorf("PerIPSSEStreams = %d, want 9", got)
+	}
 }
 
 // TestLoadZeroDisablesLimits pins the limit knobs' off switch (#199): zero is
@@ -179,6 +198,38 @@ func TestLoadRejectsNegativeSSEMaxStreams(t *testing.T) {
 
 	if _, err := config.Load(); err == nil {
 		t.Fatal("Load() accepted a negative SSE_MAX_STREAMS")
+	}
+}
+
+// TestLoadZeroDisablesPerIPSSEStreams: zero is a valid PER_IP_SSE_STREAMS
+// meaning "no per-IP layer" (the global cap still applies) — the same off
+// convention as the other limit knobs.
+func TestLoadZeroDisablesPerIPSSEStreams(t *testing.T) {
+	t.Setenv("PER_IP_SSE_STREAMS", "0")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if got, want := cfg.PerIPSSEStreams, 0; got != want {
+		t.Errorf("PerIPSSEStreams = %d, want 0", got)
+	}
+}
+
+func TestLoadRejectsNegativePerIPSSEStreams(t *testing.T) {
+	t.Setenv("PER_IP_SSE_STREAMS", "-1")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a negative PER_IP_SSE_STREAMS")
+	}
+}
+
+func TestLoadRejectsNonBoolTrustProxyIP(t *testing.T) {
+	t.Setenv("TRUST_PROXY_IP", "maybe")
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() accepted a non-bool TRUST_PROXY_IP")
 	}
 }
 

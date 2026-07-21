@@ -37,6 +37,17 @@ type Deps struct {
 	// SSEMaxStreams caps concurrent SSE event streams globally (#199);
 	// over-cap connects are 503ed with Retry-After. Zero disables the cap.
 	SSEMaxStreams int
+	// TrustProxyIP turns on the per-IP SSE stream cap by trusting the
+	// X-Forwarded-For header (#199). False (the default, and every test
+	// harness) means no per-IP cap and XFF is never read — RemoteAddr behind a
+	// proxy is the shared proxy IP, so a per-IP cap on it would be one bucket
+	// for everyone. Enable only where the app port is reachable exclusively via
+	// the trusted proxy.
+	TrustProxyIP bool
+	// PerIPSSEStreams is the per-IP concurrent SSE stream cap enforced when
+	// TrustProxyIP is on (#199); the 6th stream from one IP is rejected on top
+	// of the still-applied global cap. Zero disables just the per-IP layer.
+	PerIPSSEStreams int
 }
 
 // New returns the root HTTP handler.

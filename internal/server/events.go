@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -35,11 +37,26 @@ const sseRetryAfterSeconds = "5"
 // per-tick cost every open stream pays (a SnapshotFor under the world lock
 // plus a marshal): over-cap connects get an immediate 503 with Retry-After —
 // an EventSource treats it as a failed connect and retries — instead of
-// silently degrading turn resolution for everyone. Global, not per-IP: a
-// per-IP cap behind the reverse proxy needs an X-Forwarded-For trust
-// decision that is still open on the ticket.
+// silently degrading turn resolution for everyone.
+//
+// An OPT-IN per-IP cap (#199, Deps.TrustProxyIP + Deps.PerIPSSEStreams) adds a
+// fairness layer on top: with a trusted reverse proxy, one client IP can't hog
+// every global slot. It is off by default because it hinges on trusting the
+// X-Forwarded-For header, which is only safe where the app port is reachable
+// exclusively via the proxy (see clientIP). When on, the per-IP rejection uses
+// the SAME 503 + Retry-After as the global cap — an EventSource reacts to both
+// identically (retry later), and one status keeps the SSE reject surface
+// uniform; the semantics ("stream cap full, come back") are the same, just
+// scoped per IP.
 func handleEvents(deps Deps) http.Handler {
 	gate := newStreamGate(deps.SSEMaxStreams)
+
+	// Per-IP gate only when the proxy header is trusted; nil otherwise, so a
+	// default deployment never reads X-Forwarded-For at all.
+	var perIP *perKeyStreamGate
+	if deps.TrustProxyIP {
+		perIP = newPerKeyStreamGate(deps.PerIPSSEStreams)
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !gate.acquire() {
@@ -49,6 +66,19 @@ func handleEvents(deps Deps) http.Handler {
 			return
 		}
 		defer gate.release()
+
+		// Per-IP cap sits after the global one, so the global slot released by
+		// the defer above is returned if this rejects.
+		if perIP != nil {
+			ip := clientIP(r)
+			if !perIP.acquire(ip) {
+				w.Header().Set("Retry-After", sseRetryAfterSeconds)
+				respondError(w, deps.Logger, http.StatusServiceUnavailable, "too many open event streams from your address")
+
+				return
+			}
+			defer perIP.release(ip)
+		}
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -140,6 +170,35 @@ func streamEvents(
 			flusher.Flush()
 		}
 	}
+}
+
+// clientIP derives the caller's address for the per-IP SSE cap, and is only
+// reached when TrustProxyIP is on (a proxy is assumed in front). It trusts the
+// X-Forwarded-For header the sole proxy (SWAG) sets, taking the LAST entry:
+// SWAG runs nginx's $proxy_add_x_forwarded_for, which APPENDS the peer that
+// connected to it — the real client — to whatever XFF the client sent. So the
+// rightmost entry is the one SWAG itself added and the only trustworthy one;
+// every earlier entry is client-supplied and spoofable.
+//
+// If XFF is absent or empty (proxy misconfigured, or a direct hit that
+// shouldn't happen when the flag is set correctly), fall back to RemoteAddr's
+// host. Behind a proxy that resolves to the shared proxy IP — one bucket for
+// everyone, a stricter shared cap, still safe rather than open; direct it is
+// the real peer.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
+			return last
+		}
+	}
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return host
 }
 
 // parseLastEventID reads the SSE reconnection header the browser's EventSource
