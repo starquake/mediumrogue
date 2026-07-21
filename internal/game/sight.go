@@ -87,6 +87,23 @@ func absF(f float64) float64 {
 // zero Terrain for an off-map hex, which blocks nothing — off-map hexes are
 // not obstacles, they are absence). See this file's doc comment for the rule.
 func sightBlocked(a, b protocol.Hex, radius int, terrainAt func(protocol.Hex) protocol.Terrain) bool {
+	// Draw the ray in a canonical endpoint order so the answer is identical
+	// whichever entity is a and which is b — the symmetry this file's doc
+	// comment promises and TestSightIsSymmetric guards (#95 Q4: never "it sees
+	// you but you don't see it"). HexLine nudges only its SECOND endpoint by an
+	// epsilon to break edge-aligned ties, which makes the raw ray
+	// direction-dependent: a and b swapped can traverse a different set of
+	// in-between hexes, so a rock (or forest) between them blocks one direction
+	// and not the other. Callers pick the direction freely — the aggro path
+	// raycasts monster→player, ranged attacks attacker→target, bubble formation
+	// lower-id→higher-id — so without a canonical order the same two hexes can
+	// disagree about visibility depending on who asks. Ordering the endpoints
+	// here keeps HexLine's tie-break deterministic while making the outcome an
+	// intrinsic property of the unordered pair.
+	if compareHexQR(a, b) > 0 {
+		a, b = b, a
+	}
+
 	line := HexLine(a, b)
 	if len(line) <= 2 { //nolint:mnd // a line of at most two hexes is the two endpoints: nothing in between.
 		return false // adjacent or same hex: nothing strictly between them

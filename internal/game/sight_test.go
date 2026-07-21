@@ -162,6 +162,46 @@ func TestSightIsSymmetric(t *testing.T) {
 	}
 }
 
+// TestSightSymmetricOffOrigin is the exhaustive guard TestSightIsSymmetric is
+// not: it sweeps a AND b across a window (not just rays from the origin) with a
+// single rock placed at every hex in that window, and asserts sightBlocked is
+// unchanged when the endpoints swap. HexLine nudges only its second endpoint,
+// so an edge-aligned ray traverses a different set of in-between hexes each
+// way — a rock between two entities then blocked visibility for one direction
+// only, the "it sees you but you don't see it" the design forbids (#95 Q4).
+// The origin-only sweep above could not see it because those cases happen to
+// be self-consistent. Fails hard before the sightBlocked canonical-order fix.
+func TestSightSymmetricOffOrigin(t *testing.T) {
+	t.Parallel()
+
+	const window = 5
+
+	for aq := -window; aq <= window; aq++ {
+		for ar := -window; ar <= window; ar++ {
+			for bq := -window; bq <= window; bq++ {
+				for br := -window; br <= window; br++ {
+					a, b := protocol.Hex{Q: aq, R: ar}, protocol.Hex{Q: bq, R: br}
+					if HexDistance(a, b) > protocol.CombatRadius {
+						continue
+					}
+
+					for rq := -window; rq <= window; rq++ {
+						for rr := -window; rr <= window; rr++ {
+							terrain := flatTerrain(protocol.TerrainRock, protocol.Hex{Q: rq, R: rr})
+
+							ab := sightBlocked(a, b, protocol.CombatRadius, terrain)
+							if ba := sightBlocked(b, a, protocol.CombatRadius, terrain); ab != ba {
+								t.Fatalf("sightBlocked(%v,%v)=%v but reversed=%v (rock at {%d %d}) — must be symmetric",
+									a, b, ab, ba, rq, rr)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // TestWaterIsTransparent (#95): water is unwalkable but you can see across
 // it — walkableLocked is deliberately not the sight predicate.
 func TestWaterIsTransparent(t *testing.T) {
