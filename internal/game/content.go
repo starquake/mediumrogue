@@ -1086,6 +1086,46 @@ var monsterDefs = []*monsterDef{
 		},
 		rings: []int{2},
 	},
+
+	// In-combat-spawn foundation proof pair (#271): the Necromancer is the
+	// first SUMMONER — while bubbled it raises weak Risen adds on nearby free
+	// hexes (summon.go's tickSummonsLocked, an end-of-turn hook), bounded by a
+	// per-summoner living cap and a per-turn cooldown so it can never
+	// runaway-spawn. A frontier elite (ring 2): its own melee (a bone club, the
+	// skeleton's weapon) is modest — the swarm is the threat. The Risen is the
+	// weak add it raises, and also a plain wild frontier trash mob so the kind
+	// isn't summon-only. Both tables are NEW, so no existing seeded drop pin
+	// moves. Appended LAST in registry order — the spawn kind-pick draws from an
+	// id-sorted per-ring list (kindsPerRing), so registry order is not
+	// seed-bearing.
+	{
+		// The weak add. Very low HP/hit/XP: it exists to pressure with numbers,
+		// not damage, and to be cleared cheaply. Reuses idClaws (the rat's weak
+		// sharp weapon, monsterOnly). Rare, tiny loot so a maintained swarm is
+		// not an item fountain — the living cap + cooldown already bound the
+		// spawn rate to a trickle.
+		id: idKindRisen, name: "Risen",
+		maxHP: 4, weapon: idClaws, xp: 5, aggroRadius: protocol.CombatRadius + 1, dropChance: 5,
+		drops: []drop{
+			{defID: idMinorSalve, weight: 1},
+		},
+		rings: []int{2},
+	},
+	{
+		id: idKindNecromancer, name: "Necromancer",
+		maxHP: 24, weapon: idBoneClub, xp: 65, aggroRadius: 8, dropChance: 45,
+		// Raise one Risen every 3 in-combat turns, up to 3 alive at once. The
+		// cap (maxLiving) is the runaway guard; everyTurns paces it; the wind-up
+		// (summonCooldown starts full, newMonsterEntity) gives the player a
+		// window before the first add. Pure data — the behavior is summon.go's
+		// hook, not a combat-site edit.
+		summon: &summonSpec{minionKind: idKindRisen, everyTurns: 3, maxLiving: 3, count: 1},
+		drops: []drop{
+			{defID: idGreaterDraught, weight: 1},
+			{defID: idMinorSalve, weight: 2},
+		},
+		rings: []int{2},
+	},
 }
 
 // init builds the derived lookup tables and validates the registry

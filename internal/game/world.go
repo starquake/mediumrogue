@@ -38,6 +38,7 @@ const (
 	combatEventDrop   = "drop"
 	combatEventDrink  = "drink"
 	combatEventXP     = "xp_award"
+	combatEventSummon = "summon"
 )
 
 // identityLogMsg is the slog message every identity-lifecycle log line
@@ -333,6 +334,19 @@ type entity struct {
 	// across a restart), not a per-turn transient; cleared on a player respawn
 	// (resolveDeathsLocked). Both players and monsters carry them.
 	effects []timedEffect
+	// summonCooldown is a SUMMONER monster's turns-until-next-summon window
+	// (#271, summon.go): initialized to its kind's summonSpec.everyTurns at
+	// spawn (newMonsterEntity), decremented once per IN-COMBAT turn by
+	// tickSummonsLocked, and reset to everyTurns each time the window opens.
+	// Multi-turn behavioral state like returningHome — PERSISTED so a restart
+	// mid-fight can't hand the player a free summon (or a summon debt). Zero
+	// for a non-summoner kind and every player.
+	summonCooldown int
+	// summonerID is the entity id of the summoner that raised this MINION
+	// (#271), or 0 for anything not summoned. livingMinionsLocked counts by it
+	// to enforce a summoner's summonSpec.maxLiving cap. Persisted — a minion's
+	// parentage survives a restart, so the cap stays enforced across it.
+	summonerID int64
 }
 
 // World is the authoritative game state: the map, every entity, and each
@@ -1839,7 +1853,17 @@ func (w *World) resolveCombatLocked(
 	w.tickEffectsLocked(members)
 	w.applyPendingOnHitLocked()
 
-	return w.resolveDeathsLocked(rng, members)
+	slain, died := w.resolveDeathsLocked(rng, members)
+
+	// In-combat summon hook (#271, summon.go): a summoner monster raises its
+	// adds at the end of a BUBBLE turn (worldDomain false). It runs LAST — after
+	// deaths, so a summoner slain this turn (hp<=0) raises nothing and its rng
+	// draw comes AFTER every existing consumer (think/attack/move/drops), which
+	// is why adding it moves no pinned seed: a world with no summoner content
+	// draws nothing here.
+	w.tickSummonsLocked(rng, members, worldDomain)
+
+	return slain, died
 }
 
 // allyInBubbleLocked reports whether another living same-faction entity shares

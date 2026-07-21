@@ -174,7 +174,9 @@ its weapon carries.
 | **Goblin**<br>`goblin` | 6 | Rusty Shiv | 2 | melee | sharp | 12 | 7 | 15 | — |
 | **Hydra**<br>`hydra` | 24 | Hydra Fangs | 4 | melee | sharp | 55 | 8 | 45 | — |
 | **Kin Archer**<br>`kin-archer` | 12 | Hunter's Bow | 3 | 3 hexes | sharp | 30 | 8 | 30 | — |
+| **Necromancer**<br>`necromancer` | 24 | Bone Club | 3 | melee | blunt | 65 | 8 | 45 | — |
 | **Rat**<br>`rat` | 4 | Claws | 1 | melee | sharp | 8 | 7 | 10 | — |
+| **Risen**<br>`risen` | 4 | Claws | 1 | melee | sharp | 5 | 7 | 5 | — |
 | **Serpent**<br>`serpent` | 8 | Venom Sting | 2 | melee | sharp | 16 | 8 | 30 | — |
 | **Skeleton**<br>`skeleton` | 14 | Bone Club | 3 | melee | blunt | 30 | 8 | 35 | +50% Sharp Resistance<br> |
 | **Troll**<br>`troll` | 30 | Maul | 6 | melee | blunt | 60 | 8 | 50 | ⚠ −50% Fire Resistance<br> |

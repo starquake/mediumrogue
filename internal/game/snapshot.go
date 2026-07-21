@@ -48,7 +48,12 @@ import (
 // survive a restart (a poisoned monster stays poisoned). A v8 snapshot simply
 // has no such field, so restored entities would silently lose in-flight
 // effects; the version gate preserves-aside + fresh instead.
-const snapshotVersion = 9
+// v10 (in-combat summon hook, #271): entityDTO gains SummonCooldown (a
+// summoner's turns-until-next-summon) and SummonerID (which summoner raised a
+// minion). Both are multi-turn state a restart must keep — otherwise a reloaded
+// necromancer hands a free summon and its adds escape the maxLiving cap. A v9
+// snapshot has neither field, so it is preserved-aside + fresh.
+const snapshotVersion = 10
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -142,6 +147,14 @@ type entityDTO struct {
 	// state (like HomeHex/ReturningHome), so a restart must not drop a poison
 	// mid-drain or a buff mid-duration. Omitted when empty — the common case.
 	Effects []timedEffectDTO `json:"effects,omitempty"`
+	// SummonCooldown/SummonerID are the summon foundation's per-entity state
+	// (#271, v10): a summoner's turns-until-next-window, and the id of the
+	// summoner that raised a minion (0 for anything not summoned). Multi-turn
+	// state a restart must keep so the maxLiving cap and the summon cadence
+	// survive it. Both omitted when zero — the common case (every player, every
+	// non-summoner, every un-summoned monster).
+	SummonCooldown int   `json:"summonCooldown,omitempty"`
+	SummonerID     int64 `json:"summonerId,omitempty"`
 }
 
 // timedEffectDTO mirrors timedEffect (effects.go) for the wire-decoupled disk
@@ -410,6 +423,7 @@ func entityToDTO(e *entity) entityDTO {
 		HomeHex: e.homeHex, ReturningHome: e.returningHome,
 		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
 		ActiveReadyTurn: e.activeReadyTurn, Effects: timedEffectsToDTO(e.effects),
+		SummonCooldown: e.summonCooldown, SummonerID: e.summonerID,
 	}
 }
 
@@ -456,6 +470,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		homeHex: ed.HomeHex, returningHome: ed.ReturningHome,
 		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,
 		activeReadyTurn: ed.ActiveReadyTurn, effects: timedEffectsFromDTO(ed.Effects),
+		summonCooldown: ed.SummonCooldown, summonerID: ed.SummonerID,
 	}
 }
 

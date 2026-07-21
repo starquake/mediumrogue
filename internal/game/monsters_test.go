@@ -11,8 +11,10 @@ import (
 // mistake that drops or renames a kind fails here first. Grew by one in #179 (the
 // Kin Archer, the first ranged kind), by four in #266 (the goblin,
 // skeleton, frost wisp and wraith), by one in #271 slice 1 (the Serpent, the DoT
-// proof), and by one in #271 slice 2 (the Hydra, the regen proof); re-derived
-// deliberately, since adding a kind is exactly what this test is meant to notice.
+// proof), by one in #271 slice 2 (the Hydra, the regen proof), and by two in
+// #271's summoner slice (the Necromancer and the Risen add it raises);
+// re-derived deliberately, since adding a kind is exactly what this test is
+// meant to notice.
 func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 	t.Parallel()
 
@@ -21,6 +23,7 @@ func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 		idKindTroll: true, idKindDragon: true, idKindArcher: true,
 		idKindGoblin: true, idKindSkeleton: true, idKindFrostWisp: true, idKindWraith: true,
 		idKindSerpent: true, idKindHydra: true,
+		idKindNecromancer: true, idKindRisen: true,
 	}
 
 	if got, want := len(monsterDefs), len(want); got != want {

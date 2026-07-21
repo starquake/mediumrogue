@@ -60,12 +60,12 @@ func craftInventorySnapshot() []byte {
 	}
 
 	snapshot := map[string]any{
-		// re-derived for snapshotVersion 9 (#271: an entity's active timed
-		// effects joined the entity DTO; this fixture carries none, so only the
-		// version moves). The loader REJECTS a version mismatch by design, so a
-		// crafted fixture has to move with the version — it is not a value to
-		// weaken.
-		"version":      9,
+		// re-derived for snapshotVersion 10 (#271: v9 added timed effects; v10
+		// added the summon foundation's SummonCooldown/SummonerID to the entity
+		// DTO — this fixture carries neither, so only the version moves). The
+		// loader REJECTS a version mismatch by design, so a crafted fixture has
+		// to move with the version — it is not a value to weaken.
+		"version":      10,
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,

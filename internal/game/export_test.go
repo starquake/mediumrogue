@@ -478,8 +478,76 @@ func (w *World) ResolveCombatOnlyForTest() {
 	w.tickEffectsLocked(members)
 	w.applyPendingOnHitLocked()
 	w.resolveDeathsLocked(rng, members)
+	// #271: mirror resolveCombatLocked's in-combat summon hook (worldDomain
+	// false — this bridge resolves a combat/bubble turn). A no-op for a set
+	// with no summoner, so existing callers are unaffected.
+	w.tickSummonsLocked(rng, members, false)
 
 	w.advanceTurnLocked()
+}
+
+// SetSummonCooldownForTest overwrites a summoner's summon cooldown directly, so
+// a test can open (0) or delay a summon window without stepping everyTurns turns
+// (#271). Panics if the entity is unknown.
+func (w *World) SetSummonCooldownForTest(id int64, n int) {
+	if !w.withEntityForTest(id, func(e *entity) { e.summonCooldown = n }) {
+		panic("game: SetSummonCooldownForTest unknown entity")
+	}
+}
+
+// SummonCooldownForTest returns an entity's summon cooldown (#271). Panics if
+// the entity is unknown.
+func (w *World) SummonCooldownForTest(id int64) int {
+	var n int
+
+	if !w.withEntityForTest(id, func(e *entity) { n = e.summonCooldown }) {
+		panic("game: SummonCooldownForTest unknown entity")
+	}
+
+	return n
+}
+
+// SummonerIDForTest returns the id of the summoner that raised a minion, or 0
+// for anything not summoned (#271). Panics if the entity is unknown.
+func (w *World) SummonerIDForTest(id int64) int64 {
+	var s int64
+
+	if !w.withEntityForTest(id, func(e *entity) { s = e.summonerID }) {
+		panic("game: SummonerIDForTest unknown entity")
+	}
+
+	return s
+}
+
+// MinionsOfForTest returns the ids of every LIVING entity currently raised by
+// the summoner with id summonerID (#271), sorted for a stable assertion order.
+func (w *World) MinionsOfForTest(summonerID int64) []int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	var ids []int64
+
+	for id, e := range w.entities {
+		if e.summonerID == summonerID && e.hp > 0 {
+			ids = append(ids, id)
+		}
+	}
+
+	slices.Sort(ids)
+
+	return ids
+}
+
+// EntityHexForTest returns an entity's current hex (#271), so a spawn-placement
+// test can assert an add landed on a free adjacent hex. Panics if unknown.
+func (w *World) EntityHexForTest(id int64) protocol.Hex {
+	var h protocol.Hex
+
+	if !w.withEntityForTest(id, func(e *entity) { h = e.hex }) {
+		panic("game: EntityHexForTest unknown entity")
+	}
+
+	return h
 }
 
 // SetDisconnectGraceForTest overrides the disconnect grace so a presence test can
