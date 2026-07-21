@@ -152,6 +152,17 @@ drift between calls; use absolute paths or `cd` to the repo root before
   merges first and branch the build off the freshly-merged `main` — work built
   on a stale base has to rebase. When two open PRs touch the same files, note
   it in the second PR's body: whoever merges second owns the rebase.
+- **Parallel work happens in git worktrees.** When fanning out several agents
+  that edit files at once, each runs in its own isolated worktree so their
+  edits don't collide — and the orchestrating session should work in a
+  dedicated worktree too, not the shared checkout. An agent's branch setup can
+  leak its feature branch into the shared checkout and trample an in-place
+  session (seen 2026-07-21 with two agents in one run). Two guards make this
+  safe: do PR merges **server-side** (`gh pr merge`), which never needs the
+  local checkout on `main`; and reconcile the shared checkout back to `main`
+  (`git checkout main && git pull --ff-only`) only *after* the agents finish,
+  never mid-run — inspect `git status`/`git diff` before any reset, since the
+  files sitting there may be an agent's live work.
 - **Merge gate:** only merge a PR carrying the **`ready to merge`** label —
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and
