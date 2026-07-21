@@ -53,7 +53,19 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   { name: "client-alive" },
   { name: "identity" },
   { name: "identity-multitab" },
-  { name: "combat", monsters: 3 },
+  // combat (#234): BOTH tests here share this one non-respawning server. The
+  // melee test (:17) deals real damage by design and the freeze test (:131)
+  // needs at least one LIVE monster to form a bubble — and neither respawns
+  // the pool (issue #21: entities never leave, monsters never come back). At
+  // MONSTER_COUNT=3 an unlucky low-HP draw let :17 kill the whole pool before
+  // :131 ran, so both failed together under CI load (window.game.monsters →
+  // 0). A larger pool keeps a live monster available no matter what :17
+  // consumed — the same starvation mitigation melee-feedback (#113) and
+  // attack-highlight (#181) already use. NOT paired with a short
+  // COMBAT_PATIENCE: :131 asserts the bubble stays FROZEN (its own hex holds,
+  // the world clock keeps ticking) across a multi-second window, which only
+  // holds while the default long patience keeps the bubble from resolving.
+  { name: "combat", monsters: 12 },
   // layout (#105) measures the worst-case HUD (in combat) against the open
   // character panel at the 1920×1080 minimum supported viewport.
   { name: "layout", monsters: 3 },

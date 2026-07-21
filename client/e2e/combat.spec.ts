@@ -22,11 +22,20 @@ test("melee-attacking a monster deals damage, observable via window.game.hp", as
     .toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
-  // Snapshot every entity's HP before engaging. Success is "some entity's HP
-  // dropped below this baseline" — HP only ever decreases from combat, never
-  // rises above its starting value, so this can't be satisfied except by real
-  // damage happening (not a tautology against a hardcoded max).
-  const baseline = await page.evaluate(() => ({ ...window.game.hp }));
+  // Snapshot each MONSTER's HP before engaging. Success is "some monster took
+  // real damage" — HP only ever decreases from combat, never rises above its
+  // starting value, so this can't be satisfied except by real damage happening
+  // (not a tautology against a hardcoded max). Monster-scoped (not every
+  // entity) so a sibling player's disconnect can never be mistaken for a hit.
+  const baseline = await page.evaluate(
+    (monsterKind) =>
+      Object.fromEntries(
+        window.game.positions
+          .filter((p) => p.kind === monsterKind)
+          .map((p) => [p.id, window.game.hp[p.id] ?? 0]),
+      ),
+    EntityMonster,
+  );
 
   // Every poll: re-pick whichever monster is currently nearest my entity and
   // tapHex toward it. Monsters hunt the nearest player too (server-side,
@@ -85,10 +94,25 @@ test("melee-attacking a monster deals damage, observable via window.game.hp", as
     }, EntityMonster);
 
     return page.evaluate((b) => {
-      return Object.entries(window.game.hp).some(([id, hp]) => {
-        const before = b[Number(id)];
+      const now = window.game.hp;
 
-        return before !== undefined && hp < before;
+      // Real damage shows up two ways, and this must accept BOTH (#234): a
+      // survivor whose HP dropped below baseline (cur < before), OR a monster
+      // that is simply GONE (cur === undefined) — a killing blow. A one-shot
+      // kill (the fighter's 4 damage exactly matches a rat's 4 HP) removes the
+      // entity outright, so its HP never reads "< before"; it just vanishes.
+      // Counting only survivors' drops made this test blind to one-shot kills:
+      // against a low-HP monster draw it ground the shared, non-respawning
+      // monster pool to nothing while still timing out — and starved the
+      // sibling freeze test (:131) of any live monster (both failed together
+      // under CI load).
+      return Object.entries(b).some(([id, before]) => {
+        if (before <= 0) {
+          return false;
+        }
+        const cur = now[Number(id)];
+
+        return cur === undefined || cur < before;
       });
     }, base);
   };
