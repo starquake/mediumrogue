@@ -78,7 +78,7 @@ import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
 import type { CommittedAction } from "./render/feedback";
 import { FeedbackLayer } from "./render/feedback";
-import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
+import { hexDistance, hexToPixel, pixelToHex } from "./render/hex";
 import { HoverHighlightLayer, type HoverMoveTile } from "./render/hover";
 import { GroundItemLayer } from "./render/items";
 import { MoveRangeLayer } from "./render/range";
@@ -344,6 +344,15 @@ let turnStartedAtMs = 0;
 let curIntervalMs = 0;
 let curPlaybackMs = 0;
 
+// Wheel-zoom feel constants (#273/#274), all client-only and safe to tweak on
+// dev. Zoom is a whole-scene container scale, eased frame-rate-independently
+// toward a wheel-driven target, applied around the followed player (Grim-Dawn-
+// style follow camera). There is NO pan — the camera always follows the player.
+const ZOOM_MIN = 0.5; // most zoomed-OUT (survey the big world)
+const ZOOM_MAX = 2.5; // most zoomed-IN
+const ZOOM_EASE_RATE = 12; // 1/s — higher eases toward targetZoom faster (1 - e^(-rate·dt))
+const ZOOM_WHEEL_SENSITIVITY = 0.0015; // multiplicative zoom per wheel deltaY unit
+
 window.game = {
   turn: -1,
   connected: false,
@@ -359,6 +368,7 @@ window.game = {
   species: "",
   me: null,
   camera: { x: 0, y: 0 },
+  zoom: 1,
   intervalMs: 0,
   heartbeats: 0,
   get phase(): "playback" | "input" {
@@ -715,19 +725,47 @@ async function start(): Promise<void> {
   const damageLayer = new DamageNumberLayer(app.ticker);
   world.addChild(damageLayer.container);
 
-  // Camera follows my entity's *live* (per-frame interpolated) position rather
-  // than snapping to its hex once per turn, so the pan is as smooth as the
-  // sprite's own movement. Runs every frame after EntityLayer's tick (added
-  // first, so dot.current is already advanced this frame); reading app.screen
-  // each frame also keeps it centred across window resizes. Falls back to the
-  // origin until my dot exists (pre-join).
+  // Follow camera + smooth wheel zoom (#273/#274, Grim-Dawn/Diablo style). The
+  // camera re-centres on my entity's *live* (per-frame interpolated) position
+  // every frame, so the player is always screen-centred and the pan is as
+  // smooth as the sprite's own movement — there is NO manual panning. `zoom`
+  // eases toward the wheel-driven `targetZoom`; the whole `world` container
+  // scales around the followed player. Runs every frame after EntityLayer's
+  // tick (added first, so dot.current is already advanced this frame); reading
+  // app.screen each frame keeps it centred across window resizes. Falls back to
+  // the origin until my dot exists (pre-join).
+  let zoom = 1;
+  let targetZoom = 1;
+
   const updateCamera = (): void => {
+    const dtSeconds = app.ticker.deltaMS / 1000;
+
+    // Frame-rate-independent exponential easing toward the wheel's target zoom.
+    zoom += (targetZoom - zoom) * (1 - Math.exp(-ZOOM_EASE_RATE * dtSeconds));
+    world.scale.set(zoom);
+
+    // Centre the followed player under the scaled world (no pan term).
     const p = entityLayer.myPixel() ?? hexToPixel({ q: 0, r: 0 });
-    world.position.set(app.screen.width / 2 - p.x, app.screen.height / 2 - p.y);
+    world.position.set(app.screen.width / 2 - p.x * zoom, app.screen.height / 2 - p.y * zoom);
+
     window.game.camera = { x: world.position.x, y: world.position.y };
+    window.game.zoom = zoom;
   };
   updateCamera();
   app.ticker.add(updateCamera);
+
+  // Mouse-wheel zoom (#273): each notch scales targetZoom multiplicatively
+  // (deltaY < 0 = wheel up = zoom in), clamped; the ticker above eases toward
+  // it. preventDefault stops the page from scrolling under the canvas.
+  app.canvas.addEventListener(
+    "wheel",
+    (ev: WheelEvent): void => {
+      ev.preventDefault();
+      const factor = Math.exp(-ev.deltaY * ZOOM_WHEEL_SENSITIVITY);
+      targetZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, targetZoom * factor));
+    },
+    { passive: false },
+  );
 
   // #138: clear the committed indicator the moment its resolving bundle's
   // playback ends (committedClearAtMs), watched here per frame rather than via
@@ -1283,7 +1321,10 @@ async function start(): Promise<void> {
     const rect = app.canvas.getBoundingClientRect();
     const p = hexToPixel({ q, r });
 
-    return { x: rect.left + world.position.x + p.x, y: rect.top + world.position.y + p.y };
+    // world.position already folds in the follow camera + zoom (updateCamera);
+    // the world point is then scaled by zoom (#273/#274). Inverse of the
+    // pointerdown un-projection, so a click round-trips to the hex drawn now.
+    return { x: rect.left + world.position.x + p.x * zoom, y: rect.top + world.position.y + p.y * zoom };
   };
 
   // World-reset signal (item 4, playtest feedback batch 3): remember the
@@ -1723,21 +1764,12 @@ async function start(): Promise<void> {
     },
   });
 
-  // Keyboard: a step is a one-hex destination — same code path as a click.
-  // isBlocked additionally guards the start screen (item 10): a not-yet-real
-  // character must never move while its class/species is still being chosen.
+  // Keyboard bindings (#273 dropped QWEASD character movement; #274 settled the
+  // camera as a pure follow camera with wheel zoom, so there are no camera keys
+  // at all — character movement is click/tap only). isBlocked guards the start
+  // screen (item 10): a not-yet-real character must never act while its
+  // class/species is being chosen.
   bindMovementKeys({
-    onStep: (dir): void => {
-      const from = window.game.me?.hex;
-      if (from === undefined) {
-        return;
-      }
-      // #116: through clickTarget, not walkTo — stepping into an adjacent
-      // hostile is a melee attack (the roguelike idiom survives; only the
-      // wire changed), and key-steps get the same in-combat reach filter
-      // clicks have.
-      void clickTarget(neighbor(from, dir));
-    },
     // SPACE = wait (item 11): the same own-hex move a click on my own hex
     // already sends — clickTarget's "self" branch, reached here via
     // clickTarget itself so the two code paths stay identical (clears
@@ -1750,11 +1782,12 @@ async function start(): Promise<void> {
       }
       void clickTarget(me.hex);
     },
-    // `i` / `c` toggle the character/inventory panel, Escape closes it —
-    // shares the movement keys' typing-focus guard (input/keys.ts) so typing
-    // "i", "c", or Escape into chat never touches the panel, and the same
-    // start-screen block below. Escape's isPanelOpen gate lives in
-    // keys.ts (a no-op while already closed, never a toggle).
+    // `i` or `c` toggles the character/inventory panel, Escape closes it —
+    // shares the typing-focus guard (input/keys.ts) so typing "i"/"c"/Escape
+    // into chat never touches the panel, and the same start-screen block below.
+    // (#273 briefly gave `c` to camera-recenter; #274's follow camera has no
+    // recenter, so `c` is a panel alias again.) Escape's isPanelOpen gate lives
+    // in keys.ts (a no-op while already closed).
     onToggleInventory: toggleInventory,
     onToggleSkills: applySkillsPanel,
     onToggleHelp: toggleControlsOverlay,
@@ -1774,24 +1807,25 @@ async function start(): Promise<void> {
   });
 
   // Click-to-move (or, in combat with a ranged class, click-to-attack): canvas
-  // point → world point (undo the centering translate) → hex → clickTarget's
-  // move-vs-attack decision. A small cursor affordance previews which one a
-  // hover would trigger.
+  // point → world point (undo the follow camera's centring translate, then
+  // ÷ zoom — #273/#274) → hex → clickTarget's move-vs-attack decision. A small
+  // cursor affordance previews which one a hover would trigger. world.position
+  // already folds in the follow + zoom, so no separate pan term is needed.
   app.canvas.addEventListener("pointerdown", (ev: PointerEvent): void => {
     if (ev.button !== 0) {
       return;
     }
 
     const rect = app.canvas.getBoundingClientRect();
-    const worldX = ev.clientX - rect.left - world.position.x;
-    const worldY = ev.clientY - rect.top - world.position.y;
+    const worldX = (ev.clientX - rect.left - world.position.x) / zoom;
+    const worldY = (ev.clientY - rect.top - world.position.y) / zoom;
     clickTarget(pixelToHex({ x: worldX, y: worldY }));
   });
 
   app.canvas.addEventListener("pointermove", (ev: PointerEvent): void => {
     const rect = app.canvas.getBoundingClientRect();
-    const worldX = ev.clientX - rect.left - world.position.x;
-    const worldY = ev.clientY - rect.top - world.position.y;
+    const worldX = (ev.clientX - rect.left - world.position.x) / zoom;
+    const worldY = (ev.clientY - rect.top - world.position.y) / zoom;
     // Crosshair wherever a click would attack — a shot OR a melee swing
     // (#113: a melee swing is a committed attack since #104, so it earns the
     // same pre-click affordance as a ranged target; see clickTarget's routing).

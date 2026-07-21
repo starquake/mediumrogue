@@ -1,32 +1,25 @@
-import type { Direction } from "../render/hex";
-
-// The movement keys from the plan (§5): QWE on the top row for the northern
-// directions, ASD below for the southern ones. Six keys, six hex directions,
-// no modifier states. SPACE is the explicit wait key (item 11, playtest
-// batch 2) — the same own-hex move that a click already waits/cancels with;
-// standing still without SPACE is still simply not sending an intent.
-const KEY_TO_DIRECTION: Record<string, Direction> = {
-  KeyQ: "nw",
-  KeyW: "n",
-  KeyE: "ne",
-  KeyA: "sw",
-  KeyS: "s",
-  KeyD: "se",
-};
-
+// The camera-survey experiment (#273) dropped the QWEASD hex-direction
+// character-movement keys: character movement is now click/tap only
+// (clickTarget / window.game.tapHex). #274 settled the camera as a pure
+// Grim-Dawn-style FOLLOW camera with mouse-wheel zoom (main.ts) — so there are
+// NO camera keys at all: WASD does nothing, there is no pan and nothing to
+// recenter. SPACE is still the explicit wait key (item 11, playtest batch 2) —
+// the same own-hex move that a click already waits/cancels with; standing still
+// without SPACE is still simply not sending an intent.
 const WAIT_KEY = "Space";
 const INVENTORY_KEY = "KeyI";
+// `c` is a second mnemonic for the character panel ("character" / "inventory"),
+// alongside `i`: #273 briefly repurposed it to camera-recenter, but #274's pure
+// follow camera has nothing to recenter, so `c` is the panel alias again.
 const CHARACTER_KEY = "KeyC";
-// `k` for the skills panel (#124). NOT `s` — that is already the south
-// movement direction, and a movement key that sometimes opens a panel is
-// exactly the kind of thing that gets reported as "my character froze".
+// `k` for the skills panel (#124). NOT `s` — a letter key that sometimes opens a
+// panel is exactly the kind of thing that gets reported as "my character froze".
 const SKILLS_KEY = "KeyK";
 const HELP_KEY = "Slash"; // "?" is Shift+/ — the physical key is Slash (#203)
 const ACTION_KEYS: Record<string, number> = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }; // action bar (#185)
 const ESCAPE_KEY = "Escape";
 
 export interface KeyCallbacks {
-  onStep: (dir: Direction) => void;
   /**
    * SPACE: wait (item 11) — the same own-hex move intent a click on my own
    * hex already sends (clears any queued path; inside a bubble it locks in,
@@ -34,10 +27,10 @@ export interface KeyCallbacks {
    */
   onWait: () => void;
   /**
-   * `i` or `c` (two mnemonics, "inventory" / "character", same action):
-   * toggle the character/inventory panel (inventory-slots milestone, gear
-   * keystone task 4) — subject to the same typing-target and isBlocked
-   * guards as movement, so typing "i" or "c" into chat never opens it.
+   * `i` or `c` (two mnemonics, "inventory" / "character", same action): toggle
+   * the character/inventory panel (inventory-slots milestone, gear keystone
+   * task 4) — subject to the same typing-target and isBlocked guards as
+   * everything here, so typing "i" or "c" into chat never opens it.
    */
   onToggleInventory?: () => void;
   /**
@@ -72,10 +65,10 @@ export interface KeyCallbacks {
   isBlocked?: () => boolean;
 }
 
-// isTypingTarget reports whether el is (or would receive) text input —
-// wasd/qe are letters, not just movement keys, so typing them into chat (or
-// any other text field) must never also walk the character (item 10, a real
-// playtest bug report).
+// isTypingTarget reports whether el is (or would receive) text input — the
+// panel keys are letters, not just controls, so typing them into chat (or any
+// other text field) must never also open a panel (item 10, a real playtest
+// bug report).
 function isTypingTarget(el: EventTarget | Element | null): boolean {
   if (!(el instanceof HTMLElement)) {
     return false;
@@ -131,11 +124,6 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
       callbacks.onClosePanel();
 
       return;
-    }
-
-    const dir = KEY_TO_DIRECTION[ev.code];
-    if (dir !== undefined) {
-      callbacks.onStep(dir);
     }
   });
 }
