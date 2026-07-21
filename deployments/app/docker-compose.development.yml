@@ -8,7 +8,12 @@ services:
       - LISTEN_ADDR=0.0.0.0:8080
       - TURN_INTERVAL=4s
       - HEARTBEAT_INTERVAL=15s
-      - MONSTER_COUNT=40
+      # Big, populated world to exercise the wheel-zoom + WASD-pan survey camera
+      # (#273/#274). Radius 60 ≈ 11k hexes; ~1 monster per ~44 hexes. Dev is a
+      # throwaway sandbox — the radius change just regenerates its world.
+      - WORLD_RADIUS=60
+      - WORLD_SEED=42
+      - MONSTER_COUNT=250
       - SNAPSHOT_PATH=/data/world.json
       - SNAPSHOT_INTERVAL=60s
     volumes:
