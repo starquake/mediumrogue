@@ -488,6 +488,81 @@ func TestBubbleEntryCancelsAutoWalk(t *testing.T) {
 	}
 }
 
+// TestBubbleEntryCancelsFinalStep: the cancel above must also clear a route
+// down to its LAST hex (#117 recurrence, 2026-07-20). recomputeBubblesLocked
+// used to exempt a single remaining step (`len(path) > 1`) — a leftover from
+// the pre-#116 melee-bump design, where a 1-step path onto a monster WAS the
+// standing melee intent and had to survive. #116 made player melee an
+// entity-targeted attack intent, so a surviving single step is never an
+// attack anymore — it is the tail of ordinary travel, and it advanced the
+// player one hex on the first bubble resolution after entry: exactly the
+// #103 observable (caught by autowalk.spec.ts on CI, run 29769461580, where
+// the walk's final step {16,-7}→{16,-6} landed at bubble-resolution cadence).
+//
+// Geometry: the walk's FIRST step brings the player into CombatRadius of the
+// monster with exactly one hex left on the route, so the bubble forms at that
+// step's final recompute while len(path) == 1.
+func TestBubbleEntryCancelsFinalStep(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	me, err := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	pinToOrigin(w, &me)
+
+	// A two-hex walk south. After the first step the player is at {0,1}.
+	goal := mustWalkable(t, w, protocol.Hex{Q: 0, R: 2})
+	if !submitOK(w, me, goal) {
+		t.Fatalf("SubmitIntent for the walk failed")
+	}
+
+	if got, want := len(w.PathForTest(me.EntityID)), 2; got != want {
+		t.Fatalf("queued path length = %d, want %d", got, want)
+	}
+
+	// Monster at distance CombatRadius+1 from the origin, on the same grass
+	// corridor: no bubble yet (placement does not recompute, and the pair is
+	// out of range anyway). After the player's first step the distance is at
+	// most CombatRadius — whatever single move the monster makes this turn,
+	// dist({0,1}, monster) ≤ dist({0,1}, {0,CombatRadius+1}) + 1 = CombatRadius
+	// — so the step's final recompute always forms the bubble with exactly one
+	// hex left on the player's route.
+	monsterID := w.PlaceMonsterForTest(mustWalkable(t, w, protocol.Hex{Q: 0, R: protocol.CombatRadius + 1}))
+
+	snap := step(t, w)
+
+	if !inCombat(t, snap, me.EntityID) {
+		t.Fatalf("player InCombat = false, want true (bubble must form after the first step)")
+	}
+
+	if !inCombat(t, snap, monsterID) {
+		t.Fatalf("monster InCombat = false, want true")
+	}
+
+	if got := w.PathForTest(me.EntityID); got != nil {
+		t.Errorf("path after bubble entry = %v, want nil (the final step must be cancelled too)", got)
+	}
+
+	// The observable half: the next resolution must not walk the residual
+	// step — the player's hex stays frozen at {0,1} (#103's contract).
+	frozen := protocol.Hex{Q: 0, R: 1}
+
+	if e, ok := entityOfSnap(snap, me.EntityID); !ok || e.Hex != frozen {
+		t.Fatalf("player hex after bubble entry = %v, want %v", e.Hex, frozen)
+	}
+
+	snap = step(t, w)
+
+	if e, ok := entityOfSnap(snap, me.EntityID); !ok || e.Hex != frozen {
+		t.Errorf("player hex after a bubble resolution = %v, want %v (residual step advanced under the fight)", e.Hex, frozen)
+	}
+}
+
 // TestBubbleDissolvesWhenMonsterDies: killing the only monster drops the
 // component below an opposing pair, so the surviving player returns to the
 // world domain and the bubble disappears.

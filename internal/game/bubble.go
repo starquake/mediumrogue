@@ -65,16 +65,19 @@ func (w *World) recomputeBubblesLocked(now time.Time) {
 
 		for _, e := range comp {
 			// Entering combat time hard-cancels a player's queued auto-walk
-			// (#103): a multi-hex route planned in world time is travel, and
-			// must not keep advancing one hex per bubble-turn underneath the
-			// fight. Only the world→bubble transition clears — a path queued
-			// INSIDE a bubble (fleeing) is a deliberate combat action and
-			// survives recomputes, as does a path carried across a bubble
-			// merge. A single remaining step also survives: that is just a
-			// deliberate adjacent move (#116: move-conversion is monster-only, so
-			// a surviving single step never doubles as a standing melee intent
-			// for a player).
-			if e.bubbleID == 0 && e.kind == protocol.EntityPlayer && len(e.path) > 1 {
+			// (#103): a route planned in world time is travel, and must not
+			// keep advancing one hex per bubble-turn underneath the fight —
+			// down to and including its LAST hex (#117: a `len > 1` guard
+			// here once exempted a single remaining step, a leftover from
+			// the pre-#116 melee-bump design where a 1-step path onto a
+			// monster WAS the standing melee intent; after #116 player melee
+			// is an entity-targeted attack intent, so a surviving step was
+			// only ever travel residue — and it walked the player one hex on
+			// the first bubble resolution, the exact #103 observable). Only
+			// the world→bubble transition clears — a path queued INSIDE a
+			// bubble (fleeing) is a deliberate combat action and survives
+			// recomputes, as does a path carried across a bubble merge.
+			if e.bubbleID == 0 && e.kind == protocol.EntityPlayer && len(e.path) > 0 {
 				e.path = nil
 			}
 

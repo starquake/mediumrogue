@@ -137,11 +137,12 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   the attack layer; `window.game.hoverMoveTile` (`{ hex, kind: "walk" | "wait" }`
   or null) / `.hoverTile(q, r)`.
 - **Entering a combat bubble hard-cancels a queued auto-walk** (#103): the
-  server clears a remaining **multi-hex** route on the world→bubble
-  transition, and the client drops the walk goal and its destination ring on
-  the same bundle. What survives: a path queued *inside* a bubble (fleeing),
-  a path carried across a bubble merge, and a **single remaining step** —
-  that's a deliberate adjacent move. Every
+  server clears the remaining route — down to and including its **last hex**
+  (#117: a single-step exemption, a leftover from the pre-#116 melee-bump
+  design, used to walk the route's final hex under the fight) — on the
+  world→bubble transition, and the client drops the walk goal and its
+  destination ring on the same bundle. What survives: a path queued *inside*
+  a bubble (fleeing) and a path carried across a bubble merge. Every
   in-combat move is otherwise a fresh, deliberate intent; after the fight,
   click the destination again.
 
