@@ -1,5 +1,7 @@
 import type { Ticker } from "pixi.js";
 
+import { mustGet } from "./dom";
+
 type Phase = "playback" | "input";
 
 /**
@@ -17,8 +19,8 @@ export class TurnTimer {
   private playbackMs = 0;
 
   constructor(ticker: Ticker) {
-    this.bar = this.mustGet("turn-timer");
-    this.fill = this.mustGet("turn-timer-fill");
+    this.bar = mustGet("turn-timer");
+    this.fill = mustGet("turn-timer-fill");
     ticker.add(this.tick);
   }
 
@@ -50,13 +52,4 @@ export class TurnTimer {
       this.fill.style.width = `${f * 100}%`;
     }
   };
-
-  private mustGet(id: string): HTMLElement {
-    const el = document.getElementById(id);
-    if (el === null) {
-      throw new Error(`required element #${id} missing from index.html`);
-    }
-
-    return el;
-  }
 }

@@ -4,6 +4,8 @@
 // below: a client-side distance check to gate the ranged-attack click UX
 // (is a clicked hex within my class's weapon range). The server remains the
 // sole authority on whether an attack actually lands.
+import { Graphics } from "pixi.js";
+
 import type { Hex } from "../protocol.gen";
 
 /** Distance from a hex's center to any of its six corners, in pixels. Sized so
@@ -71,6 +73,26 @@ export function hexCorners(center: Point, size: number = HEX_SIZE): number[] {
   }
 
   return points;
+}
+
+/**
+ * One filled + stroked hex tile drawn onto `gfx` — the shared primitive for
+ * every ground-plane overlay (the move/melee/ranged reach tints, the #101
+ * attack-target ember, the #135 world hover highlight). Each overlay layer
+ * only picks the colour, alphas, inset `size`, and stroke width; the poly +
+ * fill + same-colour stroke shape lives here so the three layers can never
+ * drift apart. Callers `gfx.clear()` and iterate their own tile lists.
+ */
+export function drawHexTile(
+  gfx: Graphics,
+  hex: Hex,
+  style: { size: number; color: number; fillAlpha: number; strokeWidth: number; strokeAlpha: number },
+): void {
+  const corners = hexCorners(hexToPixel(hex), style.size);
+  gfx
+    .poly(corners)
+    .fill({ color: style.color, alpha: style.fillAlpha })
+    .stroke({ width: style.strokeWidth, color: style.color, alpha: style.strokeAlpha });
 }
 
 /**

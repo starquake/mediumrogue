@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 
 import type { Hex } from "../protocol.gen";
-import { hexCorners, hexToPixel, HEX_SIZE } from "./hex";
+import { drawHexTile, HEX_SIZE } from "./hex";
 
 const MOVE_TILE_COLOR = 0x8fd0ff; // matches my dot / the destination ring
 const MELEE_TILE_COLOR = 0xd6544f; // matches hostiles / the attack flash
@@ -45,10 +45,6 @@ export class MoveRangeLayer {
   }
 
   private tile(h: Hex, color: number, fillAlpha: number, strokeAlpha: number): void {
-    const corners = hexCorners(hexToPixel(h), HEX_SIZE - 2);
-    this.gfx
-      .poly(corners)
-      .fill({ color, alpha: fillAlpha })
-      .stroke({ width: 1.5, color, alpha: strokeAlpha });
+    drawHexTile(this.gfx, h, { size: HEX_SIZE - 2, color, fillAlpha, strokeWidth: 1.5, strokeAlpha });
   }
 }

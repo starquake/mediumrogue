@@ -17,10 +17,9 @@ import {
   markPending,
   markPickupRejected,
   markTaking,
-  modalOpen,
   panelOpen,
   pending,
-  pickupRows,
+  pickupModalMirror,
   refreshPickup,
   setInventory,
   togglePanel,
@@ -66,7 +65,6 @@ import {
   SkillPointsPerLevel,
   SkillPointCost,
   SpeciesHuman,
-  StackCap,
   TerrainForest,
   TerrainGrass,
   TurnSeconds,
@@ -80,343 +78,24 @@ import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
 import type { CommittedAction } from "./render/feedback";
 import { FeedbackLayer } from "./render/feedback";
-import { DIRECTIONS, hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
+import { hexDistance, hexToPixel, neighbor, pixelToHex } from "./render/hex";
 import { HoverHighlightLayer, type HoverMoveTile } from "./render/hover";
 import { GroundItemLayer } from "./render/items";
 import { MoveRangeLayer } from "./render/range";
 import { buildMapLayer } from "./render/map";
 import { QuestMarkerLayer } from "./render/questmarker";
+import * as tactics from "./tactics";
+import { mustGet, mustQuery } from "./ui/dom";
 import { TurnTimer } from "./ui/timer";
+
+// GameDebug (the window.game shape) now lives in debug-surface.ts; re-export it
+// so the e2e specs' `import { GameDebug } from "../src/main"` keeps resolving.
+export type { GameDebug } from "./debug-surface";
 
 // Strip a `#t=<token>` character-link fragment and adopt its identity before
 // anything else in this module runs — see importIdentityFromFragment's doc
 // comment (net/session.ts) for why this must happen this early.
 importIdentityFromFragment();
-
-// window.game is the debug/testing surface: Playwright (and a curious human in
-// devtools) reads live state through it. Testability is a design rule — every
-// feature keeps this in sync. See §6 of the plan.
-export interface GameDebug {
-  turn: number;
-  connected: boolean;
-  /**
-   * The turn number of the last bundle RECEIVED — stamped at the very top of
-   * onTurn, before any work (#170).
-   */
-  turnReceived: number;
-  /**
-   * The turn number of the last bundle fully APPLIED — stamped at the very
-   * END of onTurn, after every layer has been updated.
-   *
-   * The gap between these two is the whole point: an exception mid-handler
-   * leaves rendering dead while the stream stays healthy, and on 2026-07-19
-   * that shipped as "connected" plus a frozen map. `turn` itself is no use as
-   * a guard, because it is assigned EARLY in the handler and kept advancing
-   * right through that outage.
-   */
-  turnApplied: number;
-  /**
-   * The last uncaught client error, or null. Set by the global handlers that
-   * also raise the on-screen banner.
-   */
-  clientError: string | null;
-  /** The level my last level-up banner announced (#202); 0 = none yet. */
-  lastLevelUp: number;
-  /** Number of map tiles rendered; 0 until the map layer is on stage. */
-  tiles: number;
-  /** Entity count from the latest turn bundle. */
-  entities: number;
-  /** Monster count from the latest turn bundle. */
-  monsters: number;
-  /**
-   * Every entity in the latest bundle, for cross-client observation in
-   * tests. monsterKind is the monster-kind registry id ("wolf", "dragon",
-   * ...), empty for a player — lets an e2e spec assert distinct kinds
-   * actually rendered (milestone 6c). name is the display name (a player's
-   * chosen name, or a monster kind's display name — "Wolf", "Dragon" — used
-   * by the enemy hover tooltip, item 13).
-   */
-  positions: { id: number; hex: Hex; kind: string; monsterKind: string; name: string; reach: number }[];
-  /**
-   * The viewer's OWN skills from the latest bundle (#124) — id, tree, and
-   * whether it is learned. Near-sighted by construction: a locked skill is
-   * never sent, so a missing id here means "not learnable yet", not "hidden".
-   */
-  skills: {
-    id: string;
-    name: string;
-    tree: string;
-    learned: boolean;
-    active: boolean;
-    cooldownTurns: number;
-    rangeHex: number;
-    turnsUntilReady: number;
-  }[];
-  /** The viewer's unspent skill-point bank. */
-  skillPoints: number;
-  /** Whether the skills panel is open (toggled by the `k` key). */
-  skillsPanelOpen: boolean;
-  /** Whether the controls overlay is open (#203). */
-  controlsOpen: boolean;
-  /** The action-bar skill currently armed for targeting, or null (#185). */
-  armedSkill: () => string | null;
-  /** Whether the death card is showing (#204). */
-  died: boolean;
-  /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
-  hp: Record<number, number>;
-  /**
-   * Max HP by entity id, from the latest bundle — drives the enemy hover
-   * tooltip's "HP cur/max" (item 13, playtest batch 2).
-   */
-  maxHp: Record<number, number>;
-  /** This client's entity's XP, from the latest bundle. 0 until joined. */
-  xp: number;
-  /** This client's entity's level, from the latest bundle. 1 until joined. */
-  level: number;
-  /** This client's entity's class ("fighter"/"rogue"/"mage"), from the latest bundle. "" until joined. */
-  class: string;
-  /** This client's entity's species ("human"/"elf"/"dwarf"), from the latest bundle. "" until joined. */
-  species: string;
-  /** This client's entity, server-authoritative position. Null until joined. */
-  me: { id: number; hex: Hex } | null;
-  /** The world container's screen offset — follows `me` so it stays centred. */
-  camera: { x: number; y: number };
-  /** Runtime turn interval from the latest bundle, in ms. */
-  intervalMs: number;
-  /** Count of named heartbeat frames received — proves the keep-alive is observable. */
-  heartbeats: number;
-  /** Current turn phase: animating the last result, or awaiting input. */
-  phase: "playback" | "input";
-  /** Milliseconds left in the current phase. */
-  phaseRemainingMs: number;
-  /** The hex this client last asked to walk to; null once reached. */
-  destination: Hex | null;
-  /** Whether this client's entity is frozen in a combat time bubble right now. */
-  inCombat: boolean;
-  /**
-   * The combat bubble this client is a member of, or null when not in combat.
-   * `waitingFor` mirrors the bundle's `waitingForIds` for the bubble.
-   */
-  bubble: { waitingFor: number[]; patienceRemainingMs: number } | null;
-  /**
-   * Submit a destination as if the hex were clicked (drives e2e). Returns a
-   * promise that resolves once the intent POST has settled, so tests can
-   * await a walk (e.g. a path-clearing tap) actually landing server-side
-   * before proceeding — callers that don't care are free to ignore it.
-   */
-  tapHex: (q: number, r: number) => Promise<void>;
-  /**
-   * Convert a hex to VIEWPORT pixel coordinates at its centre — the exact
-   * inverse of the canvas pointerdown mapping (client point − canvas rect −
-   * world offset → hex), computed from the live canvas rect and camera at
-   * call time. Lets an e2e drive a REAL page.mouse.click on the canvas
-   * (chat.spec.ts's pointer-events guard, #89) instead of tapHex's synthetic
-   * clickTarget path. Null until the renderer is on stage.
-   */
-  hexToScreen: ((q: number, r: number) => { x: number; y: number }) | null;
-  /** This client's chosen display name (chat sender label). "" until joined. */
-  name: string;
-  /**
-   * The copyable character link for this client's identity —
-   * `<origin>/#t=<token>` — or "" until joined. Opening this URL on any
-   * browser/device imports the token (net/session.ts's
-   * importIdentityFromFragment) and rejoins the SAME character. Exposed for
-   * e2e (client/e2e/identity.spec.ts): a test reads this directly rather
-   * than driving the copy-to-clipboard button, since clipboard permissions
-   * are extra ceremony a headless browser doesn't need for the round trip
-   * that actually matters — the link string itself, and the join it drives.
-   */
-  identityLink: string;
-  /**
-   * Force one attemptRejoin pass NOW (drives e2e — the real trigger, my
-   * entity being absent from bundles for MISSING_GRACE_MS after a
-   * disconnect-grace sweep, is impractical to arrange in a browser test).
-   * Same code path as the organic trigger: reclaim() with this tab's own
-   * in-memory identity. Null until joined.
-   */
-  forceRejoin: (() => Promise<void>) | null;
-  /** The global chat log, mirrored live from the chat store's signal. */
-  chat: { seq: number; sender: string; text: string }[];
-  /** Send a chat line as if typed into the panel (drives e2e). */
-  sendChat: (text: string) => Promise<void>;
-  /** Names of MY party's members (including me), from the latest bundle. Empty when solo. */
-  party: string[];
-  /** This client's entity's party id, from the latest bundle. 0 when solo. */
-  partyId: number;
-  /**
-   * My FIRST active quest (taken by me or my party), from the latest
-   * bundle — null when I hold none. Kept for backward compatibility with
-   * the single-quest model; see myQuests for the full list (item 14,
-   * playtest batch 2: I may hold several personal quests concurrently,
-   * plus my party's, if any).
-   */
-  quest: QuestView | null;
-  /** Every quest currently active for me (personal, plural, plus my party's if any), from the latest bundle. */
-  myQuests: QuestView[];
-  /** The whole quest board, from the latest bundle. */
-  quests: QuestView[];
-  /**
-   * My FIRST active reach quest's goal hex, or null. Kept for backward
-   * compatibility; see questGoalMarkers for every active reach quest's goal
-   * (item 14). Drives QuestMarkerLayer (item 12); exposed for e2e since the
-   * marker itself is only a canvas draw.
-   */
-  questGoalMarker: Hex | null;
-  /** Every active reach quest's goal hex, keyed by quest id (item 14, playtest batch 2). */
-  questGoalMarkers: { id: number; hex: Hex }[];
-  /** This client's entity's owned items (id/defId/equipped), from the latest bundle. Empty until joined. */
-  inventory: { id: number; defId: string; equipped: boolean }[];
-  /**
-   * My equipped gear keyed by one of the eight equip slots (helmet, amulet,
-   * gloves, ring, main-hand, chest, off-hand, boots) — the paper-doll's
-   * filled slots, from the latest bundle. Empty slots are absent keys.
-   * Exposed for e2e (the panel itself is DOM).
-   */
-  equipped: Record<string, { id: number; defId: string; name: string; type: string }>;
-  /**
-   * My backpack: BackpackSize entries, left-packed (nulls trail). A
-   * consumable entry carries count>1. Exposed for e2e.
-   */
-  backpack: ({ id: number; defId: string; name: string; type: string; count: number } | null)[];
-  /** Whether the character/paper-doll panel is open (the `i` key / HUD button). */
-  panelOpen: boolean;
-  /**
-   * The per-hex pickup modal: whether it is open plus its rows (each a
-   * ground stack's id/name/type/count and whether a take was rejected).
-   * Exposed for e2e; the modal itself is DOM.
-   */
-  pickupModal: {
-    open: boolean;
-    rows: {
-      id: number;
-      name: string;
-      type: string;
-      count: number;
-      rejected: boolean;
-      damage: number;
-      rangeHex: number;
-      aoeRadius: number;
-    }[];
-  };
-  /**
-   * Test hook: mark a pickup-modal row rejected (the backpack-full feedback
-   * render path), so e2e can exercise the inline ".full" feedback without a
-   * server that can produce a full backpack from class defaults. Drives only
-   * the client render — the server rejection itself is integration-tested.
-   */
-  rejectPickupRow: (groundItemId: number) => void;
-  /** Every item lying on the ground, from the latest bundle (count = stack size). */
-  groundItems: { id: number; hex: Hex; count: number }[];
-  /**
-   * Damage inferred from the latest bundle by diffing HP against the previous
-   * one (the wire carries state — the HP delta stays the authoritative
-   * number): one entry per entity that lost HP, plus one per monster that
-   * vanished (its killing blow, shown as the HP it had left). Since #114 each
-   * entry also carries crit/glance, derived from the bundle's per-hit Hits
-   * view (see `hits`), which styles the floating combat numbers. Exposed for
-   * e2e.
-   */
-  damage: { id: number; amount: number; crit: boolean; glance: boolean }[];
-  /**
-   * The per-hit combat moments new in the latest bundle (#114): every
-   * TurnEvent.Hits entry whose turn is newer than the previously processed
-   * bundle (the wire keeps a few turns of hits for coalescing slack — see
-   * protocol.HitView). crit = an attacker-side chance boost fired (elf
-   * passive, Misericorde, Duelist's Saber); glance = the defender-side
-   * halving (Rogue passive). Purely cosmetic; exposed for e2e.
-   */
-  hits: HitView[];
-  /**
-   * The tiles the attack a click on the currently hovered hex would hit
-   * (#101): empty when the hover would not attack (out of combat, a move
-   * tile, out of range). A single-target attack (melee swing, bow shot)
-   * lights one tile; a ground-targeted AoE (weapon aoeRadius > 0) lights the
-   * full blast disc. Drives AttackHighlightLayer's hover state; exposed for
-   * e2e (the highlight itself is a canvas draw).
-   */
-  hoverAttackTiles: Hex[];
-  /**
-   * The world (out-of-combat) hover highlight (#135): the single tile a click
-   * on the currently hovered hex would act on — `"walk"` for a walkable hex,
-   * `"wait"` for my own hex (a wait/cancel) — or null in combat, on unwalkable
-   * ground, or with no hover. Drives HoverHighlightLayer; exposed for e2e.
-   */
-  hoverMoveTile: HoverMoveTile | null;
-  /**
-   * The tiles my committed attack will hit (#101), set the moment an attack
-   * intent is submitted and cleared when the next bundle resolves it (or a
-   * later intent supersedes it) — the on-map committed/pending indicator's
-   * tile set, same lifecycle as committedAction. Exposed for e2e.
-   */
-  committedAttackTiles: Hex[];
-  /**
-   * Report a pointer hover on a hex as if the mouse moved there (drives
-   * e2e — the same code path as the canvas pointermove handler's highlight
-   * computation). Synchronous: hoverAttackTiles is up to date on return.
-   */
-  hoverTile: (q: number, r: number) => void;
-  /**
-   * The hexes my entity can act on THIS combat turn (moves + melee attacks),
-   * from the latest bundle. Empty outside a bubble — out there, click-anywhere
-   * pathing applies and no restriction exists. Drives the tactical overlay
-   * and the in-combat click filter; exposed for e2e.
-   */
-  combatMoves: Hex[];
-  /**
-   * The hexes within my equipped ranged weapon's reach this combat turn
-   * (excluding move/melee tiles — those act differently on click). Clicking
-   * one shoots when a hostile stands there (or regardless, for AoE). Empty
-   * outside a bubble or with no ranged weapon. Drives the red range wash.
-   */
-  combatRanged: Hex[];
-  /**
-   * What I committed to THIS bubble-turn — move/attack/wait plus its target
-   * hex — or null when I haven't acted yet (or it already resolved). Set the
-   * moment an intent is submitted while inCombat (item 6); cleared on the
-   * next turn bundle, or by a later intent that replaces it (an equip
-   * supersedes a queued move/attack server-side the same way). Drives the
-   * committed-action indicator (FeedbackLayer.setCommitted); exposed for e2e.
-   */
-  committedAction: CommittedAction | null;
-  /**
-   * The target hex of the most recent attack-feedback flash
-   * (FeedbackLayer.flashAttack) — set synchronously by both a ranged click
-   * and a melee click (#113), never cleared (a "last event" record,
-   * not live state; the flash itself fades in FLASH_DURATION_MS). Exposed
-   * for e2e: the flash is a 450ms one-shot, so tests read this instead of
-   * racing the animation.
-   */
-  lastAttackFlash: Hex | null;
-  /**
-   * Item ids with an in-flight panel action (equip/unequip/drink/drop) whose
-   * result hasn't ridden a turn bundle yet — the same pending set that drives
-   * the panel badge and the on-map ⇄ swap glyph (FeedbackLayer.setItemAction).
-   * Combat-agnostic; exposed for e2e. Empty when nothing is pending.
-   */
-  pendingItems: number[];
-  /**
-   * Whether a ground-item pickup is in flight (from the take click until the
-   * next turn bundle resolves it) — drives the on-map pickup glyph
-   * (FeedbackLayer.setPickup). Distinct from pendingItems (owned-item actions).
-   */
-  pickupPending: boolean;
-}
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
-function mustGet(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (el === null) {
-    throw new Error(`required element #${id} missing from index.html`);
-  }
-
-  return el;
-}
-
 
 const turnEl = mustGet("turn");
 const turnStuckEl = mustGet("turn-stuck");
@@ -568,15 +247,6 @@ new ResizeObserver(() => {
 const hoverTooltipEl = mustGet("hover-tooltip");
 const hoverTooltipKindEl = mustQuery(hoverTooltipEl, ".tooltip-kind");
 const hoverTooltipHPEl = mustQuery(hoverTooltipEl, ".tooltip-hp");
-
-function mustQuery(root: HTMLElement, selector: string): HTMLElement {
-  const el = root.querySelector<HTMLElement>(selector);
-  if (el === null) {
-    throw new Error(`required element ${selector} missing under #${root.id}`);
-  }
-
-  return el;
-}
 
 // How long this client's entity must be absent from turn bundles before it
 // re-joins (see attemptRejoin below) — well above a single coalesced/missed
@@ -743,19 +413,7 @@ window.game = {
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
     markPickupRejected(groundItemId);
-    window.game.pickupModal = {
-      open: modalOpen(),
-      rows: pickupRows().map((r) => ({
-        id: r.id,
-        name: r.name,
-        type: r.type,
-        count: r.count,
-        rejected: r.rejected,
-        damage: r.damage,
-        rangeHex: r.rangeHex,
-        aoeRadius: r.aoeRadius,
-      })),
-    };
+    window.game.pickupModal = pickupModalMirror();
   },
   groundItems: [],
   damage: [],
@@ -772,13 +430,6 @@ window.game = {
   pickupPending: false,
 };
 
-// How many hexes an entity can cover in one action-gated combat turn. 1 is
-// the current rule (one step per turn, same as the resolution walks paths);
-// the reach computation below is a BFS precisely so a future run/jump
-// ability — or a pipeline-supplied per-entity movement range — only changes
-// this number (or its source), not the structure.
-const COMBAT_MOVE_RANGE = 1;
-
 // My equipped ranged/magic weapons' range/AoE stats — one entry per held
 // weapon across BOTH hands (dual-wield, gear keystone #55) — refreshed every
 // turn bundle from Entity.Items (weapon numbers live in the server's item
@@ -789,77 +440,10 @@ const COMBAT_MOVE_RANGE = 1;
 // and the click hint would promise a blast the server then no-ops. Empty =
 // no ranged weapon equipped, which always resolves to a move on click.
 // These only drive the click-vs-move UX hint below; the server independently
-// re-checks the real equipped weapons on every attack intent regardless.
-let myRangedWeapons: { rangeHex: number; aoeRadius: number }[] = [];
-
-// aoeReachesDist: some held AoE-capable (aoeRadius > 0) ranged/magic weapon
-// reaches dist — the weapon that lets a click on empty ground still attack.
-function aoeReachesDist(dist: number): boolean {
-  return myRangedWeapons.some((w) => w.aoeRadius > 0 && dist <= w.rangeHex);
-}
-
-// aoeReaches: aoeReachesDist measured from my own hex to target.
-function aoeReaches(target: Hex): boolean {
-  const me = window.game.me;
-
-  return me !== null && aoeReachesDist(hexDistance(me.hex, target));
-}
-
-// maxRangedRange: the farthest any held ranged/magic weapon reaches (0 when
-// none held) — drives the red range-wash overlay, where "some weapon can act
-// on this tile" is the right rendering question even if not every weapon can.
-function maxRangedRange(): number {
-  return myRangedWeapons.reduce((m, w) => Math.max(m, w.rangeHex), 0);
-}
-
-// hexesWithin enumerates every hex within `radius` of center (the axial-disc
-// loop from Red Blob's hex guide) — an AoE blast's footprint (#101). Small
-// radii only (weapon aoeRadius is 1 today), so no reason to scan map tiles.
-function hexesWithin(center: Hex, radius: number): Hex[] {
-  const out: Hex[] = [];
-  for (let dq = -radius; dq <= radius; dq++) {
-    for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
-      out.push({ q: center.q + dq, r: center.r + dr });
-    }
-  }
-
-  return out;
-}
-
-/**
- * Decides whether a click on `target` should fire a ranged attack instead of
- * a move, mirroring the server's per-weapon rule (rangedDefsFor: each held
- * ranged/magic weapon fires iff ITS OWN rangeHex reaches the target). Out of
- * combat, or no ranged weapon equipped: always a move. An AoE weapon
- * (aoeRadius > 0) in range can be aimed at any hex — the blast can land on
- * empty ground and still catch nearby hostiles. A single-target weapon (a
- * rogue's bow) in range only fires at a hostile actually standing on the
- * clicked hex — any other click there still walks (mirrors the melee-attack
- * flow). Each weapon is checked against its own range, so a short AoE weapon
- * never green-lights an empty-ground click that only a longer single-target
- * weapon reaches. Reads window.game (the same state the debug/test surface
- * exposes) rather than closed-over locals, so it stays correct regardless of
- * when it's called.
- */
-function isRangedAttackClick(target: Hex): boolean {
-  if (!window.game.inCombat) {
-    return false;
-  }
-  const me = window.game.me;
-  if (me === null) {
-    return false;
-  }
-
-  const dist = hexDistance(me.hex, target);
-  if (aoeReachesDist(dist)) {
-    return true;
-  }
-
-  return (
-    myRangedWeapons.some((w) => dist <= w.rangeHex) &&
-    window.game.positions.some((p) => p.kind === EntityMonster && p.hex.q === target.q && p.hex.r === target.r)
-  );
-}
+// re-checks the real equipped weapons on every attack intent regardless. The
+// per-weapon range/AoE/hostile RULES themselves live in tactics.ts (#213) —
+// the resolver both the click predicate and the highlight run on.
+let myRangedWeapons: tactics.RangedWeapon[] = [];
 
 async function start(): Promise<void> {
   // A brand-new player — no stored identity at all, or one with no token and
@@ -933,63 +517,33 @@ async function start(): Promise<void> {
   const moveRangeLayer = new MoveRangeLayer();
   world.addChild(moveRangeLayer.container);
 
-  // combatReach BFS-expands from my hex up to COMBAT_MOVE_RANGE steps through
-  // walkable, non-hostile, non-full tiles. A hostile-held tile on the
-  // frontier is a melee-attack target (stepping in swings), never expanded
-  // through. Occupancy and hostility read the latest bundle via window.game.
-  const combatReach = (): { moves: Hex[]; melees: Hex[] } => {
-    const me = window.game.me;
-    if (me === null) {
-      return { moves: [], melees: [] };
-    }
-
-    const occupants = new Map<string, { n: number; hostile: boolean }>();
-    for (const p of window.game.positions) {
-      const key = `${p.hex.q},${p.hex.r}`;
-      const o = occupants.get(key) ?? { n: 0, hostile: false };
-      o.n += 1;
-      o.hostile ||= p.kind === EntityMonster;
-      occupants.set(key, o);
-    }
-
-    const moves: Hex[] = [];
-    const melees: Hex[] = [];
-    const seen = new Set<string>([`${me.hex.q},${me.hex.r}`]);
-    let frontier: Hex[] = [me.hex];
-
-    for (let step = 0; step < COMBAT_MOVE_RANGE; step++) {
-      const next: Hex[] = [];
-
-      for (const from of frontier) {
-        for (const dir of Object.keys(DIRECTIONS) as (keyof typeof DIRECTIONS)[]) {
-          const h = neighbor(from, dir);
-          const key = `${h.q},${h.r}`;
-          if (seen.has(key) || !walkable.has(key)) {
-            continue;
-          }
-          seen.add(key);
-
-          const occ = occupants.get(key);
-          if (occ?.hostile) {
-            melees.push(h); // swing in, never walk through
-          } else if ((occ?.n ?? 0) < StackCap) {
-            moves.push(h);
-            next.push(h); // a future range >1 keeps expanding from here
-          }
-        }
-      }
-
-      frontier = next;
-    }
-
-    return { moves, melees };
-  };
-
   // lastReach mirrors the tactical overlay's move/melee split for click
   // routing (window.game.combatMoves merges them for the e2e surface).
   // Refreshed by onTurn alongside the overlay.
   let lastReach: { moves: Hex[]; melees: Hex[] } = { moves: [], melees: [] };
-  const inList = (list: Hex[], h: Hex): boolean => list.some((x) => x.q === h.q && x.r === h.r);
+
+  // The tactics resolvers (tactics.ts, #213) are pure: each reads a snapshot
+  // of the state that decides move-vs-attack routing — my hex, the combat
+  // flag, the equipped ranged weapons, entity positions, the static
+  // walkability set, and the last computed reach. tacticsCtx builds that
+  // snapshot per call so the wrappers below stay correct whenever they run.
+  // combatReach's BFS, the attack-tile highlight (attackTilesFor), and the
+  // click predicate (isRangedAttackClick) now share ONE resolver instead of
+  // re-implementing the per-weapon range/AoE/hostile rules independently.
+  const tacticsCtx = (): tactics.TacticsCtx => ({
+    me: window.game.me?.hex ?? null,
+    inCombat: window.game.inCombat,
+    weapons: myRangedWeapons,
+    positions: window.game.positions,
+    walkable,
+    reach: lastReach,
+  });
+  const inList = tactics.inList;
+  const combatReach = (): { moves: Hex[]; melees: Hex[] } => tactics.combatReach(tacticsCtx());
+  const aoeReaches = (target: Hex): boolean => tactics.aoeReaches(target, tacticsCtx());
+  const maxRangedRange = (): number => tactics.maxRangedRange(myRangedWeapons);
+  const isRangedAttackClick = (target: Hex): boolean => tactics.isRangedAttackClick(target, tacticsCtx());
+  const attackTilesFor = (target: Hex): Hex[] => tactics.attackTilesFor(target, tacticsCtx());
 
   // The world hover highlight (#135) is a ground tint like the reach tints;
   // added BELOW the attack layer so #101's ember always reads over it where
@@ -1003,60 +557,6 @@ async function start(): Promise<void> {
   // "where can I act" where they overlap.
   const attackHighlightLayer = new AttackHighlightLayer();
   world.addChild(attackHighlightLayer.container);
-
-  // attackTilesFor mirrors clickTarget's move-vs-attack routing (below) tile
-  // for tile: the exact hexes an attack CLICK on target would hit, or empty
-  // when a click there would not attack (out of combat, own hex, a step, out
-  // of every weapon's range). One rule per branch of the server's resolution:
-  // an adjacent hostile without an AoE weapon in reach is a melee swing (one
-  // tile — the weapon-by-distance identity, #116); anything else fires every
-  // held ranged/magic weapon whose OWN range covers the target (the server's
-  // rangedDefsFor rule) — an AoE weapon (aoeRadius > 0) blasts every walkable
-  // hex within its radius of the target (entities only ever stand on walkable
-  // tiles, so unwalkable hexes in the disc can't be hit), a single-target
-  // weapon needs a hostile actually standing on the clicked hex. Purely a UX
-  // preview — the server independently re-checks everything on resolution.
-  const attackTilesFor = (target: Hex): Hex[] => {
-    const me = window.game.me;
-    if (!window.game.inCombat || me === null) {
-      return [];
-    }
-
-    if (me.hex.q === target.q && me.hex.r === target.r) {
-      return []; // own hex: wait/cancel, never an attack
-    }
-
-    if (inList(lastReach.moves, target)) {
-      return []; // a step, not an attack
-    }
-
-    const dist = hexDistance(me.hex, target);
-    if (inList(lastReach.melees, target) && !aoeReachesDist(dist)) {
-      return [target]; // melee swing: the one adjacent victim tile
-    }
-
-    const hostileAtTarget = window.game.positions.some(
-      (p) => p.kind === EntityMonster && p.hex.q === target.q && p.hex.r === target.r,
-    );
-    const tiles = new Map<string, Hex>();
-    for (const w of myRangedWeapons) {
-      if (dist > w.rangeHex) {
-        continue;
-      }
-
-      if (w.aoeRadius > 0) {
-        for (const h of hexesWithin(target, w.aoeRadius)) {
-          if (walkable.has(`${h.q},${h.r}`)) {
-            tiles.set(`${h.q},${h.r}`, h);
-          }
-        }
-      } else if (hostileAtTarget) {
-        tiles.set(`${target.q},${target.r}`, target);
-      }
-    }
-
-    return [...tiles.values()];
-  };
 
   // Hover + committed highlight state (#101). The hover tiles are re-derived
   // on every change of hovered hex AND every turn bundle (positions, reach,
@@ -2051,19 +1551,7 @@ async function start(): Promise<void> {
                 twoHanded: gi.twoHanded,
               }));
       refreshPickup(rowsHere, moved);
-      window.game.pickupModal = {
-        open: modalOpen(),
-        rows: pickupRows().map((r) => ({
-          id: r.id,
-          name: r.name,
-          type: r.type,
-          count: r.count,
-          rejected: r.rejected,
-          damage: r.damage,
-          rangeHex: r.rangeHex,
-          aoeRadius: r.aoeRadius,
-        })),
-      };
+      window.game.pickupModal = pickupModalMirror();
       window.game.panelOpen = panelOpen();
 
       // Party roster: refreshed every turn from the bundle itself (no separate

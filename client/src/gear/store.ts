@@ -379,6 +379,31 @@ export function dismissPickup(): void {
 }
 
 /**
+ * The pickup modal's window.game mirror — open flag plus the exposed subset of
+ * each row (id/name/type/count/rejected + the #139 detail fields). main.ts
+ * rebuilds this both on every turn bundle and from the rejectPickupRow test
+ * hook; centralising the mapping here keeps the two in lockstep (#213).
+ */
+export function pickupModalMirror(): {
+  open: boolean;
+  rows: { id: number; name: string; type: string; count: number; rejected: boolean; damage: number; rangeHex: number; aoeRadius: number }[];
+} {
+  return {
+    open: modalOpen(),
+    rows: pickupRows().map((r) => ({
+      id: r.id,
+      name: r.name,
+      type: r.type,
+      count: r.count,
+      rejected: r.rejected,
+      damage: r.damage,
+      rangeHex: r.rangeHex,
+      aoeRadius: r.aoeRadius,
+    })),
+  };
+}
+
+/**
  * Marks a pickup row as rejected — inline feedback shows, row stays. `reason`
  * is the server's own message (#193); it defaults to the backpack-full text for
  * the by-far commonest cause and the client-only test hook.
