@@ -4,7 +4,6 @@
 package integration_test
 
 import (
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -92,21 +91,7 @@ func startServerWithBubbleTuning(
 
 	world.SpawnMonsters(monsterCount)
 
-	chatBroker := newAnnouncingChatBroker(world)
-	go world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger:            slog.New(slog.DiscardHandler),
-		World:             world,
-		Ticks:             ticks,
-		Chat:              chatBroker,
-		HeartbeatInterval: heartbeatInterval,
-	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
-
-	return ts
+	return serveWorld(t, world, ticks, server.Deps{HeartbeatInterval: heartbeatInterval})
 }
 
 // startServerWithLimits boots the handler tree with the #199 hardening knobs
@@ -131,24 +116,12 @@ func startServerWithLimits(
 		Ticks:           ticks,
 	})
 
-	chatBroker := newAnnouncingChatBroker(world)
-	go world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger:            slog.New(slog.DiscardHandler),
-		World:             world,
-		Ticks:             ticks,
-		Chat:              chatBroker,
+	return serveWorld(t, world, ticks, server.Deps{
 		HeartbeatInterval: time.Hour,
 		ChatMinInterval:   chatMinInterval,
 		JoinMinInterval:   joinMinInterval,
 		SSEMaxStreams:     sseMaxStreams,
 	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
-
-	return ts
 }
 
 // startServerWithGrace boots the handler tree with an explicit (short)
@@ -174,21 +147,7 @@ func startServerWithGrace(
 		Ticks:           ticks,
 	})
 
-	chatBroker := newAnnouncingChatBroker(world)
-	go world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger:            slog.New(slog.DiscardHandler),
-		World:             world,
-		Ticks:             ticks,
-		Chat:              chatBroker,
-		HeartbeatInterval: heartbeatInterval,
-	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
-
-	return ts
+	return serveWorld(t, world, ticks, server.Deps{HeartbeatInterval: heartbeatInterval})
 }
 
 // startServerWithMonstersAt is startServerWithMonsters but places monsters at
@@ -242,21 +201,7 @@ func startServerWithBubbleTuningAt(
 		}
 	}
 
-	chatBroker := newAnnouncingChatBroker(world)
-	go world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger:            slog.New(slog.DiscardHandler),
-		World:             world,
-		Ticks:             ticks,
-		Chat:              chatBroker,
-		HeartbeatInterval: time.Hour,
-	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
-
-	return ts
+	return serveWorld(t, world, ticks, server.Deps{HeartbeatInterval: time.Hour})
 }
 
 // get issues a GET against the test server and registers body cleanup. The

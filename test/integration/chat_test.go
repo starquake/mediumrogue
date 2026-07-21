@@ -18,18 +18,9 @@ import (
 func joinNamed(t *testing.T, ts *httptest.Server, name string) protocol.JoinResponse {
 	t.Helper()
 
-	resp := postJSON(t, ts, "/api/join",
-		protocol.JoinRequest{Name: name, Class: protocol.ClassFighter, Species: protocol.SpeciesHuman})
-	if got, want := resp.StatusCode, http.StatusOK; got != want {
-		t.Fatalf("join(name=%q) status = %d, want %d", name, got, want)
-	}
-
-	var joined protocol.JoinResponse
-	if err := json.NewDecoder(resp.Body).Decode(&joined); err != nil {
-		t.Fatalf("decode join response: %v", err)
-	}
-
-	return joined
+	return joinWith(t, ts, protocol.JoinRequest{
+		Name: name, Class: protocol.ClassFighter, Species: protocol.SpeciesHuman,
+	})
 }
 
 // readChatWithin scans the SSE stream for the next `event: chat` frame within

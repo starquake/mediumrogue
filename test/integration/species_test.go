@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bufio"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,18 +19,9 @@ import (
 func joinSpecies(t *testing.T, ts *httptest.Server, species string) protocol.JoinResponse {
 	t.Helper()
 
-	resp := postJSON(t, ts, "/api/join",
-		protocol.JoinRequest{Name: testerName, Class: protocol.ClassFighter, Species: species})
-	if got, want := resp.StatusCode, http.StatusOK; got != want {
-		t.Fatalf("join status = %d, want 200", got)
-	}
-
-	var joined protocol.JoinResponse
-	if err := json.NewDecoder(resp.Body).Decode(&joined); err != nil {
-		t.Fatalf("decode join response: %v", err)
-	}
-
-	return joined
+	return joinWith(t, ts, protocol.JoinRequest{
+		Name: testerName, Class: protocol.ClassFighter, Species: species,
+	})
 }
 
 // TestSpeciesOnWire joins one of each species and reads Species back off a
@@ -48,7 +38,7 @@ func TestSpeciesOnWire(t *testing.T) {
 	dwarf := joinSpecies(t, ts, protocol.SpeciesDwarf)
 
 	events := get(t, ts, "/api/events")
-	bundle := decodeBundle(t, bufio.NewReader(events.Body))
+	bundle := decodeTurnFrame(t, bufio.NewReader(events.Body))
 
 	for _, tc := range []struct {
 		name        string
@@ -112,7 +102,7 @@ func TestSharedKillPaysBothSpeciesTheSameOverHTTP(t *testing.T) {
 	var lastHumanXP, lastDwarfXP int
 
 	for time.Now().Before(deadline) {
-		bundle := decodeBundle(t, reader)
+		bundle := decodeTurnFrame(t, reader)
 
 		humanEntity, ok := entityOf(bundle, human.EntityID)
 		if !ok {

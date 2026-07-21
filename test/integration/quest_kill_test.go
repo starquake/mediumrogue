@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bufio"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -23,26 +22,7 @@ func TestKillQuestTicksOverHTTP(t *testing.T) {
 	events := get(t, ts, "/api/events")
 	reader := bufio.NewReader(events.Body)
 
-	// decodeTurn skips non-turn frames (the /quest chat announcement rides the
-	// same stream) — decodeBundle would mis-decode a chat frame as an empty
-	// TurnEvent.
-	decodeTurn := func() protocol.TurnEvent {
-		for {
-			frames := readFrames(t, reader, 1)
-			if frames[0].event != protocol.EventTurn {
-				continue
-			}
-
-			var bundle protocol.TurnEvent
-			if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
-				t.Fatalf("unmarshal bundle %q: %v", frames[0].data, err)
-			}
-
-			return bundle
-		}
-	}
-
-	first := decodeTurn()
+	first := decodeTurnFrame(t, reader)
 
 	// Take the first available KILL quest.
 	var questID int64
@@ -70,7 +50,7 @@ func TestKillQuestTicksOverHTTP(t *testing.T) {
 	lastProgress := -1
 
 	for time.Now().Before(deadline) {
-		bundle := decodeTurn()
+		bundle := decodeTurnFrame(t, reader)
 
 		myEntity, ok := entityOf(bundle, me.EntityID)
 		if !ok {
@@ -96,7 +76,7 @@ func TestKillQuestTicksOverHTTP(t *testing.T) {
 			// The kill LANDED (XP arrived) but the quest never ticked: give it a
 			// few more bundles to arrive, then fail loudly.
 			for range 5 {
-				bundle = decodeTurn()
+				bundle = decodeTurnFrame(t, reader)
 				for _, q := range bundle.Quests {
 					if q.ID == questID && q.Progress > 0 {
 						return

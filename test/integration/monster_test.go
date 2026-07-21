@@ -3,8 +3,6 @@ package integration_test
 import (
 	"bufio"
 	"encoding/json"
-	"log/slog"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -95,16 +93,7 @@ func TestMonsterHuntsPlayer(t *testing.T) {
 		Ticks:           ticks,
 	})
 
-	chatBroker := newAnnouncingChatBroker(world)
-	go world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger: slog.New(slog.DiscardHandler), World: world, Ticks: ticks, Chat: chatBroker,
-		HeartbeatInterval: time.Hour,
-	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
+	ts := serveWorld(t, world, ticks, server.Deps{HeartbeatInterval: time.Hour})
 
 	me := join(t, ts, "")
 

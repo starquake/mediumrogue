@@ -25,7 +25,7 @@ const questReachKind = "reach"
 func questInBundle(t *testing.T, ts *httptest.Server, id int64) protocol.QuestView {
 	t.Helper()
 
-	bundle := decodeBundle(t, bufio.NewReader(get(t, ts, "/api/events").Body))
+	bundle := decodeTurnFrame(t, bufio.NewReader(get(t, ts, "/api/events").Body))
 
 	q, ok := questByID(bundle, id)
 	if !ok {
@@ -96,7 +96,7 @@ func TestQuestBoardOnWire(t *testing.T) {
 
 	ts := startServer(t, time.Hour, time.Hour)
 
-	bundle := decodeBundle(t, bufio.NewReader(get(t, ts, "/api/events").Body))
+	bundle := decodeTurnFrame(t, bufio.NewReader(get(t, ts, "/api/events").Body))
 
 	if got, want := len(bundle.Quests), 6; got != want {
 		t.Fatalf("len(bundle.Quests) = %d, want %d", got, want)
@@ -122,7 +122,7 @@ func TestQuestTakeAndAbandonOverHTTP(t *testing.T) {
 	stream := get(t, ts, "/api/events?token="+me.Token)
 	reader := bufio.NewReader(stream.Body)
 
-	bundle := decodeBundle(t, reader)
+	bundle := decodeTurnFrame(t, reader)
 	q := firstAvailableQuest(t, bundle)
 
 	resp := postJSON(t, ts, "/api/chat",
@@ -224,7 +224,7 @@ func TestReachQuestCompletesWithXPOverHTTP(t *testing.T) {
 	stream := get(t, ts, "/api/events?token="+me.Token)
 	reader := bufio.NewReader(stream.Body)
 
-	first := decodeBundle(t, reader)
+	first := decodeTurnFrame(t, reader)
 
 	myEntity, ok := entityOf(first, me.EntityID)
 	if !ok {

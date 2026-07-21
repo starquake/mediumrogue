@@ -49,7 +49,7 @@ func waitForPresence(t *testing.T, r *bufio.Reader, id int64, deadline time.Time
 	t.Helper()
 
 	for time.Now().Before(deadline) {
-		if _, ok := entityOf(decodeBundle(t, r), id); ok {
+		if _, ok := entityOf(decodeTurnFrame(t, r), id); ok {
 			return
 		}
 	}
@@ -62,7 +62,7 @@ func waitForAbsence(t *testing.T, r *bufio.Reader, id int64, deadline time.Time)
 	t.Helper()
 
 	for time.Now().Before(deadline) {
-		if _, ok := entityOf(decodeBundle(t, r), id); !ok {
+		if _, ok := entityOf(decodeTurnFrame(t, r), id); !ok {
 			return
 		}
 	}
@@ -91,7 +91,7 @@ func TestDisconnectRemovesEntityAfterGrace(t *testing.T) {
 	player := join(t, ts, "")
 
 	playerStream, closePlayer := openStream(t, ts, player.Token)
-	if _, ok := entityOf(decodeBundle(t, playerStream), player.EntityID); !ok {
+	if _, ok := entityOf(decodeTurnFrame(t, playerStream), player.EntityID); !ok {
 		t.Fatalf("player %d absent from its own first bundle", player.EntityID)
 	}
 
@@ -124,7 +124,7 @@ func TestReconnectWithinGraceKeepsEntity(t *testing.T) {
 	player := join(t, ts, "")
 
 	playerStream, closePlayer := openStream(t, ts, player.Token)
-	if _, ok := entityOf(decodeBundle(t, playerStream), player.EntityID); !ok {
+	if _, ok := entityOf(decodeTurnFrame(t, playerStream), player.EntityID); !ok {
 		t.Fatalf("player %d absent from its own first bundle", player.EntityID)
 	}
 
@@ -141,7 +141,7 @@ func TestReconnectWithinGraceKeepsEntity(t *testing.T) {
 	// observer's bundles: the reconnect saved it.
 	deadline := time.Now().Add(3 * grace)
 	for time.Now().Before(deadline) {
-		if _, ok := entityOf(decodeBundle(t, obs), player.EntityID); !ok {
+		if _, ok := entityOf(decodeTurnFrame(t, obs), player.EntityID); !ok {
 			t.Fatalf("reconnected player %d was swept despite a live stream", player.EntityID)
 		}
 	}

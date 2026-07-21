@@ -2,8 +2,6 @@ package integration_test
 
 import (
 	"bufio"
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,31 +12,6 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 	"github.com/starquake/mediumrogue/internal/server"
 )
-
-// decodeTurnFrame reads SSE frames until a turn frame arrives, skipping any
-// other named event. Gear pickups announce over the same chat broker as
-// quests (pickupLocked's w.announce call, world.go), so a chat frame can ride
-// this stream exactly like the quest announcement quest_kill_test.go's local
-// decodeTurn was written to skip; decodeBundle (bubble_test.go) would
-// mis-decode a chat frame as an empty TurnEvent. Package-level (unlike that
-// local closure) since every test in this file needs it.
-func decodeTurnFrame(t *testing.T, r *bufio.Reader) protocol.TurnEvent {
-	t.Helper()
-
-	for {
-		frames := readFrames(t, r, 1)
-		if frames[0].event != protocol.EventTurn {
-			continue
-		}
-
-		var bundle protocol.TurnEvent
-		if err := json.Unmarshal([]byte(frames[0].data), &bundle); err != nil {
-			t.Fatalf("unmarshal bundle %q: %v", frames[0].data, err)
-		}
-
-		return bundle
-	}
-}
 
 // TestEquipOverHTTP proves the equip intent's toggle semantics (item 2) over
 // real HTTP/SSE: join, grab an owned item id straight off the first turn
@@ -214,18 +187,7 @@ func startGearServerWithMonsterRing(
 			placed, want, len(candidates))
 	}
 
-	chatBroker := newAnnouncingChatBroker(world)
-	go world.Run(t.Context())
-
-	handler := server.New(server.Deps{
-		Logger: slog.New(slog.DiscardHandler), World: world, Ticks: ticks, Chat: chatBroker,
-		HeartbeatInterval: time.Hour,
-	})
-
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
-
-	return ts
+	return serveWorld(t, world, ticks, server.Deps{HeartbeatInterval: time.Hour})
 }
 
 // spawnRingCandidates returns every hex within maxRing steps of origin,

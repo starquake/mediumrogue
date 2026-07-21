@@ -57,7 +57,7 @@ func TestXPRisesOnMonsterKillOverHTTP(t *testing.T) {
 	events := get(t, ts, "/api/events")
 	reader := bufio.NewReader(events.Body)
 
-	first := decodeBundle(t, reader)
+	first := decodeTurnFrame(t, reader)
 
 	myEntity, ok := entityOf(first, me.EntityID)
 	if !ok {
@@ -77,7 +77,7 @@ func TestXPRisesOnMonsterKillOverHTTP(t *testing.T) {
 	var lastXP, lastLevel int
 
 	for time.Now().Before(deadline) {
-		bundle := decodeBundle(t, reader)
+		bundle := decodeTurnFrame(t, reader)
 
 		myEntity, ok := entityOf(bundle, me.EntityID)
 		if !ok {

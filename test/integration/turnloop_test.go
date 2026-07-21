@@ -67,18 +67,9 @@ func join(t *testing.T, ts *httptest.Server, token string) protocol.JoinResponse
 func joinClass(t *testing.T, ts *httptest.Server, token, class string) protocol.JoinResponse {
 	t.Helper()
 
-	resp := postJSON(t, ts, "/api/join",
-		protocol.JoinRequest{Token: token, Name: testerName, Class: class, Species: protocol.SpeciesHuman})
-	if got, want := resp.StatusCode, http.StatusOK; got != want {
-		t.Fatalf("join status = %d, want 200", got)
-	}
-
-	var joined protocol.JoinResponse
-	if err := json.NewDecoder(resp.Body).Decode(&joined); err != nil {
-		t.Fatalf("decode join response: %v", err)
-	}
-
-	return joined
+	return joinWith(t, ts, protocol.JoinRequest{
+		Token: token, Name: testerName, Class: class, Species: protocol.SpeciesHuman,
+	})
 }
 
 // TestTurnLoopMovesEntity drives the heart of the game over real HTTP: join,
