@@ -45,7 +45,7 @@ sees** (learned #259/#260).
 - **Shared-world specs** (`ranged`, `monsters`, anything that engages the
   persistent world): that world **does not respawn monsters**
   (`internal/game/quest.go` — "monsters don't respawn"), **lingers closed
-  players** for `DISCONNECT_GRACE`, and **caps at `protocol.MaxPlayers` (30)**,
+  players** for `DISCONNECT_GRACE`, and **caps at `protocol.MaxPlayers` (64)**,
   refusing the overflow with a **503 `ErrWorldAtCapacity`**. Pile
   `--repeat-each` onto these and you manufacture **accumulation artifacts** —
   503 "world at capacity" cascades, monster drift/depletion, bubble-lock —
