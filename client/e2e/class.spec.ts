@@ -1,13 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { ClassMage, SpeciesElf } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
 
 // This file runs on the CORE (monster-free) server — see playwright.config.ts's
 // specs list, where "class" has no `monsters` entry.

@@ -1,13 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { CombatRadius } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady } from "./helpers";
 
 test("monsters spawned server-side reach the client and render", async ({ page }) => {
   await page.goto("/");
@@ -135,11 +129,7 @@ test("hovering a monster shows its kind, and its HP only within CombatRadius", a
 test("tooltip clears itself when the hovered monster leaves its hex under a still cursor", async ({
   page,
 }) => {
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect
     .poll(() => page.evaluate(() => window.game.monsters), { timeout: 10_000 })
     .toBeGreaterThanOrEqual(1);

@@ -1,68 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-import type { Hex, MapResponse } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
-// axialNeighbors mirrors internal/game.HexNeighbors: the six adjacent axial
-// hexes, flat-top orientation.
-function axialNeighbors(h: Hex): Hex[] {
-  return [
-    { q: h.q, r: h.r - 1 },
-    { q: h.q + 1, r: h.r - 1 },
-    { q: h.q + 1, r: h.r },
-    { q: h.q, r: h.r + 1 },
-    { q: h.q - 1, r: h.r + 1 },
-    { q: h.q - 1, r: h.r },
-  ];
-}
-
-function hexDistance(a: Hex, b: Hex): number {
-  const dq = a.q - b.q;
-  const dr = a.r - b.r;
-  const ds = -dq - dr;
-
-  return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
-}
-
-// pickDistance2Destination finds a walkable hex exactly two steps from start:
-// a walkable neighbor of a walkable neighbor. This mirrors the server-side
-// discovery in internal/game/world_test.go (geometry-independent — it never
-// assumes a fixed offset is walkable on the static map).
-function pickDistance2Destination(map: MapResponse, start: Hex): Hex | null {
-  const walkable = new Set<string>();
-  for (const tile of map.tiles) {
-    if (tile.terrain === "grass" || tile.terrain === "forest") {
-      walkable.add(`${tile.hex.q},${tile.hex.r}`);
-    }
-  }
-  const isWalkable = (h: Hex): boolean => walkable.has(`${h.q},${h.r}`);
-
-  for (const n1 of axialNeighbors(start)) {
-    if (!isWalkable(n1)) {
-      continue;
-    }
-    for (const n2 of axialNeighbors(n1)) {
-      if (isWalkable(n2) && hexDistance(start, n2) === 2) {
-        return n2;
-      }
-    }
-  }
-
-  return null;
-}
+import type { MapResponse } from "../src/protocol.gen";
+import { gotoReady, pickDistance2Destination } from "./helpers";
 
 test("clicking (tapHex) a distant hex walks my entity there over turns", async ({ page }) => {
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
 
   const start = await page.evaluate(() => window.game.me!.hex);
 

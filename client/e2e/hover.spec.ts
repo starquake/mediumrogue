@@ -1,13 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import type { Hex, MapResponse } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady } from "./helpers";
 
 // The world hover highlight (#135): out of combat, hovering a hex a click would
 // act on lights that one tile — "walk" for walkable ground, "wait" for my own
@@ -31,9 +25,7 @@ function axialNeighbors(h: Hex): Hex[] {
 }
 
 test("out of combat, hovering a walkable hex marks it walk, my own hex wait, and rock nothing", async ({ page }) => {
-  await page.goto("/");
-
-  await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
+  await gotoReady(page);
   // Monster-free server → never in combat; assert it so the world-only guard is
   // being exercised on its false branch, not passing by accident.
   await expect.poll(() => page.evaluate(() => window.game.inCombat)).toBe(false);

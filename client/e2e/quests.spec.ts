@@ -1,14 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { SpeciesDwarf, XPCurveBase } from "../src/protocol.gen";
 import type { Hex, QuestView } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady, seedIdentity } from "./helpers";
 
 // hexDistance mirrors internal/game's cube-distance helper (see walk.spec.ts).
 function hexDistance(a: Hex, b: Hex): number {
@@ -26,15 +20,9 @@ test("quests: take a reach quest, walk to its goal, and it completes with a visi
   // ranged.spec.ts/gear.spec.ts, deterministic without touching the start
   // screen itself (whose own species-selection UX is exercised in
   // class.spec.ts).
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", species: "dwarf" }));
-  });
+  await seedIdentity(page, { species: "dwarf" });
 
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.species)).toBe(SpeciesDwarf);
 
   // 1. The seeded 6-quest board rides the very first turn bundle.

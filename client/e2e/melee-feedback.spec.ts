@@ -1,14 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { EntityMonster } from "../src/protocol.gen";
 import type { Hex } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady } from "./helpers";
 
 // This file runs against its OWN server (see playwright.config.ts:
 // MONSTER_COUNT=3, COMBAT_PATIENCE=700ms — the short patience keeps bubble
@@ -22,11 +16,7 @@ declare global {
 // planted the blue "move" marker on the enemy's hex, which reads as
 // "walking there" now that a committed melee attack always lands (#104).
 test("a melee-attack click commits the attack glyph, not a walk marker", async ({ page }) => {
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
   // combat.spec's damage-test chase pick (the reachable tile that closes the

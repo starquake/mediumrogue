@@ -1,13 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { SpeciesDwarf, SpeciesElf, SpeciesHuman } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady, seedIdentity } from "./helpers";
 
 // This file runs on the CORE (monster-free) server — see playwright.config.ts's
 // specs list, where "species" has no `monsters` entry. Species selection/
@@ -15,11 +9,7 @@ declare global {
 // fixed, non-respawning monster pool — mirrors class.spec.ts exactly.
 
 test("a fresh join exposes window.game.species as a valid, deterministic default", async ({ page }) => {
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
 
   // No picker interaction here — a brand-new page load joins with whichever
   // species is selected by default (Human: src/main.ts calls
@@ -41,15 +31,9 @@ test("a stored species choice (from a prior start-screen join) rides a fresh joi
   // class.spec.ts). An empty stored token still reaches the server as a
   // brand-new join (Join() only reclaims an existing entity for a token it
   // recognizes), but with the requested species.
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", species: "dwarf" }));
-  });
+  await seedIdentity(page, { species: "dwarf" });
 
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
 
   await expect.poll(() => page.evaluate(() => window.game.species)).toBe(SpeciesDwarf);
 });

@@ -1,14 +1,8 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { ClassRogue } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { seedIdentity } from "./helpers";
 
 // Inventory-slots milestone (task 5), re-slotted for the gear keystone's
 // approved ARPG panel (task 3, docs/superpowers/specs/
@@ -50,9 +44,7 @@ const TURN_GATED = { timeout: 20_000 };
 // seedRogue seeds a "returning player" identity (empty token) requesting
 // rogue, so the start screen never appears and the join is a fresh rogue.
 async function seedRogue(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "rogue" }));
-  });
+  await seedIdentity(page, { class: "rogue" });
   await page.goto("/");
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected), TURN_GATED).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.class), TURN_GATED).toBe(ClassRogue);

@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
 // The e2e server is started with MONSTER_COUNT=30 (playwright.config.ts):
 // ring-weighted placement (milestone 6c) distributes that many monsters
 // across the map's rings and kinds, so at least two distinct monster kinds

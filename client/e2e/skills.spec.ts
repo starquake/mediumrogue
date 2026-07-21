@@ -1,12 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { seedIdentity } from "./helpers";
 
 // The near-sighted skills panel (#124). Every wait is metered on GAME state
 // (window.game fields flipping), never wall-clock — the de-race rule.
@@ -47,9 +41,7 @@ test("the skills panel shows learnable skills and hides locked ones", async ({ p
 // fallback — this asserts the real branch, since a fallback that never turns
 // off is exactly the bug an empty tree could hide.
 test("every tree renders real rows — the Survival tree is no longer empty", async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "fighter" }));
-  });
+  await seedIdentity(page, { class: "fighter" });
 
   await page.goto("/");
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);

@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
 // Both clients auto-join with the default name "traveler" — that's fine here:
 // server-side /invite <name> resolves to the NEAREST player named <name>
 // EXCLUDING the sender (see World.nearestPlayerByNameLocked), so when A

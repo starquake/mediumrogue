@@ -1,13 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { seedIdentity } from "./helpers";
 
 // client-alive.spec.ts (#170): the client keeps APPLYING turn bundles after an
 // inventory action — the regression guard for #167.
@@ -23,9 +17,7 @@ declare global {
 const TURN_GATED = { timeout: 20_000 };
 
 async function seedRogue(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "rogue" }));
-  });
+  await seedIdentity(page, { class: "rogue" });
 }
 
 /** Waits for `turnApplied` to advance by at least `n` from `from`. */

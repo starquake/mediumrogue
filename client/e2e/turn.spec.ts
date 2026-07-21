@@ -1,13 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { XPCurveBase } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
 
 test("client connects and the turn counter advances live", async ({ page }) => {
   await page.goto("/");

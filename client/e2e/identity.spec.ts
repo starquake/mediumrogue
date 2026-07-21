@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
 // This file runs on its own private server (playwright.config.ts's specs
 // list) with the default pre-seeded identity for the `page` fixture (see
 // storageStateFor) — a normal auto-join, same as most other specs. The

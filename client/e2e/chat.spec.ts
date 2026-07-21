@@ -1,13 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import type { Hex, MapResponse } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
 
 // axialNeighbors mirrors internal/game.HexNeighbors (see walk.spec.ts).
 function axialNeighbors(h: Hex): Hex[] {
