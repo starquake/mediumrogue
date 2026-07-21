@@ -123,8 +123,8 @@ test("paper-doll renders equipped slots; the panel toggles via the i-key, HUD bu
     .poll(() => page.evaluate(() => window.game.equipped["main-hand"]?.name), TURN_GATED)
     .toBe("Dagger");
 
-  // The header keyhint (approved mockup).
-  await expect(page.locator("#character-panel .keyhint")).toHaveText("C / I toggles · Esc closes");
+  // The header keyhint (approved mockup; #273 dropped the `c` toggle alias).
+  await expect(page.locator("#character-panel .keyhint")).toHaveText("I toggles · Esc closes");
 
   // `i` closes it again.
   await page.keyboard.press("i");

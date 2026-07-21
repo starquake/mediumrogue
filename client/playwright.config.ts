@@ -17,7 +17,16 @@ import identityStorageStateTemplate from "./e2e/identity-storage-state.json" wit
 // single-consumer server removes cross-spec state sharing entirely, with zero
 // changes to any spec's test logic. Tracked as issue #21; the real product fix
 // is disconnect cleanup. MONSTER_COUNT is set only for the specs that need it.
-const BASE_PORT = 8123;
+// Base port for the per-spec servers (portFor = BASE_PORT + index). Overridable
+// via E2E_BASE_PORT so parallel runs on the same machine (e.g. concurrent
+// agents, each in its own worktree) can isolate their port range instead of
+// colliding on 8123+ — the parallel-agent hazard the e2e-derace playbook warns
+// about. CI leaves it unset and keeps the historical 8123 default. Read off
+// globalThis (this config runs under Node, but the client tsconfig carries no
+// @types/node, so the bare `process` global isn't in scope for tsc).
+const envBasePort = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+  ?.E2E_BASE_PORT;
+const BASE_PORT = Number(envBasePort) || 8123;
 
 // Each e2e spec file gets its own server; `monsters` = how many that server
 // spawns (omitted → monster-free); `env` = extra per-spec server overrides.

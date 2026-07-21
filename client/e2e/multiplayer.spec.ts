@@ -23,11 +23,12 @@ test("two clients share one world and see each other move", async ({ browser }) 
   await expect.poll(() => a.evaluate(() => window.game.entities)).toBeGreaterThanOrEqual(2);
   await expect.poll(() => b.evaluate(() => window.game.entities)).toBeGreaterThanOrEqual(2);
 
-  // A walks EXACTLY one step: pick the one walkable direction from A's spawn and
-  // press only that key. The old version pressed all six direction keys, which
-  // under load queues several steps across turns — A then walks PAST the hex we
-  // captured before B observes it, and B's poll times out (#144). One step to a
-  // known target hex is stable regardless of timing.
+  // A walks EXACTLY one step: pick the one walkable neighbour of A's spawn and
+  // tap only that hex. (#273 dropped the QWEASD keys; movement is tapHex only.)
+  // The old version pressed all six direction keys, which under load queues
+  // several steps across turns — A then walks PAST the hex we captured before B
+  // observes it, and B's poll times out (#144). One step to a known target hex
+  // is stable regardless of timing.
   const startA = await a.evaluate(() => window.game.me!.hex);
   const map = await a.evaluate(() => fetch("/api/map").then((r) => r.json() as Promise<MapResponse>));
   const walkable = new Set<string>();
@@ -36,20 +37,20 @@ test("two clients share one world and see each other move", async ({ browser }) 
       walkable.add(`${tile.hex.q},${tile.hex.r}`);
     }
   }
-  // Key → hex offset, mirroring client/src/input/keys.ts + render/hex.ts.
+  // Axial neighbour offsets, mirroring render/hex.ts (flat-top).
   const steps = [
-    { key: "KeyW", dq: 0, dr: -1 }, // n
-    { key: "KeyE", dq: 1, dr: -1 }, // ne
-    { key: "KeyD", dq: 1, dr: 0 }, // se
-    { key: "KeyS", dq: 0, dr: 1 }, // s
-    { key: "KeyA", dq: -1, dr: 1 }, // sw
-    { key: "KeyQ", dq: -1, dr: 0 }, // nw
+    { dq: 0, dr: -1 }, // n
+    { dq: 1, dr: -1 }, // ne
+    { dq: 1, dr: 0 }, // se
+    { dq: 0, dr: 1 }, // s
+    { dq: -1, dr: 1 }, // sw
+    { dq: -1, dr: 0 }, // nw
   ];
   const step = steps.find((s) => walkable.has(`${startA.q + s.dq},${startA.r + s.dr}`));
   expect(step, "expected a walkable neighbour of A's spawn").toBeTruthy();
   const movedA = { q: startA.q + step!.dq, r: startA.r + step!.dr };
 
-  await a.keyboard.press(step!.key);
+  await a.evaluate((h) => window.game.tapHex(h.q, h.r), movedA);
   await expect
     .poll(
       () => a.evaluate((h) => { const m = window.game.me!.hex; return m.q === h.q && m.r === h.r; }, movedA),
