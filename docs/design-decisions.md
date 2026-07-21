@@ -683,3 +683,44 @@ Proof content (kept minimal — full buff-potion / poison-enemy content is later
 DoT) and the **Bloodrage Cleaver** (a rage weapon whose hits self-buff the
 wielder's damage), the two proof consumers of the on-hit mechanism and the two
 fold directions (`end-of-turn` DoT + `deal-damage` buff).
+
+## Timed-effect CONTENT on the foundation *(built 2026-07-21, #271 slice 2)*
+
+The content the foundation was built to carry — all reusing the same pure-data
+`appliedEffect` rider, `applyTimedEffectLocked`, and existing pipeline events;
+no new event/condition/effect *kind* was needed (the one new `ward` effect def
+reuses `take-damage` + `mulPct`, so it is content, not vocabulary).
+
+- **A second application trigger: drink.** Slice 1 applied effects only via a
+  weapon's on-hit rider. Buff potions need a *drink* trigger, so a consumable
+  gained pure-data riders — `appliesEffect` (a self-buff to apply) and
+  `cleansesHarmful` (a cleanse) — wired into the existing `drinkItemLocked`
+  action, mirroring how `onHit` collects and applies effects. **A drink applies
+  its effect NOW**, not after the tick like an on-hit effect: a defensive
+  Warding Tonic must turn aside the incoming blow the turn it is drunk, and a
+  drink is already the player's whole turn inside a bubble. `toSelf` is
+  meaningless on a drink (it always targets the drinker) and validation rejects
+  it, so the field cannot silently mislead.
+- **Cleanse clears HARMFUL effects only** (not everything). An effect def is
+  marked `harmful` (only `poison` is today); `clearHarmfulEffectsLocked` strips
+  those and leaves the rest. **Curing your poison must not also strip the buff
+  you just drank** — a whole-inventory cleanse would make a defensive antidote a
+  self-sabotage. A future weaken/curse simply sets `harmful` and the Antivenom
+  cures it for free.
+- **A regenerating monster is a self-buff-on-bite, not lifesteal.** The Hydra's
+  bite self-applies a flat `regen` effect (`+3` HP/turn for a few turns) via the
+  existing on-hit `toSelf` path — the live consumer of the `end-of-turn` heal
+  direction that slice 1 only exercised in a white-box test. This is a **fixed**
+  regen, deliberately *not* damage-proportional lifesteal (that is a distinct
+  later #271 slice, a new `heal-on-deal-damage` pipeline kind). Framing it as
+  regen-on-bite kept slice 2 to content only — an always-on aura would have
+  needed a spawn/bubble application hook (the summoner slice's territory).
+- **Buff potions and the antidote are pure buffs** (heal 0), which generalized
+  the consumable-payload validator: a consumable must now *do* something (heal,
+  apply an effect, or cleanse), not specifically heal.
+
+Content: **Draught of Fury** (`+25%` deal-damage / 4 turns), **Warding Tonic**
+(`+25%` resistance / 4 turns), **Antivenom** (cleanse), the **Hydra**
+(regenerating frontier elite), and thematic glyphs for the Serpent (cobra) and
+Hydra. New drop tables (Serpent's Antivenom, Hydra's buff potions), so no pinned
+drop seed moved.

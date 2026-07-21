@@ -48,6 +48,14 @@ const (
 // fallback), the effect-icon polish being a later #271 slice.
 const idKindSerpent = "serpent"
 
+// idKindHydra is the timed-effect foundation's proof REGEN enemy (#271, slice
+// 2): its bite (idHydraFangs) self-applies a regen effect, so it knits itself
+// back together as it fights — the live regenerating-monster consumer of the
+// evEndOfTurn heal direction. Named here for the usual reason; like every kind
+// id it doubles as a client glyph key (entities.ts's KIND_STYLE / the
+// game-icons hydra glyph, GLYPH_ICON_SVG).
+const idKindHydra = "hydra"
+
 // defaultMonsterKindID is the kind SpawnMonsters/SpawnMonsterAt/
 // PlaceMonsterForTest fall back to when no kind is named — wolf, which
 // carries today's exact pre-6c numbers (10 HP, 3 damage, 20 XP, aggro 10,

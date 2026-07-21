@@ -114,10 +114,12 @@ any digit in flavour.
 | Item | Type | Damage type | Tags | Damage | Range | AoE | Heal | Stat lines |
 |---|---|---|---|---|---|---|---|---|
 | **Ancient Dwarven Mattock**<br>`ancient-dwarven-mattock` | weapon | blunt | melee | 4 | melee | — | — | Damage 4<br>+3 Damage (Dwarf)<br> |
+| **Antivenom**<br>`antivenom` | consumable | — | — | — | melee | — | — | Cures harmful effects<br> |
 | **Bloodrage Cleaver**<br>`bloodrage-cleaver` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
 | **Butcher's Cleaver**<br>`butchers-cleaver` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+3 Damage vs Below 50% HP<br> |
 | **Consecrated Mace**<br>`consecrated-mace` | weapon | holy | melee | 4 | melee | — | — | Damage 4<br> |
 | **Dagger**<br>`dagger` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
+| **Draught of Fury**<br>`draught-of-fury` | consumable | — | — | — | melee | — | — | +25% Damage for 4 turns<br> |
 | **Duelist's Saber**<br>`duelists-saber` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>10% chance ×2 Damage<br> |
 | **Ember Brand**<br>`ember-brand` | weapon | fire | melee | 4 | melee | — | — | Damage 4<br> |
 | **Ember Focus**<br>`ember-focus` | weapon | fire | magic | 3 | 4 | 1 | — | Damage 3<br>Range 4<br>AoE 1<br> |
@@ -147,6 +149,7 @@ any digit in flavour.
 | **Venom Fang**<br>`venom-fang` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+4 Damage vs Full HP<br> |
 | **Staff of the War Mage**<br>`war-mage-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Below 6 HP<br> |
 | **Warded Gambeson**<br>`warded-gambeson` | chest | — | — | — | melee | — | — | +50% Sharp Resistance<br> |
+| **Warding Tonic**<br>`warding-tonic` | consumable | — | — | — | melee | — | — | +25% Damage Resistance for 4 turns<br> |
 | **Wooden Buckler**<br>`wooden-buckler` | shield | — | — | — | melee | — | — | +10% Damage Resistance<br> |
 | **Wyrmslayer Greatsword**<br>`wyrmslayer-greatsword` | weapon<br>two-handed | holy | melee | 9 | melee | — | — | Damage 9<br>+50% Damage vs Dragons<br> |
 
@@ -166,6 +169,7 @@ its weapon carries.
 | **Frost Wisp**<br>`frost-wisp` | 14 | Frost Touch | 4 | melee | ice | 32 | 8 | 35 | ⚠ −50% Fire Resistance<br> |
 | **Ghoul**<br>`ghoul` | 16 | Talons | 4 | melee | chaos | 35 | 8 | 35 | ⚠ −50% Holy Resistance<br> |
 | **Goblin**<br>`goblin` | 6 | Rusty Shiv | 2 | melee | sharp | 12 | 7 | 15 | — |
+| **Hydra**<br>`hydra` | 24 | Hydra Fangs | 4 | melee | sharp | 55 | 8 | 45 | — |
 | **Kin Archer**<br>`kin-archer` | 12 | Hunter's Bow | 3 | 3 hexes | sharp | 30 | 8 | 30 | — |
 | **Rat**<br>`rat` | 4 | Claws | 1 | melee | sharp | 8 | 7 | 10 | — |
 | **Serpent**<br>`serpent` | 8 | Venom Sting | 2 | melee | sharp | 16 | 8 | 30 | — |

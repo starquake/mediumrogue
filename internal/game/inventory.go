@@ -306,10 +306,19 @@ func pickupAnnounce(playerName, itemName string, count int) string {
 	return playerName + " picked up " + itemName
 }
 
-// drinkItemLocked drinks one unit of an owned consumable stack: heals the
-// def's heal clamped to max HP and decrements the stack; an emptied stack
-// frees its backpack entry. Only a consumable drinks (gear is
+// drinkItemLocked drinks one unit of an owned consumable stack: it heals the
+// def's heal (clamped to max HP), then applies the def's timed-effect payload
+// (#271, slice 2) — cleansing harmful effects (cleansesHarmful) and applying
+// any self-buffs (appliesEffect) to the drinker — and decrements the stack; an
+// emptied stack frees its backpack entry. Only a consumable drinks (gear is
 // ErrNotDrinkable). Callers hold w.mu.
+//
+// The payload is pure-data riders on the def, the drink counterpart of a
+// weapon's onHit — no combat-site special case. Unlike onHit (buffered and
+// applied AFTER the end-of-turn tick so a fresh effect first bites next turn), a
+// drink applies its effect NOW: a Warding Tonic must turn aside the incoming
+// blow the very turn it is drunk, and a drink is already the player's whole turn
+// inside a combat bubble.
 func (w *World) drinkItemLocked(e *entity, itemID int64) error {
 	inst, def, err := w.ownedDefLocked(e, itemID)
 	if err != nil {
@@ -327,12 +336,22 @@ func (w *World) drinkItemLocked(e *entity, itemID int64) error {
 
 	e.hp = min(e.hp+def.heal, e.maxHP)
 
+	cleared := 0
+	if def.cleansesHarmful {
+		cleared = clearHarmfulEffectsLocked(e)
+	}
+
+	for _, ae := range def.appliesEffect {
+		applyTimedEffectLocked(e, ae.effectID, ae.magnitude, ae.turns)
+	}
+
 	e.backpack[idx].count--
 	if e.backpack[idx].count <= 0 {
 		e.backpack[idx] = backpackEntry{}
 	}
 
-	w.logger.Info(combatLogMsg, "event", combatEventDrink, "id", e.id, "item", inst.defID, "hp", e.hp)
+	w.logger.Info(combatLogMsg, "event", combatEventDrink, "id", e.id, "item", inst.defID,
+		"hp", e.hp, "cleared", cleared, "buffs", len(def.appliesEffect))
 
 	return nil
 }

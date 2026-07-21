@@ -70,7 +70,8 @@ func baseStatLines(def *itemDef) []statLine {
 }
 
 // statLinesFor renders every stat a def contributes: its base numbers first,
-// then one line per rule card, in registry order.
+// then one line per rule card, then a consumable's timed-effect payload — all
+// in registry order.
 func statLinesFor(def *itemDef) []statLine {
 	out := baseStatLines(def)
 
@@ -78,7 +79,41 @@ func statLinesFor(def *itemDef) []statLine {
 		out = append(out, cardStatLine(c))
 	}
 
+	out = append(out, consumableEffectStatLines(def)...)
+
 	return out
+}
+
+// consumableEffectStatLines renders a buff/antidote consumable's timed-effect
+// payload (#271, slice 2): one line per applied self-buff (the effect's OWN
+// card, rendered exactly as a gear card is, suffixed with its duration) and one
+// for a cleanse. Buff potions carry no rule cards at all, so without this their
+// tooltip would show only flavor — and deriving the line from the same card the
+// pipeline folds keeps the tooltip and the data from ever disagreeing, the whole
+// point of statlines.go.
+func consumableEffectStatLines(def *itemDef) []statLine {
+	var out []statLine
+
+	for _, ae := range def.appliesEffect {
+		line := cardStatLine(timedEffect{defID: ae.effectID, magnitude: ae.magnitude}.card())
+		line.text += " " + turnsText(ae.turns)
+		out = append(out, line)
+	}
+
+	if def.cleansesHarmful {
+		out = append(out, statLine{text: "Cures harmful effects"})
+	}
+
+	return out
+}
+
+// turnsText renders a timed effect's duration: "for 1 turn" / "for N turns".
+func turnsText(turns int) string {
+	if turns == 1 {
+		return "for 1 turn"
+	}
+
+	return "for " + strconv.Itoa(turns) + " turns"
 }
 
 // cardStatLine renders one rule card: [chance prefix] amount subject [suffix].

@@ -27,6 +27,11 @@ const ICONS = {
   skeleton: { file: "skeleton.svg", author: "Skoll" },
   "frost-wisp": { file: "frozen-orb.svg", author: "Lorc" },
   wraith: { file: "spectre.svg", author: "Lorc" },
+  // Timed-effect content (#271, slice 2). serpent got a color-only dot in slice
+  // 1; the cobra glyph lands here. hydra is slice 2's regenerating monster. Both
+  // keys must equal the monster-kind id (content.go's monsterDefs).
+  serpent: { file: "serpent.svg", author: "Delapouite" },
+  hydra: { file: "hydra.svg", author: "Lorc" },
 };
 
 const svgDir = new URL("./svg/", import.meta.url);
