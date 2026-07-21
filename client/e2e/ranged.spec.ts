@@ -1,14 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { ClassRogue, EntityMonster } from "../src/protocol.gen";
 import type { Hex } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady, seedIdentity } from "./helpers";
 
 // This file runs against its OWN private monster server (see
 // playwright.config.ts's "ranged" project) rather than sharing combat.spec.ts's
@@ -38,15 +32,9 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
   // class-selection UX is exercised in class.spec.ts). An empty stored token
   // still reaches the server as a brand-new join — Join() only reclaims an
   // existing entity for a token it recognizes — but with the requested class.
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "rogue" }));
-  });
+  await seedIdentity(page, { class: "rogue" });
 
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassRogue);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 

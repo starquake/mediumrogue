@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
 test("a keyboard step moves my entity on the next turn", async ({ page }) => {
   await page.goto("/");
 

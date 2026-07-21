@@ -1,13 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import type { MapResponse } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
 
 // The e2e server is shared across the whole suite and entities never despawn,
 // so assert >= 2 and track specific entity ids rather than an exact count.

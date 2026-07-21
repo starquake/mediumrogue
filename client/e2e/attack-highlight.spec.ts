@@ -1,14 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { ClassMage, ClassRogue, EntityMonster } from "../src/protocol.gen";
 import type { Hex, HitView } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { chaseIntoCombat, dumpState, gotoReady, hexDist, progressTracker, seedIdentity } from "./helpers";
 
 // This file runs against its OWN private monster server (see
 // playwright.config.ts) with a short COMBAT_PATIENCE, for the same reasons as
@@ -38,139 +32,6 @@ declare global {
 // equal-distance pair can't trap the stepper, and re-engage via the
 // server's real pathfinding whenever we're out of combat (fresh join,
 // fled bubble, or death-respawn).
-
-const dist = (a: Hex, b: Hex): number => {
-  const dq = a.q - b.q;
-  const dr = a.r - b.r;
-  const ds = -dq - dr;
-
-  return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
-};
-
-// dumpState logs the live client state when an approach poll starves —
-// #181 went two full passes without a diagnosis because the timeouts
-// carried no state; this makes the next sighting self-describing in the
-// CI log (search for "STARVED").
-const dumpState = async (page: import("@playwright/test").Page, label: string): Promise<void> => {
-  const dump = await page.evaluate(
-    (monsterKind) => ({
-      me: window.game.me,
-      died: window.game.died,
-      inCombat: window.game.inCombat,
-      connected: window.game.connected,
-      turn: window.game.turn,
-      combatMoves: window.game.combatMoves,
-      monstersCounter: window.game.monsters,
-      monsters: window.game.positions.filter((p) => p.kind === monsterKind).map((p) => ({ id: p.id, hex: p.hex })),
-      positionsCount: window.game.positions.length,
-    }),
-    EntityMonster,
-  );
-  console.log(`STARVED[${label}] ` + JSON.stringify(dump));
-};
-
-// progressTracker rotates targets on stalled DISTANCE, not stalled position:
-// a monster walking away (leash-return home) at the shared 1-hex-per-turn
-// speed is an uncatchable treadmill — the chaser moves every turn yet never
-// closes, which a position-based stuck check can never see (a captured #181
-// failure mode: 20s of healthy walking, gap pinned at 10). If the best
-// distance ever achieved toward the current target hasn't improved within
-// `window` polls, switch to the next-nearest monster.
-const progressTracker = (window: number): { note: (targetDist: number | null) => number } => {
-  let best: number | null = null;
-  let stalePolls = 0;
-  let skip = 0;
-
-  return {
-    note: (targetDist: number | null): number => {
-      if (targetDist === null) {
-        return skip; // no target/self yet: nothing to measure
-      }
-
-      if (best === null || targetDist < best) {
-        best = targetDist;
-        stalePolls = 0;
-      } else {
-        stalePolls += 1;
-        if (stalePolls >= window) {
-          skip += 1;
-          best = null;
-          stalePolls = 0;
-        }
-      }
-
-      return skip;
-    },
-  };
-};
-
-// chaseIntoCombat drives the player until the client reports a combat
-// bubble. Out of combat every tap goes to a monster's own hex, so the
-// SERVER pathfinds the route (it walks around terrain; bodies never block
-// out-of-combat movement). Progress-aware per the #181 header: when the
-// gap to the current target stops shrinking (unreachable pocket, jammed
-// route, or the treadmill above), rotate to the next-nearest monster.
-const chaseIntoCombat = async (page: import("@playwright/test").Page): Promise<void> => {
-  const tracker = progressTracker(10);
-  let skip = 0;
-
-  const poll = expect
-    .poll(
-      async () => {
-        const st = await page.evaluate(
-          ({ monsterKind, skip: skipN }) => {
-            if (window.game.inCombat) {
-              return { done: true, targetDist: null };
-            }
-
-            const me = window.game.me;
-            if (me === null) {
-              return { done: false, targetDist: null };
-            }
-
-            const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
-              const dq = a.q - b.q;
-              const dr = a.r - b.r;
-
-              return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
-            };
-
-            const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
-            if (monsters.length === 0) {
-              return { done: false, targetDist: null };
-            }
-
-            const sorted = monsters
-              .slice()
-              .sort((a, b) => d(me.hex, a.hex) - d(me.hex, b.hex) || a.id - b.id);
-            const target = sorted[skipN % sorted.length]!;
-
-            void window.game.tapHex(target.hex.q, target.hex.r);
-
-            return { done: false, targetDist: d(me.hex, target.hex) };
-          },
-          { monsterKind: EntityMonster, skip },
-        );
-
-        if (st.done) {
-          return true;
-        }
-
-        skip = tracker.note(st.targetDist);
-
-        return false;
-      },
-      { timeout: 20_000, intervals: [300] },
-    )
-    .toBe(true);
-
-  try {
-    await poll;
-  } catch (err) {
-    await dumpState(page, "chase");
-    throw err;
-  }
-};
 
 // Whatever a test leaves behind keeps ACTING: entities never leave the world
 // (#21), and a standing move intent whose next step is monster-held keeps
@@ -209,15 +70,9 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
 
   // Join as mage (Ember Focus: aoeRadius > 0) — the identity-seeding
   // technique ranged.spec.ts uses, skipping the start screen.
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "mage" }));
-  });
+  await seedIdentity(page, { class: "mage" });
 
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassMage);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
@@ -406,7 +261,7 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
   // of the hovered hex, and the walkable anchor tile is provably in it.
   expect(hoverTiles.length).toBeGreaterThanOrEqual(1);
   for (const t of hoverTiles) {
-    expect(dist(t, target)).toBeLessThanOrEqual(1);
+    expect(hexDist(t, target)).toBeLessThanOrEqual(1);
   }
   expect(hoverTiles.some((t) => t.q === anchor.q && t.r === anchor.r)).toBe(true);
 
@@ -417,7 +272,7 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
   expect(committedAction).toBeNull();
   expect(committedTiles.length).toBeGreaterThanOrEqual(1);
   for (const t of committedTiles) {
-    expect(dist(t, target)).toBeLessThanOrEqual(1);
+    expect(hexDist(t, target)).toBeLessThanOrEqual(1);
   }
 
   await expect
@@ -434,7 +289,33 @@ test("mage: hovering an AoE target highlights the blast disc; clicking keeps the
   const hitPoll = expect
     .poll(
       async () => {
-        hit = await page.evaluate(() => window.game.hits[0] ?? null);
+        hit = await page.evaluate((monsterKind) => {
+          // #181-class de-race: the short-patience bubble can resolve and
+          // collapse before any hit rides the bundle, dropping us out of
+          // combat — a passive hits[0] read then starves forever (the mage-hit
+          // CI flake). If we've fallen out of combat, re-engage the nearest
+          // monster (same pattern as the shot poll above) so combat resumes and
+          // a real hit — ours or the monster's on us — can still land.
+          if (!window.game.inCombat) {
+            const me = window.game.me;
+            if (me !== null) {
+              const d = (a: { q: number; r: number }, b: { q: number; r: number }): number =>
+                (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+              const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+              if (monsters.length > 0) {
+                let nearest = monsters[0]!;
+                for (const m of monsters.slice(1)) {
+                  if (d(me.hex, m.hex) < d(me.hex, nearest.hex)) {
+                    nearest = m;
+                  }
+                }
+                void window.game.tapHex(nearest.hex.q, nearest.hex.r);
+              }
+            }
+          }
+
+          return window.game.hits[0] ?? null;
+        }, EntityMonster);
 
         return hit !== null;
       },
@@ -463,9 +344,7 @@ test("rogue: hovering a hostile in bow range highlights exactly its tile; a plai
   // cannot contain even when every poll is making healthy progress.
   test.slow();
 
-  await page.addInitScript(() => {
-    localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "rogue" }));
-  });
+  await seedIdentity(page, { class: "rogue" });
 
   await page.goto("/");
 

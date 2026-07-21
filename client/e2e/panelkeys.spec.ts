@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
 // Gear keystone, task 4: C / I toggle the character panel and Escape closes
 // it — guarded so none of the three fire while a text input (chat, or the
 // join-name field on the start screen) has focus. `i` itself was already

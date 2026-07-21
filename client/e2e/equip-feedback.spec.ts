@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
 // The default e2e identity is a fighter/human/traveler (playwright.config's
 // storageState) and this server is monster-free, so the player is always OUT of
 // combat here — exactly the case the pending-action feedback must cover on a

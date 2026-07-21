@@ -1,14 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { EntityMonster } from "../src/protocol.gen";
 import type { Hex } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady } from "./helpers";
 
 // This spec runs against its own server with a short COMBAT_PATIENCE (see
 // playwright.config.ts): the bubble auto-resolves turns without this client
@@ -23,11 +17,7 @@ test("entering a combat bubble hard-cancels the auto-walk goal and path", async 
   // without anything being wrong (same reasoning as chat.spec.ts). 3x it.
   test.slow();
 
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
   // Walk toward the nearest monster — but STOP issuing taps outside

@@ -1,14 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { EntityMonster } from "../src/protocol.gen";
 import type { Hex } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady } from "./helpers";
 
 // #105: 1920×1080 is the minimum supported viewport. The worst-case left
 // column — full HUD (title/turn/status/stats/copy-link/inventory button),
@@ -20,9 +14,7 @@ declare global {
 test.use({ viewport: { width: 1920, height: 1080 } });
 
 test("worst-case HUD + open panels fit 1920×1080 without overlap", async ({ page }) => {
-  await page.goto("/");
-
-  await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.turn >= 1)).toBe(true);
 
   // Open the character panel and put real lines in chat.

@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
-
 // Reproduces the seam behind item 2's investigation (playtest feedback batch
 // 3, "players swapped identities"): two browser TABS in the same context
 // share localStorage's `mediumrogue.identity` key. The playtest report

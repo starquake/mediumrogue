@@ -1,25 +1,15 @@
 import { expect, test } from "@playwright/test";
 
-import type { GameDebug } from "../src/main";
 import { EntityMonster } from "../src/protocol.gen";
 import type { Hex } from "../src/protocol.gen";
-
-declare global {
-  interface Window {
-    game: GameDebug;
-  }
-}
+import { gotoReady } from "./helpers";
 
 // This file runs against the COMBAT server (see playwright.config.ts —
 // filenames matching /(monsters|combat)\.spec\.ts$/ route to the server
 // started with MONSTER_COUNT=3).
 
 test("melee-attacking a monster deals damage, observable via window.game.hp", async ({ page }) => {
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
   // Snapshot each MONSTER's HP before engaging. Success is "some monster took
@@ -153,11 +143,7 @@ test("melee-attacking a monster deals damage, observable via window.game.hp", as
 // the freeze, not to fight — so unlike the damage test above it should not
 // consume the shared combat server's fixed (non-respawning) monster pool.
 test("entering a combat bubble freezes locally while window.game.turn keeps advancing", async ({ page }) => {
-  await page.goto("/");
-
-  await expect
-    .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
-    .toBe(true);
+  await gotoReady(page);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
   // Same re-targeting rationale as the damage test: monsters hunt back and
