@@ -222,8 +222,17 @@ test("tooltip clears itself when the hovered monster leaves its hex under a stil
           void window.game.tapHex(target.hex.q, target.hex.r);
         }
 
-        // Hover the pursued monster once — its current hex — the moment it is
-        // within aggro range and we have not hovered yet.
+        // Hover the pursued monster the moment it is within aggro range and we
+        // have not locked in a hover yet. #260: dispatch the hover at its LIVE
+        // hex and confirm the tooltip actually came up — both in THIS atomic
+        // evaluate — reporting `hovered` (the exact hex it showed on) only then.
+        // The old code dispatched here but asserted visibility in a SEPARATE
+        // later evaluate; if the monster stepped off the hovered pixel (it
+        // wanders every turn) or a turn bundle re-resolved and hid the tooltip
+        // in between, that assert flaked (Received hidden === true). If the
+        // tooltip is not up this turn, `hovered` stays null and the next turn
+        // re-dispatches at the monster's new hex — the loop keeps the cursor on
+        // the still-aggroed monster until the tooltip is confirmed visible.
         let hovered: { q: number; r: number } | null = null;
         if (!haveHover && dist <= aggro) {
           const canvas = document.querySelector("canvas")!;
@@ -237,7 +246,9 @@ test("tooltip clears itself when the hovered monster leaves its hex under a stil
               bubbles: true,
             }),
           );
-          hovered = target.hex;
+          if (!document.getElementById("hover-tooltip")!.hidden) {
+            hovered = target.hex;
+          }
         }
 
         return { targetDist: dist, hovered };
@@ -246,9 +257,10 @@ test("tooltip clears itself when the hovered monster leaves its hex under a stil
     );
 
     if (st.hovered !== null && hoveredHex === null) {
+      // st.hovered is set only once the atomic hover above confirmed the
+      // tooltip visible on this exact hex, so pinning hoveredHex here needs no
+      // separate (racy) visibility assert — the tooltip WAS up on it.
       hoveredHex = st.hovered;
-      // The tooltip is up right after the hover.
-      expect(await page.evaluate(() => document.getElementById("hover-tooltip")!.hidden)).toBe(false);
     }
     skip = tracker.note(st.targetDist);
 
