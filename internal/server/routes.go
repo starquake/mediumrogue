@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/starquake/mediumrogue/internal/web"
@@ -35,10 +36,26 @@ func addRoutes(mux *http.ServeMux, deps Deps) {
 	mux.Handle("/", web.Handler())
 }
 
-// handleMap serves the world map — immutable, so re-served from memory.
+// handleMap serves the world map. The map is immutable for the world's life
+// (terrain never changes mid-game), so it is marshalled ONCE here at wiring
+// time and every request writes the cached bytes — no per-request re-marshal of
+// the ~1,800-tile payload (#209). Byte-identical to the old respondJSON path.
 func handleMap(deps Deps) http.Handler {
+	payload, err := json.Marshal(deps.World.Map())
+	if err != nil {
+		// MapResponse is a fixed struct of marshalable fields; an error here is
+		// a programming error, not a runtime one. Fall back to per-request
+		// marshalling so the server still starts and surfaces the fault.
+		deps.Logger.Error("marshal world map", "err", err)
+
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			respondJSON(w, deps.Logger, deps.World.Map())
+		})
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		respondJSON(w, deps.Logger, deps.World.Map())
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(payload)
 	})
 }
 
