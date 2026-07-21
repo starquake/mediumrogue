@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { ClassRogue, EntityMonster } from "../src/protocol.gen";
 import type { Hex } from "../src/protocol.gen";
-import { gotoReady, seedIdentity } from "./helpers";
+import { chaseIntoCombat, gotoReady, progressTracker, seedIdentity } from "./helpers";
 
 // This file runs against its OWN private monster server (see
 // playwright.config.ts's "ranged" project) rather than sharing combat.spec.ts's
@@ -10,22 +10,40 @@ import { gotoReady, seedIdentity } from "./helpers";
 // bubble ends up connected — via a shared monster — to an earlier spec's
 // already-closed page gets stuck waiting on a lock-in that page can never
 // submit again (only the far-off COMBAT_PATIENCE AFK timeout would free it).
-// This test is the only entity ever joined to this server, so that can't happen.
+// This test is the only entity ever joined to this server, so that can't happen
+// — which also means it MUST be run single-instance: driving it under
+// `--repeat-each` re-joins the same shared world while earlier players are
+// still in their disconnect-grace window and the non-respawning monster pool
+// has drifted after being chased, so the later repeats fail on accumulated
+// world state, not on this engagement (#259). CI runs it once, on a fresh
+// world, which is what this test is built for.
 
-// Milestone 6b.2's ranged path: a rogue's bow. This reuses the same
-// nearest-monster chase loop as combat.spec.ts's melee damage test, driven
-// through window.game.tapHex — which itself decides move-vs-attack
-// (src/main.ts's isRangedAttackClick): once this rogue is in a combat bubble
-// (CombatRadius=6 of a monster) and clicks an occupied hex within BowRange,
-// tapHex fires a ranged "attack" intent instead of a move, for ANY distance up
-// to BowRange (including adjacent — a rogue's dagger melee attack is
-// unreachable through this click path while in combat, since
-// isRangedAttackClick always wins for an occupied, in-range target hex). So
-// any HP drop observed here, over a real browser + HTTP round trip, is the
+// Milestone 6b.2's ranged path: a rogue's bow. Engagement is the #181/#247
+// robust pattern, not a bespoke nearest-only walk: chaseIntoCombat rotates off
+// an unreachable/leash-treadmill target to reach a REACHABLE monster's bubble,
+// then the shot loop rotates targets on stalled progress. That robustness
+// matters here because #233/#244 made a ranged shot line-of-sight-gated — a
+// shot at a target behind terrain is rejected (no HP drop), and the nearest
+// in-range monster can be exactly that; fixating on it (the old loop) times out
+// on an unlucky spawn (the #259 flake theory). The shot itself is driven
+// through window.game.tapHex, which decides move-vs-attack (src/main.ts's
+// isRangedAttackClick): once this rogue is in a combat bubble and clicks an
+// occupied hex within BowRange, tapHex fires a ranged "attack" intent instead
+// of a move, for ANY distance up to BowRange (including adjacent — a rogue's
+// dagger melee attack is unreachable through this click path while in combat,
+// since isRangedAttackClick always wins for an occupied, in-range target hex).
+// So any HP drop observed here, over a real browser + HTTP round trip, is the
 // bow landing, not a disguised melee attack.
 test("a rogue's ranged bow attack damages a monster from range, observable via window.game.hp", async ({
   page,
 }) => {
+  // Approach + LOS-rotation is metered on GAME progress (turn advances), not
+  // wall-clock: chaseIntoCombat and the shot loop each carry their own 20s
+  // budget, and on a contended runner the turns they need can legitimately
+  // stretch past the default 30s test budget while nothing is wrong (same
+  // turn-metered reasoning as autowalk.spec / the monsters.spec tooltip test).
+  test.slow();
+
   // Seed the "returning player" identity localStorage read at module load
   // (src/net/session.ts's loadIdentity/join), so this joins as Rogue
   // deterministically without touching the start screen (its own
@@ -40,57 +58,78 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
 
   const baseline = await page.evaluate(() => ({ ...window.game.hp }));
 
-  const chase = async (base: Record<number, number>): Promise<boolean> => {
-    await page.evaluate((monsterKind) => {
-      const me = window.game.me;
-      if (me === null) {
-        return;
-      }
+  // Enter a combat bubble against a REACHABLE monster (rotates off an
+  // unreachable/leash-treadmill target — the shared #181/#247 helper) rather
+  // than the old greedy walk that could fixate on a monster parked in a
+  // terrain pocket forever.
+  await chaseIntoCombat(page);
 
-      const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
-      if (monsters.length === 0) {
-        return;
-      }
+  // Then close to bow range of an in-LOS monster and shoot. progressTracker
+  // rotates targets when the gap to the current one stops shrinking: an
+  // unreachable pocket, a leash-return treadmill, OR an in-range target we
+  // cannot see (its distance sits pinned while the LOS-gated shot is silently
+  // rejected) all read as stalled progress and switch to the next-nearest
+  // monster — so the loop keeps trying until it finds a monster it can both
+  // reach AND see.
+  const bowRange = 4; // Shortbow rangeHex (internal/game/content.go).
+  const tracker = progressTracker(8);
+  let skip = 0;
 
-      const dist = (a: Hex, b: Hex): number => {
-        const dq = a.q - b.q;
-        const dr = a.r - b.r;
-        const ds = -dq - dr;
-
-        return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
-      };
-
-      let nearest = monsters[0]!;
-      let bestDist = dist(me.hex, nearest.hex);
-      for (const m of monsters.slice(1)) {
-        const d = dist(me.hex, m.hex);
-        if (d < bestDist) {
-          nearest = m;
-          bestDist = d;
+  const shoot = async (base: Record<number, number>): Promise<boolean> => {
+    const targetDist = await page.evaluate(
+      ({ monsterKind, range, skipN }) => {
+        const me = window.game.me;
+        if (me === null) {
+          return null;
         }
-      }
 
-      // Inside a bubble but still beyond bow range (bow 4 < bubble radius 6),
-      // a tap on the monster would be a move — and moves are now restricted
-      // to this turn's reachable tiles. Step onto the reachable tile that
-      // closes the most distance until the monster is in range; from there
-      // the tap IS the ranged attack and goes straight through.
-      const bowRange = 4;
-      if (window.game.inCombat && bestDist > bowRange && window.game.combatMoves.length > 0) {
-        let step = window.game.combatMoves[0]!;
-        for (const h of window.game.combatMoves.slice(1)) {
-          if (dist(h, nearest.hex) < dist(step, nearest.hex)) {
-            step = h;
+        const dist = (a: Hex, b: Hex): number => {
+          const dq = a.q - b.q;
+          const dr = a.r - b.r;
+          const ds = -dq - dr;
+
+          return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
+        };
+
+        const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+        if (monsters.length === 0) {
+          return null;
+        }
+
+        const sorted = monsters
+          .slice()
+          .sort((a, b) => dist(me.hex, a.hex) - dist(me.hex, b.hex) || a.id - b.id);
+        const target = sorted[skipN % sorted.length]!;
+        const targetDistance = dist(me.hex, target.hex);
+
+        if (targetDistance >= 1 && targetDistance <= range) {
+          // In bow range: the tap on this occupied hex fires the ranged attack
+          // (isRangedAttackClick). If a wall blocks it (#233/#244) the server
+          // rejects it, no HP drops, and the pinned distance rotates us off.
+          void window.game.tapHex(target.hex.q, target.hex.r);
+        } else if (window.game.inCombat && window.game.combatMoves.length > 0) {
+          // Beyond bow range inside a bubble (bow 4 < bubble radius 6): moves
+          // are restricted to this turn's reachable tiles. Step onto the one
+          // that closes the most distance to the target until it is in range.
+          let step = window.game.combatMoves[0]!;
+          for (const h of window.game.combatMoves.slice(1)) {
+            if (dist(h, target.hex) < dist(step, target.hex)) {
+              step = h;
+            }
           }
+          void window.game.tapHex(step.q, step.r);
+        } else {
+          // The bubble lapsed (no reachable move tiles): tap the monster so the
+          // server pathfinds back toward it out of combat.
+          void window.game.tapHex(target.hex.q, target.hex.r);
         }
 
-        window.game.tapHex(step.q, step.r);
+        return targetDistance;
+      },
+      { monsterKind: EntityMonster, range: bowRange, skipN: skip },
+    );
 
-        return;
-      }
-
-      window.game.tapHex(nearest.hex.q, nearest.hex.r);
-    }, EntityMonster);
+    skip = tracker.note(targetDist);
 
     return page.evaluate((b) => {
       return Object.entries(window.game.hp).some(([id, hp]) => {
@@ -102,7 +141,7 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
   };
 
   await expect
-    .poll(() => chase(baseline), { timeout: 20_000, intervals: [300] })
+    .poll(() => shoot(baseline), { timeout: 20_000, intervals: [300] })
     .toBe(true);
 
   // No cleanup needed here (unlike combat.spec.ts's melee attack test): an
