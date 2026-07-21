@@ -574,6 +574,10 @@ var monsterDefs = []*monsterDef{
 			// table is the common source, so the first pair of boots reads as
 			// a wolf-country find.
 			{defID: idPaddedBoots, weight: 1},
+			// Content expansion (#269 table B): the Minor Salve rides the
+			// rat table as the low-tier recovery ladder's home rung. Appended
+			// LAST so every earlier entry keeps its cumulative-weight position.
+			{defID: idMinorSalve, weight: 2},
 		},
 		rings: []int{0, 1},
 	},
@@ -613,6 +617,16 @@ var monsterDefs = []*monsterDef{
 			// Warded Gambeson (sharp resist) belongs on the sharp-clawed
 			// kind a player meets first.
 			{defID: idWardedGambeson, weight: 3},
+			// Content expansion (#269 table B): the Longbow (the shooter's
+			// kind carries the reach upgrade), a rare Frostward Charm (the
+			// Frost Wisp is its common source), and the Minor Salve recovery
+			// rung. Appended LAST so every earlier entry keeps its
+			// cumulative-weight position — but the new total weight DOES move
+			// drops_test.go's killDropSeed pick, which is re-derived there
+			// (the drop def, not the seed: seed 0 stays a hit, seed 3 a miss).
+			{defID: idLongbow, weight: 3},
+			{defID: idFrostwardCharm, weight: 1},
+			{defID: idMinorSalve, weight: 2},
 		},
 		rings: []int{1},
 	},
@@ -681,6 +695,16 @@ var monsterDefs = []*monsterDef{
 			// Damage-type wave (#92): appended LAST. The Frostbrand is the
 			// game's only Ice weapon, frontier-tier loot.
 			{defID: idFrostbrand, weight: 3},
+			// Content expansion (#269 table B): the troll is the frontier
+			// heavy-weapon tier — it carries the martial fire Ember Brand,
+			// the 2H blunt Ironhead Greatmaul, the blunt-resist Ironbound
+			// Gauntlets (the blunt attacker drops its own counter), and the
+			// Greater Draught's save-for-the-boss heal. Appended LAST so every
+			// earlier entry keeps its cumulative-weight position.
+			{defID: idEmberBrand, weight: 3},
+			{defID: idIronheadGreatmaul, weight: 3},
+			{defID: idIronboundGauntlets, weight: 3},
+			{defID: idGreaterDraught, weight: 1},
 		},
 		rings: []int{2},
 	},
@@ -708,6 +732,9 @@ var monsterDefs = []*monsterDef{
 			{defID: idPackBow, weight: 8},
 			{defID: idVenomFang, weight: 4},
 			{defID: idHealingPotion, weight: 1},
+			// Content expansion (#269 table B): the shooter's kind is the
+			// common source of the reach-for-damage Longbow. Appended LAST.
+			{defID: idLongbow, weight: 4},
 		},
 		rings: []int{1, 2},
 	},
@@ -731,6 +758,14 @@ var monsterDefs = []*monsterDef{
 			// Damage-type wave (#92): appended LAST. Infernal Chain Mail —
 			// fire resistance, dropped by the one kind whose claws are fire.
 			{defID: idInfernalChainMail, weight: 2},
+			// Content expansion (#269 table B + a judgement call): the Ember
+			// Brand rides the fire-breathing dragon as rare frontier loot (its
+			// common source is the troll). The Full Restorative — the heal
+			// ladder's optional top rung — had no drop routing in #269, so it
+			// is placed here as a very-rare once-a-run relief behind the
+			// rarest encounter. Appended LAST.
+			{defID: idEmberBrand, weight: 1},
+			{defID: idFullRestorative, weight: 1},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},

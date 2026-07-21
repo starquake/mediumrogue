@@ -102,6 +102,15 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		// sharp resist, on the sharp-clawed kind a player meets first.
 		// Appended LAST for the same reason.
 		{defID: idWardedGambeson, weight: 3},
+		// Appended by the content expansion (#269 table B): the reach Longbow,
+		// a rare Frostward Charm, and the Minor Salve recovery rung. Appended
+		// LAST — the new total weight was re-checked against drops_test.go's
+		// killDropSeed pins (the seeds are unchanged: seed 0 still hits, seed 3
+		// still misses; and seed 0 still yields the Butcher's Cleaver, which
+		// stays weight 4 at the head of the table).
+		{defID: idLongbow, weight: 3},
+		{defID: idFrostwardCharm, weight: 1},
+		{defID: idMinorSalve, weight: 2},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {

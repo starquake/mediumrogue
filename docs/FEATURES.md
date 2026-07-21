@@ -579,8 +579,18 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   Infernal Chain Mail on the dragon (the one kind whose claws are fire), and
   the Pilgrim's Mantle and Consecrated Mace on the ghoul — which **ends** the
   ghoul table's long-untouched streak, by design: the ghoul is where a player
-  first *wants* a damage type). Items land
-  on the death hex and render as map markers.
+  first *wants* a damage type). The content expansion (#269) routes the new
+  loot: each new kind's own table signals its counter (Skeleton → Ironhead
+  Greatmaul; Frost Wisp → Frostward Charm + Frostbrand; Wraith → Consecrated
+  Mace + Pilgrim's Mantle; Goblin → cleaver + salve), and the new gear also
+  rides existing kinds so it stays reachable — Ember Brand on troll (w3) /
+  dragon (w1), Ironhead Greatmaul on skeleton (w3) / troll (w3), Longbow on
+  wolf (w3) / kin archer (w4), Ironbound Gauntlets on skeleton (w2) / troll
+  (w3), Frostward Charm on frost wisp (w3) / wolf (w1); the recovery ladder
+  spreads across the tiers (Minor Salve on rat/wolf/goblin/frost wisp, Greater
+  Draught on wraith/troll, the very-rare Full Restorative on the dragon). The
+  wolf additions were the only ones to move a pinned drop seed, re-derived in
+  `drops_test.go`. Items land on the death hex and render as map markers.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):

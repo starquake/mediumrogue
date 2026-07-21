@@ -34,6 +34,14 @@ import (
 // scanned range with no ground item (the new killMissSeed); seed 0 (no
 // longer a miss) now hits with "Butcher's Cleaver" and is the smallest
 // hit-seed available, so it becomes the new killDropSeed.
+//
+// re-derived: #269 content expansion appended three rows (longbow, frostward
+// charm, minor salve) to the wolf table, moving its total weight 42 -> 48.
+// Re-scanned seeds 0-39 through oneHitKillBubble: the hit/miss split is
+// unchanged (the dropChance roll is drawn before pickDropFrom, so table size
+// can't move it — seed 0 hits, seed 3 misses), and seed 0 still yields the
+// Butcher's Cleaver, which stays weight 4 at the head of the table, so all
+// four constants below survive byte-identical.
 const (
 	killMissSeed        = 3
 	killDropSeed        = 0
