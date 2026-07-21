@@ -110,3 +110,75 @@ test("hovering a monster shows its kind, and its HP only within CombatRadius", a
   });
   expect(hiddenAfter).toBe(true);
 });
+
+// #205: the tooltip content was recomputed only on pointermove, so a monster
+// that moved off (or died on) the hovered hex under a STATIONARY cursor left a
+// stale tooltip lingering until the next mouse move. The fix re-resolves the
+// hovered hex on every turn bundle (onTurn), hiding the tooltip when the
+// monster has left. This test hovers a monster, then advances turns WITHOUT
+// touching the cursor — the e2e monsters wander every turn — and asserts the
+// tooltip clears itself the moment the hovered hex is empty.
+//
+// The poll's function returns "cleared" only when, in ONE atomic page
+// snapshot, the hovered hex holds no monster AND the tooltip is hidden — the
+// two are updated together inside onTurn (positions first, then the tooltip),
+// so a consistent snapshot can never show an empty hex with a visible tooltip
+// once the fix is in. With the bug it stays "stale" until timeout. The initial
+// pointermove is the ONLY synthetic pointer event; nothing moves the cursor
+// after, so the clearing is driven purely by the turn clock.
+test("tooltip clears itself when the hovered monster wanders off under a still cursor", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await expect
+    .poll(() => page.evaluate(() => window.game.monsters), { timeout: 10_000 })
+    .toBeGreaterThanOrEqual(1);
+
+  // Hover a monster and remember its hex. Returns the hovered hex so the poll
+  // below can watch that exact hex empty out.
+  const hoveredHex = await page.evaluate(() => {
+    const HEX_SIZE = 32; // keep in sync with render/hex.ts
+    const hexToPixel = (hex: { q: number; r: number }): { x: number; y: number } => ({
+      x: HEX_SIZE * 1.5 * hex.q,
+      y: HEX_SIZE * ((Math.sqrt(3) / 2) * hex.q + Math.sqrt(3) * hex.r),
+    });
+
+    const monster = window.game.positions.find((p) => p.kind === "monster");
+    if (monster === undefined) {
+      return null;
+    }
+
+    const canvas = document.querySelector("canvas")!;
+    const rect = canvas.getBoundingClientRect();
+    const { x, y } = hexToPixel(monster.hex);
+    const clientX = rect.left + window.game.camera.x + x;
+    const clientY = rect.top + window.game.camera.y + y;
+    canvas.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY, bubbles: true }));
+
+    return monster.hex;
+  });
+  expect(hoveredHex).not.toBeNull();
+
+  // The tooltip is up right after the hover.
+  expect(await page.evaluate(() => document.getElementById("hover-tooltip")!.hidden)).toBe(false);
+
+  // Advance turns without moving the cursor. Once no monster occupies the
+  // hovered hex, the tooltip must already be hidden (cleared by onTurn).
+  await expect
+    .poll(
+      () =>
+        page.evaluate((hex) => {
+          const occupied = window.game.positions.some(
+            (p) => p.kind === "monster" && p.hex.q === hex!.q && p.hex.r === hex!.r,
+          );
+          const hidden = document.getElementById("hover-tooltip")!.hidden;
+          if (occupied) {
+            return "occupied"; // monster still there — keep waiting for it to wander
+          }
+          return hidden ? "cleared" : "stale";
+        }, hoveredHex),
+      { timeout: 15_000 },
+    )
+    .toBe("cleared");
+});
