@@ -56,6 +56,17 @@ const idKindSerpent = "serpent"
 // game-icons hydra glyph, GLYPH_ICON_SVG).
 const idKindHydra = "hydra"
 
+// idKindNecromancer and idKindRisen are the in-combat-spawn foundation's proof
+// pair (#271): the Necromancer is the first SUMMONER — while bubbled it raises
+// weak Risen adds on nearby free hexes (summon.go) — and the Risen is the
+// minion it raises (also a plain wild spawn). Named here for the usual reason:
+// registry, the summon hook, and their tests can't drift on a typo. Each id
+// doubles as a client glyph key (entities.ts's KIND_STYLE / GLYPH_ICON_SVG).
+const (
+	idKindNecromancer = "necromancer"
+	idKindRisen       = "risen"
+)
+
 // defaultMonsterKindID is the kind SpawnMonsters/SpawnMonsterAt/
 // PlaceMonsterForTest fall back to when no kind is named — wolf, which
 // carries today's exact pre-6c numbers (10 HP, 3 damage, 20 XP, aggro 10,
@@ -107,6 +118,12 @@ type monsterDef struct {
 	drops       []drop
 	rings       []int      // which difficulty rings (0..protocol.RingCount-1) this kind spawns in
 	rules       []ruleCard // future kind passives; empty at launch
+	// summon, when non-nil, makes this kind a SUMMONER (#271, summon.go): while
+	// in combat it periodically raises minions of summon.minionKind on nearby
+	// free hexes, bounded by summon.maxLiving and paced by summon.everyTurns.
+	// Pure data like every other field — the behavior is a side-effecting hook
+	// (tickSummonsLocked), NOT a pipeline fold, mirroring the onHit rider seam.
+	summon *summonSpec
 
 	// weaponDef is the resolved registry def for `weapon`, wired once by
 	// buildMonsterIndex — never authored in content.go.
@@ -150,10 +167,21 @@ func buildMonsterIndex() {
 // take the origin for home and leash-walk the whole map back to it (#102).
 // The caller owns id allocation (w.nextID) and inserting into w.entities.
 func newMonsterEntity(id int64, h protocol.Hex, k *monsterDef) *entity {
-	return &entity{
+	e := &entity{
 		id: id, hex: h, homeHex: h,
 		kind: protocol.EntityMonster, monsterKind: k.id, hp: k.maxHP, maxHP: k.maxHP,
 	}
+
+	// A summoner starts on a full cooldown so a fresh encounter gets a wind-up
+	// window before its first add appears (#271, summon.go). newMonsterEntity is
+	// the ONE spawn path — SpawnMonsters, SpawnMonsterKindAt, and
+	// PlaceMonsterKindForTest all route through it — so no summoner can be
+	// created uninitialized.
+	if k.summon != nil {
+		e.summonCooldown = k.summon.everyTurns
+	}
+
+	return e
 }
 
 // defAggroRadius returns def's effective base aggro radius: its own
@@ -315,6 +343,7 @@ func validateMonsterDefs(defs []*monsterDef) {
 		validateMonsterDrops(def)
 		validateMonsterRings(def, covered)
 		validateRuleCards(def.id, def.rules)
+		validateMonsterSummon(def)
 	}
 
 	for r := range protocol.RingCount {

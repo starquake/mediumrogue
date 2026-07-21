@@ -707,7 +707,7 @@ roll, so it is ARPG-legal on jewelry.
   cosmetic, never gameplay-affecting.
 
 ### Monsters (kinds & difficulty rings — milestone 6c, expanded #266, #271)
-- **Twelve kinds**, content data in `internal/game/content.go` (`monsterDefs`),
+- **Fourteen kinds**, content data in `internal/game/content.go` (`monsterDefs`),
   each with its own stats, aggro radius, XP award, and loot table. A kind
   **names its weapon** in the item registry (#179) rather than carrying a copy
   of one, so reach, damage and damage type all come from a real item:
@@ -726,6 +726,8 @@ roll, so it is ARPG-legal on jewelry.
   | Troll | 2 | 30 | Maul | 6 | melee | 60 | 8 | 50% |
   | Wraith | 2 | 26 | Talons | 4 | melee | 70 | 8 | 45% |
   | Dragon | 2 (capped at 1 per world) | 60 | Dragon Jaws | 9 | melee | 150 | 12 | 100% (incl. the Wyrmslayer Greatsword) |
+  | Risen | 2 | 4 | Claws | 1 | melee | 5 | 7 | 5% |
+  | Necromancer | 2 | 24 | Bone Club | 3 | melee | 65 | 8 | 45% |
 
   **The expansion kinds (#266)** add the board's first *resistances* — before
   them every monster card was a vulnerability, so a player only had to avoid
@@ -752,6 +754,27 @@ roll, so it is ARPG-legal on jewelry.
   in a white-box test, and its own table carries the buff potions (Draught of
   Fury, Warding Tonic) plus a Greater Draught.
 
+  **The Necromancer is the first SUMMONER** (#271): while in combat (inside a
+  bubble) it raises weak **Risen** adds on nearby free hexes, via an
+  **end-of-turn spawn hook** (`summon.go`'s `tickSummonsLocked`, run at the same
+  turn-resolution point as the timed-effect tick). The behavior is **pure data**
+  — a `summonSpec` on the kind (`{minionKind, everyTurns, maxLiving, count}`),
+  not a combat-site edit, mirroring the on-hit rider seam. It is **bounded two
+  ways so it can never runaway-spawn**: a per-summoner **living-minion cap**
+  (`maxLiving` = 3) and a **cooldown** (`everyTurns` = 3 in-combat turns per
+  window). A fresh Necromancer starts on a full cooldown, so the first add only
+  appears after a **wind-up** window. Each add lands on a **free adjacent hex**
+  chosen through the same walkability + occupancy rule an ordinary mover obeys
+  (never onto a blocked, player-occupied, or `StackCap`-full hex — the #196
+  lesson); the only randomness (which free hex) rides the per-turn seeded PCG.
+  The cap counts **living** minions, so killing an add frees room for the next
+  window — a steady-state pressure, not a one-time burst. Its own melee (a Bone
+  Club, the skeleton's weapon) is modest — the swarm is the threat. The Risen is
+  also a plain wild frontier trash mob, so the kind isn't summon-only. A
+  summoner's cooldown and a minion's parentage are **persisted**
+  (`snapshotVersion` 10) so a restart mid-fight can't hand a free summon or let
+  the adds escape the cap.
+
   **The Kin Archer is the first kind that attacks without closing** (#179). It
   shoots from up to 3 hexes — under the player Shortbow's 4, so player gear
   still out-ranges it — and needs line of sight to fire, the same raycast the
@@ -773,8 +796,9 @@ roll, so it is ARPG-legal on jewelry.
   **game-icons.net glyph** drawn dark on the dot (rat, wolf-head,
   shambling-zombie, troll, dragon-head, bowman for the Kin Archer, and #266's
   goblin-head, skeleton, frozen-orb for the Frost Wisp, spectre for the
-  Wraith, plus #271's cobra for the Serpent and hydra for the Hydra —
-  `GLYPH_ICON_SVG`, keyed by kind id; the source filename need not
+  Wraith, plus #271's cobra for the Serpent, hydra for the Hydra, skull-mask
+  for the Necromancer, and half-dead for the Risen — `GLYPH_ICON_SVG`, keyed by
+  kind id; the source filename need not
   match the id, but the `ICONS` map key in `gen-glyph-icons.mjs` must);
   an unrecognized kind falls back to the flat monster red with no glyph.
   Players carry the same treatment — a class glyph (crossed-swords/hood/

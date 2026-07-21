@@ -759,3 +759,42 @@ engine call:
   cards into **every** hit (main-hand, off-hand, ranged), the point of a crit
   *ring* over a single crit *weapon*. Proof content: the **Ring of Precision**
   (10% chance ×2, ghoul drop).
+## In-combat summoning is a bounded side-effecting hook, not a pipeline fold *(built 2026-07-21, #271)*
+
+The first monster that changes the board mid-fight: a **Necromancer** that,
+while bubbled, raises weak **Risen** adds on nearby free hexes. The decisions:
+
+- **A summon is content — a `summonSpec` row on the kind, never a combat-site
+  edit.** Pure data `{minionKind, everyTurns, maxLiving, count}`, validated at
+  package init (`validateMonsterSummon`) like every other content table, so a
+  malformed spec panics at process start, not mid-fight. Adding a summoner is a
+  registry entry, mirroring how the whole engine treats content.
+- **It is a side-effecting HOOK, deliberately NOT a pipeline effect kind.** The
+  modifier pipeline folds a *pure int* and mutates nothing (it runs in preview
+  and trace paths with no world); spawning *creates entities*, so — exactly like
+  the on-hit effect rider (`appliedEffect`) — applying a summon is a separate,
+  side-effecting step at the resolution site keyed off data. No new event,
+  condition, or effect verb was added; `new-pipeline-kind` did not apply.
+- **Timing: the end-of-turn point, in-combat only.** `tickSummonsLocked` runs in
+  `resolveCombatLocked` *after* `resolveDeathsLocked` (a summoner slain this turn
+  raises nothing) and gated to a bubble turn (`worldDomain` false) — summoning is
+  a fight behavior, the way a bubbled monster chases unconditionally. Running the
+  hook LAST means its rng draw lands after every existing consumer, so adding it
+  **shifts no pinned seed**.
+- **Bounded two ways so it can never runaway-spawn.** A per-summoner **living**
+  cap (`maxLiving`) and a per-window **cooldown** (`everyTurns`), with a full-
+  cooldown wind-up on a fresh summoner. The cap counts living minions (tracked by
+  a `summonerID` stamp), so killing an add frees room — steady-state pressure,
+  never a burst. This is the #196 lesson generalized: an add lands only on a hex
+  that passes the *same* walkability + occupancy check an ordinary mover obeys
+  (`occupiedForLocked`: no opposing occupant, under `StackCap`), never onto a
+  blocked, player-occupied, or full tile.
+- **Determinism, and serialization.** The only randomness is *which* free
+  adjacent hex an add takes, drawn from the per-turn seeded PCG over a
+  fixed-order (`HexNeighbors`) candidate list — no map iteration leaks in. The
+  summoner's cooldown and the minion's `summonerID` are multi-turn state, so they
+  ride the snapshot and **`snapshotVersion` bumped 9 → 10** — a v9 snapshot is
+  rejected, preserved-aside, fresh start, per the no-backward-compat rule.
+- **ARPG, not TTRPG.** Summoning is a deterministic spawn behavior — no summon
+  check, no save, no roll to resist the add. The threat is attrition (the swarm),
+  not a stat-check.

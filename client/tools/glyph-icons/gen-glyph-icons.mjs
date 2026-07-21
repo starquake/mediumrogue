@@ -32,6 +32,12 @@ const ICONS = {
   // keys must equal the monster-kind id (content.go's monsterDefs).
   serpent: { file: "serpent.svg", author: "Delapouite" },
   hydra: { file: "hydra.svg", author: "Lorc" },
+  // In-combat-spawn foundation (#271): the Necromancer summoner (a skull mask)
+  // and the Risen add it raises (a half-dead corpse). Keys equal the
+  // monster-kind ids (content.go's monsterDefs), which entities.ts looks up
+  // directly.
+  necromancer: { file: "skull-mask.svg", author: "Lorc" },
+  risen: { file: "half-dead.svg", author: "Delapouite" },
 };
 
 const svgDir = new URL("./svg/", import.meta.url);

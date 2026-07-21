@@ -79,6 +79,11 @@ const KIND_STYLE: Record<string, { color: number }> = {
   // regenerating monster, whose bite knits it back together.
   serpent: { color: 0x4faf6a },
   hydra: { color: 0xb0468a },
+  // In-combat-spawn foundation (#271): a deep-arcane-purple Necromancer summoner
+  // (skull-mask glyph) and the ashen Risen add it raises (half-dead glyph) —
+  // distinct from the wraith's lighter violet and the goblin/ghoul greens.
+  necromancer: { color: 0x7a3fb0 },
+  risen: { color: 0x9a9270 },
 };
 
 interface Dot {
