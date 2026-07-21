@@ -124,6 +124,37 @@ func startServerWithLimits(
 	})
 }
 
+// startServerWithProxyLimits boots the handler tree with the SSE stream caps
+// set for the per-IP tests (#199): the global cap plus the opt-in per-IP layer
+// (TrustProxyIP + PerIPSSEStreams). Every other harness leaves TrustProxyIP
+// false, so X-Forwarded-For is never read elsewhere. A long turn interval and
+// heartbeat keep both clocks out of the way — these tests assert on connect
+// statuses, not turns.
+func startServerWithProxyLimits(
+	t *testing.T, sseMaxStreams int, trustProxyIP bool, perIPSSEStreams int,
+) *httptest.Server {
+	t.Helper()
+
+	ticks := hub.New()
+
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
+
+	return serveWorld(t, world, ticks, server.Deps{
+		HeartbeatInterval: time.Hour,
+		SSEMaxStreams:     sseMaxStreams,
+		TrustProxyIP:      trustProxyIP,
+		PerIPSSEStreams:   perIPSSEStreams,
+	})
+}
+
 // startServerWithGrace boots the handler tree with an explicit (short)
 // disconnectGrace so the disconnect sweep fires within a test — the rest of the
 // suite keeps the long testDisconnectGrace default and is never swept
@@ -217,6 +248,29 @@ func get(t *testing.T, ts *httptest.Server, path string) *http.Response {
 	resp, err := ts.Client().Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
+	}
+
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	return resp
+}
+
+// getWithXFF opens an /api/events stream with an X-Forwarded-For header, the
+// way a client reaches the server through the trusted reverse proxy — the
+// input the per-IP SSE cap keys on (#199).
+func getWithXFF(t *testing.T, ts *httptest.Server, xff string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/api/events", nil)
+	if err != nil {
+		t.Fatalf("build /api/events request: %v", err)
+	}
+
+	req.Header.Set("X-Forwarded-For", xff)
+
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/events: %v", err)
 	}
 
 	t.Cleanup(func() { _ = resp.Body.Close() })

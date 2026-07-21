@@ -17,10 +17,14 @@ var IntentErrorStatusForTest = intentErrorStatus
 // so the external test package can drive rate windows deterministically
 // without sleeping.
 var (
-	NewPerKeyLimiterForTest  = newPerKeyLimiter
-	NewTokenBucketForTest    = newTokenBucket
-	NewStreamGateForTest     = newStreamGate
-	RetryAfterSecondsForTest = retryAfterSeconds
+	NewPerKeyLimiterForTest    = newPerKeyLimiter
+	NewTokenBucketForTest      = newTokenBucket
+	NewStreamGateForTest       = newStreamGate
+	NewPerKeyStreamGateForTest = newPerKeyStreamGate
+	RetryAfterSecondsForTest   = retryAfterSeconds
+	// ClientIPForTest re-exports clientIP (events.go) so the XFF/RemoteAddr
+	// derivation can be table-tested without booting a stream.
+	ClientIPForTest = clientIP
 )
 
 // AllowAtForTest exposes perKeyLimiter.allowAt.
@@ -42,3 +46,9 @@ func (g *streamGate) AcquireForTest() bool { return g.acquire() }
 
 // ReleaseForTest exposes streamGate.release.
 func (g *streamGate) ReleaseForTest() { g.release() }
+
+// AcquireForTest exposes perKeyStreamGate.acquire.
+func (g *perKeyStreamGate) AcquireForTest(key string) bool { return g.acquire(key) }
+
+// ReleaseForTest exposes perKeyStreamGate.release.
+func (g *perKeyStreamGate) ReleaseForTest(key string) { g.release(key) }

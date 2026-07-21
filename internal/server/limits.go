@@ -171,6 +171,64 @@ func (g *streamGate) release() {
 	g.n--
 }
 
+// perKeyStreamGate caps concurrently held slots per key: the per-IP SSE cap
+// (#199), layered on top of the global streamGate when TRUST_PROXY_IP is on so
+// one client IP can't hog every global slot. A non-positive limit means no cap.
+// Distinct from streamGate (a single global counter) in keying the count by IP,
+// and from perKeyLimiter (a rate over time) in counting concurrent holders — a
+// slot is held for the life of the stream and returned by release on close.
+type perKeyStreamGate struct {
+	limit int
+
+	mu sync.Mutex
+	n  map[string]int
+}
+
+// newPerKeyStreamGate returns a gate admitting at most limit concurrent
+// holders per key.
+func newPerKeyStreamGate(limit int) *perKeyStreamGate {
+	return &perKeyStreamGate{limit: limit, n: make(map[string]int)}
+}
+
+// acquire claims a slot for key, reporting false when key is at the cap. Every
+// true return must be paired with a release for the same key.
+func (g *perKeyStreamGate) acquire(key string) bool {
+	if g.limit <= 0 {
+		return true
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.n[key] >= g.limit {
+		return false
+	}
+
+	g.n[key]++
+
+	return true
+}
+
+// release frees a slot claimed by acquire, deleting the key when its last
+// stream closes so the map stays bounded by IPs with a stream open right now,
+// not every IP that ever connected.
+func (g *perKeyStreamGate) release(key string) {
+	if g.limit <= 0 {
+		return
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.n[key] <= 1 {
+		delete(g.n, key)
+
+		return
+	}
+
+	g.n[key]--
+}
+
 // retryAfterSeconds renders a duration as a Retry-After header value: whole
 // seconds, rounded up, never below 1 (a "0" would invite an instant retry
 // storm — the opposite of a throttle's point).

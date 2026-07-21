@@ -86,6 +86,8 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 		ChatMinInterval:   cfg.ChatMinInterval,
 		JoinMinInterval:   cfg.JoinMinInterval,
 		SSEMaxStreams:     cfg.SSEMaxStreams,
+		TrustProxyIP:      cfg.TrustProxyIP,
+		PerIPSSEStreams:   cfg.PerIPSSEStreams,
 	})
 
 	if *check {

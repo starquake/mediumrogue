@@ -2,6 +2,8 @@ package server_test
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -152,6 +154,99 @@ func TestStreamGateZeroDisables(t *testing.T) {
 		if got, want := g.AcquireForTest(), true; got != want {
 			t.Errorf("acquire #%d with zero cap = %v, want %v", i, got, want)
 		}
+	}
+}
+
+// TestPerKeyStreamGateCapsPerKey: the per-IP SSE cap admits up to the limit
+// concurrent holders per key, rejects the next from that key, keeps a
+// different key's budget independent, and frees a slot on release.
+func TestPerKeyStreamGateCapsPerKey(t *testing.T) {
+	t.Parallel()
+
+	g := server.NewPerKeyStreamGateForTest(2)
+
+	if got, want := g.AcquireForTest("1.1.1.1"), true; got != want {
+		t.Errorf("acquire #1 for key = %v, want %v", got, want)
+	}
+
+	if got, want := g.AcquireForTest("1.1.1.1"), true; got != want {
+		t.Errorf("acquire #2 for key = %v, want %v", got, want)
+	}
+
+	if got, want := g.AcquireForTest("1.1.1.1"), false; got != want {
+		t.Errorf("acquire over per-key cap = %v, want %v", got, want)
+	}
+
+	// A different key is an independent budget.
+	if got, want := g.AcquireForTest("2.2.2.2"), true; got != want {
+		t.Errorf("acquire for other key = %v, want %v", got, want)
+	}
+
+	// Releasing one of the first key's slots lets it acquire again.
+	g.ReleaseForTest("1.1.1.1")
+
+	if got, want := g.AcquireForTest("1.1.1.1"), true; got != want {
+		t.Errorf("acquire after release = %v, want %v", got, want)
+	}
+}
+
+func TestPerKeyStreamGateZeroDisables(t *testing.T) {
+	t.Parallel()
+
+	g := server.NewPerKeyStreamGateForTest(0)
+
+	for i := range 5 {
+		if got, want := g.AcquireForTest("1.1.1.1"), true; got != want {
+			t.Errorf("acquire #%d with zero cap = %v, want %v", i, got, want)
+		}
+	}
+}
+
+// TestClientIP pins the XFF derivation the per-IP cap keys on: the LAST
+// X-Forwarded-For entry (the one the sole trusted proxy appended — earlier
+// entries are client-spoofable), falling back to RemoteAddr's host when the
+// header is absent or empty.
+func TestClientIP(t *testing.T) {
+	t.Parallel()
+
+	const (
+		client = "203.0.113.5" // the IP the trusted proxy records
+		direct = "203.0.113.9" // the peer RemoteAddr sees when XFF is absent
+	)
+
+	tests := []struct {
+		name       string
+		xff        string
+		remoteAddr string
+		want       string
+	}{
+		{name: "single xff entry", xff: client, remoteAddr: "10.0.0.1:5000", want: client},
+		{
+			name:       "spoofed prefix, proxy-appended last wins",
+			xff:        "1.2.3.4, " + client,
+			remoteAddr: "10.0.0.1:5000",
+			want:       client,
+		},
+		{name: "absent header falls back to RemoteAddr host", xff: "", remoteAddr: direct + ":5000", want: direct},
+		{name: "empty entries fall back to RemoteAddr host", xff: " , ", remoteAddr: direct + ":5000", want: direct},
+		{name: "RemoteAddr without port used verbatim", xff: "", remoteAddr: direct, want: direct},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/events", nil)
+			req.RemoteAddr = tc.remoteAddr
+
+			if tc.xff != "" {
+				req.Header.Set("X-Forwarded-For", tc.xff)
+			}
+
+			if got, want := server.ClientIPForTest(req), tc.want; got != want {
+				t.Errorf("clientIP = %q, want %q", got, want)
+			}
+		})
 	}
 }
 

@@ -74,9 +74,20 @@ const (
 	defaultJoinMinInterval = time.Second
 	// defaultSSEMaxStreams caps concurrent SSE streams globally — a resource
 	// backstop (each open stream pays a per-tick snapshot under the world
-	// lock), not a per-user fairness limit. Roomy for ~15 friends with
-	// multiple tabs plus spectators.
-	defaultSSEMaxStreams = 100
+	// lock), not a per-user fairness limit. Sized for the full protocol.MaxPlayers
+	// with churn headroom: during the disconnect grace a reconnecting player
+	// can transiently hold an old and a new stream at once, so the ceiling sits
+	// well above the seat count.
+	defaultSSEMaxStreams = 256
+	// defaultPerIPSSEStreams is the per-IP concurrent SSE stream cap, and ships
+	// DISABLED (0 = no per-IP limit; the gate documents that). Per-IP fairness
+	// is meaningless — even harmful — when legitimate players share one IP: the
+	// target deployment is a shared-network house where ~32 players (more
+	// later) all join from a single address, so any low per-IP cap would lock
+	// real players out. Enabling TrustProxyIP alone therefore never caps a
+	// shared-IP house. The per-IP cap is fully opt-in: an operator sets an
+	// explicit PER_IP_SSE_STREAMS=<n> only when their players have distinct IPs.
+	defaultPerIPSSEStreams = 0
 )
 
 // ErrNonPositiveRadius rejects a world radius below 1 — a zero/negative world
@@ -134,6 +145,18 @@ type Config struct {
 	// SSEMaxStreams is the global cap on concurrent SSE event streams, from
 	// SSE_MAX_STREAMS (#199). Zero disables the cap (tests).
 	SSEMaxStreams int
+	// TrustProxyIP enables the per-IP SSE stream cap by trusting the
+	// X-Forwarded-For header SWAG sets, from TRUST_PROXY_IP (#199). Default
+	// false: no per-IP cap and XFF is ignored entirely — behind a proxy
+	// RemoteAddr is the shared proxy IP, so a per-IP cap on it would be one
+	// bucket for everyone (meaningless/harmful). Enable ONLY where the app port
+	// is reachable exclusively via the trusted proxy; otherwise the header is
+	// client-spoofable and the cap is trivially dodged.
+	TrustProxyIP bool
+	// PerIPSSEStreams is the per-IP concurrent SSE stream cap applied when
+	// TrustProxyIP is on, from PER_IP_SSE_STREAMS (#199). Zero disables just the
+	// per-IP layer; the global SSEMaxStreams still applies.
+	PerIPSSEStreams int
 }
 
 // Load reads configuration from the environment.
@@ -152,6 +175,8 @@ func Load() (*Config, error) {
 		ChatMinInterval:   defaultChatMinInterval,
 		JoinMinInterval:   defaultJoinMinInterval,
 		SSEMaxStreams:     defaultSSEMaxStreams,
+		TrustProxyIP:      false,
+		PerIPSSEStreams:   defaultPerIPSSEStreams,
 	}
 
 	if err := applyOverrides(cfg); err != nil {
@@ -251,7 +276,15 @@ func overrideLimits(cfg *Config) error {
 		return err
 	}
 
-	return overrideInt(&cfg.SSEMaxStreams, "SSE_MAX_STREAMS")
+	if err := overrideInt(&cfg.SSEMaxStreams, "SSE_MAX_STREAMS"); err != nil {
+		return err
+	}
+
+	if err := overrideBool(&cfg.TrustProxyIP, "TRUST_PROXY_IP"); err != nil {
+		return err
+	}
+
+	return overrideInt(&cfg.PerIPSSEStreams, "PER_IP_SSE_STREAMS")
 }
 
 // overrideNonNegativeDuration is overrideDuration for the limit knobs where
@@ -289,6 +322,24 @@ func overrideUint64(dst *uint64, key string) error {
 	}
 
 	*dst = n
+
+	return nil
+}
+
+// overrideBool reads a bool env override (strconv.ParseBool: 1/t/true/0/f/
+// false, any case). An unset key leaves the default in place.
+func overrideBool(dst *bool, key string) error {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", key, err)
+	}
+
+	*dst = b
 
 	return nil
 }
