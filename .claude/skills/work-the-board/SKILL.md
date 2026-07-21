@@ -189,6 +189,18 @@ PR opening or merging) — not on every pass. If nothing changed since the last
 reminder, say nothing: an unchanged state re-posted is noise, and the previous
 comment is still accurate.
 
+**Posting an answer block IS a `needs: your input` move — set the label in the
+same action.** The reminder reflects the label, but the reverse also holds:
+the moment you write a copy-paste answer block asking the maintainer to decide,
+the ticket is in their court, so `needs: your input` goes on **in the same
+step** — even if it was previously unlabelled backlog. Don't let the ticket's
+prior state carry: your question is what moved it, and a prior "open-ended
+backlog, no label" framing does not survive your posting a concrete decision.
+The label and the answer block are one action, never two. (2026-07-21: an
+answer block went onto #122 — an "open-ended backlog" ticket — while it stayed
+unlabelled; the reminder said "your call" but no label said so, so it read as
+belonging to nobody.)
+
 Content by state (state line + a "Next:" line naming the action and who does it):
 
 - `needs: your input` — waiting on the maintainer. *Next: answer the open
