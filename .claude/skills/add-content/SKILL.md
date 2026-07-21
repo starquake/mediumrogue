@@ -5,7 +5,7 @@ description: >
   is being ADDED or retuned — "add a fire sword", "make trolls fear fire",
   "the designer sent new cards", "give the ghoul a drop", "buff the dagger".
   Encodes where content lives (registry tables, never combat sites), the rule
-  card vocabulary and its three-places-must-agree rule, the ARPG gate, the
+  card vocabulary and its four-places-must-agree rule, the ARPG gate, the
   drop-table and seeded-pin protocol, and the paperwork (tests + FEATURES.md
   in the same PR). Trigger on any add-content request even if the user doesn't
   say "skill".

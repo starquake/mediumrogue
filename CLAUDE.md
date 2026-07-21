@@ -103,9 +103,12 @@ drift between calls; use absolute paths or `cd` to the repo root before
   never a Go closure — the SQLite-serialization prerequisite) folded onto a
   value at defined events (`deal-damage`, `take-damage`, `earn-xp`, …). Add an
   effect by adding a card in `content.go`, not by editing a combat site.
-  Adding an event/condition/effect kind means updating **three** places that
-  must agree: the const block + `conditionHolds` in `rules.go`, and
-  `validateRuleCards` in `items.go` (a cross-reference comment marks them).
+  Adding an event/condition/effect kind means updating **four** places that
+  must agree: the const block + `conditionHolds`/`applyRules` in `rules.go`,
+  `validateRuleCondition`/`validateRuleCards` in `items.go`, and the generated
+  designer guide (`guideDescriptions` in `guide.go`, since #156) — a
+  cross-reference comment marks the first three, and `new-pipeline-kind` is the
+  skill for the whole update.
 - **Content lives in registries validated at init, fail-loud**: items and
   monster kinds are data tables (`content.go`) indexed and checked by
   `mustValidateContent()` at package init — a content bug **panics at process
