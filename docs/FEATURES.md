@@ -771,7 +771,11 @@ because the off-hand takes both a shield and a dual-wielded weapon.
   character at a fresh guarded spawn hex with full (level-scaled) HP,
   progression intact. Party membership and any personal quest do **not**
   survive a sweep — they dissolve / return to the board, exactly as before
-  (session-scoped social state, not progression).
+  (session-scoped social state, not progression). The grace clock is
+  refreshed by presence **and** by activity: an open event stream keeps a
+  player out of the sweep, and an accepted intent (a still-playing client
+  whose SSE was reaped by a proxy idle timeout) likewise pushes the grace
+  forward, so an actively-clicking player is never swept mid-session.
 - **Multi-tab safety** (item 2, playtest batch 3 — the "players swapped
   identities" fix): a reclaim/rejoin always sends the tab's **own known
   token**, never a re-read of localStorage (which two tabs on one origin
@@ -995,7 +999,10 @@ because the off-hand takes both a shield and a dual-wielded weapon.
     (`http.MaxBytesReader`) and must arrive within a 10s per-request read
     deadline (a trickle defence that leaves the long-lived SSE GET
     untouched); request headers get the server-wide 10s
-    `ReadHeaderTimeout`.
+    `ReadHeaderTimeout`. A body **over** the cap is `413` (a size verdict,
+    not a `400` "malformed JSON" that would misdirect the client to its
+    encoding); a body carrying **more than one JSON value** (a valid prefix
+    plus trailing garbage) is rejected `400` rather than silently accepted.
   - All three rate/cap knobs are env vars where **`0` disables the limit**
     (the tests' and e2e harness's switch), threaded like `TURN_INTERVAL`.
   - The rejections use the standard JSON error body; `429`/`503` here are

@@ -1,7 +1,9 @@
 package integration_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -40,6 +42,46 @@ func TestMapEndpoint(t *testing.T) {
 	if got, want := len(m.Tiles), wantTiles; got != want {
 		t.Fatalf("len(tiles) = %d, want %d", got, want)
 	}
+}
+
+// TestMapEndpointServesCachedBytes: the map is marshalled once and served from
+// cache (#209), so two requests return byte-for-byte identical bodies. A stable
+// payload is the whole point of the cache — this pins that the optimization is
+// behaviour-preserving.
+func TestMapEndpointServesCachedBytes(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+
+	first := readAllBody(t, get(t, ts, "/api/map"))
+	second := readAllBody(t, get(t, ts, "/api/map"))
+
+	if !bytes.Equal(first, second) {
+		t.Fatalf("two /api/map responses differ:\nfirst  = %s\nsecond = %s", first, second)
+	}
+
+	// And the cached bytes must still be a valid MapResponse, not some stale or
+	// truncated blob.
+	var m protocol.MapResponse
+	if err := json.Unmarshal(first, &m); err != nil {
+		t.Fatalf("cached map body is not valid MapResponse: %v", err)
+	}
+
+	if got, want := m.Radius, testWorldRadius; got != want {
+		t.Fatalf("cached map radius = %d, want %d", got, want)
+	}
+}
+
+// readAllBody drains and returns a response body.
+func readAllBody(t *testing.T, resp *http.Response) []byte {
+	t.Helper()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	return body
 }
 
 // TestMapIsGeneratedAndWalkableNearOrigin exercises the seeded procedural
