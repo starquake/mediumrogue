@@ -56,7 +56,20 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
   await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassRogue);
   await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
 
-  const baseline = await page.evaluate(() => ({ ...window.game.hp }));
+  // Baseline every entity's HP AND the set of monsters alive right now. The
+  // alive-set is what makes a LETHAL bow shot observable: a shortbow (dmg 4)
+  // one-shots a Rat (maxHP 4 — a real spawn in this world, seen dying in the
+  // server log), which removes it from the bundle, so a plain `hp < before`
+  // scan of the CURRENT entities can never see that hit (the entity is gone).
+  // A monster that was alive at baseline and is now absent IS a landed hit —
+  // see the shot loop's landed check (#259).
+  const baseline = await page.evaluate(
+    (monsterKind) => ({
+      hp: { ...window.game.hp } as Record<number, number>,
+      aliveMonsters: window.game.positions.filter((p) => p.kind === monsterKind).map((p) => p.id),
+    }),
+    EntityMonster,
+  );
 
   // Enter a combat bubble against a REACHABLE monster (rotates off an
   // unreachable/leash-treadmill target — the shared #181/#247 helper) rather
@@ -64,23 +77,42 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
   // terrain pocket forever.
   await chaseIntoCombat(page);
 
-  // Then close to bow range of an in-LOS monster and shoot. progressTracker
-  // rotates targets when the gap to the current one stops shrinking: an
-  // unreachable pocket, a leash-return treadmill, OR an in-range target we
-  // cannot see (its distance sits pinned while the LOS-gated shot is silently
-  // rejected) all read as stalled progress and switch to the next-nearest
-  // monster — so the loop keeps trying until it finds a monster it can both
-  // reach AND see.
+  // Then close to bow range of an in-LOS monster and shoot. Two rotation
+  // sources drive the target index (their sum is `skipN`):
+  //
+  //   - APPROACH stall (`approach`, the shared #181/#247 distance tracker):
+  //     while closing the gap, an unreachable pocket or a leash-return
+  //     treadmill pins the best distance and rotates to the next monster.
+  //   - LOS stall (`losSkip`, turn-metered below): once actually in bow range,
+  //     a target behind terrain (#233/#244) has its shot silently rejected —
+  //     no HP drop — and after a budget of TURNS we rotate off it.
+  //
+  // Splitting these is the #259 shot-poll hardening. The old loop fed the
+  // CONSTANT in-range distance to the approach tracker, which read "not
+  // getting closer" as a stall and could rotate off a perfectly good in-range
+  // target after 8 polls (2.4s) — on a slow CI runner that fires BEFORE the
+  // shot resolves, churning instead of landing. Metering the LOS rotation in
+  // turns (a shot resolves in ~1 turn regardless of runner speed) decouples it
+  // from wall-clock, and holding the approach tracker (a null note is a no-op)
+  // while in range stops it from misreading healthy firing as a stall. This is
+  // distinct from #261, which hardened the ENGAGEMENT (chaseIntoCombat) — here
+  // the fix is in the shot-observation loop itself.
   const bowRange = 4; // Shortbow rangeHex (internal/game/content.go).
-  const tracker = progressTracker(8);
-  let skip = 0;
+  const approach = progressTracker(8);
+  let approachSkip = 0;
+  const losBudgetTurns = 3;
+  let losSkip = 0;
+  let inRangeSinceTurn: number | null = null;
 
-  const shoot = async (base: Record<number, number>): Promise<boolean> => {
-    const targetDist = await page.evaluate(
+  const shoot = async (base: {
+    hp: Record<number, number>;
+    aliveMonsters: number[];
+  }): Promise<boolean> => {
+    const st = await page.evaluate(
       ({ monsterKind, range, skipN }) => {
         const me = window.game.me;
         if (me === null) {
-          return null;
+          return { inRange: false, targetDist: null, turn: window.game.turn };
         }
 
         const dist = (a: Hex, b: Hex): number => {
@@ -93,7 +125,7 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
 
         const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
         if (monsters.length === 0) {
-          return null;
+          return { inRange: false, targetDist: null, turn: window.game.turn };
         }
 
         const sorted = monsters
@@ -105,9 +137,14 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
         if (targetDistance >= 1 && targetDistance <= range) {
           // In bow range: the tap on this occupied hex fires the ranged attack
           // (isRangedAttackClick). If a wall blocks it (#233/#244) the server
-          // rejects it, no HP drops, and the pinned distance rotates us off.
+          // rejects it, no HP drops, and the turn-metered LOS budget rotates
+          // us off.
           void window.game.tapHex(target.hex.q, target.hex.r);
-        } else if (window.game.inCombat && window.game.combatMoves.length > 0) {
+
+          return { inRange: true, targetDist: targetDistance, turn: window.game.turn };
+        }
+
+        if (window.game.inCombat && window.game.combatMoves.length > 0) {
           // Beyond bow range inside a bubble (bow 4 < bubble radius 6): moves
           // are restricted to this turn's reachable tiles. Step onto the one
           // that closes the most distance to the target until it is in range.
@@ -124,18 +161,44 @@ test("a rogue's ranged bow attack damages a monster from range, observable via w
           void window.game.tapHex(target.hex.q, target.hex.r);
         }
 
-        return targetDistance;
+        return { inRange: false, targetDist: targetDistance, turn: window.game.turn };
       },
-      { monsterKind: EntityMonster, range: bowRange, skipN: skip },
+      { monsterKind: EntityMonster, range: bowRange, skipN: approachSkip + losSkip },
     );
 
-    skip = tracker.note(targetDist);
+    if (st.inRange) {
+      // Firing in range: constant distance is progress, not a stall — hold the
+      // approach tracker (null note is a no-op) and rotate only after the shot
+      // has had `losBudgetTurns` turns to land (a still-pinned target is behind
+      // terrain, LOS-gated).
+      if (inRangeSinceTurn === null) {
+        inRangeSinceTurn = st.turn;
+      } else if (st.turn - inRangeSinceTurn >= losBudgetTurns) {
+        losSkip += 1;
+        inRangeSinceTurn = null;
+      }
+      approach.note(null);
+    } else {
+      // Approaching: a stalled approach distance rotates targets.
+      inRangeSinceTurn = null;
+      approachSkip = approach.note(st.targetDist);
+    }
 
     return page.evaluate((b) => {
-      return Object.entries(window.game.hp).some(([id, hp]) => {
-        const before = b[Number(id)];
+      const nowHp = window.game.hp;
+      const alive = new Set(b.aliveMonsters);
 
-        return before !== undefined && hp < before;
+      // The bow LANDED if any entity alive at baseline has lost HP (a surviving
+      // monster, or the player taking a monster's melee counter) OR a monster
+      // alive at baseline is now GONE. In this non-respawning single-instance
+      // world a monster can only leave by dying, and only this rogue's bow
+      // damages monsters, so a vanished monster IS an observed hit — the kill
+      // branch that makes a one-shot bow kill visible (#259).
+      return Object.entries(b.hp).some(([idStr, before]) => {
+        const id = Number(idStr);
+        const now = nowHp[id];
+
+        return now === undefined ? alive.has(id) && before > 0 : now < before;
       });
     }, base);
   };
