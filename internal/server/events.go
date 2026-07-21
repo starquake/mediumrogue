@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,11 @@ import (
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
+
+// sseRetryAfterSeconds is the Retry-After hint on an over-cap 503: long
+// enough to space a retry storm out, short enough that a freed slot is
+// picked up promptly.
+const sseRetryAfterSeconds = "5"
 
 // handleEvents is the SSE world stream. Every connected client holds one of
 // these open; the world clock publishes a tick per resolved turn and this
@@ -24,8 +30,26 @@ import (
 // cadence (regardless of turns) so proxies don't reap the connection and the
 // client's liveness watchdog stays fed even when a frozen combat clock stops
 // turn frames.
+//
+// A GLOBAL cap on concurrent streams (#199, Deps.SSEMaxStreams) bounds the
+// per-tick cost every open stream pays (a SnapshotFor under the world lock
+// plus a marshal): over-cap connects get an immediate 503 with Retry-After —
+// an EventSource treats it as a failed connect and retries — instead of
+// silently degrading turn resolution for everyone. Global, not per-IP: a
+// per-IP cap behind the reverse proxy needs an X-Forwarded-For trust
+// decision that is still open on the ticket.
 func handleEvents(deps Deps) http.Handler {
+	gate := newStreamGate(deps.SSEMaxStreams)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !gate.acquire() {
+			w.Header().Set("Retry-After", sseRetryAfterSeconds)
+			respondError(w, deps.Logger, http.StatusServiceUnavailable, "too many open event streams")
+
+			return
+		}
+		defer gate.release()
+
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -80,32 +104,42 @@ func handleEvents(deps Deps) http.Handler {
 		lastSent := parseLastEventID(r)
 		lastSent = writeTurn(w, deps, flusher, lastSent, token)
 
-		heartbeat := time.NewTicker(deps.HeartbeatInterval)
-		defer heartbeat.Stop()
-
-		for {
-			select {
-			case <-r.Context().Done():
-				return
-			case <-ticks:
-				lastSent = writeTurn(w, deps, flusher, lastSent, token)
-			case msg := <-chatCh:
-				if !writeChat(w, deps, flusher, msg) {
-					return
-				}
-			case <-heartbeat.C:
-				// Named keep-alive: fires on a fixed cadence regardless of turns,
-				// so the client's liveness watchdog stays fed even when a frozen
-				// combat clock stops turn frames. No id: — a heartbeat is not a
-				// turn and must not advance Last-Event-ID.
-				if _, err := fmt.Fprintf(w, "event: %s\ndata: {}\n\n", protocol.EventHeartbeat); err != nil {
-					return
-				}
-
-				flusher.Flush()
-			}
-		}
+		streamEvents(r.Context(), w, deps, flusher, token, lastSent, ticks, chatCh)
 	})
+}
+
+// streamEvents is handleEvents' pump: it forwards turn ticks, chat messages,
+// and heartbeats onto the established stream until ctx (the request context)
+// ends or a write fails.
+func streamEvents(
+	ctx context.Context, w http.ResponseWriter, deps Deps, flusher http.Flusher,
+	token string, lastSent int64, ticks <-chan struct{}, chatCh <-chan protocol.ChatMessage,
+) {
+	heartbeat := time.NewTicker(deps.HeartbeatInterval)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+			lastSent = writeTurn(w, deps, flusher, lastSent, token)
+		case msg := <-chatCh:
+			if !writeChat(w, deps, flusher, msg) {
+				return
+			}
+		case <-heartbeat.C:
+			// Named keep-alive: fires on a fixed cadence regardless of turns,
+			// so the client's liveness watchdog stays fed even when a frozen
+			// combat clock stops turn frames. No id: — a heartbeat is not a
+			// turn and must not advance Last-Event-ID.
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: {}\n\n", protocol.EventHeartbeat); err != nil {
+				return
+			}
+
+			flusher.Flush()
+		}
+	}
 }
 
 // parseLastEventID reads the SSE reconnection header the browser's EventSource

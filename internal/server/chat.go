@@ -15,7 +15,17 @@ import (
 // resulting line to the broker. The sender's name and position come from the
 // token (server-authoritative — the client cannot set them), so /here can't
 // be spoofed.
+//
+// A per-token rate limit (#199, one line per Deps.ChatMinInterval) sits
+// after authentication and input validation, right before the line takes
+// effect: plain lines and "/commands" alike count (both broadcast or mutate),
+// but a rejected input (empty, too long) spends no budget — otherwise a
+// too-long paste would 422 and then 429 the corrected retry. Unauthenticated
+// spam never touches the limiter's memory. Over-rate lines get 429 +
+// Retry-After; the client surfaces the error body as a local system line.
 func handleChat(deps Deps) http.Handler {
+	limiter := newPerKeyLimiter(deps.ChatMinInterval)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req protocol.ChatRequest
 		if !decodeJSON(w, r, deps.Logger, &req) {
@@ -38,6 +48,13 @@ func handleChat(deps Deps) http.Handler {
 
 		if utf8.RuneCountInString(text) > protocol.MaxChatLen {
 			respondError(w, deps.Logger, http.StatusUnprocessableEntity, "message too long")
+
+			return
+		}
+
+		if !limiter.allow(req.Token) {
+			w.Header().Set("Retry-After", retryAfterSeconds(deps.ChatMinInterval))
+			respondError(w, deps.Logger, http.StatusTooManyRequests, "you're sending messages too fast")
 
 			return
 		}

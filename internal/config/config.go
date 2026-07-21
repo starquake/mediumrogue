@@ -20,6 +20,10 @@ var errNonPositiveDuration = errors.New("duration must be positive")
 // has no meaning.
 var errNegativeInt = errors.New("value must not be negative")
 
+// errNegativeDuration rejects negative duration overrides on the knobs where
+// zero is meaningful (zero = limit disabled), so only below-zero is nonsense.
+var errNegativeDuration = errors.New("duration must not be negative")
+
 // errPollNotBelowInterval rejects a bubble poll that isn't strictly shorter
 // than the turn interval — the poll drives the control loop, so a poll at or
 // above the interval starves the world domain of prompt ticks.
@@ -56,6 +60,24 @@ const (
 // defaultSnapshotInterval is how often the periodic saver writes the world
 // snapshot to disk while persistence is enabled (SNAPSHOT_PATH set).
 const defaultSnapshotInterval = 60 * time.Second
+
+// Server-hardening defaults (#199). Zero disables a limit — tests (and the
+// e2e harness) switch a limit off the same way they shrink TURN_INTERVAL.
+const (
+	// defaultChatMinInterval is the per-player chat floor: one line per
+	// second (decided on #199) — generous for typing, a wall for a loop.
+	defaultChatMinInterval = time.Second
+	// defaultJoinMinInterval is the refill rate of the global join bucket:
+	// sustained new-character joins above one per second are throttled. The
+	// bucket's burst is protocol.MaxPlayers, so a whole friend group (or a
+	// mass reconnect after a restart) still joins at once.
+	defaultJoinMinInterval = time.Second
+	// defaultSSEMaxStreams caps concurrent SSE streams globally — a resource
+	// backstop (each open stream pays a per-tick snapshot under the world
+	// lock), not a per-user fairness limit. Roomy for ~15 friends with
+	// multiple tabs plus spectators.
+	defaultSSEMaxStreams = 100
+)
 
 // ErrNonPositiveRadius rejects a world radius below 1 — a zero/negative world
 // has no interior to spawn in.
@@ -102,6 +124,16 @@ type Config struct {
 	// SnapshotInterval is how often the periodic saver writes the snapshot
 	// while persistence is enabled, from SNAPSHOT_INTERVAL.
 	SnapshotInterval time.Duration
+	// ChatMinInterval is the per-player minimum gap between chat POSTs, from
+	// CHAT_MIN_INTERVAL (#199). Zero disables the limit (tests).
+	ChatMinInterval time.Duration
+	// JoinMinInterval is the refill rate of the global new-character join
+	// bucket (burst protocol.MaxPlayers), from JOIN_MIN_INTERVAL (#199).
+	// Reclaims/restores are exempt. Zero disables the limit (tests).
+	JoinMinInterval time.Duration
+	// SSEMaxStreams is the global cap on concurrent SSE event streams, from
+	// SSE_MAX_STREAMS (#199). Zero disables the cap (tests).
+	SSEMaxStreams int
 }
 
 // Load reads configuration from the environment.
@@ -117,41 +149,12 @@ func Load() (*Config, error) {
 		WorldRadius:       defaultWorldRadius,
 		SnapshotPath:      envOr("SNAPSHOT_PATH", ""),
 		SnapshotInterval:  defaultSnapshotInterval,
+		ChatMinInterval:   defaultChatMinInterval,
+		JoinMinInterval:   defaultJoinMinInterval,
+		SSEMaxStreams:     defaultSSEMaxStreams,
 	}
 
-	if err := overrideDuration(&cfg.TurnInterval, "TURN_INTERVAL"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideDuration(&cfg.HeartbeatInterval, "HEARTBEAT_INTERVAL"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideInt(&cfg.MonsterCount, "MONSTER_COUNT"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideDuration(&cfg.CombatPatience, "COMBAT_PATIENCE"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideDuration(&cfg.BubblePoll, "BUBBLE_POLL"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideDuration(&cfg.DisconnectGrace, "DISCONNECT_GRACE"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideUint64(&cfg.WorldSeed, "WORLD_SEED"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideInt(&cfg.WorldRadius, "WORLD_RADIUS"); err != nil {
-		return nil, err
-	}
-
-	if err := overrideDuration(&cfg.SnapshotInterval, "SNAPSHOT_INTERVAL"); err != nil {
+	if err := applyOverrides(cfg); err != nil {
 		return nil, err
 	}
 
@@ -188,6 +191,84 @@ func overrideDuration(dst *time.Duration, key string) error {
 
 	if d <= 0 {
 		return fmt.Errorf("%s = %s: %w", key, d, errNonPositiveDuration)
+	}
+
+	*dst = d
+
+	return nil
+}
+
+// applyOverrides reads every env-var override into cfg — split out of Load
+// so Load reads as defaults → overrides → cross-field validation.
+func applyOverrides(cfg *Config) error {
+	if err := overrideDuration(&cfg.TurnInterval, "TURN_INTERVAL"); err != nil {
+		return err
+	}
+
+	if err := overrideDuration(&cfg.HeartbeatInterval, "HEARTBEAT_INTERVAL"); err != nil {
+		return err
+	}
+
+	if err := overrideInt(&cfg.MonsterCount, "MONSTER_COUNT"); err != nil {
+		return err
+	}
+
+	if err := overrideDuration(&cfg.CombatPatience, "COMBAT_PATIENCE"); err != nil {
+		return err
+	}
+
+	if err := overrideDuration(&cfg.BubblePoll, "BUBBLE_POLL"); err != nil {
+		return err
+	}
+
+	if err := overrideDuration(&cfg.DisconnectGrace, "DISCONNECT_GRACE"); err != nil {
+		return err
+	}
+
+	if err := overrideUint64(&cfg.WorldSeed, "WORLD_SEED"); err != nil {
+		return err
+	}
+
+	if err := overrideInt(&cfg.WorldRadius, "WORLD_RADIUS"); err != nil {
+		return err
+	}
+
+	if err := overrideDuration(&cfg.SnapshotInterval, "SNAPSHOT_INTERVAL"); err != nil {
+		return err
+	}
+
+	return overrideLimits(cfg)
+}
+
+// overrideLimits applies the server-hardening knob overrides (#199) — split
+// out of Load to keep it readable as the knob count grows.
+func overrideLimits(cfg *Config) error {
+	if err := overrideNonNegativeDuration(&cfg.ChatMinInterval, "CHAT_MIN_INTERVAL"); err != nil {
+		return err
+	}
+
+	if err := overrideNonNegativeDuration(&cfg.JoinMinInterval, "JOIN_MIN_INTERVAL"); err != nil {
+		return err
+	}
+
+	return overrideInt(&cfg.SSEMaxStreams, "SSE_MAX_STREAMS")
+}
+
+// overrideNonNegativeDuration is overrideDuration for the limit knobs where
+// zero is a valid setting (limit disabled) — only negatives are rejected.
+func overrideNonNegativeDuration(dst *time.Duration, key string) error {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", key, err)
+	}
+
+	if d < 0 {
+		return fmt.Errorf("%s = %s: %w", key, d, errNegativeDuration)
 	}
 
 	*dst = d

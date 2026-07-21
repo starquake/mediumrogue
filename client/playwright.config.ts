@@ -109,6 +109,11 @@ const serverEnv = (port: number, monsters?: number, extra?: Record<string, strin
   // Fast heartbeat so a browser test observes named heartbeat events within its
   // short run (default is 15s — never seen in a fast e2e).
   HEARTBEAT_INTERVAL: "500ms",
+  // Rate limits off (#199): specs fire chat lines and joins far faster than a
+  // human (quests.spec sends /quest + /abandon back-to-back), and e2e tests
+  // gameplay, not throttles — the limits have their own integration tests.
+  CHAT_MIN_INTERVAL: "0s",
+  JOIN_MIN_INTERVAL: "0s",
   ...(monsters ? { MONSTER_COUNT: String(monsters) } : {}),
   ...(extra ?? {}),
 });
