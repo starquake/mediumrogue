@@ -60,7 +60,7 @@ func TestRunDuelMatrixShapeAndDeterminism(t *testing.T) {
 		BaseSeed: 7,
 		Duels:    3,
 		Classes:  []string{protocol.ClassFighter},
-		Kinds:    []string{kindRat, "wolf"},
+		Kinds:    []string{kindRat, kindWolf},
 		Levels:   []int{1},
 	}
 
@@ -81,5 +81,36 @@ func TestRunDuelMatrixShapeAndDeterminism(t *testing.T) {
 		if got, want := c.PlayerWins+c.MonsterWins+c.Draws, c.Duels; got != want {
 			t.Errorf("cell %s/%s outcomes = %d, want %d (every duel ends exactly one way)", c.Class, c.Kind, got, want)
 		}
+	}
+}
+
+func TestRunDeltasWeaponUpgradeIsSafer(t *testing.T) {
+	t.Parallel()
+
+	// Tiny but real: one class, two kinds, few duels. The Iron Warhammer
+	// out-damages the fighter's default Iron Sword, so its mean threat delta
+	// must not be POSITIVE (a strictly better weapon can't make fights more
+	// dangerous) — sign-level sanity, not a tuning band.
+	rep := game.RunDeltas(game.DeltaConfig{
+		BaseSeed: 11, Duels: 10,
+		Classes: []string{protocol.ClassFighter},
+		Kinds:   []string{kindWolf, kindGhoul},
+		Levels:  []int{1},
+	})
+
+	found := false
+
+	for _, row := range rep.Rows {
+		if row.ID == "iron-warhammer" && row.Class == protocol.ClassFighter {
+			found = true
+
+			if got, want := row.ThreatDelta, 0.0; got > want {
+				t.Errorf("iron-warhammer ThreatDelta = %+.3f, want <= %+.1f", got, want)
+			}
+		}
+	}
+
+	if !found {
+		t.Fatal("iron-warhammer row missing from delta report")
 	}
 }

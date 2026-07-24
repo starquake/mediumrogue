@@ -198,6 +198,15 @@ func (w *World) placeDuelPlayer(hex protocol.Hex, cfg DuelConfig) *entity {
 			panic("game: balance ExtraItems unknown item def " + defID)
 		}
 
+		// A weapon delta clears BOTH hands first: the default kit may hold an
+		// off-hand (rogue's bow, mage's focus), and a two-handed extra beside
+		// it would be a state the equip rules never allow — the measurement
+		// must stay inside legal kit space.
+		if def.itemType == protocol.ItemTypeWeapon {
+			delete(e.equipped, protocol.SlotMainHand)
+			delete(e.equipped, protocol.SlotOffHand)
+		}
+
 		w.nextID++
 		e.equipped[slotForItem(def)] = itemInstance{id: w.nextID, defID: defID}
 	}

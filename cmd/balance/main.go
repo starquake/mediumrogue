@@ -45,10 +45,22 @@ func main() {
 		report := game.RunDuelMatrix(game.MatrixConfig{BaseSeed: *seed, Duels: *duels, Levels: lv})
 		printMatrix(report)
 		writeJSON(*jsonPath, report)
+	case "deltas":
+		report := game.RunDeltas(game.DeltaConfig{BaseSeed: *seed, Duels: *duels, Levels: lv})
+		printDeltas(report)
+		writeJSON(*jsonPath, report)
 	default:
-		// deltas and sim land with their plan tasks (#283 tasks 3 and 4).
-		fmt.Fprintf(os.Stderr, "balance: unknown mode %q (available: matrix)\n", *mode)
+		// sim lands with its plan task (#283 task 4).
+		fmt.Fprintf(os.Stderr, "balance: unknown mode %q (available: matrix, deltas)\n", *mode)
 		os.Exit(exitUsage)
+	}
+}
+
+func printDeltas(r game.DeltaReport) {
+	outln("item/passive                   type      class    L   threat-delta  (negative = safer)")
+
+	for _, d := range r.Rows {
+		outf("%-30s %-9s %-8s %-3d %+.3f\n", d.ID, d.Kind, d.Class, d.Level, d.ThreatDelta)
 	}
 }
 
