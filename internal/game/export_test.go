@@ -18,35 +18,7 @@ import (
 // step is exactly one action for every entity — the invariant the milestone
 // 6.1–6.3 tests were written against.
 func (w *World) ResolveTurnForTest() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	now := w.now()
-
-	// Capture the pre-existing bubbles and their members before resolving the
-	// world domain, so a bubble that forms during this same world resolution
-	// does not also act this step, and defer the single recompute to the end
-	// (mirroring pollTick's one-action-per-entity guarantee).
-	ids := make([]int64, 0, len(w.bubbles))
-	for id := range w.bubbles {
-		ids = append(ids, id)
-	}
-
-	slices.Sort(ids)
-
-	pre := make([]bubbleTurn, 0, len(ids))
-	for _, id := range ids {
-		b := w.bubbles[id]
-		pre = append(pre, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
-	}
-
-	w.resolveWorldTurnLocked(w.domainMembersLocked())
-
-	for _, bt := range pre {
-		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
-	}
-
-	w.recomputeBubblesLocked(now)
+	w.stepOnce()
 }
 
 // PollTickForTest runs one control-loop pass at the injected clock (see
