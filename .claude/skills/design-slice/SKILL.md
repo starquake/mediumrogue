@@ -59,6 +59,24 @@ PR-level gate you never set — see `merge-pr`.
   gate ("TTRPG gate: clean — every card is a single-side fold"; "wildfire
   gate: the new condition kind serves N cards"), even when nothing was
   flagged. A silent check is indistinguishable from a skipped one.
+- **Open questions get a copy-pastable answer block.** Any question left FOR
+  the maintainer goes in the issue's *Open questions* section, and that
+  section ends with a fenced block they can copy, fill in, and paste back as
+  a comment — one line per question, the options spelled out inline:
+
+  ~~~
+  ```
+  Q1 partymates: [ a exempt from culling / b separate roster field / c accept shrinking ]
+  Q2 fog visual: [ none for now / want a mockup ]
+  ```
+  ~~~
+
+  Prose questions get prose answers, which are slower to write and easy to
+  answer only partly; a fillable block gets every question answered in one
+  pass. Mirror the same block in the `> 🤖 **Next steps**` comment, so the
+  maintainer can answer from the thread without opening the body. Where a
+  question has a defensible default, say which option you'd take and why —
+  recommending is not deciding, and it makes "yes, do that" a valid reply.
 - **Determinism & seeded tests**: state whether rng is consumed or
   reordered, and which pinned seeds/tables can move.
 - **Mockup**: if the slice's value is how it looks, produce the mockup NOW —
