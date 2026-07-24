@@ -7,6 +7,12 @@ import "time"
 // stub next handler, without booting the whole handler tree.
 var RequireSameOriginPostsForTest = requireSameOriginPosts
 
+// CompressResponsesForTest re-exports the gzip middleware (compress.go) so the
+// external test package can drive it with a stub handler — in particular to
+// read the response bytes MID-stream, which is the only way to prove a flushed
+// SSE frame is decodable before the handler returns (#288).
+var CompressResponsesForTest = compressResponses
+
 // IntentErrorStatusForTest re-exports handleIntent's error→status mapping
 // (api.go) so a test can drive every game sentinel through it — Deps.World is
 // a concrete *game.World, so no stub can make SubmitIntent return an

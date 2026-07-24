@@ -80,3 +80,35 @@ func decodeTurnFrame(t *testing.T, r *bufio.Reader) protocol.TurnEvent {
 		return bundle
 	}
 }
+
+// awaitTurnFrame reads turn bundles until one satisfies cond, and fails
+// naming what it was waiting for.
+//
+// Use it instead of asserting on the bundle that happens to follow a POST.
+// The intent POST and the SSE stream are independent connections, so bundles
+// generated BEFORE an intent was accepted can already be sitting in this
+// reader's buffer — "the next frame I read" is not "the first frame after my
+// POST". Nothing ever guaranteed otherwise; it was merely masked while
+// bundles were large enough that each read blocked for a fresh one. #288's
+// response compression shrank them to the point where several arrive in a
+// single read, so the assumption now fails a few percent of runs.
+//
+// Bounded by a frame count rather than a timeout: the world clock is what
+// produces frames, so a stuck world stops the stream and readFrames' own
+// deadline reports it — counting frames keeps this from silently becoming a
+// sleep on a slow runner.
+func awaitTurnFrame(t *testing.T, r *bufio.Reader, waitingFor string, cond func(protocol.TurnEvent) bool) {
+	t.Helper()
+
+	// Comfortably more turns than any state change here needs, while still
+	// failing fast enough to be a useful signal.
+	const maxFrames = 40
+
+	for range maxFrames {
+		if cond(decodeTurnFrame(t, r)) {
+			return
+		}
+	}
+
+	t.Fatalf("no turn bundle showed %s within %d frames", waitingFor, maxFrames)
+}
