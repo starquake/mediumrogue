@@ -222,8 +222,15 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   move, a persistent crosshair for a queued attack, **ranged or melee** (#113),
   a small hourglass on my
   own hex for a wait; shown while I've locked in this bubble-turn and it's
-  still waiting on the rest of the bubble, cleared on the next turn bundle;
-  `window.game.committedAction`), kill summaries and
+  still waiting on the rest of the bubble. Cleared at the resolving bundle's
+  **playback end** (#138 — the hit animates across the playback window, so
+  clearing at bundle arrival cut the indicator early), with a **turn-bundle
+  backstop** (#252): any bundle newer than the resolving one force-clears,
+  so a starved animation ticker (throttled tab) or bubble turns outpacing
+  playback can never leave it lit — a hard bound of one bundle.
+  `window.game.committedAction`, plus `window.game.bundles` (the per-bundle
+  clock: +1 per processed bundle, immune to the turn-number jumps hub
+  coalescing produces — the clock e2e contracts count in)), kill summaries and
   player deaths announced in chat, naming the slain **kind(s)**. Two or more
   players in the bubble at award time: nameless ("a wolf was slain (+20 XP to
   everyone in the fight)", "a wolf and a troll were slain (+80 XP …)", "2
