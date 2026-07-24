@@ -1,0 +1,187 @@
+<meta charset="utf-8">
+<style>
+  :root { --bg: #12161a; --ink: #c8d4c8; --dim: #7f8d80; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 22px 24px 24px;
+    background: var(--bg); color: var(--ink);
+    font: 13px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  h1 { font-size: 15px; margin: 0 0 5px; letter-spacing: .04em; font-weight: 600; }
+  .sub { color: var(--dim); margin: 0 0 16px; font-size: 12px; max-width: 1230px; }
+  .sub .k { color: var(--ink); }
+  .row { display: flex; gap: 17px; }
+  .panel { width: 400px; }
+  .panel h2 { font-size: 12.5px; margin: 0 0 6px; letter-spacing: .05em; color: #dfe8df; font-weight: 600; }
+  .panel h2 span { color: var(--dim); font-weight: 400; }
+  canvas { display: block; background: #090c09; border: 1px solid #263026; }
+  .cap { color: var(--dim); font-size: 11.5px; margin-top: 7px; min-height: 58px; }
+  .legend {
+    margin-top: 10px; padding-top: 11px; border-top: 1px solid #263026;
+    color: var(--dim); font-size: 11.5px; display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+  }
+  .k { color: var(--ink); }
+  .sw { display: inline-block; width: 9px; height: 9px; vertical-align: 0px; margin-right: 5px; border-radius: 2px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: 0px; margin-right: 5px; }
+</style>
+
+<h1>#289 — fog-of-war boundary at the 30-hex interest radius</h1>
+<p class="sub">
+  You at centre, whole 30-hex ring in frame. Terrain beyond the ring is still <em>known</em> — the client holds the entire
+  map from <span class="k">/api/map</span> — so what stops at the ring is <span class="k">live entity data</span>, not the
+  ground. Monsters are drawn inside and are simply absent outside.
+  <br>
+  Note on framing: at <span class="k">ZOOM_MIN = 0.5</span> a 1920&times;1080 browser sees ~40 hexes east–west but only
+  ~19 north–south, so in real play the ring is reachable left and right and <em>clipped top and bottom</em>. These panels
+  show the full ring so the treatments can be compared.
+</p>
+
+<div class="row">
+  <div class="panel">
+    <h2>A · Soft vignette <span>— no hard edge</span></h2>
+    <canvas id="a" width="400" height="470"></canvas>
+    <p class="cap">Ground fades out across the last ~6 hexes. Reads as natural distance falloff; the exact radius stays vague, so it feels atmospheric rather than mechanical — you sense the limit without being able to measure it.</p>
+  </div>
+  <div class="panel">
+    <h2>B · Dim + rim <span>— explicit boundary</span></h2>
+    <canvas id="b" width="400" height="470"></canvas>
+    <p class="cap">Flat dim beyond the ring plus a thin lit rim. The radius becomes a legible, learnable rule — you can see exactly where your awareness ends, and judge whether a step takes something out of view.</p>
+  </div>
+  <div class="panel">
+    <h2>C · Desaturate only <span>— colour drains</span></h2>
+    <canvas id="c" width="400" height="470"></canvas>
+    <p class="cap">Beyond the ring keeps its brightness but loses colour, like a remembered map. Terrain stays fully readable for route-planning; the edge is soft but still locatable.</p>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:#f2ecc9;box-shadow:0 0 0 1.5px #000"></span>you</span>
+  <span><span class="dot" style="background:#c9483f"></span>monster — only ever inside the ring</span>
+  <span><span class="dot" style="background:#6fa8ff;box-shadow:0 0 0 1.5px #e8f0ff"></span>partymate — culled like any other entity (decision 8); the roster panel moves to its own wire field</span>
+  <span><span class="sw" style="background:#35513a"></span>grass<span class="sw" style="background:#22391f;margin-left:12px"></span>forest<span class="sw" style="background:#1d3d5c;margin-left:12px"></span>water<span class="sw" style="background:#45443f;margin-left:12px"></span>rock</span>
+</div>
+
+<script>
+const S = 4;      // schematic hex size — sized so the whole R=30 ring fits the panel
+const R = 30;
+const SQ3 = Math.sqrt(3);
+const COLORS = { grass: [0x35,0x51,0x3a], forest: [0x22,0x39,0x1f], water: [0x1d,0x3d,0x5c], rock: [0x45,0x44,0x3f] };
+
+const hexDist = (q, r) => (Math.abs(q) + Math.abs(q + r) + Math.abs(r)) / 2;
+const toPixel = (q, r) => ({ x: S * 1.5 * q, y: S * ((SQ3 / 2) * q + SQ3 * r) });
+
+function hash(q, r) {
+  let h = (q * 374761393 + r * 668265263) ^ 0x5bf03635;
+  h = (h ^ (h >>> 13)) * 1274126177;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function terrainAt(q, r) {
+  const n = hash(Math.round(q / 4), Math.round(r / 4)) * 0.7 + hash(q, r) * 0.3;
+  if (n < 0.14) return "water";
+  if (n < 0.46) return "forest";
+  if (n > 0.91) return "rock";
+  return "grass";
+}
+const mix = (rgb, t, k) => rgb.map((v, i) => Math.round(v + (t[i] - v) * k));
+const css = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+function hexPath(ctx, cx, cy, size) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 180) * (60 * i);
+    const x = cx + size * Math.cos(a), y = cy + size * Math.sin(a);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+}
+
+// Deterministic monster scatter across a band WIDER than the ring, so the
+// "nothing is drawn outside" point is visible rather than assumed.
+const ALL = [];
+for (let i = 0; i < 900; i++) {
+  const q = Math.round((hash(i, 7) - 0.5) * 96);
+  const r = Math.round((hash(i, 19) - 0.5) * 96);
+  const d = hexDist(q, r);
+  if (d > 2 && d < 46) ALL.push({ q, r, d });
+}
+const PARTY = [{ q: -11, r: 6 }, { q: 8, r: -14 }];
+
+function draw(id, mode) {
+  const cv = document.getElementById(id), ctx = cv.getContext("2d");
+  const ox = cv.width / 2, oy = cv.height / 2;
+  ctx.fillStyle = "#090c09";
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  for (let q = -60; q <= 60; q++) {
+    for (let r = -60; r <= 60; r++) {
+      const d = hexDist(q, r);
+      if (d > 60) continue;
+      const p = toPixel(q, r), cx = ox + p.x, cy = oy + p.y;
+      if (cx < -6 || cx > cv.width + 6 || cy < -6 || cy > cv.height + 6) continue;
+
+      let rgb = COLORS[terrainAt(q, r)].slice();
+      if (mode === "vignette") {
+        rgb = mix(rgb, [7, 10, 7], Math.max(0, Math.min(1, (d - (R - 6)) / 8)) * 0.9);
+      } else if (mode === "rim" && d > R) {
+        rgb = mix(rgb, [7, 10, 7], 0.8);
+      } else if (mode === "desat" && d > R) {
+        const g = Math.round(rgb[0] * 0.32 + rgb[1] * 0.55 + rgb[2] * 0.13);
+        rgb = mix(rgb, [g, g, g], 0.93);
+      }
+
+      hexPath(ctx, cx, cy, S - 0.35);
+      ctx.fillStyle = css(rgb);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(9,12,9,0.7)";
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
+  }
+
+  if (mode === "rim") {
+    ctx.beginPath();
+    for (let q = -R; q <= R; q++) {
+      for (let r = -R; r <= R; r++) {
+        if (hexDist(q, r) !== R) continue;
+        const p = toPixel(q, r);
+        hexPath(ctx, ox + p.x, oy + p.y, S - 0.35);
+      }
+    }
+    ctx.strokeStyle = "rgba(200,222,178,0.75)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+
+  // Entities: ONLY those inside the radius are ever drawn.
+  for (const m of ALL) {
+    if (m.d > R - 1) continue;
+    const p = toPixel(m.q, m.r);
+    ctx.beginPath();
+    ctx.arc(ox + p.x, oy + p.y, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#c9483f";
+    ctx.fill();
+  }
+  for (const m of PARTY) {
+    const p = toPixel(m.q, m.r);
+    ctx.beginPath();
+    ctx.arc(ox + p.x, oy + p.y, 2.9, 0, Math.PI * 2);
+    ctx.fillStyle = "#6fa8ff";
+    ctx.fill();
+    ctx.strokeStyle = "#e8f0ff";
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.arc(ox, oy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = "#f2ecc9";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+}
+
+draw("a", "vignette");
+draw("b", "rim");
+draw("c", "desat");
+</script>
