@@ -9,7 +9,8 @@ services:
       - LISTEN_ADDR=0.0.0.0:8080
       - TURN_INTERVAL=4s
       - HEARTBEAT_INTERVAL=15s
-      - MONSTER_COUNT=40
+      - WORLD_RADIUS=120
+      - MONSTER_COUNT=1000
       # World snapshot lives on the named volume: the distroless app
       # filesystem is ephemeral, so a snapshot elsewhere is lost on redeploy.
       - SNAPSHOT_PATH=/data/world.json

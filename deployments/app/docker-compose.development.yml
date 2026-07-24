@@ -8,12 +8,12 @@ services:
       - LISTEN_ADDR=0.0.0.0:8080
       - TURN_INTERVAL=4s
       - HEARTBEAT_INTERVAL=15s
-      # Big, populated world to exercise the wheel-zoom + WASD-pan survey camera
-      # (#273/#274). Radius 60 ≈ 11k hexes; ~1 monster per ~44 hexes. Dev is a
-      # throwaway sandbox — the radius change just regenerates its world.
-      - WORLD_RADIUS=60
+      # The big world (#286): radius 120 ≈ 43.6k hexes, ~1 monster per ~44
+      # hexes — the density all three envs share. Dev is a throwaway sandbox —
+      # a radius change just regenerates its world (snapshot set aside).
+      - WORLD_RADIUS=120
       - WORLD_SEED=42
-      - MONSTER_COUNT=250
+      - MONSTER_COUNT=1000
       - SNAPSHOT_PATH=/data/world.json
       - SNAPSHOT_INTERVAL=60s
     volumes:
