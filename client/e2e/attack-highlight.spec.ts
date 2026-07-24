@@ -556,7 +556,12 @@ test("committed attack indicator is cleared by the next turn-over (#252)", async
   let visited: Hex[] = [];
   const tracker = progressTracker(10);
   let skip = 0;
-  let shot: { tapTurn: number; tiles: Hex[]; action: { kind: string; target: Hex } | null } | null = null;
+  let shot: {
+    tapTurn: number;
+    tapBundles: number;
+    tiles: Hex[];
+    action: { kind: string; target: Hex } | null;
+  } | null = null;
 
   const commitPoll = expect
     .poll(
@@ -588,11 +593,12 @@ test("committed attack indicator is cleared by the next turn-over (#252)", async
 
             if (distTo <= bowRange && window.game.inCombat) {
               const tapTurn = window.game.turn;
+              const tapBundles = window.game.bundles;
               void window.game.tapHex(target.hex.q, target.hex.r);
               const tiles = window.game.committedAttackTiles;
               const action = window.game.committedAction;
               if (tiles.length > 0 || action !== null) {
-                return { done: true as const, tapTurn, tiles, action };
+                return { done: true as const, tapTurn, tapBundles, tiles, action };
               }
               // Routed as a move (positions shifted under the tap): no
               // progress, let rotation kick in.
@@ -634,7 +640,7 @@ test("committed attack indicator is cleared by the next turn-over (#252)", async
         );
 
         if (st.done) {
-          shot = { tapTurn: st.tapTurn, tiles: st.tiles, action: st.action };
+          shot = { tapTurn: st.tapTurn, tapBundles: st.tapBundles, tiles: st.tiles, action: st.action };
 
           return true;
         }
@@ -666,22 +672,28 @@ test("committed attack indicator is cleared by the next turn-over (#252)", async
   // tiles for either shape) — the precondition the clear assert consumes.
   expect(shot!.tiles.length > 0 || shot!.action !== null).toBe(true);
 
-  // tapTurn is the last bundle BEFORE the commit, so the resolving bundle is
-  // tapTurn+1 and any bundle at tapTurn+2 or later is past the turn-over.
-  // Poll turn and indicator in ONE evaluate: reading them separately would
-  // let a bundle slip between the poll and the assert. No taps happen after
-  // the commit, so nothing can legitimately re-light the indicator.
-  let after: { turn: number; tiles: Hex[]; action: { kind: string; target: Hex } | null } | null = null;
+  // The bound is counted in BUNDLES SEEN (window.game.bundles), not turn
+  // numbers: the hub coalesces, so under load the client can skip from turn
+  // N straight to N+2 — a turn-number bound then demands the clear one
+  // bundle EARLY (the first load-run failure of this spec, and exactly the
+  // trap the "a tick means fetch-latest, never a delta" rule warns about).
+  // In bundle terms the contract is exact: the first processed bundle after
+  // the commit arms the clear (and plays the hit back — #138), and by the
+  // second the indicator must be gone, whatever their turn numbers. Poll
+  // bundles and indicator in ONE evaluate so no bundle slips between the
+  // condition and the assert; no taps happen after the commit, so nothing
+  // can legitimately re-light it.
+  let after: { bundles: number; tiles: Hex[]; action: { kind: string; target: Hex } | null } | null = null;
   const clearPoll = expect
     .poll(
       async () => {
         after = await page.evaluate(() => ({
-          turn: window.game.turn,
+          bundles: window.game.bundles,
           tiles: window.game.committedAttackTiles,
           action: window.game.committedAction,
         }));
 
-        return after !== null && after.turn >= shot!.tapTurn + 2;
+        return after !== null && after.bundles >= shot!.tapBundles + 2;
       },
       { timeout: 20_000, intervals: [100] },
     )
@@ -694,6 +706,14 @@ test("committed attack indicator is cleared by the next turn-over (#252)", async
     throw err;
   }
 
-  expect(after!.tiles).toEqual([]);
-  expect(after!.action).toBeNull();
+  try {
+    expect(after!.tiles).toEqual([]);
+    expect(after!.action).toBeNull();
+  } catch (err) {
+    console.log(
+      `CONTRACT-FAIL tapTurn=${shot!.tapTurn} tapBundles=${shot!.tapBundles} after=${JSON.stringify(after)}`,
+    );
+    await dumpState(page, "clear-contract-final");
+    throw err;
+  }
 });

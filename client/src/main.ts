@@ -414,6 +414,7 @@ window.game = {
   panelOpen: false,
   turnReceived: -1,
   turnApplied: -1,
+  bundles: 0,
   clientError: null,
   lastLevelUp: 0,
   skills: [],
@@ -640,8 +641,16 @@ async function start(): Promise<void> {
   // forever (the bug that left the highlight stuck on). The deadline is set
   // ONCE, on the first bundle after a commit, and never pushed later.
   let committedClearAtMs: number | null = null;
+  // #252: the turn the lit indicator resolves on, recorded when the deadline
+  // is armed. The wall-clock deadline above is only checked on animation
+  // frames, which a throttled tab can starve — and bubble turns are
+  // action-gated, so they can outpace the playback window entirely. Any
+  // bundle NEWER than the resolving turn force-clears in onTurn: a hard,
+  // frame-rate-independent bound of one turn.
+  let committedResolveTurn: number | null = null;
   const cancelCommittedClear = (): void => {
     committedClearAtMs = null;
+    committedResolveTurn = null;
   };
   const clearCommittedIndicator = (): void => {
     cancelCommittedClear();
@@ -1454,6 +1463,10 @@ async function start(): Promise<void> {
       window.game.damage = damage;
 
       window.game.turn = event.turn;
+      // #252: the bundle clock — +1 per PROCESSED bundle, immune to the
+      // turn-number jumps hub coalescing produces. Counted here (after the
+      // early returns) so a worldId-reset bundle doesn't inflate it.
+      window.game.bundles += 1;
       window.game.entities = event.entities.length;
       window.game.monsters = event.entities.filter((e) => e.kind === EntityMonster).length;
       window.game.positions = event.entities.map((e) => ({
@@ -1480,8 +1493,17 @@ async function start(): Promise<void> {
       // never push the deadline out, so it can't be starved into never firing
       // (the stuck-highlight bug). A fresh commit resets it via the setters'
       // cancelCommittedClear; tickCommittedClear does the actual clearing.
+      // #252: the backstop half — a bundle newer than the resolving turn
+      // means the indicator overstayed (starved ticker, or bubble turns
+      // outpacing playback); clear it before arming logic runs. Coalesced
+      // bundles (turn jumps > 1) satisfy the same guard.
+      if (committedResolveTurn !== null && event.turn > committedResolveTurn) {
+        clearCommittedIndicator();
+      }
+
       if (committedClearAtMs === null && (window.game.committedAction !== null || committedAttackTiles.length > 0)) {
         committedClearAtMs = turnStartedAtMs + playbackMs;
+        committedResolveTurn = event.turn;
       }
 
       const mine = event.entities.find((e) => e.id === me.entityId);
