@@ -31,6 +31,13 @@ export interface GameDebug {
    */
   turnApplied: number;
   /**
+   * Count of turn bundles PROCESSED this session — increments by exactly 1
+   * per applied bundle (#252). Unlike `turn`, which can jump when the hub
+   * coalesces, this is the clock for "N bundles later" test contracts: the
+   * committed-indicator clear is bounded in bundles seen, not turn numbers.
+   */
+  bundles: number;
+  /**
    * The last uncaught client error, or null. Set by the global handlers that
    * also raise the on-screen banner.
    */
