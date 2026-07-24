@@ -515,3 +515,185 @@ test("rogue: hovering a hostile in bow range highlights exactly its tile; a plai
     expect(moveHover).toEqual([]);
   }
 });
+
+test("committed attack indicator is cleared by the next turn-over (#252)", async ({ page }) => {
+  // #252's contract: the committed indicator (crosshair + lit tiles) clears at
+  // the resolving bundle's playback end, and — the reliability half — is GONE
+  // no later than the arrival of a bundle NEWER than the resolving one. The
+  // failing case (a throttled rAF starving the wall-clock deadline check) is
+  // not reproducible headless (the ticker always runs here), so this spec pins
+  // the turn-driven contract itself; the throttle path is covered by the
+  // onTurn backstop this contract forces. De-raced per the repo rule: every
+  // assert reads state captured in the same evaluate as the poll condition —
+  // no sleeps, no wall-clock.
+  test.slow();
+
+  await seedIdentity(page, { class: "rogue" });
+
+  await page.goto("/");
+
+  try {
+    await expect
+      .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
+      .toBe(true);
+    await expect.poll(() => page.evaluate(() => window.game.class)).toBe(ClassRogue);
+    await expect.poll(() => page.evaluate(() => window.game.monsters)).toBeGreaterThanOrEqual(1);
+  } catch (err) {
+    await dumpState(page, "clear-contract-join");
+    throw err;
+  }
+
+  await chaseIntoCombat(page);
+
+  // Approach until a monster is in bow range, then tap it and capture the
+  // planted indicator AND the current turn in the SAME evaluate (tapHex plants
+  // synchronously, before the intent POST settles — the same atomicity the
+  // mage shot poll above leans on). A tap that routed as a move plants
+  // nothing and returns null, so the poll retries. Progress-aware stepping
+  // per the #181 header: strictly-closing steps, tabu, target rotation,
+  // out-of-combat re-engagement.
+  const BOW = 4;
+  let visited: Hex[] = [];
+  const tracker = progressTracker(10);
+  let skip = 0;
+  let shot: { tapTurn: number; tiles: Hex[]; action: { kind: string; target: Hex } | null } | null = null;
+
+  const commitPoll = expect
+    .poll(
+      async () => {
+        const st = await page.evaluate(
+          ({ monsterKind, bowRange, skip: skipN, avoid }) => {
+            const me = window.game.me;
+            if (me === null) {
+              return { done: false as const, targetDist: null };
+            }
+
+            const d = (a: { q: number; r: number }, b: { q: number; r: number }): number => {
+              const dq = a.q - b.q;
+              const dr = a.r - b.r;
+
+              return (Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2;
+            };
+
+            const monsters = window.game.positions.filter((p) => p.kind === monsterKind);
+            if (monsters.length === 0) {
+              return { done: false as const, targetDist: null };
+            }
+
+            const sorted = monsters
+              .slice()
+              .sort((a, b) => d(me.hex, a.hex) - d(me.hex, b.hex) || a.id - b.id);
+            const target = sorted[skipN % sorted.length]!;
+            const distTo = d(me.hex, target.hex);
+
+            if (distTo <= bowRange && window.game.inCombat) {
+              const tapTurn = window.game.turn;
+              void window.game.tapHex(target.hex.q, target.hex.r);
+              const tiles = window.game.committedAttackTiles;
+              const action = window.game.committedAction;
+              if (tiles.length > 0 || action !== null) {
+                return { done: true as const, tapTurn, tiles, action };
+              }
+              // Routed as a move (positions shifted under the tap): no
+              // progress, let rotation kick in.
+              return { done: false as const, targetDist: null };
+            }
+
+            if (!window.game.inCombat) {
+              void window.game.tapHex(target.hex.q, target.hex.r);
+
+              return { done: false as const, targetDist: distTo };
+            }
+
+            const moves = window.game.combatMoves;
+            if (moves.length > 0) {
+              const avoided = (h: { q: number; r: number }): boolean =>
+                avoid.some((a) => a.q === h.q && a.r === h.r);
+
+              let cands = moves.filter((h) => d(h, target.hex) < distTo);
+              if (cands.length === 0) {
+                cands = moves.filter((h) => !avoided(h));
+              }
+              if (cands.length === 0) {
+                cands = moves;
+              }
+
+              let step = cands[0]!;
+              for (const h of cands.slice(1)) {
+                if (d(h, target.hex) < d(step, target.hex)) {
+                  step = h;
+                }
+              }
+
+              void window.game.tapHex(step.q, step.r);
+            }
+
+            return { done: false as const, targetDist: distTo, at: me.hex };
+          },
+          { monsterKind: EntityMonster, bowRange: BOW, skip, avoid: visited },
+        );
+
+        if (st.done) {
+          shot = { tapTurn: st.tapTurn, tiles: st.tiles, action: st.action };
+
+          return true;
+        }
+
+        if ("at" in st && st.at !== undefined && !visited.some((v) => v.q === st.at!.q && v.r === st.at!.r)) {
+          visited.push(st.at);
+        }
+
+        const prevSkip = skip;
+        skip = tracker.note(st.targetDist);
+        if (skip !== prevSkip) {
+          visited = [];
+        }
+
+        return false;
+      },
+      { timeout: 20_000, intervals: [300] },
+    )
+    .toBe(true);
+
+  try {
+    await commitPoll;
+  } catch (err) {
+    await dumpState(page, "clear-contract-commit");
+    throw err;
+  }
+
+  // Something is lit at commit time (crosshair for the single-target bow;
+  // tiles for either shape) — the precondition the clear assert consumes.
+  expect(shot!.tiles.length > 0 || shot!.action !== null).toBe(true);
+
+  // tapTurn is the last bundle BEFORE the commit, so the resolving bundle is
+  // tapTurn+1 and any bundle at tapTurn+2 or later is past the turn-over.
+  // Poll turn and indicator in ONE evaluate: reading them separately would
+  // let a bundle slip between the poll and the assert. No taps happen after
+  // the commit, so nothing can legitimately re-light the indicator.
+  let after: { turn: number; tiles: Hex[]; action: { kind: string; target: Hex } | null } | null = null;
+  const clearPoll = expect
+    .poll(
+      async () => {
+        after = await page.evaluate(() => ({
+          turn: window.game.turn,
+          tiles: window.game.committedAttackTiles,
+          action: window.game.committedAction,
+        }));
+
+        return after !== null && after.turn >= shot!.tapTurn + 2;
+      },
+      { timeout: 20_000, intervals: [100] },
+    )
+    .toBe(true);
+
+  try {
+    await clearPoll;
+  } catch (err) {
+    await dumpState(page, "clear-contract-turnover");
+    throw err;
+  }
+
+  expect(after!.tiles).toEqual([]);
+  expect(after!.action).toBeNull();
+});
