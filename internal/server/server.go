@@ -56,6 +56,7 @@ func New(deps Deps) http.Handler {
 	addRoutes(mux, deps)
 
 	// The origin guard sits inside securityHeaders so its 403s carry the
-	// baseline headers too.
-	return securityHeaders(requireSameOriginPosts(deps.Logger, mux))
+	// baseline headers too. Compression is outermost so every response is
+	// eligible, including those two wrappers' own error paths (#288).
+	return compressResponses(securityHeaders(requireSameOriginPosts(deps.Logger, mux)))
 }

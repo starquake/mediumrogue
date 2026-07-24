@@ -1026,6 +1026,26 @@ roll, so it is ARPG-legal on jewelry.
   arriving while a turn resolves is accepted, never affects the resolving
   turn, and applies to the next one. The client's 2 s input window is
   pacing, not a server cutoff.
+- **Response compression** (#288, `internal/server/compress.go`): responses
+  are gzipped for clients that send `Accept-Encoding: gzip`, decided by a
+  media-type allowlist (`application/json`, `text/event-stream`, and the
+  embedded bundle's `text/html`/`text/css`/`text/javascript`/`image/svg+xml`).
+  `Vary: Accept-Encoding` is set on every response, compressed or not;
+  `Content-Length` is dropped when compressing; `gzip;q=0` is honoured as a
+  refusal. There is deliberately **no minimum-size threshold** — buffering to
+  decide would risk stalling the SSE stream, which is the whole hazard here.
+  Measured at `WORLD_RADIUS=120` / `MONSTER_COUNT=1000`: `/api/map`
+  1,885,659 → 118,713 B (**16×**); one turn bundle 230,937 → ~10,520 B
+  (**22×**), i.e. 462 → ~21 kbit/s per client at a 4 s cadence.
+  **The flush rule**: the wrapper implements `http.Flusher` and its `Flush`
+  calls `gz.Flush()` (a sync marker) *before* the underlying flush. Without
+  that, turn bundles sit in the compressor's window and the game freezes with
+  the connection still open —
+  `TestCompressResponsesFlushIsReadableImmediately` (unit, reads the bytes
+  mid-handler) and `TestTurnFramesArriveOnAGzippedStream` (integration, real
+  socket + real decoder) both fail if it is removed.
+  Behind SWAG this rides on the existing `proxy_buffering off` for
+  `/api/events`; nginx passes an already-coded body through untouched.
 - **Per-hit combat moments on the bundle** (#114): `TurnEvent.Hits` is a
   `HitView[]` — `turn`, `attackerId`, `victimId`, `amount`, `crit`, `glance`
   — the crit/glance facts an HP delta alone can't express. Recorded in
