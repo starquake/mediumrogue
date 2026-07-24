@@ -25,22 +25,24 @@
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: 0px; margin-right: 5px; }
 </style>
 
-<h1>#289 — fog-of-war boundary at the 30-hex interest radius</h1>
+<h1>#289 — fog-of-war boundary at the 20-hex interest radius</h1>
 <p class="sub">
-  You at centre, whole 30-hex ring in frame. Terrain beyond the ring is still <em>known</em> — the client holds the entire
+  You at centre, whole 20-hex ring in frame. Terrain beyond the ring is still <em>known</em> — the client holds the entire
   map from <span class="k">/api/map</span> — so what stops at the ring is <span class="k">live entity data</span>, not the
   ground. Monsters are drawn inside and are simply absent outside.
   <br>
-  Note on framing: at <span class="k">ZOOM_MIN = 0.5</span> a 1920&times;1080 browser sees ~40 hexes east–west but only
-  ~19 north–south, so in real play the ring is reachable left and right and <em>clipped top and bottom</em>. These panels
-  show the full ring so the treatments can be compared.
+  <span class="k">Why 20 and not 30:</span> at the default <span class="k">zoom 1.0</span> a 20-hex ring reaches 960&nbsp;px
+  east–west — exactly the edge of a 1920&times;1080 viewport — so players meet the boundary in ordinary play. At
+  <span class="k">ZOOM_MIN = 0.5</span> the ring is 480&times;554&nbsp;px against a 960&times;540 half-viewport, i.e. very
+  nearly complete, grazing top and bottom. A 30-hex ring reached 1440&times;1663&nbsp;px and was off-screen at every normal
+  zoom — an "invisible mechanic". (On a shorter laptop window 20 still clips vertically, just far less than 30 did.)
 </p>
 
 <div class="row">
   <div class="panel">
     <h2>A · Soft vignette <span>— no hard edge</span></h2>
     <canvas id="a" width="400" height="470"></canvas>
-    <p class="cap">Ground fades out across the last ~6 hexes. Reads as natural distance falloff; the exact radius stays vague, so it feels atmospheric rather than mechanical — you sense the limit without being able to measure it.</p>
+    <p class="cap">Ground fades out across the last ~5 hexes. Reads as natural distance falloff; the exact radius stays vague, so it feels atmospheric rather than mechanical — you sense the limit without being able to measure it.</p>
   </div>
   <div class="panel">
     <h2>B · Dim + rim <span>— explicit boundary</span></h2>
@@ -62,8 +64,8 @@
 </div>
 
 <script>
-const S = 4;      // schematic hex size — sized so the whole R=30 ring fits the panel
-const R = 30;
+const S = 6;      // schematic hex size — sized so the whole R=20 ring fits the panel
+const R = 20;
 const SQ3 = Math.sqrt(3);
 const COLORS = { grass: [0x35,0x51,0x3a], forest: [0x22,0x39,0x1f], water: [0x1d,0x3d,0x5c], rock: [0x45,0x44,0x3f] };
 
@@ -99,12 +101,12 @@ function hexPath(ctx, cx, cy, size) {
 // "nothing is drawn outside" point is visible rather than assumed.
 const ALL = [];
 for (let i = 0; i < 900; i++) {
-  const q = Math.round((hash(i, 7) - 0.5) * 96);
-  const r = Math.round((hash(i, 19) - 0.5) * 96);
+  const q = Math.round((hash(i, 7) - 0.5) * 64);
+  const r = Math.round((hash(i, 19) - 0.5) * 64);
   const d = hexDist(q, r);
-  if (d > 2 && d < 46) ALL.push({ q, r, d });
+  if (d > 2 && d < 32) ALL.push({ q, r, d });
 }
-const PARTY = [{ q: -11, r: 6 }, { q: 8, r: -14 }];
+const PARTY = [{ q: -8, r: 4 }, { q: 6, r: -10 }];
 
 function draw(id, mode) {
   const cv = document.getElementById(id), ctx = cv.getContext("2d");
@@ -112,16 +114,16 @@ function draw(id, mode) {
   ctx.fillStyle = "#090c09";
   ctx.fillRect(0, 0, cv.width, cv.height);
 
-  for (let q = -60; q <= 60; q++) {
-    for (let r = -60; r <= 60; r++) {
+  for (let q = -40; q <= 40; q++) {
+    for (let r = -40; r <= 40; r++) {
       const d = hexDist(q, r);
-      if (d > 60) continue;
+      if (d > 40) continue;
       const p = toPixel(q, r), cx = ox + p.x, cy = oy + p.y;
       if (cx < -6 || cx > cv.width + 6 || cy < -6 || cy > cv.height + 6) continue;
 
       let rgb = COLORS[terrainAt(q, r)].slice();
       if (mode === "vignette") {
-        rgb = mix(rgb, [7, 10, 7], Math.max(0, Math.min(1, (d - (R - 6)) / 8)) * 0.9);
+        rgb = mix(rgb, [7, 10, 7], Math.max(0, Math.min(1, (d - (R - 5)) / 7)) * 0.9);
       } else if (mode === "rim" && d > R) {
         rgb = mix(rgb, [7, 10, 7], 0.8);
       } else if (mode === "desat" && d > R) {
