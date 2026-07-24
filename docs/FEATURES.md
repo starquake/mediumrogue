@@ -1152,6 +1152,30 @@ roll, so it is ARPG-legal on jewelry.
 - **Dev loop**: `make dev` (watchexec auto-restart) + `make client-dev`
   (Vite HMR proxying /api); `make check` full gate (lint, protocol drift,
   typecheck, tests, build); `make e2e`.
+- **Balance measurement** (#283 — `make balance`, `cmd/balance`,
+  `internal/game/balance*.go`): seeded headless measurement through the
+  REAL resolution code (never a re-derived formula — the statlines.go
+  "derived, never authored" rule applied to balance). Three modes:
+  `-mode matrix` (default) duels every class × monster kind × level
+  (`-levels`, default 1,3,5; `-duels` per cell, default 200) — win rate,
+  mean turns, winner HP margin, observed DPS both sides, projected TTK
+  both directions, and their ratio as a per-cell **threat** number (1.0 =
+  even race, >1 = the monster kills faster); `-mode deltas` re-runs the
+  grid with one item (or passive skill) swapped over the class-default kit
+  → mean threat delta per item = a mechanical power score (actives
+  excluded — a bot trigger policy would be measured, not the skill);
+  `-mode sim` runs scripted bot parties of 1/2/3/5/10/15 through real
+  worldgen + monster AI for ~200 turns × seeds — deaths/100 player-turns,
+  per-fight HP low-water (the close-call proxy), combat fraction, XP pace,
+  XP spread. Tables to stdout, `-json` for the machine-readable report
+  (`balance-report.json` under `make balance`) — the analytics milestone's
+  first artifact; player deaths are consumed from the structured combat
+  log (the analytics-seed pattern's first machine consumer). Duels start
+  adjacent, so reach/kiting advantages show up in the sim, not the matrix.
+  **Report-first**: only four coarse pinned-seed guardrail tests block
+  `make check` (rat win rate, starter-kind threat, a global threat
+  ceiling, solo-carries-risk + parties-not-deadlier) — they move only when
+  content moves.
 - **Combat event log** (item 1, playtest batch 2 — `internal/game`,
   structured `slog`, the milestone-12 analytics seed): every resolution
   path emits `slog.Info("combat", "event",
