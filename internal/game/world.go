@@ -758,6 +758,42 @@ type bubbleTurn struct {
 	members []*entity
 }
 
+// stepOnce drives one full turn synchronously — the world domain, then every
+// combat bubble that existed BEFORE that world resolution, ungated by patience
+// or lock-in, then one recompute. Capturing the pre-existing bubbles first
+// means a bubble formed during this same world resolution does not also act
+// this step, so a single step is exactly one action for every entity. Shared
+// by ResolveTurnForTest (the test clock bridge) and the balance harness
+// (balance.go, #283) — the two synchronous drivers must step identically or
+// their measurements diverge from what tests pin.
+func (w *World) stepOnce() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	now := w.now()
+
+	ids := make([]int64, 0, len(w.bubbles))
+	for id := range w.bubbles {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	pre := make([]bubbleTurn, 0, len(ids))
+	for _, id := range ids {
+		b := w.bubbles[id]
+		pre = append(pre, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
+	}
+
+	w.resolveWorldTurnLocked(w.domainMembersLocked())
+
+	for _, bt := range pre {
+		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
+	}
+
+	w.recomputeBubblesLocked(now)
+}
+
 // readyBubbleTurnsLocked collects, in sorted-id order, the bubbles that should
 // resolve this pass (all players locked in, or patience expired) together with a
 // snapshot of each one's members. Callers hold w.mu.

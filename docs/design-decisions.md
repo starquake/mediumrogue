@@ -853,3 +853,27 @@ slice, and the most independent of the sibling content slices.
   the Blink arming uses. A recall scroll's cell fires immediately. `ItemView`
   gained `throwable`/`recall` booleans so the client renders the right verb
   without hardcoding def ids.
+
+## Balance is measured through the shipped fold, report-first *(built 2026-07-24, #283)*
+
+Balance tooling (`make balance`) measures matchups by RUNNING the real
+resolution code — seeded headless duels and bot-party sims driven through the
+same `stepOnce` the tests use — never by an analytic expected-value formula.
+The rejected alternative would have re-implemented `rollDamageLocked`'s
+contractual card order and chance-rng semantics, a drift surface; the
+precedent is statlines.go's "derived, never authored". Two consequences worth
+recording: the ARPG identity's decoupled `crit%`/`glance%` is what makes duel
+statistics converge cleanly (a coupled to-hit roll would not factorize), and
+the structured combat log gained its first machine consumer (the harness
+reads player deaths off the `"combat"` slog stream — the analytics-milestone
+pattern proven end to end).
+
+**Report-first is the design**: the tool prints tables and writes
+`balance-report.json`; tuning stays with the maintainer. Only four coarse
+guardrail tests block `make check`, their values proposed from the first real
+report and owned by the maintainer — tight per-cell bands were deliberately
+rejected because every content tweak would then fight the test suite.
+"Fun" itself is explicitly out of scope: the scorecard measures proxies
+(deaths, close calls, downtime, XP pace, spread), and the first report already
+quantified the headline unknown — nothing scales with party count, so solo
+play runs 5.8 deaths/100 turns while 15 players run 0.09.
