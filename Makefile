@@ -44,6 +44,12 @@ server:
 smoke:
 	$(GO) run ./cmd/rogue -check
 
+# Balance measurement (#283): the seeded matchup matrix + party sim, printed
+# as tables and written as JSON. Report-first — see docs/FEATURES.md.
+.PHONY: balance
+balance:
+	$(GO) run ./cmd/balance -json balance-report.json
+
 .PHONY: test
 test:
 	$(GO) test ./cmd/... ./internal/...
