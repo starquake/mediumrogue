@@ -8,7 +8,8 @@ services:
       - LISTEN_ADDR=0.0.0.0:8080
       - TURN_INTERVAL=4s
       - HEARTBEAT_INTERVAL=15s
-      - MONSTER_COUNT=40
+      - WORLD_RADIUS=120
+      - MONSTER_COUNT=1000
       - SNAPSHOT_PATH=/data/world.json
       - SNAPSHOT_INTERVAL=60s
     volumes:
