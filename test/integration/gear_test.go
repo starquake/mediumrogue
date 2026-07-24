@@ -19,8 +19,10 @@ import (
 // grantDefaultsLocked), equip it AGAIN — which now unequips it, since an
 // equip intent naming an already-equipped item toggles it off — then equip
 // it a third time to prove the round trip back to equipped:true. Both swaps
-// apply synchronously outside a bubble (queueEquipLocked), so each is
-// visible on the very next turn bundle.
+// apply synchronously outside a bubble (queueEquipLocked), so each shows up
+// within a turn or two — awaited rather than asserted on one specific
+// bundle, since bundles already in flight when the intent lands still carry
+// the old flag (see awaitTurnFrame).
 func TestEquipOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -56,11 +58,9 @@ func TestEquipOverHTTP(t *testing.T) {
 		t.Fatalf("equip intent status = %d, want %d", got, want)
 	}
 
-	next := decodeTurnFrame(t, reader)
-
-	if got := equippedFlag(t, next, me.EntityID, item.ID); got {
-		t.Fatalf("item %d still shows equipped:true after toggling an already-equipped item off", item.ID)
-	}
+	awaitTurnFrame(t, reader, "the item unequipped", func(b protocol.TurnEvent) bool {
+		return !equippedFlag(t, b, me.EntityID, item.ID)
+	})
 
 	// Toggle it back on: the round trip.
 	resp = postJSON(t, ts, "/api/intent", intent)
@@ -68,11 +68,9 @@ func TestEquipOverHTTP(t *testing.T) {
 		t.Fatalf("equip intent (toggle on) status = %d, want %d", got, want)
 	}
 
-	final := decodeTurnFrame(t, reader)
-
-	if got := equippedFlag(t, final, me.EntityID, item.ID); !got {
-		t.Fatalf("item %d still shows equipped:false after toggling it back on", item.ID)
-	}
+	awaitTurnFrame(t, reader, "the item equipped again", func(b protocol.TurnEvent) bool {
+		return equippedFlag(t, b, me.EntityID, item.ID)
+	})
 }
 
 // equippedFlag returns itemID's Equipped flag for entityID in bundle,
@@ -348,10 +346,20 @@ func TestDropPickupLoop(t *testing.T) {
 		}
 
 		if id, onDrop := groundItemAt(bundle, ent.Hex); onDrop {
-			// Repeated re-submission while the pickup is pending is fine
-			// (the latest intent in a window wins); once it applies, the
-			// farmed check above returns before this can go stale and 422.
-			postPickupIntent(t, ts, me, id)
+			// Repeated re-submission while the pickup is pending is fine: the
+			// latest intent in a window wins.
+			//
+			// A 422 here is an expected outcome, not a failure. `bundle` may
+			// have been generated before this POST lands (bundles queue in the
+			// reader's buffer — see awaitTurnFrame), so by now the player can
+			// already have stepped off that hex or claimed the item, and the
+			// server correctly refuses a pickup for a hex we are not on. The
+			// loop's job is to retry from the next bundle, which is exactly
+			// what `continue` does.
+			if got := postPickupIntentStatus(t, ts, me, id); got != http.StatusAccepted &&
+				got != http.StatusUnprocessableEntity {
+				t.Fatalf("pickup intent status = %d, want 202 or 422 (stale hex)", got)
+			}
 
 			continue
 		}
@@ -407,19 +415,21 @@ func nearestGroundItem(bundle protocol.TurnEvent, from protocol.Hex) (protocol.H
 	return best, found
 }
 
-// postPickupIntent submits an explicit pickup intent for a ground item id
-// (the inventory-slots milestone's replacement for walk-over auto-pickup).
-func postPickupIntent(t *testing.T, ts *httptest.Server, me protocol.JoinResponse, groundItemID int64) {
+// postPickupIntentStatus submits an explicit pickup intent for a ground item
+// id (the inventory-slots milestone's replacement for walk-over auto-pickup)
+// and returns its status instead of asserting one, so a retry loop can treat
+// a stale-state 422 as the ordinary outcome it is. Both call sites act on a
+// bundle that may predate the POST, so neither can demand a 202.
+func postPickupIntentStatus(
+	t *testing.T, ts *httptest.Server, me protocol.JoinResponse, groundItemID int64,
+) int {
 	t.Helper()
 
 	intent := protocol.IntentRequest{
 		Kind: protocol.IntentPickup, EntityID: me.EntityID, Token: me.Token, GroundItemID: groundItemID,
 	}
 
-	resp := postJSON(t, ts, "/api/intent", intent)
-	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
-		t.Fatalf("pickup intent status = %d, want 202", got)
-	}
+	return postJSON(t, ts, "/api/intent", intent).StatusCode
 }
 
 // postEntityAttackIntent submits an explicit entity-targeted attack intent

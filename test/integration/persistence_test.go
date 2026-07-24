@@ -361,9 +361,15 @@ func farmKillAndPickup(
 		// Walk to the drop, then claim it with an explicit pickup intent
 		// (walk-over auto-pickup is gone — the inventory-slots milestone);
 		// resubmitting every bundle keeps feeding bubble lock-ins, mirroring
-		// TestDropPickupLoop (gear_test.go).
+		// TestDropPickupLoop (gear_test.go) — including its tolerance of a
+		// 422: this bundle can predate the POST, so the hex it reports is not
+		// necessarily where the player still is, and retrying from the next
+		// bundle is the loop's job.
 		if ent.Hex == dropped.Hex {
-			postPickupIntent(t, ts, me, dropped.ID)
+			if got := postPickupIntentStatus(t, ts, me, dropped.ID); got != http.StatusAccepted &&
+				got != http.StatusUnprocessableEntity {
+				t.Fatalf("pickup intent status = %d, want 202 or 422 (stale hex)", got)
+			}
 		} else {
 			postIntent(t, ts, me, dropped.Hex)
 		}
