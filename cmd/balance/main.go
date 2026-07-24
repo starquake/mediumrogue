@@ -49,9 +49,12 @@ func main() {
 		report := game.RunDeltas(game.DeltaConfig{BaseSeed: *seed, Duels: *duels, Levels: lv})
 		printDeltas(report)
 		writeJSON(*jsonPath, report)
+	case "sim":
+		report := game.RunPartySim(game.PartySimConfig{BaseSeed: *seed})
+		printSim(report)
+		writeJSON(*jsonPath, report)
 	default:
-		// sim lands with its plan task (#283 task 4).
-		fmt.Fprintf(os.Stderr, "balance: unknown mode %q (available: matrix, deltas)\n", *mode)
+		fmt.Fprintf(os.Stderr, "balance: unknown mode %q (matrix | deltas | sim)\n", *mode)
 		os.Exit(exitUsage)
 	}
 }
@@ -114,4 +117,13 @@ func outln(args ...any) {
 
 func outf(format string, args ...any) {
 	_, _ = fmt.Fprintf(os.Stdout, format, args...)
+}
+
+func printSim(r game.PartySimReport) {
+	outln("party  deaths/100t  close-call  combat%  xp/turn  spread")
+
+	for _, s := range r.Sizes {
+		outf("%-6d %-12.2f %-11.2f %-8.2f %-8.2f %.2f\n",
+			s.Players, s.DeathsPer100, s.CloseCall, s.CombatFrac, s.XPPerTurn, s.Spread)
+	}
 }

@@ -114,3 +114,30 @@ func TestRunDeltasWeaponUpgradeIsSafer(t *testing.T) {
 		t.Fatal("iron-warhammer row missing from delta report")
 	}
 }
+
+func TestRunPartySimShapeAndDeterminism(t *testing.T) {
+	t.Parallel()
+
+	cfg := game.PartySimConfig{
+		BaseSeed: 3, Sizes: []int{1, 2}, Seeds: 1, Turns: 40, Radius: 12, Monsters: 6,
+	}
+
+	a := game.RunPartySim(cfg)
+	b := game.RunPartySim(cfg)
+
+	if got, want := len(a.Sizes), 2; got != want {
+		t.Fatalf("len(Sizes) = %d, want %d", got, want)
+	}
+
+	for i := range a.Sizes {
+		if got, want := a.Sizes[i], b.Sizes[i]; got != want {
+			t.Errorf("size row %d differs across identical runs:\n got %+v\nwant %+v", i, got, want)
+		}
+	}
+
+	// A 40-turn run in a populated world must see SOME combat — a sim where
+	// nothing ever fights measured nothing.
+	if got, want := a.Sizes[0].CombatFrac, 0.0; got <= want {
+		t.Errorf("solo CombatFrac = %.3f, want > %.1f", got, want)
+	}
+}

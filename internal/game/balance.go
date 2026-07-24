@@ -86,7 +86,7 @@ type DuelResult struct {
 // It is the analytics-seed pattern (CLAUDE.md): combat events are a
 // filterable stream, and the harness is its first machine consumer.
 type deathLog struct {
-	playerDeaths map[int64]bool
+	playerDeaths map[int64]int
 }
 
 func (*deathLog) Enabled(context.Context, slog.Level) bool { return true }
@@ -114,7 +114,7 @@ func (d *deathLog) Handle(_ context.Context, r slog.Record) error {
 	})
 
 	if event == combatEventDeath && kind == protocol.EntityPlayer {
-		d.playerDeaths[id] = true
+		d.playerDeaths[id]++
 	}
 
 	return nil
@@ -259,7 +259,7 @@ func RunDuel(cfg DuelConfig) DuelResult {
 		Ticks:           hub.New(),
 	})
 
-	deaths := &deathLog{playerDeaths: make(map[int64]bool)}
+	deaths := &deathLog{playerDeaths: make(map[int64]int)}
 	w.SetLogger(slog.New(deaths))
 
 	// Pin the resolution rng (NewWorld draws it from crypto/rand) and freeze
@@ -323,7 +323,7 @@ func runDuelLoop(w *World, deaths *deathLog, player, monster *entity, monsterID 
 			res.DamageByMonster += d
 		}
 
-		playerDied := deaths.playerDeaths[player.id]
+		playerDied := deaths.playerDeaths[player.id] > 0
 		w.mu.Unlock()
 
 		if playerDied {
