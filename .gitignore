@@ -1,6 +1,12 @@
 # Build output
 /build/
 
+# Balance harness output (#283): `make balance` writes its JSON report into the
+# repo root, and a hand-run `go build ./cmd/balance` drops the binary there too.
+# Anchored so cmd/balance/ itself is never matched.
+/balance
+/balance-report.json
+
 # Client
 client/node_modules/
 client/test-results/

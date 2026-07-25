@@ -1041,9 +1041,14 @@ roll, so it is ARPG-legal on jewelry.
   `Content-Length` is dropped when compressing; `gzip;q=0` is honoured as a
   refusal. There is deliberately **no minimum-size threshold** — buffering to
   decide would risk stalling the SSE stream, which is the whole hazard here.
-  Measured at `WORLD_RADIUS=120` / `MONSTER_COUNT=1000`: `/api/map`
-  1,885,659 → 118,713 B (**16×**); one turn bundle 230,937 → ~10,520 B
-  (**22×**), i.e. 462 → ~21 kbit/s per client at a 4 s cadence.
+  Measured **on the deployed staging instance** at `WORLD_RADIUS=120` /
+  `MONSTER_COUNT=1000`, i.e. at the middleware's actual
+  `gzip.DefaultCompression` (level 6): `/api/map` 1,885,659 → 123,850 B
+  (**15.2×**); one turn bundle 230,519 → ~11,801 B (**19.5×**), i.e.
+  461 → ~23.6 kbit/s per client at a 4 s cadence. (The 16×/22× first quoted on
+  #288 came from `gzip -9` and from compressing a bundle in isolation; the
+  live stream also carries heartbeat frames and a per-frame flush boundary.
+  These numbers are the deployed ones.)
   **The flush rule**: the wrapper implements `http.Flusher` and its `Flush`
   calls `gz.Flush()` (a sync marker) *before* the underlying flush. Without
   that, turn bundles sit in the compressor's window and the game freezes with
