@@ -7,6 +7,15 @@
 // and can't close over an imported symbol, so those stay in their specs.
 import { expect, type Page } from "@playwright/test";
 
+// E2E_WORLD_RADIUS is the world size every e2e server boots with
+// (playwright.config.ts wires it into WORLD_RADIUS). It is small on purpose:
+// two hexes in a radius-R map are at most 2R apart, so R = 10 keeps every pair
+// inside protocol.InterestRadius (20) and the #289 cull can never hide
+// something a spec needs. Lives here rather than in the config so a spec can
+// derive from it too — turn.spec checks the whole map reached the client, and
+// that count is 3·R·(R+1)+1.
+export const E2E_WORLD_RADIUS = 10;
+
 import { EntityMonster } from "../src/protocol.gen";
 import type { Hex, MapResponse } from "../src/protocol.gen";
 

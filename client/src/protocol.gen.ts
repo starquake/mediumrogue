@@ -44,6 +44,23 @@ export const CombatRadius = 6;
  */
 export const MonsterAggroRadius = 10;
 /**
+ * InterestRadius is how far (in hexes) a player receives live entity data
+ * (#289): a turn bundle carries only what lies within it, so the world
+ * beyond is known ground with nothing moving on it. It is fog of war, not
+ * just a bandwidth cut — the client draws a soft vignette at the edge.
+ * It MUST stay strictly greater than the LARGEST per-kind aggro radius —
+ * not merely MonsterAggroRadius, which kinds override (the Dragon sits at
+ * 12). Otherwise a monster starts hunting from outside what the player can
+ * see and then appears already aggressive. TestInterestRadiusExceedsEvery-
+ * AggroRadius pins this against every kind, so a new high-aggro monster
+ * fails the build instead of quietly eating the margin.
+ * 20 is also about the largest radius a player can SEE: at HEX_SIZE 32 the
+ * ring reaches 960 px east-west, exactly the edge of a 1920x1080 viewport
+ * at the client's default zoom. At 30 it sat off-screen at every zoom,
+ * which would have made the fog-of-war edge invisible to everyone.
+ */
+export const InterestRadius = 20;
+/**
  * MonsterLeashMultiplier sizes a WORLD-domain monster's default leash
  * radius (#102): a monster farther than MonsterLeashMultiplier × its own
  * base aggro radius from its home (spawn) hex drops any chase and walks
@@ -615,6 +632,15 @@ export const EventHeartbeat = "heartbeat";
  */
 export const EventChat = "chat";
 /**
+ * PartyMemberView is one row of the viewer's party roster (#289): identity
+ * only, no position or stats. Positional and combat state still travel on
+ * Entity, for the members close enough to appear there.
+ */
+export interface PartyMemberView {
+  id: number /* int64 */;
+  name: string;
+}
+/**
  * BubbleView is a window into a combat bubble: who's in it, which members it's
  * still waiting on, and how long until the patience timeout. Every bundle
  * carries all active bubbles; a client picks the one whose MemberIDs include
@@ -649,22 +675,36 @@ export interface TurnEvent {
    */
   intervalMs: number /* int64 */;
   /**
-   * Entities is every entity in the world, sorted by ID.
+   * Entities is every entity within InterestRadius of the viewer, sorted by
+   * ID — plus the viewer's own row unconditionally (#289). NOT the whole
+   * world: what lies beyond is known ground with nothing moving on it.
    */
   entities: Entity[];
   /**
-   * Bubbles is every active combat time bubble in the world; a client filters
-   * to the one containing its own entity.
+   * Bubbles is every active combat time bubble with at least one member the
+   * viewer can see; a client filters to the one containing its own entity.
    */
   bubbles: BubbleView[];
   /**
-   * Quests is the whole quest board, sorted by ID.
+   * Quests is the whole quest board, sorted by ID. Quests belong to a holder
+   * rather than a hex, so the interest radius does not cull them.
    */
   quests: QuestView[];
   /**
-   * GroundItems is every dropped item currently lying on the map.
+   * GroundItems is every dropped item lying within InterestRadius of the
+   * viewer (#289).
    */
   groundItems: GroundItemView[];
+  /**
+   * Party is the viewer's own party roster — every member's id and name,
+   * COMPLETE regardless of distance, empty when the viewer is solo.
+   * It exists because partymates are culled from Entities like anything else
+   * (#289): the client used to derive its roster by filtering entities on
+   * partyId, so without this field a party that spread out would watch its
+   * own roster shrink with no explanation. Roster membership is identity
+   * data, not positional data.
+   */
+  party: PartyMemberView[];
   /**
    * Hits is every hit landed in the last few turn resolutions (see
    * HitView's doc for the coalescing/dedupe contract) — the per-hit

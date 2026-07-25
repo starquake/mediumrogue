@@ -5,6 +5,16 @@ import { expect, test } from "@playwright/test";
 // across the map's rings and kinds, so at least two distinct monster kinds
 // reaching the client — and rendering with visibly distinct looks, not a
 // single flat "monster" dot — is a near-certainty rather than a coin flip.
+//
+// Since #289 the bundle is culled to protocol.InterestRadius, so "spawned" and
+// "reaches the client" are no longer the same thing. Measured over 8 fresh
+// joins at the e2e defaults (world radius 24, InterestRadius 20): 21–24 of the
+// 30 monsters and 11–12 distinct kinds survive the cull, against the 2 this
+// spec needs — a wide margin, because the interest radius nearly covers a
+// radius-24 world. That margin is what makes this spec safe, and it shrinks if
+// the e2e world ever grows: a WORLD_RADIUS override here would push spawns out
+// of range and could starve the kind count. Give this spec a seeded near-spawn
+// placement before making the e2e world bigger.
 test("distinct monster kinds reach the client and render differently", async ({ page }) => {
   await page.goto("/");
 

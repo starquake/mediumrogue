@@ -79,6 +79,7 @@ import type { HitStyle } from "./render/damage";
 import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
 import type { CommittedAction } from "./render/feedback";
+import { createFogLayer } from "./render/fog";
 import { FeedbackLayer } from "./render/feedback";
 import { hexDistance, hexToPixel, pixelToHex } from "./render/hex";
 import { HoverHighlightLayer, type HoverMoveTile } from "./render/hover";
@@ -371,6 +372,7 @@ window.game = {
   me: null,
   camera: { x: 0, y: 0 },
   zoom: 1,
+  fogCenter: { x: 0, y: 0 },
   intervalMs: 0,
   heartbeats: 0,
   get phase(): "playback" | "input" {
@@ -515,6 +517,14 @@ async function start(): Promise<void> {
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
+
+  // The interest-radius vignette (#289). Created here so updateCamera can
+  // drive it, but added to `world` LAST (after the damage layer below), so it
+  // sits over every world-space layer — terrain, ground items, and entities
+  // alike. Maintainer's call: monsters and players near the boundary should
+  // dim with the ground rather than stay at full contrast above it, so the
+  // limit is felt on the things that matter and not just on the scenery.
+  const fogLayer = createFogLayer();
 
   // Walkability lookup for the combat movement overlay: grass and forest are
   // walkable (the same rule the server's map applies); everything else —
@@ -737,6 +747,11 @@ async function start(): Promise<void> {
   const damageLayer = new DamageNumberLayer(app.ticker);
   world.addChild(damageLayer.container);
 
+  // Fog last: it dims everything in world space, entities included (see where
+  // fogLayer is created). DOM chrome — the HUD, panels, chat — is outside
+  // `world` and unaffected.
+  world.addChild(fogLayer.container);
+
   // Follow camera + smooth wheel zoom (#273/#274, Grim-Dawn/Diablo style). The
   // camera re-centres on my entity's *live* (per-frame interpolated) position
   // every frame, so the player is always screen-centred and the pan is as
@@ -760,8 +775,13 @@ async function start(): Promise<void> {
     const p = entityLayer.myPixel() ?? hexToPixel({ q: 0, r: 0 });
     world.position.set(app.screen.width / 2 - p.x * zoom, app.screen.height / 2 - p.y * zoom);
 
+    // The fog rides the same live pixel: the server culls around the player's
+    // hex, so the fade has to be centred on the player, not on the camera.
+    fogLayer.update(p.x, p.y);
+
     window.game.camera = { x: world.position.x, y: world.position.y };
     window.game.zoom = zoom;
+    window.game.fogCenter = { x: p.x, y: p.y };
   };
   updateCamera();
   app.ticker.add(updateCamera);
@@ -1657,12 +1677,13 @@ async function start(): Promise<void> {
       window.game.pickupModal = pickupModalMirror();
       window.game.panelOpen = panelOpen();
 
-      // Party roster: refreshed every turn from the bundle itself (no separate
-      // party-membership stream) — solo (partyId 0) always renders an empty
-      // roster, so the panel simply doesn't show.
+      // Party roster: read from the bundle's own `party` field (#289), NOT
+      // filtered out of `entities`. Entities is culled to the interest radius,
+      // so deriving the roster from it would make the panel shrink as the
+      // party spread out. Empty for a solo player, so the panel simply doesn't
+      // show.
       const myPartyId = mine?.partyId ?? 0;
-      const partyNames =
-        myPartyId === 0 ? [] : event.entities.filter((e) => e.partyId === myPartyId).map((e) => e.name);
+      const partyNames = event.party.map((m) => m.name);
       setParty(partyNames);
       window.game.party = partyNames;
       window.game.partyId = myPartyId;
