@@ -80,6 +80,7 @@ import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
 import type { CommittedAction } from "./render/feedback";
 import { createFogLayer } from "./render/fog";
+import * as sound from "./audio/sound";
 import { FeedbackLayer } from "./render/feedback";
 import { hexDistance, hexToPixel, pixelToHex } from "./render/hex";
 import { HoverHighlightLayer, type HoverMoveTile } from "./render/hover";
@@ -1535,6 +1536,20 @@ async function start(): Promise<void> {
       }
 
       const mine = event.entities.find((e) => e.id === me.entityId);
+
+      // #298: the same fresh-hit list drives audio, so combat sound rides the
+      // loop that already exists rather than adding a second pass over hits.
+      // Volume falls off with the victim's distance from me; my own hits play
+      // at full. sound.play() enforces the per-turn budget, so a six-way
+      // bubble resolution cannot fire six clips at once.
+      sound.startTurn();
+      for (const h of freshHits) {
+        const victim = event.entities.find((e) => e.id === h.victimId);
+        const dist = victim === undefined || mine === undefined ? 0 : hexDistance(mine.hex, victim.hex);
+        const involvesMe = mine !== undefined && (h.attackerId === mine.id || h.victimId === mine.id);
+        const name = h.crit ? "crit" : h.glance ? "glance" : "hit";
+        sound.play(name, involvesMe ? 1 : sound.volumeForDistance(dist));
+      }
       if (mine !== undefined && window.game.me !== null) {
         window.game.me.hex = mine.hex;
         // Arrived at the destination — or, for a hostile-held destination,
