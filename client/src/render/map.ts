@@ -1,8 +1,9 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Matrix, Texture } from "pixi.js";
 
 import type { MapResponse, Terrain } from "../protocol.gen";
 import { TerrainForest, TerrainGrass, TerrainWater } from "../protocol.gen";
 import { DIRECTIONS, EDGE_DIRECTIONS, hexCorners, hexToPixel, HEX_SIZE } from "./hex";
+import { grainTexture } from "./grain";
 import { buildTerrainIndex, hexKey, hexNoise, MAX_WATER_DEPTH, waterDepths } from "./terrain";
 
 // Muted retro palette; the CRT filter pass (milestone 9) sits on top of this.
@@ -82,20 +83,45 @@ export function buildMapLayer(map: MapResponse): Container {
   const depths = waterDepths(map.tiles, index);
   const halfWidth = HEX_SIZE * 1.5 * map.radius;
 
+  // One shared matrix, so every hex samples the SAME world-space tiling. A
+  // per-hex matrix would restart the pattern in every cell and print the grid
+  // back on top of the thing this slice removes.
+  const grainMatrix = new Matrix();
+  const grain = new Map<Terrain, Texture>();
+  const grainFor = (terrain: Terrain): Texture => {
+    const existing = grain.get(terrain);
+    if (existing !== undefined) return existing;
+
+    const made = grainTexture(terrain, TERRAIN_COLORS[terrain] ?? ROCK_COLOR);
+    grain.set(terrain, made);
+
+    return made;
+  };
+
   for (const tile of map.tiles) {
     const { q, r } = tile.hex;
     const center = hexToPixel(tile.hex);
-
-    // Water takes its colour from how far it is from shore; everything else
-    // from the palette. `undefined` from the depth field means "not water".
-    const depth = depths.get(hexKey(q, r));
-    const base = depth === undefined ? toRgb(TERRAIN_COLORS[tile.terrain] ?? ROCK_COLOR) : waterColor(depth);
+    const corners = hexCorners(center, HEX_SIZE - 0.5);
 
     // Per-hex brightness, hashed from the hex's own coordinates so it is the
     // same on every client and never shimmers between frames.
-    const shaded = scale(base, NOISE_FLOOR + hexNoise(q, r) * NOISE_SPREAD);
+    const shading = NOISE_FLOOR + hexNoise(q, r) * NOISE_SPREAD;
 
-    ground.poly(hexCorners(center, HEX_SIZE - 0.5)).fill(toHex(tilt(shaded, center.x, halfWidth)));
+    // Water takes its colour from how far it is from shore; everything else
+    // from a tiling grain. `undefined` from the depth field means "not water".
+    const depth = depths.get(hexKey(q, r));
+    if (depth !== undefined) {
+      const shaded = scale(waterColor(depth), shading);
+      ground.poly(corners).fill(toHex(tilt(shaded, center.x, halfWidth)));
+
+      continue;
+    }
+
+    // The grain carries the terrain's base colour, so the per-hex variation
+    // rides as a TINT on the fill (white = untouched) rather than needing a
+    // texture per hex.
+    const modulation = tilt(scale({ r: 0xff, g: 0xff, b: 0xff }, shading), center.x, halfWidth);
+    ground.poly(corners).fill({ texture: grainFor(tile.terrain), matrix: grainMatrix, color: toHex(modulation) });
   }
 
   layer.addChild(ground);
