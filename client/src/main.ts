@@ -375,6 +375,7 @@ window.game = {
   camera: { x: 0, y: 0 },
   zoom: 1,
   fogCenter: { x: 0, y: 0 },
+  audio: { played: 0, last: "", unlocked: false, muted: false },
   intervalMs: 0,
   heartbeats: 0,
   get phase(): "playback" | "input" {
@@ -977,6 +978,20 @@ async function start(): Promise<void> {
   };
   const toggleInventory = (): void => applyPanelOpen(!panelOpen());
 
+  // Sound toggle (#298). A plain-text button beside its neighbours rather than
+  // an icon — it matches "copy character link" / "inventory (i)" and needs no
+  // new visual language. Label reflects state so it is readable without a
+  // tooltip, and the setting persists across sessions.
+  const toggleSoundEl = mustGet("toggle-sound") as HTMLButtonElement;
+  const applySoundLabel = (): void => {
+    toggleSoundEl.textContent = sound.isMuted() ? "sound: off" : "sound: on";
+    toggleSoundEl.classList.toggle("open", !sound.isMuted());
+  };
+  toggleSoundEl.addEventListener("click", () => {
+    sound.setMuted(!sound.isMuted());
+    applySoundLabel();
+  });
+
   // The skills panel (#124) toggles independently of the inventory: they are
   // different questions ("what am I carrying" vs "what can I become"), and a
   // player comparing a new skill against their gear wants both open.
@@ -1068,6 +1083,17 @@ async function start(): Promise<void> {
   // (defined above).
   toggleInventoryEl.hidden = false;
   toggleInventoryEl.addEventListener("click", toggleInventory);
+
+  // Audio starts here, AFTER the map and the first bundle — decision 5: sound
+  // never sits on the critical path to a playable screen. The unlock is armed
+  // at the same time because a returning player has made no gesture yet
+  // (isNewPlayer skips the start screen), and without it playback stays
+  // blocked for exactly the people who play most.
+  sound.load();
+  sound.unlockOnFirstGesture();
+  window.game.audio = sound.debug;
+  toggleSoundEl.hidden = false;
+  applySoundLabel();
   mustGet("reset-fresh").addEventListener("click", () => window.location.reload());
 
   // Controls overlay button + close + first-run auto-show (#203).
