@@ -1657,12 +1657,13 @@ async function start(): Promise<void> {
       window.game.pickupModal = pickupModalMirror();
       window.game.panelOpen = panelOpen();
 
-      // Party roster: refreshed every turn from the bundle itself (no separate
-      // party-membership stream) — solo (partyId 0) always renders an empty
-      // roster, so the panel simply doesn't show.
+      // Party roster: read from the bundle's own `party` field (#289), NOT
+      // filtered out of `entities`. Entities is culled to the interest radius,
+      // so deriving the roster from it would make the panel shrink as the
+      // party spread out. Empty for a solo player, so the panel simply doesn't
+      // show.
       const myPartyId = mine?.partyId ?? 0;
-      const partyNames =
-        myPartyId === 0 ? [] : event.entities.filter((e) => e.partyId === myPartyId).map((e) => e.name);
+      const partyNames = event.party.map((m) => m.name);
       setParty(partyNames);
       window.game.party = partyNames;
       window.game.partyId = myPartyId;
