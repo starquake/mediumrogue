@@ -971,6 +971,9 @@ async function start(): Promise<void> {
     }
     toggleInventoryEl.classList.toggle("open", panelOpen());
     window.game.panelOpen = panelOpen();
+    // Every route into the panel (key, HUD button, close button) funnels
+    // through here, so one hook covers them all (#298).
+    sound.play(panelOpen() ? "panelOpen" : "panelClose");
   };
   const toggleInventory = (): void => applyPanelOpen(!panelOpen());
 
@@ -1007,6 +1010,7 @@ async function start(): Promise<void> {
   const characterActions = {
     equip: (itemId: number): void => {
       beginItemAction(itemId);
+      sound.play("equip");
       void submitEquip(identity, itemId).then(rejectClears(itemId));
     },
     unequip: (itemId: number): void => {
@@ -1015,6 +1019,7 @@ async function start(): Promise<void> {
     },
     drop: (itemId: number): void => {
       beginItemAction(itemId);
+      sound.play("drop");
       void submitDrop(identity, itemId).then(rejectClears(itemId));
     },
     drink: (itemId: number): void => {
@@ -1046,6 +1051,7 @@ async function start(): Promise<void> {
       markTaking(groundItemId);
       feedbackLayer.setPickup(window.game.me?.hex ?? null);
       window.game.pickupPending = true;
+      sound.play("pickup");
       void submitPickup(identity, groundItemId).then(({ ok, reason }) => {
         if (!ok) {
           markPickupRejected(groundItemId, reason === "" ? undefined : reason);
@@ -1537,12 +1543,24 @@ async function start(): Promise<void> {
 
       const mine = event.entities.find((e) => e.id === me.entityId);
 
+      // Refill the per-turn sound budget BEFORE anything plays this turn.
+      // It sat inside the combat loop, which runs after the footstep check —
+      // so a footstep was spending the PREVIOUS turn's leftovers and went
+      // silent after any busy combat turn.
+      sound.startTurn();
+
+      // My own footstep only. One per moving entity would be a stampede at
+      // fifteen players, and the sound is feedback for MY move (#298).
+      if (mine !== undefined && window.game.me !== null) {
+        const before = window.game.me.hex;
+        if (before.q !== mine.hex.q || before.r !== mine.hex.r) sound.play("footstep");
+      }
+
       // #298: the same fresh-hit list drives audio, so combat sound rides the
       // loop that already exists rather than adding a second pass over hits.
       // Volume falls off with the victim's distance from me; my own hits play
       // at full. sound.play() enforces the per-turn budget, so a six-way
       // bubble resolution cannot fire six clips at once.
-      sound.startTurn();
       for (const h of freshHits) {
         const victim = event.entities.find((e) => e.id === h.victimId);
         const dist = victim === undefined || mine === undefined ? 0 : hexDistance(mine.hex, victim.hex);
