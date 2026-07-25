@@ -4,6 +4,7 @@ import type { MapResponse, Terrain } from "../protocol.gen";
 import { TerrainForest, TerrainGrass, TerrainWater } from "../protocol.gen";
 import { DIRECTIONS, EDGE_DIRECTIONS, hexCorners, hexToPixel, HEX_SIZE } from "./hex";
 import { grainTexture } from "./grain";
+import { buildScatter } from "./scatter";
 import { buildTerrainIndex, hexKey, hexNoise, MAX_WATER_DEPTH, waterDepths } from "./terrain";
 
 // Muted retro palette; the CRT filter pass (milestone 9) sits on top of this.
@@ -125,6 +126,9 @@ export function buildMapLayer(map: MapResponse): Container {
   }
 
   layer.addChild(ground);
+  // Motifs sit above the ground but below the seams, so a terrain boundary
+  // still reads as a clean line rather than being interrupted by a treetop.
+  layer.addChild(buildScatter(map, depths));
   layer.addChild(buildBorders(map, index));
 
   return layer;
