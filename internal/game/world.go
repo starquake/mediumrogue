@@ -1580,8 +1580,37 @@ func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities,
 		Bubbles: w.bubbleViewsLocked(w.now(), visible), Quests: w.questViewsLocked(),
 		GroundItems: w.groundItemViewsLocked(centre), WorldID: w.worldID,
-		Hits: w.hitViewsLocked(visible),
+		Hits: w.hitViewsLocked(visible), Party: w.partyViewsLocked(viewerToken),
 	}
+}
+
+// partyViewsLocked renders the viewer's own party roster, COMPLETE regardless
+// of distance (#289) — empty for a solo player or a token-less watcher.
+//
+// The roster cannot be derived from the culled entity list: partymates are
+// culled like anything else, so a party that spread out would appear to lose
+// members. Identity data, so id and name only.
+func (w *World) partyViewsLocked(viewerToken string) []protocol.PartyMemberView {
+	members := make([]protocol.PartyMemberView, 0, 4) //nolint:mnd // a party is a handful; the slice grows if not.
+
+	viewer, ok := w.byToken[viewerToken]
+	if !ok || viewer == nil || viewer.partyID == 0 {
+		return members
+	}
+
+	for _, e := range w.entities {
+		if e.partyID != viewer.partyID {
+			continue
+		}
+
+		members = append(members, protocol.PartyMemberView{ID: e.id, Name: e.name})
+	}
+
+	// w.entities is a map — sort so the roster order is stable across turns
+	// and the client's <Index> rows do not shuffle.
+	slices.SortFunc(members, func(a, b protocol.PartyMemberView) int { return int(a.ID - b.ID) })
+
+	return members
 }
 
 // cullEntities drops every entity outside the interest radius (#289) and

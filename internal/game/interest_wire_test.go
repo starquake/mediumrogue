@@ -146,3 +146,77 @@ func TestSnapshotForWatcherCullsAroundOrigin(t *testing.T) {
 		t.Errorf("watcher bundle: monster beyond the radius present = %v, want %v", got, want)
 	}
 }
+
+func hasPartyMember(snap protocol.TurnEvent, id int64) bool {
+	for _, m := range snap.Party {
+		if m.ID == id {
+			return true
+		}
+	}
+
+	return false
+}
+
+// TestSnapshotForKeepsTheRosterWhenAPartymateIsCulled is the assertion that
+// makes decision 8 safe. Partymates are culled from the map like anything
+// else, and the client used to derive its roster panel by filtering the
+// bundle's entities by partyId — so without a separate field, a party that
+// spread out would watch its own roster shrink, name by name, with no
+// explanation. TurnEvent.Party is always complete regardless of distance.
+//
+//nolint:paralleltest // drives a shared world through Join/party flow.
+func TestSnapshotForKeepsTheRosterWhenAPartymateIsCulled(t *testing.T) {
+	w := newWideWorld()
+
+	alice, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("join alice: %v", err)
+	}
+
+	bob, err := w.Join("", "bob", protocol.ClassRogue, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("join bob: %v", err)
+	}
+
+	if _, err := w.PartyInvite(alice.Token, "bob"); err != nil {
+		t.Fatalf("party invite: %v", err)
+	}
+
+	if _, err := w.PartyAccept(bob.Token); err != nil {
+		t.Fatalf("party accept: %v", err)
+	}
+
+	w.SetHexForTest(alice.EntityID, protocol.Hex{})
+	w.SetHexForTest(bob.EntityID, eastOf(protocol.InterestRadius+5))
+
+	snap := w.SnapshotFor(alice.Token)
+
+	if got, want := hasEntity(snap, bob.EntityID), false; got != want {
+		t.Errorf("far partymate in entities = %v, want %v (culled like anything else)", got, want)
+	}
+
+	if got, want := hasPartyMember(snap, bob.EntityID), true; got != want {
+		t.Errorf("far partymate in the roster = %v, want %v (the roster must not shrink)", got, want)
+	}
+
+	if got, want := hasPartyMember(snap, alice.EntityID), true; got != want {
+		t.Errorf("viewer in own roster = %v, want %v", got, want)
+	}
+}
+
+// TestSnapshotForSoloPlayerHasNoRoster: partyId 0 means no party, and the
+// client renders no panel for an empty roster.
+//
+//nolint:paralleltest // drives a shared world through Join.
+func TestSnapshotForSoloPlayerHasNoRoster(t *testing.T) {
+	w := newWideWorld()
+
+	solo, err := w.Join("", "solo", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	if got, want := len(w.SnapshotFor(solo.Token).Party), 0; got != want {
+		t.Errorf("solo roster length = %d, want %d", got, want)
+	}
+}

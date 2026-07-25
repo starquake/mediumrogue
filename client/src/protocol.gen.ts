@@ -632,6 +632,15 @@ export const EventHeartbeat = "heartbeat";
  */
 export const EventChat = "chat";
 /**
+ * PartyMemberView is one row of the viewer's party roster (#289): identity
+ * only, no position or stats. Positional and combat state still travel on
+ * Entity, for the members close enough to appear there.
+ */
+export interface PartyMemberView {
+  id: number /* int64 */;
+  name: string;
+}
+/**
  * BubbleView is a window into a combat bubble: who's in it, which members it's
  * still waiting on, and how long until the patience timeout. Every bundle
  * carries all active bubbles; a client picks the one whose MemberIDs include
@@ -666,22 +675,36 @@ export interface TurnEvent {
    */
   intervalMs: number /* int64 */;
   /**
-   * Entities is every entity in the world, sorted by ID.
+   * Entities is every entity within InterestRadius of the viewer, sorted by
+   * ID — plus the viewer's own row unconditionally (#289). NOT the whole
+   * world: what lies beyond is known ground with nothing moving on it.
    */
   entities: Entity[];
   /**
-   * Bubbles is every active combat time bubble in the world; a client filters
-   * to the one containing its own entity.
+   * Bubbles is every active combat time bubble with at least one member the
+   * viewer can see; a client filters to the one containing its own entity.
    */
   bubbles: BubbleView[];
   /**
-   * Quests is the whole quest board, sorted by ID.
+   * Quests is the whole quest board, sorted by ID. Quests belong to a holder
+   * rather than a hex, so the interest radius does not cull them.
    */
   quests: QuestView[];
   /**
-   * GroundItems is every dropped item currently lying on the map.
+   * GroundItems is every dropped item lying within InterestRadius of the
+   * viewer (#289).
    */
   groundItems: GroundItemView[];
+  /**
+   * Party is the viewer's own party roster — every member's id and name,
+   * COMPLETE regardless of distance, empty when the viewer is solo.
+   * It exists because partymates are culled from Entities like anything else
+   * (#289): the client used to derive its roster by filtering entities on
+   * partyId, so without this field a party that spread out would watch its
+   * own roster shrink with no explanation. Roster membership is identity
+   * data, not positional data.
+   */
+  party: PartyMemberView[];
   /**
    * Hits is every hit landed in the last few turn resolutions (see
    * HitView's doc for the coalescing/dedupe contract) — the per-hit
