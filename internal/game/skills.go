@@ -57,12 +57,41 @@ const (
 // in wall-clock than world turns, and that dilation is the bubble's point, so
 // a turn-denominated cooldown rides it instead of fighting it (#161).
 type activeDef struct {
+	// kind names WHAT this active does. Without it every new active would be
+	// another hardcoded branch at resolution, and the category would become a
+	// switch statement pretending to be a system (#300). Each kind routes to
+	// machinery that already exists for consumables and throwables, so a new
+	// active is content rather than engine work.
+	kind string
 	// cooldownTurns is how many turns must pass before it can fire again.
 	// Must be > 0: a zero cooldown is a skill with no cost.
 	cooldownTurns int
 	// rangeHex is the furthest target hex, capped at protocol.CombatRadius so
 	// an active cannot leave a bubble from anywhere inside it by accident.
+	// ZERO for a self-cast kind, which has no target to range-check.
 	rangeHex int
+}
+
+// The active kinds. Each names an existing resolution path rather than a new
+// mechanism — see #300's wildfire-gate note: these pass only BECAUSE the
+// behaviour already exists for potions and thrown flasks.
+const (
+	// activeReposition moves the caster to the target hex (Blink, #161).
+	activeReposition = "reposition"
+)
+
+// activeNeedsTarget reports whether a kind is aimed at a hex.
+//
+// A self-cast has nothing to aim at, and validating it against a target hex it
+// never supplies would reject every cast. Kept as one predicate so submit-time
+// validation and resolution can never disagree about it.
+func activeNeedsTarget(kind string) bool {
+	switch kind {
+	case activeReposition:
+		return true
+	default:
+		return false
+	}
 }
 
 // skillDef is one entry in the skill registry: what it is, which tree it
@@ -224,7 +253,7 @@ var skillDefs = []*skillDef{
 		id: skillBlink, name: "Blink", tree: treeSurvival,
 		prereqs: []string{skillSurvivalist},
 		flavor:  "Here, then not.",
-		active:  &activeDef{cooldownTurns: 3, rangeHex: 3},
+		active:  &activeDef{kind: activeReposition, cooldownTurns: 3, rangeHex: 3},
 	},
 
 	{
@@ -312,9 +341,30 @@ func validateSkillActive(def *skillDef) {
 		panic("game: active skill " + def.id + " has no cooldown")
 	}
 
-	if def.active.rangeHex <= 0 || def.active.rangeHex > protocol.CombatRadius {
-		panic("game: active skill " + def.id + " range is outside 1..CombatRadius")
+	if !activeKnownKind(def.active.kind) {
+		panic("game: active skill " + def.id + " has unknown kind " + def.active.kind)
 	}
+
+	// A targeted kind needs a usable range; a self-cast must NOT carry one, or
+	// the def is lying about what it does and the next reader will believe it.
+	if activeNeedsTarget(def.active.kind) {
+		if def.active.rangeHex <= 0 || def.active.rangeHex > protocol.CombatRadius {
+			panic("game: active skill " + def.id + " range is outside 1..CombatRadius")
+		}
+
+		return
+	}
+
+	if def.active.rangeHex != 0 {
+		panic("game: self-cast active skill " + def.id + " must not carry a range")
+	}
+}
+
+// activeKnownKind reports whether kind is one this build can resolve. Content
+// naming an unknown kind panics at init like every other content error, rather
+// than failing silently mid-combat.
+func activeKnownKind(kind string) bool {
+	return kind == activeReposition
 }
 
 // validateSkillPrereqs panics if def names a prerequisite that is unknown,
@@ -442,6 +492,12 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error 
 		return ErrSkillOnCooldown
 	}
 
+	// A self-cast has no target to validate — checking range, walkability and
+	// line of sight against a hex it never supplies would refuse every cast.
+	if !activeNeedsTarget(def.active.kind) {
+		return w.commitActiveLocked(e, id, nil)
+	}
+
 	if HexDistance(e.hex, target) > def.active.rangeHex {
 		return ErrOutOfRange
 	}
@@ -462,14 +518,21 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error 
 		return ErrHexOccupied
 	}
 
-	// The turn's action, so it displaces any queued move or attack — the
-	// latest intent in the window wins, exactly as elsewhere.
+	return w.commitActiveLocked(e, id, &target)
+}
+
+// commitActiveLocked queues an active as this turn's action.
+//
+// It displaces any queued move, attack or throw — the latest intent in the
+// window wins, exactly as elsewhere. `target` is nil for a self-cast, which is
+// the one place an active legitimately has nowhere to point. Callers hold w.mu.
+func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex) error {
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
 	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
 	e.activeSkill = id
-	e.activeTarget = &target
+	e.activeTarget = target
 
 	return nil
 }

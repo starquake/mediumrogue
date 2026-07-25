@@ -2491,19 +2491,48 @@ func (w *World) movePhaseLocked(
 // A trigger is DROPPED, not deferred, if its caster attacked or died this
 // turn: the queue is one action per turn, and a stale blink firing a turn late
 // would teleport someone who has since chosen something else.
-func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool) {
+// activeCasters picks the members with an active queued this turn, in id order
+// so resolution is reproducible regardless of map iteration.
+//
+// A SELF-CAST carries no target, so the presence of the skill is the whole
+// signal; a targeted kind still needs its hex before it can resolve.
+func activeCasters(members []*entity) []*entity {
 	casters := make([]*entity, 0, len(members))
 
 	for _, e := range members {
-		if e.activeSkill != "" && e.activeTarget != nil {
-			casters = append(casters, e)
+		if e.activeSkill == "" {
+			continue
 		}
+
+		def, ok := skillDefByID[e.activeSkill]
+		if !ok || def.active == nil {
+			continue
+		}
+
+		if activeNeedsTarget(def.active.kind) && e.activeTarget == nil {
+			continue
+		}
+
+		casters = append(casters, e)
 	}
 
 	slices.SortFunc(casters, byEntityID)
 
+	return casters
+}
+
+func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool) {
+	casters := activeCasters(members)
+
 	for _, e := range casters {
-		id, target := e.activeSkill, *e.activeTarget
+		id := e.activeSkill
+
+		var target protocol.Hex
+
+		if e.activeTarget != nil {
+			target = *e.activeTarget
+		}
+
 		e.activeSkill, e.activeTarget = "", nil // consumed, hit or dropped
 
 		if attacked[e.id] || e.hp <= 0 {
@@ -2520,15 +2549,25 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 		// the live board and DROP (no move, no cooldown) rather than teleport
 		// onto an opposing/over-cap hex; useSkillLocked already refused the
 		// common static case with a surfaced reason.
-		if blockedFor(e, byHex, target) {
+		from := e.hex
+
+		switch def.active.kind {
+		case activeReposition:
+			// #196: the board evolves as actives resolve — an earlier blink
+			// this same turn may have taken the destination's last slot.
+			if blockedFor(e, byHex, target) {
+				continue
+			}
+
+			byHex[from] = removeEntity(byHex[from], e)
+			byHex[target] = append(byHex[target], e)
+			e.hex = target
+			e.path = nil
+		default:
+			// Unknown kinds cannot reach here: validateSkillActive panics at
+			// init on content naming one.
 			continue
 		}
-
-		from := e.hex
-		byHex[from] = removeEntity(byHex[from], e)
-		byHex[target] = append(byHex[target], e)
-		e.hex = target
-		e.path = nil
 
 		if e.activeReadyTurn == nil {
 			e.activeReadyTurn = make(map[string]int64, 1)
