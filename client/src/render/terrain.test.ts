@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Tile } from "../protocol.gen";
 import { TerrainForest, TerrainGrass, TerrainWater } from "../protocol.gen";
-import { buildTerrainIndex, hexKey, MAX_WATER_DEPTH, waterDepths } from "./terrain";
+import { buildTerrainIndex, hexKey, hexNoise, MAX_WATER_DEPTH, waterDepths } from "./terrain";
 
 /** tile is a terse Tile literal so a fixture map reads as a shape, not a wall of objects. */
 const tile = (q: number, r: number, terrain: Tile["terrain"]): Tile => ({ hex: { q, r }, terrain });
@@ -92,5 +92,30 @@ describe("waterDepths", () => {
 
     expect(depths.get(hexKey(1, 0))).toBe(1);
     expect(depths.get(hexKey(0, 0))).toBe(2);
+  });
+});
+
+describe("hexNoise", () => {
+  it("is stable for a coordinate", () => {
+    expect(hexNoise(3, -7)).toBe(hexNoise(3, -7));
+  });
+
+  it("stays inside [0, 1)", () => {
+    for (let q = -30; q <= 30; q += 7) {
+      for (let r = -30; r <= 30; r += 7) {
+        const n = hexNoise(q, r);
+        expect(n).toBeGreaterThanOrEqual(0);
+        expect(n).toBeLessThan(1);
+      }
+    }
+  });
+
+  it("differs between neighbours, so terrain does not band", () => {
+    // Adjacent hexes sharing a value would produce visible stripes; sample a
+    // patch and require a healthy spread of distinct values.
+    const seen = new Set<number>();
+    for (let q = 0; q < 20; q++) for (let r = 0; r < 20; r++) seen.add(hexNoise(q, r));
+
+    expect(seen.size).toBeGreaterThan(390);
   });
 });

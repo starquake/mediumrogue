@@ -12,6 +12,21 @@ import { DIRECTIONS } from "./hex";
 /** MAX_WATER_DEPTH caps the depth ramp: past this, water is simply "deep". */
 export const MAX_WATER_DEPTH = 5;
 
+/**
+ * hexNoise is a stable pseudo-random value in [0, 1) for an axial coordinate.
+ *
+ * Deterministic by design: the same hex is the same value on every frame, on
+ * every client, forever. That is what lets terrain variation be baked once at
+ * map build instead of animated, and it is why two players standing on the
+ * same tile see the same ground.
+ */
+export function hexNoise(q: number, r: number): number {
+  let h = (q * 374761393 + r * 668265263) ^ 0x5bf03635;
+  h = (h ^ (h >>> 13)) * 1274126177;
+
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 /** hexKey is the axial coordinate as a Map key — cheaper than nesting maps. */
 export function hexKey(q: number, r: number): string {
   return `${q},${r}`;
