@@ -877,3 +877,44 @@ rejected because every content tweak would then fight the test suite.
 (deaths, close calls, downtime, XP pace, spread), and the first report already
 quantified the headline unknown — nothing scales with party count, so solo
 play runs 5.8 deaths/100 turns while 15 players run 0.09.
+
+## Fog of war is the wire, not a filter *(built 2026-07-25, #289)*
+
+A turn bundle carries only what lies within `protocol.InterestRadius` (20
+hexes) of the viewer. The motivation was bandwidth — at the #286 big-world
+config ~96% of every bundle was entities nobody could see (3 of 1001 within 10
+hexes, 42 within 30) — but the decision taken was a **mechanic**, not an
+optimisation: what you cannot see is not sent, and the client draws the edge.
+
+Three things worth recording, because each rejected a plausible alternative.
+
+**The radius is what a player can SEE, and geometry chose the number.** The
+first answer was 30. At `HEX_SIZE` 32 a 30-hex ring spans 1440×1663 px — off
+screen at every normal zoom, so a "player-visible fog-of-war" would have been
+visible to nobody. At 20 the ring reaches exactly 960 px east–west, the edge of
+a 1920×1080 viewport at default zoom, and is nearly complete at `ZOOM_MIN` 0.5.
+The radius cannot go much lower either: making the ring comfortably visible in
+*all* directions at default zoom wants ~10 hexes, which collides with the
+Dragon's aggro radius of 12. 20 is close to the only number satisfying both.
+
+**The invariant is against the largest per-kind aggro radius, not the
+default.** `MonsterAggroRadius = 10` is only a default that kinds override, and
+the Dragon sits at 12. A guard written against the default would have passed
+while the real margin eroded, so the test asserts against every kind through
+`defAggroRadius` — the one place the "0 means the default" rule lives. Below
+that line a monster starts hunting from outside the bundle and then appears
+already aggressive.
+
+**Culling is pure distance; line of sight stays a combat rule.** Reusing
+`sight.go`'s raycast would have been the "consistent" choice and was rejected
+on cost — per entity, per viewer, per turn — and on meaning: the client already
+holds the whole map from `/api/map`, so culling hides what is MOVING, not the
+ground. Seeing a monster across a ridge you could not *spot* it through is the
+accepted consequence; visibility and spotting are different things.
+
+**The roster had to leave the entity list.** Partymates are culled like
+anything else, and the client derived its party panel by filtering the bundle's
+entities on `partyId` — so a party that spread out would have watched its own
+roster shrink, name by name, with no explanation. `TurnEvent.Party` carries id
+and name for every member regardless of distance. Roster membership is identity
+data; only position and combat state are positional.

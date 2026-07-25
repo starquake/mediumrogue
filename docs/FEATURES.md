@@ -1019,8 +1019,9 @@ roll, so it is ARPG-legal on jewelry.
   "fetch latest state", never a delta.
 - **Wire**: POST `/api/join`, `/api/intent`
   (move/attack/equip/unequip/drop/pickup/drink/learn-skill/use-skill/throw/recall), `/api/chat`;
-  GET `/api/map` (once), `/api/events` (SSE: full-snapshot turn bundles with
-  turn-number ids, chat events, named heartbeats). Reconnect =
+  GET `/api/map` (once), `/api/events` (SSE: per-viewer snapshot turn bundles
+  with turn-number ids, chat events, named heartbeats — complete for what the
+  viewer can see, never a delta; see **Interest radius** below). Reconnect =
   resync-to-latest (`Last-Event-ID` as watermark only). JSON everywhere.
   **Same-origin guard** (#97): every POST carrying a cross-origin `Origin`
   or a cross-/same-site `Sec-Fetch-Site` header is rejected with 403 ("same
@@ -1033,6 +1034,36 @@ roll, so it is ARPG-legal on jewelry.
   arriving while a turn resolves is accepted, never affects the resolving
   turn, and applies to the next one. The client's 2 s input window is
   pacing, not a server cutoff.
+- **Interest radius / fog of war** (#289, `protocol.InterestRadius = 20`):
+  a turn bundle carries only what lies within 20 hexes of the viewer —
+  entities (plus the viewer's own row unconditionally), ground items, bubbles
+  with a visible member, and hits with a visible participant. Quests are NOT
+  culled: they belong to a holder, not a hex. Each bundle is still a
+  **complete** snapshot of what is relevant to that viewer, never a delta, so
+  the hub's coalescing contract and resync-to-latest are unchanged.
+  Applied in `World.SnapshotFor`, which was already per-viewer.
+  **The invariant**: the radius must stay strictly greater than the LARGEST
+  per-kind aggro radius — not the `MonsterAggroRadius = 10` default, since
+  kinds override it and the Dragon sits at 12 (`content.go`). Otherwise a
+  monster hunts from outside what the player can see and appears already
+  aggressive. `TestInterestRadiusExceedsEveryAggroRadius` asserts it against
+  every kind, so a new high-aggro monster fails the build.
+  **Why 20**: it is about the largest radius a player can SEE. At `HEX_SIZE`
+  32 the ring reaches 960 px east–west — exactly the edge of a 1920×1080
+  viewport at the default zoom — and is nearly complete at `ZOOM_MIN` 0.5.
+  At 30 it sat off-screen at every zoom, so the fog-of-war edge would have
+  been invisible to everyone.
+  **Party roster** (`TurnEvent.Party`): id + name for every member of the
+  viewer's own party, complete regardless of distance. Partymates are culled
+  from `entities` like anything else, so the client reads its roster panel
+  from this field — deriving it from `entities` would make the panel shrink
+  as a party spread out.
+  **The visible edge** (`client/src/render/fog.ts`): a soft vignette (variant
+  A) fading the ground across the last 5 hexes, sitting above the map layer
+  and below every other layer so only TERRAIN dims — entities and items keep
+  full contrast at the boundary. Drawn as an ellipse, because a hex ring maps
+  to one in pixels (east–west `1.5 × HEX_SIZE × radius`, north–south
+  `√3 ×` that).
 - **Response compression** (#288, `internal/server/compress.go`): responses
   are gzipped for clients that send `Accept-Encoding: gzip`, decided by a
   media-type allowlist (`application/json`, `text/event-stream`, and the
