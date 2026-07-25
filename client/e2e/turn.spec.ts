@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { XPCurveBase } from "../src/protocol.gen";
 
+import { E2E_WORLD_RADIUS } from "./helpers";
+
 test("client connects and the turn counter advances live", async ({ page }) => {
   await page.goto("/");
 
@@ -60,11 +62,13 @@ test("the hex world renders from server map data", async ({ page }) => {
   // The WebGL canvas is on the page.
   await expect(page.locator("canvas")).toBeVisible();
 
-  // The map arrived and every tile of the generated radius-24 hexagon (the
-  // default WORLD_RADIUS) is on stage: 3·r·(r+1)+1 = 1801.
+  // The map arrived and every tile of the generated hexagon is on stage:
+  // 3·r·(r+1)+1. Derived from E2E_WORLD_RADIUS rather than hardcoded — the
+  // subject here is "the whole map reached the client", not one particular
+  // world size, and the size moved once already (#289).
   await expect
     .poll(() => page.evaluate(() => window.game.tiles), { timeout: 10_000 })
-    .toBe(1801);
+    .toBe(3 * E2E_WORLD_RADIUS * (E2E_WORLD_RADIUS + 1) + 1);
 
   // Visual smoke check: the stage actually painted terrain, not a black
   // void — sample the screenshot for non-background pixels.

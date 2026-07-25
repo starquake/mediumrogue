@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 import identityStorageStateTemplate from "./e2e/identity-storage-state.json" with { type: "json" };
+import { E2E_WORLD_RADIUS } from "./e2e/helpers";
 
 // E2E drives the real production artifact: the Go binary with the client bundle
 // embedded (built by `make e2e`). A fast TURN_INTERVAL lets a browser test
@@ -146,6 +147,21 @@ const serverEnv = (port: number, monsters?: number, extra?: Record<string, strin
   // gameplay, not throttles — the limits have their own integration tests.
   CHAT_MIN_INTERVAL: "0s",
   JOIN_MIN_INTERVAL: "0s",
+  // Small world so the #289 interest radius can never hide anything a spec
+  // needs. Two hexes in a radius-R map are at most 2R apart, so R = 10 keeps
+  // every pair inside protocol.InterestRadius (20) — restoring the invariant
+  // every spec was written against: what the world contains, the client
+  // receives. Without it a spec is at the mercy of spawn scatter, and the
+  // low-count ones are the exposed ones: `layout` spawns 3 monsters, and if
+  // all three land beyond the radius its chase-into-combat poll finds nothing
+  // and times out (seen in CI). Player-vs-player specs (multiplayer, parties)
+  // have the same exposure with no monsters at all — two players scattered
+  // across a radius-24 map can simply not see each other.
+  //
+  // Deliberately NOT a workaround for the mechanic: the culling itself is
+  // covered where it belongs, by internal/game's boundary tests. A spec whose
+  // subject IS the radius should override this.
+  WORLD_RADIUS: String(E2E_WORLD_RADIUS),
   ...(monsters ? { MONSTER_COUNT: String(monsters) } : {}),
   ...(extra ?? {}),
 });
