@@ -26,6 +26,22 @@ labels: enhancement
      subsystem) for a single item — a mechanic earns its place by serving
      multiple items, else use the existing card vocabulary. -->
 
+### Open questions
+
+<!-- Anything still FOR the maintainer. State the options and, where there is
+     a defensible default, which one you'd take and why — recommending is not
+     deciding. End the section with a fenced block they can copy, fill in and
+     paste back as a comment, one line per question:
+
+     ```
+     Q1 <topic>: [ option a / option b / option c ]
+     Q2 <topic>: [ option a / option b ]
+     ```
+
+     Mirror the same block in the `> 🤖 **Next steps**` comment so it can be
+     answered from the thread. Delete this section once everything is settled
+     and the answers have moved into Decisions. -->
+
 ### Design
 
 <!-- Server / client / content / wire, at whatever depth the slice needs.
