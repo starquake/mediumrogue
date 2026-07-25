@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 
 import type { MapResponse, Terrain } from "../protocol.gen";
 import { TerrainForest, TerrainGrass, TerrainWater } from "../protocol.gen";
-import { hexCorners, hexToPixel, HEX_SIZE } from "./hex";
+import { DIRECTIONS, EDGE_DIRECTIONS, hexCorners, hexToPixel, HEX_SIZE } from "./hex";
 import { buildTerrainIndex, hexKey, hexNoise, MAX_WATER_DEPTH, waterDepths } from "./terrain";
 
 // Muted retro palette; the CRT filter pass (milestone 9) sits on top of this.
@@ -95,13 +95,46 @@ export function buildMapLayer(map: MapResponse): Container {
     // same on every client and never shimmers between frames.
     const shaded = scale(base, NOISE_FLOOR + hexNoise(q, r) * NOISE_SPREAD);
 
-    ground
-      .poly(hexCorners(center, HEX_SIZE - 0.5))
-      .fill(toHex(tilt(shaded, center.x, halfWidth)))
-      .stroke(OUTLINE);
+    ground.poly(hexCorners(center, HEX_SIZE - 0.5)).fill(toHex(tilt(shaded, center.x, halfWidth)));
   }
 
   layer.addChild(ground);
+  layer.addChild(buildBorders(map, index));
 
   return layer;
+}
+
+/**
+ * buildBorders strokes only the edges where terrain changes (#296), instead of
+ * outlining every hex.
+ *
+ * Outlining every cell makes the world read as a grid; outlining only the seams
+ * makes a forest a mass and a lake a shoreline. It is also strictly LESS work
+ * than before — an interior hex surrounded by its own kind now draws nothing at
+ * all, where it used to draw six segments.
+ *
+ * The whole map is one path with a single stroke at the end, so this stays one
+ * batch however many seams the world happens to have.
+ */
+function buildBorders(map: MapResponse, index: Map<string, Terrain>): Graphics {
+  const borders = new Graphics();
+
+  for (const tile of map.tiles) {
+    const { q, r } = tile.hex;
+    const corners = hexCorners(hexToPixel(tile.hex), HEX_SIZE - 0.5);
+
+    EDGE_DIRECTIONS.forEach((dir, i) => {
+      const d = DIRECTIONS[dir];
+      // An off-map neighbour is `undefined`, which differs from any terrain —
+      // so the rim of the world gets an outline rather than fraying away.
+      if (index.get(hexKey(q + d.q, r + d.r)) === tile.terrain) return;
+
+      const j = ((i + 1) % 6) * 2;
+      borders.moveTo(corners[i * 2] ?? 0, corners[i * 2 + 1] ?? 0).lineTo(corners[j] ?? 0, corners[j + 1] ?? 0);
+    });
+  }
+
+  borders.stroke(OUTLINE);
+
+  return borders;
 }

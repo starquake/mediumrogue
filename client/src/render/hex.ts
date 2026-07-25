@@ -64,6 +64,19 @@ export function hexDistance(a: Hex, b: Hex): number {
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
 }
 
+/**
+ * Which neighbour each hexCorners EDGE faces, indexed the same way: edge i runs
+ * from corner i to corner (i+1) % 6.
+ *
+ * hexCorners places corner i at 60·i degrees, so edge i has its outward normal
+ * at 60·i + 30 degrees — 30° is the direction of `se` in pixel space, 90° is
+ * `s`, and so on round the hex. Needed by any layer that draws a hex's edges
+ * individually rather than its whole outline (#296 strokes only the edges where
+ * terrain changes). hex.test.ts pins the mapping geometrically, because getting
+ * it wrong draws a coastline one hex off in a way that is easy to miss.
+ */
+export const EDGE_DIRECTIONS: readonly Direction[] = ["se", "s", "sw", "nw", "n", "ne"];
+
 /** The six corner points of a hex, as a flat [x0, y0, x1, y1, …] array for PixiJS. */
 export function hexCorners(center: Point, size: number = HEX_SIZE): number[] {
   const points: number[] = [];
