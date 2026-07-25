@@ -80,6 +80,8 @@ export interface GameDebug {
     cooldownTurns: number;
     rangeHex: number;
     turnsUntilReady: number;
+    /** Targeting mode of an active — a SkillAim* value; "" for a passive (#300). */
+    aim: string;
   }[];
   /** The viewer's unspent skill-point bank. */
   skillPoints: number;

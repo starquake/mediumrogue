@@ -119,18 +119,22 @@ const (
 // different submit-time validations and three different client flows, and a
 // bool cannot say which — a self-cast and an entity-targeted debuff both fail
 // "needs a hex" for entirely different reasons.
-type activeAim int
+//
+// The values ARE the wire's (protocol.SkillAim*) rather than an engine enum
+// mapped to them at the boundary: the client needs this exact fact, and a
+// mapping function is one more place the two can disagree.
+type activeAim = string
 
 const (
 	// aimSelf is a self-cast: no target at all. Validating it against a hex it
 	// never supplies would reject every cast.
-	aimSelf activeAim = iota
-	// aimHex is pointed at a destination hex (Blink) — range, walkability and
-	// line of sight.
-	aimHex
+	aimSelf activeAim = protocol.SkillAimSelf
+	// aimHex is pointed at a hex — a Blink destination or a nova's ground
+	// zero.
+	aimHex activeAim = protocol.SkillAimHex
 	// aimEntity is pointed at another entity (Expose) — range, hostility and
 	// line of sight, exactly as a ranged attack is.
-	aimEntity
+	aimEntity activeAim = protocol.SkillAimEntity
 )
 
 // aimFor reports a kind's targeting mode. Kept as one function so submit-time
@@ -886,6 +890,7 @@ func skillViewsLocked(e *entity, turn int64) []protocol.SkillView {
 			view.Active = true
 			view.CooldownTurns = def.active.cooldownTurns
 			view.RangeHex = def.active.rangeHex
+			view.Aim = aimFor(def.active.kind)
 
 			if ready := e.activeReadyTurn[def.id]; ready > turn {
 				view.TurnsUntilReady = int(ready - turn)

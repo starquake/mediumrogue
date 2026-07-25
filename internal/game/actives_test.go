@@ -205,7 +205,7 @@ func TestSelfCastActivesAreRegistered(t *testing.T) {
 		}
 
 		if got, want := aimFor(def.active.kind), aimSelf; got != want {
-			t.Errorf("%s aim = %d, want %d (self-cast)", tc.id, got, want)
+			t.Errorf("%s aim = %q, want %q (self-cast)", tc.id, got, want)
 		}
 
 		if got, want := def.active.rangeHex, 0; got != want {
@@ -306,7 +306,7 @@ func TestEmberNovaResolvesInTheAttackPhase(t *testing.T) {
 	}
 
 	if got, want := aimFor(def.active.kind), aimHex; got != want {
-		t.Errorf("ember nova aim = %d, want %d (hex)", got, want)
+		t.Errorf("ember nova aim = %q, want %q (hex)", got, want)
 	}
 
 	// The reach invariant, on the shipped content and not just the validator.

@@ -831,7 +831,32 @@ export interface SkillView {
   cooldownTurns: number /* int */;
   rangeHex: number /* int */;
   turnsUntilReady: number /* int */;
+  /**
+   * Aim is one of the SkillAim* values and tells the client WHICH targeting
+   * flow this active needs (#300) — self-cast, a hex, or another entity.
+   * Empty for a passive.
+   * It is on the wire rather than derived client-side because the aim is a
+   * property of the skill's behaviour kind, which is server content: a
+   * client guessing it (RangeHex == 0 means self-cast, say) would be a
+   * second, divergent implementation of a rule that already exists.
+   */
+  aim: string;
 }
+/**
+ * SkillAimSelf fires the moment it is triggered: no targeting step, no
+ * map click. A "click yourself" flow would be a worse version of pressing
+ * the button.
+ */
+export const SkillAimSelf = "self";
+/**
+ * SkillAimHex arms, and the next map click is the target hex.
+ */
+export const SkillAimHex = "hex";
+/**
+ * SkillAimEntity arms, and the next map click must land on a hostile —
+ * the entity's id is what gets sent, not the hex.
+ */
+export const SkillAimEntity = "entity";
 /**
  * StatView is one rendered stat line (#171) — "+50% Chaos Resistance",
  * "×2 Damage vs Adjacent". Derived server-side from the item's rule cards, so
