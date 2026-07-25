@@ -46,6 +46,13 @@ export interface GameDebug {
   lastLevelUp: number;
   /** Number of map tiles rendered; 0 until the map layer is on stage. */
   tiles: number;
+  /**
+   * Wall-clock milliseconds spent building the map layer (#296). The map is
+   * built once from every tile in the world, so terrain-rendering changes show
+   * up here and nowhere else — a headless run reads this to compare a before
+   * and an after rather than guessing at the cost.
+   */
+  mapBuildMs: number;
   /** Entity count from the latest turn bundle. */
   entities: number;
   /** Monster count from the latest turn bundle. */

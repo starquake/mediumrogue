@@ -360,6 +360,7 @@ window.game = {
   turn: -1,
   connected: false,
   tiles: 0,
+  mapBuildMs: 0,
   entities: 0,
   monsters: 0,
   positions: [],
@@ -515,7 +516,14 @@ async function start(): Promise<void> {
   app.stage.addChild(world);
 
   const map = await fetchMap();
+
+  // Timed because the map layer is the one thing built from every tile in the
+  // world — 43,561 of them at the deployed WORLD_RADIUS=120 — so any change to
+  // how a hex is drawn multiplies by that. Exposed on window.game rather than
+  // logged so a headless run can compare a before and an after (#296).
+  const mapBuildStart = performance.now();
   world.addChild(buildMapLayer(map));
+  window.game.mapBuildMs = Math.round(performance.now() - mapBuildStart);
   window.game.tiles = map.tiles.length;
 
   // The interest-radius vignette (#289). Created here so updateCamera can
