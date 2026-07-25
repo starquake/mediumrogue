@@ -44,6 +44,23 @@ export const CombatRadius = 6;
  */
 export const MonsterAggroRadius = 10;
 /**
+ * InterestRadius is how far (in hexes) a player receives live entity data
+ * (#289): a turn bundle carries only what lies within it, so the world
+ * beyond is known ground with nothing moving on it. It is fog of war, not
+ * just a bandwidth cut — the client draws a soft vignette at the edge.
+ * It MUST stay strictly greater than the LARGEST per-kind aggro radius —
+ * not merely MonsterAggroRadius, which kinds override (the Dragon sits at
+ * 12). Otherwise a monster starts hunting from outside what the player can
+ * see and then appears already aggressive. TestInterestRadiusExceedsEvery-
+ * AggroRadius pins this against every kind, so a new high-aggro monster
+ * fails the build instead of quietly eating the margin.
+ * 20 is also about the largest radius a player can SEE: at HEX_SIZE 32 the
+ * ring reaches 960 px east-west, exactly the edge of a 1920x1080 viewport
+ * at the client's default zoom. At 30 it sat off-screen at every zoom,
+ * which would have made the fog-of-war edge invisible to everyone.
+ */
+export const InterestRadius = 20;
+/**
  * MonsterLeashMultiplier sizes a WORLD-domain monster's default leash
  * radius (#102): a monster farther than MonsterLeashMultiplier × its own
  * base aggro radius from its home (spawn) hex drops any chase and walks
