@@ -3,6 +3,8 @@ package game //nolint:testpackage // white-box: exercises the unexported skill r
 import (
 	"strings"
 	"testing"
+
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 // actives_test.go (#161): active skills as a CATEGORY.
@@ -221,5 +223,94 @@ func TestSelfCastActivesAreRegistered(t *testing.T) {
 		if got, want := def.active.effect.magnitude, tc.magnitude; got != want {
 			t.Errorf("%s magnitude = %d, want %d", tc.id, got, want)
 		}
+	}
+}
+
+// --- The area-damage kind (#300) ------------------------------------------
+
+// TestValidateSkillDefsPanicsOnABlastBeyondTheBubble: the same reach invariant
+// every item obeys (validateMaxReach). A blast whose furthest hex sits outside
+// the caster's combat bubble could kill a monster in the WORLD domain, which
+// awards no kill-XP — a silent theft of progression, not a crash.
+func TestValidateSkillDefsPanicsOnABlastBeyondTheBubble(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("validateSkillDefs did not panic on a blast reaching past CombatRadius")
+		}
+	}()
+
+	validateSkillDefs([]*skillDef{{
+		id: "x", tree: treeSurvival, active: &activeDef{
+			kind: activeAreaDamage, cooldownTurns: 3,
+			rangeHex: protocol.CombatRadius, aoeRadius: 1,
+			damage: 5, damageType: protocol.DamageTypeFire,
+		},
+	}})
+}
+
+// TestValidateSkillDefsPanicsOnABlastThatDoesNothing: neither damage nor a
+// rider is a cooldown spent on nothing — a learnable skill that visibly fires
+// and changes no state.
+func TestValidateSkillDefsPanicsOnABlastThatDoesNothing(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("validateSkillDefs did not panic on a blast with no damage and no effect")
+		}
+	}()
+
+	validateSkillDefs([]*skillDef{{
+		id: "x", tree: treeSurvival, active: &activeDef{
+			kind: activeAreaDamage, cooldownTurns: 3, rangeHex: 3,
+			aoeRadius: 1, damage: 0, damageType: protocol.DamageTypeFire,
+		},
+	}})
+}
+
+// TestValidateSkillDefsPanicsOnABlastPayloadTheKindIgnores: the mirror of the
+// effect check. A blink carrying a blast radius reads as an explosive teleport
+// and is not one.
+func TestValidateSkillDefsPanicsOnABlastPayloadTheKindIgnores(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("validateSkillDefs did not panic on a blast payload the kind never fires")
+		}
+	}()
+
+	validateSkillDefs([]*skillDef{{
+		id: "x", tree: treeSurvival, active: &activeDef{
+			kind: activeReposition, cooldownTurns: 3, rangeHex: 3, aoeRadius: 2,
+		},
+	}})
+}
+
+// TestEmberNovaResolvesInTheAttackPhase: the kind's defining property, asserted
+// on the descriptor rather than only through a world. A blast that drifted to
+// the move phase would land against POST-move positions, so walking away would
+// dodge it while a flask at the same hex still connected.
+func TestEmberNovaResolvesInTheAttackPhase(t *testing.T) {
+	t.Parallel()
+
+	def, ok := skillDefByID[skillEmberNova]
+	if !ok {
+		t.Fatal("ember nova is not registered")
+	}
+
+	if !activeResolvesInAttackPhase(def.active.kind) {
+		t.Error("ember nova does not resolve in the attack phase")
+	}
+
+	if got, want := aimFor(def.active.kind), aimHex; got != want {
+		t.Errorf("ember nova aim = %d, want %d (hex)", got, want)
+	}
+
+	// The reach invariant, on the shipped content and not just the validator.
+	if got, want := def.active.rangeHex+def.active.aoeRadius, protocol.CombatRadius; got > want {
+		t.Errorf("ember nova reach = %d, want <= %d", got, want)
 	}
 }

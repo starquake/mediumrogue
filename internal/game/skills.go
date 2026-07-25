@@ -54,6 +54,7 @@ const (
 	skillSecondWind = "second-wind"
 	skillBulwark    = "bulwark"
 	skillExpose     = "expose"
+	skillEmberNova  = "ember-nova"
 )
 
 // activeDef is a skill's triggerable half (#161). A skill is passive (rules,
@@ -80,8 +81,19 @@ type activeDef struct {
 	// effect is the timed effect this active applies, for the kinds that apply
 	// one (activeAppliesEffect); nil otherwise. It is the SAME appliedEffect a
 	// potion carries, handed to the same applyTimedEffectLocked — a skill and a
-	// drink are two triggers on one mechanism, not two mechanisms.
+	// drink are two triggers on one mechanism, not two mechanisms. For
+	// activeAreaDamage it is OPTIONAL and rides as the blast's on-hit rider,
+	// exactly as a flask's onLand does.
 	effect *appliedEffect
+	// The blast payload, for activeAreaDamage only (zero on every other kind).
+	// Deliberately the throwPayload's own fields under the throwPayload's own
+	// rules: aoeRadius 0 means the landing hex alone, damage may be 0 for a
+	// pure-DoT nova, and rangeHex+aoeRadius obeys the same CombatRadius reach
+	// cap a flask does (validateActiveBlast) — a skill must not be able to
+	// kill outside its own bubble any more than an item can.
+	aoeRadius  int
+	damage     int
+	damageType string
 }
 
 // The active kinds. Each names an existing resolution path rather than a new
@@ -97,6 +109,10 @@ const (
 	// activeTargetEffect applies the def's timed effect to a named hostile
 	// entity (#300) — a debuff, aimed the way a ranged attack is aimed.
 	activeTargetEffect = "target-effect"
+	// activeAreaDamage blasts a hex (#300) — the thrown flask's resolution
+	// without the flask. It is the one kind that resolves in the ATTACK phase
+	// rather than the move phase; see resolveActiveBlastsLocked.
+	activeAreaDamage = "area-damage"
 )
 
 // activeAim names what a kind is POINTED at. The three modes need three
@@ -121,7 +137,7 @@ const (
 // validation, resolution and the wire can never disagree about it.
 func aimFor(kind string) activeAim {
 	switch kind {
-	case activeReposition:
+	case activeReposition, activeAreaDamage:
 		return aimHex
 	case activeTargetEffect:
 		return aimEntity
@@ -130,12 +146,27 @@ func aimFor(kind string) activeAim {
 	}
 }
 
+// activeResolvesInAttackPhase reports whether a kind is resolved by
+// resolveActiveBlastsLocked (attack phase) rather than resolveActivesLocked
+// (move phase).
+//
+// A blast IS an attack: it needs the rng and the shared damage map that only
+// the attack phase has, and it must land against PRE-move positions like every
+// other hit, or walking away this turn would dodge it while a thrown flask at
+// the same hex still connects.
+func activeResolvesInAttackPhase(kind string) bool {
+	return kind == activeAreaDamage
+}
+
 // activeAppliesEffect reports whether a kind uses activeDef.effect. Kinds that
 // do not must leave it nil — a def carrying a payload nothing reads is a
 // content bug that would otherwise look like a working skill.
+//
+// For the two *Effect kinds the effect IS the skill and is required; for
+// activeAreaDamage it is an optional rider on the blast (validateActiveEffect).
 func activeAppliesEffect(kind string) bool {
 	switch kind {
-	case activeSelfEffect, activeTargetEffect:
+	case activeSelfEffect, activeTargetEffect, activeAreaDamage:
 		return true
 	default:
 		return false
@@ -255,6 +286,24 @@ var skillDefs = []*skillDef{
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
 				then: effect{kind: effMulPct, n: percentBase + 10}},
+		},
+	},
+	{
+		// Ember Nova (#300): the Flask of Alchemist's Fire, minus the flask.
+		// Same shape (fire, 1-hex blast at range 4, a burning rider), one
+		// point weaker per cast and one turn shorter on the DoT — the flask
+		// costs an item, this costs a cooldown, and the consumable must stay
+		// worth carrying.
+		//
+		// Behind Kindler on purpose: the fire line's own payoff, and Kindler's
+		// +10% fire folds into it through the ordinary pipeline.
+		id: skillEmberNova, name: "Ember Nova", tree: treeClass,
+		prereqs: []string{skillKindler},
+		flavor:  "The air remembers being lit.",
+		active: &activeDef{
+			kind: activeAreaDamage, cooldownTurns: 5, rangeHex: 4,
+			aoeRadius: 1, damage: 5, damageType: protocol.DamageTypeFire,
+			effect: &appliedEffect{effectID: idEffectBurning, magnitude: -2, turns: 2},
 		},
 	},
 	{
@@ -441,6 +490,43 @@ func validateSkillActive(def *skillDef) {
 
 	validateActiveRange(def)
 	validateActiveEffect(def)
+	validateActiveBlast(def)
+}
+
+// validateActiveBlast panics if an active's blast payload disagrees with its
+// kind, or breaks the rules a thrown flask's payload already obeys
+// (validateThrowPayload / validateMaxReach).
+func validateActiveBlast(def *skillDef) {
+	a := def.active
+
+	if a.kind != activeAreaDamage {
+		if a.aoeRadius != 0 || a.damage != 0 || a.damageType != "" {
+			panic("game: active skill " + def.id + " carries a blast its kind " + a.kind + " never fires")
+		}
+
+		return
+	}
+
+	if a.aoeRadius < 0 || a.damage < 0 {
+		panic("game: active skill " + def.id + " must not have negative aoeRadius or damage")
+	}
+
+	// A blast that neither hits nor lingers is a cooldown spent on nothing.
+	if a.damage == 0 && a.effect == nil {
+		panic("game: active skill " + def.id + " blasts for no damage and no effect")
+	}
+
+	if !validDamageType(a.damageType) {
+		panic("game: active skill " + def.id + " has unknown or missing damage type " + a.damageType)
+	}
+
+	// The same reach invariant every item obeys (validateMaxReach): the
+	// furthest hex a blast touches must already be inside the caster's combat
+	// bubble, or a monster could be killed in the WORLD domain, which awards no
+	// kill-XP.
+	if a.rangeHex+a.aoeRadius > protocol.CombatRadius {
+		panic("game: active skill " + def.id + " reach exceeds CombatRadius")
+	}
 }
 
 // validateActiveRange panics if an active's range disagrees with its aim: a
@@ -478,7 +564,13 @@ func validateActiveEffect(def *skillDef) {
 		return
 	}
 
+	// A blast's effect is a RIDER — the damage is the skill, the DoT is a
+	// bonus — so it may be absent. Every other applying kind IS its effect.
 	if ae == nil {
+		if def.active.kind == activeAreaDamage {
+			return
+		}
+
 		panic("game: active skill " + def.id + " kind " + def.active.kind + " needs an effect")
 	}
 
@@ -503,7 +595,7 @@ func validateActiveEffect(def *skillDef) {
 // than failing silently mid-combat.
 func activeKnownKind(kind string) bool {
 	switch kind {
-	case activeReposition, activeSelfEffect, activeTargetEffect:
+	case activeReposition, activeSelfEffect, activeTargetEffect, activeAreaDamage:
 		return true
 	default:
 		return false
@@ -649,23 +741,38 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 		return ErrOutOfRange
 	}
 
-	if !w.walkableLocked(target) {
-		return ErrNotWalkable
+	// Walkability and occupancy belong to REPOSITION, not to hex-aiming: they
+	// ask "can you stand there", and a blast does not want to stand anywhere.
+	// Aiming one at an occupied hex is the normal case — it is where the
+	// monsters are.
+	if def.active.kind == activeReposition {
+		if err := w.checkBlinkDestinationLocked(e, target); err != nil {
+			return err
+		}
 	}
 
 	if w.sightBlockedLocked(e.hex, target, def.active.rangeHex) {
 		return ErrNoLineOfSight
 	}
 
-	// #196: a blink onto an opposing-held or StackCap-full hex is refused here
-	// for the same reason an ordinary mover is turned away — occupancy is not
-	// negotiable. resolveActivesLocked re-checks against the evolving board for
-	// the rare hex that fills between this window and resolution.
+	return w.commitActiveLocked(e, id, &target, 0)
+}
+
+// checkBlinkDestinationLocked reports whether e may land on target: it must be
+// walkable, and it must have room under the occupancy rules an ordinary mover
+// obeys (#196 — occupancy is not negotiable). resolveActivesLocked re-checks
+// against the evolving board for the rare hex that fills between this window
+// and resolution. Callers hold w.mu.
+func (w *World) checkBlinkDestinationLocked(e *entity, target protocol.Hex) error {
+	if !w.walkableLocked(target) {
+		return ErrNotWalkable
+	}
+
 	if w.occupiedForLocked(e, target) {
 		return ErrHexOccupied
 	}
 
-	return w.commitActiveLocked(e, id, &target, 0)
+	return nil
 }
 
 // useEntityAimedSkillLocked validates an entity-aimed active (#300, Expose).

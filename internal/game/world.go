@@ -2516,6 +2516,13 @@ func activeCasters(members []*entity) []*entity {
 			continue
 		}
 
+		// A blast already resolved and cleared itself in the attack phase, so
+		// this is unreachable today — but it is the guard that keeps the two
+		// phases from ever both claiming one trigger if that ordering changes.
+		if activeResolvesInAttackPhase(def.active.kind) {
+			continue
+		}
+
 		switch aimFor(def.active.kind) {
 		case aimHex:
 			if e.activeTarget == nil {
@@ -2603,18 +2610,87 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 			continue
 		}
 
-		if e.activeReadyTurn == nil {
-			e.activeReadyTurn = make(map[string]int64, 1)
-		}
-
-		// Ready again N turns from the turn being resolved. Counts TURNS,
-		// whichever clock is ticking (activeDef).
-		e.activeReadyTurn[id] = w.turn + 1 + int64(def.active.cooldownTurns)
+		w.startActiveCooldownLocked(e, id, def.active)
 
 		// "to" is the caster's hex AFTER resolution, not the submitted target:
 		// they agree for a reposition, and for a self-cast the submitted target
 		// is the zero hex, which would read as a blink to the world origin.
 		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id, "from", from, "to", e.hex)
+	}
+}
+
+// startActiveCooldownLocked marks id ready again N turns from the turn being
+// resolved. Counts TURNS, whichever clock is ticking (activeDef). Shared by
+// both resolution phases so a blast's cooldown can never drift from a blink's.
+// Callers hold w.mu.
+func (w *World) startActiveCooldownLocked(e *entity, id string, a *activeDef) {
+	if e.activeReadyTurn == nil {
+		e.activeReadyTurn = make(map[string]int64, 1)
+	}
+
+	e.activeReadyTurn[id] = w.turn + 1 + int64(a.cooldownTurns)
+}
+
+// resolveActiveBlastsLocked fires every queued area-damage active (#300) into
+// the turn's shared damage map, in caster-id order so two novas in one turn
+// resolve reproducibly.
+//
+// This is the ONE active kind that resolves in the attack phase rather than the
+// move phase, and it is here for the same reasons a thrown flask is: it needs
+// the rng and the shared map, and it must land against PRE-move positions like
+// every other hit. Routing it through resolveAoELocked with a synthesized
+// pure-data weapon means faction filtering, the damage pipeline, damage-type
+// resistances and the buffered on-hit rider all come along unwritten — the
+// caster's own Kindler card folds into their nova exactly as it folds into
+// their flask.
+//
+// The trigger is CONSUMED whether it blasts or fizzles, so the move phase never
+// sees it. Callers hold w.mu.
+func (w *World) resolveActiveBlastsLocked(
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int,
+) {
+	var casters []*entity
+
+	for _, occs := range byHex {
+		for _, e := range occs {
+			if e.activeSkill == "" || e.activeTarget == nil {
+				continue
+			}
+
+			def, ok := skillDefByID[e.activeSkill]
+			if ok && def.active != nil && activeResolvesInAttackPhase(def.active.kind) {
+				casters = append(casters, e)
+			}
+		}
+	}
+
+	slices.SortFunc(casters, byEntityID)
+
+	for _, e := range casters {
+		id, target := e.activeSkill, *e.activeTarget
+		e.activeSkill, e.activeTarget, e.activeTargetEntity = "", nil, 0
+
+		if e.hp <= 0 {
+			continue
+		}
+
+		def := skillDefByID[id]
+		a := def.active
+
+		// A pure-data weapon synthesized from the blast, exactly as
+		// resolveThrowsLocked synthesizes one from a throw payload.
+		var onHit []appliedEffect
+		if a.effect != nil {
+			onHit = []appliedEffect{*a.effect}
+		}
+
+		wpn := &itemDef{id: def.id, name: def.name, damageType: a.damageType, onHit: onHit}
+
+		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id,
+			"target", target, "radius", a.aoeRadius)
+
+		w.resolveAoELocked(rng, byHex, e, wpn, target, a.aoeRadius, a.damage, damage)
+		w.startActiveCooldownLocked(e, id, a)
 	}
 }
 
@@ -2711,7 +2787,8 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
-	w.resolveThrowsLocked(rng, byHex, damage) // #271: thrown flasks land in the same shared map.
+	w.resolveThrowsLocked(rng, byHex, damage)       // #271: thrown flasks land in the same shared map.
+	w.resolveActiveBlastsLocked(rng, byHex, damage) // #300: so do area-damage actives.
 
 	for id, dmg := range damage {
 		w.entities[id].hp -= dmg
