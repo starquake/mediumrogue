@@ -175,3 +175,133 @@ func TestSelfCastIsRejectedOnCooldown(t *testing.T) {
 		t.Fatal("a second self-cast inside the cooldown was accepted")
 	}
 }
+
+// --- Expose: the entity-aimed kind (#300) ----------------------------------
+
+const (
+	skillExposeID = "expose"
+	// effectVulnerable is Ward's mirror (#300) — an ABOVE-100 take-damage
+	// multiplier, marked harmful so a cleanse strips it.
+	effectVulnerable = "vulnerable"
+)
+
+// TestExposeAppliesVulnerableToTheNamedVictim: the entity aim, end to end. The
+// intent names a victim by id — no hex anywhere — and the debuff lands on that
+// entity, not on the caster.
+func TestExposeAppliesVulnerableToTheNamedVictim(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	id, token := selfCaster(t, w, skillCombatTrainingID, skillWeakSpotID, skillExposeID)
+
+	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
+
+	victimHex := walkableHexAtDistance(t, w, protocol.Hex{Q: 0, R: 0}, 2, 3)
+	clearSightLine(t, w, protocol.Hex{Q: 0, R: 0}, victimHex)
+	victim := w.PlaceMonsterForTest(victimHex)
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
+		SkillID: skillExposeID, TargetEntityID: victim,
+	}); err != nil {
+		t.Fatalf("SubmitIntent use-skill: %v", err)
+	}
+
+	step(t, w)
+
+	mag, turns, ok := w.EffectForTest(victim, effectVulnerable)
+	if !ok {
+		t.Fatal("expose applied no vulnerable effect to the victim")
+	}
+
+	if got, want := mag, 120; got != want {
+		t.Errorf("vulnerable magnitude = %d, want %d (percentBase+20)", got, want)
+	}
+
+	if got, want := turns, 3; got != want {
+		t.Errorf("vulnerable turns = %d, want %d", got, want)
+	}
+
+	// The caster is not the target. A kind that applied to whoever cast it
+	// would pass every assertion above if the victim happened to be the caster.
+	if _, _, ok := w.EffectForTest(id, effectVulnerable); ok {
+		t.Error("expose debuffed its own caster")
+	}
+}
+
+// TestExposeIsRefusedOnAnAlly: a debuff is a weapon. Landing one on a friend is
+// not a mis-click to be forgiven — the action should not exist, so it is
+// refused at submit time with the same error a friendly-fire attack gets.
+func TestExposeIsRefusedOnAnAlly(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	id, token := selfCaster(t, w, skillCombatTrainingID, skillWeakSpotID, skillExposeID)
+
+	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
+
+	ally, err := w.Join("", "friend", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	allyHex := walkableHexAtDistance(t, w, protocol.Hex{Q: 0, R: 0}, 2, 3)
+	clearSightLine(t, w, protocol.Hex{Q: 0, R: 0}, allyHex)
+	w.SetHexForTest(ally.EntityID, allyHex)
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
+		SkillID: skillExposeID, TargetEntityID: ally.EntityID,
+	}); err == nil {
+		t.Fatal("expose on an ally was accepted")
+	}
+}
+
+// TestExposeIsRefusedOutOfRange: the same reach gate a shot gets. Without it a
+// debuff would be a free action against anything visible, which is a longer
+// reach than any weapon in the game.
+func TestExposeIsRefusedOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	id, token := selfCaster(t, w, skillCombatTrainingID, skillWeakSpotID, skillExposeID)
+
+	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
+
+	// Expose reaches 4; place the victim beyond it.
+	farHex := walkableHexAtDistance(t, w, protocol.Hex{Q: 0, R: 0}, 5, 6)
+	clearSightLine(t, w, protocol.Hex{Q: 0, R: 0}, farHex)
+	victim := w.PlaceMonsterForTest(farHex)
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
+		SkillID: skillExposeID, TargetEntityID: victim,
+	}); err == nil {
+		t.Fatal("expose beyond its range was accepted")
+	}
+}
+
+// TestVulnerableIsCleansedAsHarmful: the counterplay, and it is INHERITED —
+// nothing in skills.go mentions cleansing. Vulnerable is marked harmful on its
+// effect row, and that one field is the whole of the behaviour.
+func TestVulnerableIsCleansedAsHarmful(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	me, err := w.Join("", "cured", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.ApplyEffectForTest(me.EntityID, effectVulnerable, 120, 3)
+
+	stackID := w.GrantItemForTest(me.EntityID, "antivenom")
+	if err := w.SubmitIntent(intentFor(me.EntityID, me.Token, protocol.IntentDrink, stackID)); err != nil {
+		t.Fatalf("SubmitIntent drink antivenom: %v", err)
+	}
+
+	if _, _, ok := w.EffectForTest(me.EntityID, effectVulnerable); ok {
+		t.Error("antivenom did not clear vulnerable — it is marked harmful")
+	}
+}

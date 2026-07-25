@@ -53,6 +53,7 @@ const (
 	// needed a line of resolution code of its own.
 	skillSecondWind = "second-wind"
 	skillBulwark    = "bulwark"
+	skillExpose     = "expose"
 )
 
 // activeDef is a skill's triggerable half (#161). A skill is passive (rules,
@@ -93,19 +94,39 @@ const (
 	// the same call a potion makes, with a cooldown instead of an inventory
 	// slot as its cost.
 	activeSelfEffect = "self-effect"
+	// activeTargetEffect applies the def's timed effect to a named hostile
+	// entity (#300) — a debuff, aimed the way a ranged attack is aimed.
+	activeTargetEffect = "target-effect"
 )
 
-// activeNeedsTarget reports whether a kind is aimed at a hex.
-//
-// A self-cast has nothing to aim at, and validating it against a target hex it
-// never supplies would reject every cast. Kept as one predicate so submit-time
-// validation and resolution can never disagree about it.
-func activeNeedsTarget(kind string) bool {
+// activeAim names what a kind is POINTED at. The three modes need three
+// different submit-time validations and three different client flows, and a
+// bool cannot say which — a self-cast and an entity-targeted debuff both fail
+// "needs a hex" for entirely different reasons.
+type activeAim int
+
+const (
+	// aimSelf is a self-cast: no target at all. Validating it against a hex it
+	// never supplies would reject every cast.
+	aimSelf activeAim = iota
+	// aimHex is pointed at a destination hex (Blink) — range, walkability and
+	// line of sight.
+	aimHex
+	// aimEntity is pointed at another entity (Expose) — range, hostility and
+	// line of sight, exactly as a ranged attack is.
+	aimEntity
+)
+
+// aimFor reports a kind's targeting mode. Kept as one function so submit-time
+// validation, resolution and the wire can never disagree about it.
+func aimFor(kind string) activeAim {
 	switch kind {
 	case activeReposition:
-		return true
+		return aimHex
+	case activeTargetEffect:
+		return aimEntity
 	default:
-		return false
+		return aimSelf
 	}
 }
 
@@ -114,7 +135,7 @@ func activeNeedsTarget(kind string) bool {
 // content bug that would otherwise look like a working skill.
 func activeAppliesEffect(kind string) bool {
 	switch kind {
-	case activeSelfEffect:
+	case activeSelfEffect, activeTargetEffect:
 		return true
 	default:
 		return false
@@ -167,6 +188,22 @@ var skillDefs = []*skillDef{
 			// have caught a thrown mace.
 			{event: evDealDamage, when: []condition{{kind: condWeaponTagged, s: protocol.WeaponTagMelee}},
 				then: effect{kind: effMulPct, n: percentBase + 10}},
+		},
+	},
+	{
+		// Expose (#300): the first entity-aimed active, and Ward's mirror —
+		// a take-damage effMulPct ABOVE percentBase instead of below. Marked
+		// harmful on the row, which is the whole of its counterplay: a monster
+		// that could cleanse would shrug it off, and nothing here says so.
+		//
+		// A party skill by shape: the debuff helps whoever hits the target
+		// next, which is usually not the caster.
+		id: skillExpose, name: "Expose", tree: treeClass,
+		prereqs: []string{skillWeakSpot},
+		flavor:  "You point. Everyone else understands.",
+		active: &activeDef{
+			kind: activeTargetEffect, cooldownTurns: 5, rangeHex: 4,
+			effect: &appliedEffect{effectID: idEffectVulnerable, magnitude: percentBase + 20, turns: 3},
 		},
 	},
 	{
@@ -406,20 +443,21 @@ func validateSkillActive(def *skillDef) {
 	validateActiveEffect(def)
 }
 
-// validateActiveRange panics if an active's range disagrees with its kind: a
-// targeted kind needs a usable one, a self-cast must NOT carry one, or the def
-// is lying about what it does and the next reader will believe it.
+// validateActiveRange panics if an active's range disagrees with its aim: a
+// kind that points at something needs a usable one, a self-cast must NOT carry
+// one, or the def is lying about what it does and the next reader will believe
+// it.
 func validateActiveRange(def *skillDef) {
-	if activeNeedsTarget(def.active.kind) {
-		if def.active.rangeHex <= 0 || def.active.rangeHex > protocol.CombatRadius {
-			panic("game: active skill " + def.id + " range is outside 1..CombatRadius")
+	if aimFor(def.active.kind) == aimSelf {
+		if def.active.rangeHex != 0 {
+			panic("game: self-cast active skill " + def.id + " must not carry a range")
 		}
 
 		return
 	}
 
-	if def.active.rangeHex != 0 {
-		panic("game: self-cast active skill " + def.id + " must not carry a range")
+	if def.active.rangeHex <= 0 || def.active.rangeHex > protocol.CombatRadius {
+		panic("game: active skill " + def.id + " range is outside 1..CombatRadius")
 	}
 }
 
@@ -465,7 +503,7 @@ func validateActiveEffect(def *skillDef) {
 // than failing silently mid-combat.
 func activeKnownKind(kind string) bool {
 	switch kind {
-	case activeReposition, activeSelfEffect:
+	case activeReposition, activeSelfEffect, activeTargetEffect:
 		return true
 	default:
 		return false
@@ -579,7 +617,7 @@ func learnableFor(e *entity, def *skillDef) bool {
 //
 // The destination needs range, walkability AND line of sight: an active does
 // not pass through walls, so cover stays real.
-func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error {
+func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, targetEntityID int64) error {
 	def, ok := skillDefByID[id]
 	if !ok {
 		return ErrNoSuchSkill
@@ -597,10 +635,14 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error 
 		return ErrSkillOnCooldown
 	}
 
-	// A self-cast has no target to validate — checking range, walkability and
-	// line of sight against a hex it never supplies would refuse every cast.
-	if !activeNeedsTarget(def.active.kind) {
-		return w.commitActiveLocked(e, id, nil)
+	switch aimFor(def.active.kind) {
+	case aimSelf:
+		// Nothing to validate — checking range, walkability and line of sight
+		// against a hex it never supplies would refuse every cast.
+		return w.commitActiveLocked(e, id, nil, 0)
+	case aimEntity:
+		return w.useEntityAimedSkillLocked(e, def, targetEntityID)
+	case aimHex:
 	}
 
 	if HexDistance(e.hex, target) > def.active.rangeHex {
@@ -623,21 +665,51 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error 
 		return ErrHexOccupied
 	}
 
-	return w.commitActiveLocked(e, id, &target)
+	return w.commitActiveLocked(e, id, &target, 0)
+}
+
+// useEntityAimedSkillLocked validates an entity-aimed active (#300, Expose).
+//
+// The gates are queueAttackLocked's entity branch, deliberately: a debuff you
+// can land is a debuff you could have shot, so the same hostility, reach and
+// line-of-sight rules apply and terrain stays real cover. Callers hold w.mu.
+func (w *World) useEntityAimedSkillLocked(e *entity, def *skillDef, targetEntityID int64) error {
+	victim, ok := w.entities[targetEntityID]
+	if !ok || victim.hp <= 0 {
+		return ErrAttackTargetNotFound
+	}
+
+	// Hostile-only. A debuff is a weapon; landing one on an ally is not a
+	// mis-click to be forgiven, it is an action that should not exist.
+	if !opposing(e, victim) {
+		return ErrAttackTargetNotHostile
+	}
+
+	if HexDistance(e.hex, victim.hex) > def.active.rangeHex {
+		return ErrOutOfRange
+	}
+
+	if !w.seesLocked(e.hex, victim.hex) {
+		return ErrNoLineOfSight
+	}
+
+	return w.commitActiveLocked(e, def.id, nil, targetEntityID)
 }
 
 // commitActiveLocked queues an active as this turn's action.
 //
 // It displaces any queued move, attack or throw — the latest intent in the
-// window wins, exactly as elsewhere. `target` is nil for a self-cast, which is
-// the one place an active legitimately has nowhere to point. Callers hold w.mu.
-func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex) error {
+// window wins, exactly as elsewhere. Exactly one of `target`/`targetEntityID`
+// is set, or neither for a self-cast — the one place an active legitimately has
+// nowhere to point. Callers hold w.mu.
+func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex, targetEntityID int64) error {
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
 	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
 	e.activeSkill = id
 	e.activeTarget = target
+	e.activeTargetEntity = targetEntityID
 
 	return nil
 }

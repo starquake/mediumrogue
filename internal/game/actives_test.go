@@ -202,8 +202,8 @@ func TestSelfCastActivesAreRegistered(t *testing.T) {
 			t.Fatalf("%s is not an active", tc.id)
 		}
 
-		if activeNeedsTarget(def.active.kind) {
-			t.Errorf("%s needs a target, want a self-cast", tc.id)
+		if got, want := aimFor(def.active.kind), aimSelf; got != want {
+			t.Errorf("%s aim = %d, want %d (self-cast)", tc.id, got, want)
 		}
 
 		if got, want := def.active.rangeHex, 0; got != want {

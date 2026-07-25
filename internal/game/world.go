@@ -258,10 +258,14 @@ type entity struct {
 	// usable again (#161). Absent means ready. Counted in TURNS, whichever
 	// clock is ticking — see activeDef.
 	activeReadyTurn map[string]int64
-	// activeSkill/activeTarget are this turn's queued active-skill trigger
-	// (#161) — transient like path and attackTarget, never snapshotted.
-	activeSkill  string
-	activeTarget *protocol.Hex
+	// activeSkill/activeTarget/activeTargetEntity are this turn's queued
+	// active-skill trigger (#161) — transient like path and attackTarget,
+	// never snapshotted. Which of the two targets is set (or neither) follows
+	// from the skill's aimFor (#300), the same way an attack's hex and entity
+	// targets are mutually exclusive.
+	activeSkill        string
+	activeTarget       *protocol.Hex
+	activeTargetEntity int64
 	// throwItem/throwTarget are this turn's queued throw (#271): the owned
 	// throwable consumable's instance id and its aim hex. 0/nil for none.
 	// Resolved in the attack phase (resolveThrowsLocked) — a throw is a
@@ -1207,7 +1211,7 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 	case protocol.IntentLearnSkill:
 		return w.learnSkillLocked(e, req.SkillID)
 	case protocol.IntentUseSkill:
-		return w.useSkillLocked(e, req.SkillID, req.Target)
+		return w.useSkillLocked(e, req.SkillID, req.Target, req.TargetEntityID)
 	case protocol.IntentThrow:
 		return w.queueThrowLocked(e, req.ItemID, req.Target)
 	case protocol.IntentRecall:
@@ -2496,7 +2500,9 @@ func (w *World) movePhaseLocked(
 // so resolution is reproducible regardless of map iteration.
 //
 // A SELF-CAST carries no target, so the presence of the skill is the whole
-// signal; a targeted kind still needs its hex before it can resolve.
+// signal; an aimed kind still needs whatever it points at before it can
+// resolve — which is different per aim, so the check follows aimFor rather
+// than assuming a hex.
 func activeCasters(members []*entity) []*entity {
 	casters := make([]*entity, 0, len(members))
 
@@ -2510,8 +2516,16 @@ func activeCasters(members []*entity) []*entity {
 			continue
 		}
 
-		if activeNeedsTarget(def.active.kind) && e.activeTarget == nil {
-			continue
+		switch aimFor(def.active.kind) {
+		case aimHex:
+			if e.activeTarget == nil {
+				continue
+			}
+		case aimEntity:
+			if e.activeTargetEntity == 0 {
+				continue
+			}
+		case aimSelf:
 		}
 
 		casters = append(casters, e)
@@ -2534,7 +2548,10 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 			target = *e.activeTarget
 		}
 
-		e.activeSkill, e.activeTarget = "", nil // consumed, hit or dropped
+		victimID := e.activeTargetEntity
+
+		// Consumed, hit or dropped.
+		e.activeSkill, e.activeTarget, e.activeTargetEntity = "", nil, 0
 
 		if attacked[e.id] || e.hp <= 0 {
 			continue
@@ -2570,6 +2587,16 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 			// refresh-not-stack, the sorted fold order and the cleanse rules
 			// all come along unwritten.
 			w.pendingEffects = append(w.pendingEffects, pendingEffectApply{target: e, ae: *def.active.effect})
+		case activeTargetEffect:
+			// The victim may have died to this turn's attack phase, which
+			// resolves first. Debuffing a corpse is a wasted cooldown for no
+			// reason, so drop it the way a blocked blink drops.
+			victim, alive := w.entities[victimID]
+			if !alive || victim.hp <= 0 {
+				continue
+			}
+
+			w.pendingEffects = append(w.pendingEffects, pendingEffectApply{target: victim, ae: *def.active.effect})
 		default:
 			// Unknown kinds cannot reach here: validateSkillActive panics at
 			// init on content naming one.
