@@ -79,6 +79,7 @@ import type { HitStyle } from "./render/damage";
 import { DamageNumberLayer } from "./render/damage";
 import { EntityLayer } from "./render/entities";
 import type { CommittedAction } from "./render/feedback";
+import { createFogLayer } from "./render/fog";
 import { FeedbackLayer } from "./render/feedback";
 import { hexDistance, hexToPixel, pixelToHex } from "./render/hex";
 import { HoverHighlightLayer, type HoverMoveTile } from "./render/hover";
@@ -371,6 +372,7 @@ window.game = {
   me: null,
   camera: { x: 0, y: 0 },
   zoom: 1,
+  fogCenter: { x: 0, y: 0 },
   intervalMs: 0,
   heartbeats: 0,
   get phase(): "playback" | "input" {
@@ -515,6 +517,13 @@ async function start(): Promise<void> {
   const map = await fetchMap();
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
+
+  // The interest-radius vignette (#289) goes on immediately above the ground
+  // and below every other layer, so it fades TERRAIN only — entities, ground
+  // items and highlights all draw over it at full contrast. Its position is
+  // driven from updateCamera, which already has the player's live pixel.
+  const fogLayer = createFogLayer();
+  world.addChild(fogLayer.container);
 
   // Walkability lookup for the combat movement overlay: grass and forest are
   // walkable (the same rule the server's map applies); everything else —
@@ -760,8 +769,13 @@ async function start(): Promise<void> {
     const p = entityLayer.myPixel() ?? hexToPixel({ q: 0, r: 0 });
     world.position.set(app.screen.width / 2 - p.x * zoom, app.screen.height / 2 - p.y * zoom);
 
+    // The fog rides the same live pixel: the server culls around the player's
+    // hex, so the fade has to be centred on the player, not on the camera.
+    fogLayer.update(p.x, p.y);
+
     window.game.camera = { x: world.position.x, y: world.position.y };
     window.game.zoom = zoom;
+    window.game.fogCenter = { x: p.x, y: p.y };
   };
   updateCamera();
   app.ticker.add(updateCamera);

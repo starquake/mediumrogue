@@ -117,6 +117,13 @@ export interface GameDebug {
    * divides by this after subtracting `camera`; hexToScreen multiplies by it.
    */
   zoom: number;
+  /**
+   * World-pixel centre of the interest-radius vignette (#289) — the player's
+   * live interpolated position, which is also the hex the SERVER culls the
+   * bundle around. Exposed so a test can assert the fade tracks the player
+   * rather than the camera or the origin.
+   */
+  fogCenter: { x: number; y: number };
   /** Runtime turn interval from the latest bundle, in ms. */
   intervalMs: number;
   /** Count of named heartbeat frames received — proves the keep-alive is observable. */
