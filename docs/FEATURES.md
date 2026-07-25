@@ -1059,11 +1059,17 @@ roll, so it is ARPG-legal on jewelry.
   from this field — deriving it from `entities` would make the panel shrink
   as a party spread out.
   **The visible edge** (`client/src/render/fog.ts`): a soft vignette (variant
-  A) fading the ground across the last 5 hexes, sitting above the map layer
-  and below every other layer so only TERRAIN dims — entities and items keep
-  full contrast at the boundary. Drawn as an ellipse, because a hex ring maps
-  to one in pixels (east–west `1.5 × HEX_SIZE × radius`, north–south
-  `√3 ×` that).
+  A) starting 5 hexes inside the boundary and reaching full opacity one hex
+  PAST it — so nothing the server still sends is left without ground under it.
+  Added to `world` LAST, above every world-space layer, so entities dim with
+  the terrain: a monster near the limit is meant to be harder to make out, not
+  a crisp sprite floating on fog. The player sits at the centre where the fade
+  is zero, and DOM chrome (HUD, panels, chat) is outside `world` entirely.
+  The boundary is a **hexagon** — that is what a constant hex distance is —
+  built from a circumradius of `√3 × HEX_SIZE × radius` and drawn as
+  concentric rings rather than one gradient quad: a screen-covering quad costs
+  a full-viewport alpha blend every frame even where it is transparent, which
+  measured ~6 s on a 14 s e2e spec under CI's software renderer.
 - **Response compression** (#288, `internal/server/compress.go`): responses
   are gzipped for clients that send `Accept-Encoding: gzip`, decided by a
   media-type allowlist (`application/json`, `text/event-stream`, and the

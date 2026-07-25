@@ -518,12 +518,13 @@ async function start(): Promise<void> {
   world.addChild(buildMapLayer(map));
   window.game.tiles = map.tiles.length;
 
-  // The interest-radius vignette (#289) goes on immediately above the ground
-  // and below every other layer, so it fades TERRAIN only — entities, ground
-  // items and highlights all draw over it at full contrast. Its position is
-  // driven from updateCamera, which already has the player's live pixel.
+  // The interest-radius vignette (#289). Created here so updateCamera can
+  // drive it, but added to `world` LAST (after the damage layer below), so it
+  // sits over every world-space layer — terrain, ground items, and entities
+  // alike. Maintainer's call: monsters and players near the boundary should
+  // dim with the ground rather than stay at full contrast above it, so the
+  // limit is felt on the things that matter and not just on the scenery.
   const fogLayer = createFogLayer();
-  world.addChild(fogLayer.container);
 
   // Walkability lookup for the combat movement overlay: grass and forest are
   // walkable (the same rule the server's map applies); everything else —
@@ -745,6 +746,11 @@ async function start(): Promise<void> {
   // Floating damage numbers render above everything on the map.
   const damageLayer = new DamageNumberLayer(app.ticker);
   world.addChild(damageLayer.container);
+
+  // Fog last: it dims everything in world space, entities included (see where
+  // fogLayer is created). DOM chrome — the HUD, panels, chat — is outside
+  // `world` and unaffected.
+  world.addChild(fogLayer.container);
 
   // Follow camera + smooth wheel zoom (#273/#274, Grim-Dawn/Diablo style). The
   // camera re-centres on my entity's *live* (per-frame interpolated) position
