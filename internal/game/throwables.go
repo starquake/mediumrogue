@@ -129,7 +129,7 @@ func (e *entity) clearQueuedActionLocked(keep clearKeep) {
 // damages every opposing-faction entity in radius through the full pipeline
 // (AoE always hits; resistances/vulnerabilities of the throw's damage type
 // apply) and its on-land timed effect rides the synthesized def's onHit — the
-// same buffered path (pendingOnHit) a poison weapon uses, so a fresh DoT first
+// same buffered path (pendingEffects) a poison weapon uses, so a fresh DoT first
 // bites next turn. Callers hold w.mu.
 func (w *World) resolveThrowsLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int) {
 	var throwers []*entity

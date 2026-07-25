@@ -47,6 +47,12 @@ const (
 	// Actives (#161). Blink is the first — the category exists so the second
 	// one is content rather than another special case.
 	skillBlink = "blink"
+
+	// Actives 2 (#300). Both are self-casts over rows the potions already
+	// use, which is the proof the descriptor was worth having: neither
+	// needed a line of resolution code of its own.
+	skillSecondWind = "second-wind"
+	skillBulwark    = "bulwark"
 )
 
 // activeDef is a skill's triggerable half (#161). A skill is passive (rules,
@@ -70,6 +76,11 @@ type activeDef struct {
 	// an active cannot leave a bubble from anywhere inside it by accident.
 	// ZERO for a self-cast kind, which has no target to range-check.
 	rangeHex int
+	// effect is the timed effect this active applies, for the kinds that apply
+	// one (activeAppliesEffect); nil otherwise. It is the SAME appliedEffect a
+	// potion carries, handed to the same applyTimedEffectLocked — a skill and a
+	// drink are two triggers on one mechanism, not two mechanisms.
+	effect *appliedEffect
 }
 
 // The active kinds. Each names an existing resolution path rather than a new
@@ -78,6 +89,10 @@ type activeDef struct {
 const (
 	// activeReposition moves the caster to the target hex (Blink, #161).
 	activeReposition = "reposition"
+	// activeSelfEffect applies the def's timed effect to the CASTER (#300) —
+	// the same call a potion makes, with a cooldown instead of an inventory
+	// slot as its cost.
+	activeSelfEffect = "self-effect"
 )
 
 // activeNeedsTarget reports whether a kind is aimed at a hex.
@@ -88,6 +103,18 @@ const (
 func activeNeedsTarget(kind string) bool {
 	switch kind {
 	case activeReposition:
+		return true
+	default:
+		return false
+	}
+}
+
+// activeAppliesEffect reports whether a kind uses activeDef.effect. Kinds that
+// do not must leave it nil — a def carrying a payload nothing reads is a
+// content bug that would otherwise look like a working skill.
+func activeAppliesEffect(kind string) bool {
+	switch kind {
+	case activeSelfEffect:
 		return true
 	default:
 		return false
@@ -257,6 +284,36 @@ var skillDefs = []*skillDef{
 	},
 
 	{
+		// Second Wind (#300): the Healing Draught's regen row, triggered by a
+		// cooldown instead of by spending an item. Deliberately the SAME
+		// numbers as the potion — a skill that outheals the consumable would
+		// make the consumable dead content, and the point of the slice is that
+		// actives cost no new vocabulary.
+		//
+		// Longer cooldown than Blink: a heal that returns every third turn is
+		// attrition removed rather than managed.
+		id: skillSecondWind, name: "Second Wind", tree: treeSurvival,
+		prereqs: []string{skillSurvivalist},
+		flavor:  "You find the breath you had put down somewhere.",
+		active: &activeDef{
+			kind: activeSelfEffect, cooldownTurns: 6,
+			effect: &appliedEffect{effectID: idEffectRegen, magnitude: 3, turns: 3},
+		},
+	},
+	{
+		// Bulwark (#300): the Warding Tonic's row. Sits behind Hardy rather
+		// than beside Blink so the Survival tree has actual depth — this is
+		// the tree's strongest defensive button and should cost the walk.
+		id: skillBulwark, name: "Bulwark", tree: treeSurvival,
+		prereqs: []string{skillHardy},
+		flavor:  "Set, and stay set.",
+		active: &activeDef{
+			kind: activeSelfEffect, cooldownTurns: 6,
+			effect: &appliedEffect{effectID: idEffectWard, magnitude: percentBase - 25, turns: 4},
+		},
+	},
+
+	{
 		id: skillScouting, name: "Scouting", tree: treeAdventure,
 		flavor: "You read the ground before you walk it.",
 		rules: []ruleCard{
@@ -345,8 +402,14 @@ func validateSkillActive(def *skillDef) {
 		panic("game: active skill " + def.id + " has unknown kind " + def.active.kind)
 	}
 
-	// A targeted kind needs a usable range; a self-cast must NOT carry one, or
-	// the def is lying about what it does and the next reader will believe it.
+	validateActiveRange(def)
+	validateActiveEffect(def)
+}
+
+// validateActiveRange panics if an active's range disagrees with its kind: a
+// targeted kind needs a usable one, a self-cast must NOT carry one, or the def
+// is lying about what it does and the next reader will believe it.
+func validateActiveRange(def *skillDef) {
 	if activeNeedsTarget(def.active.kind) {
 		if def.active.rangeHex <= 0 || def.active.rangeHex > protocol.CombatRadius {
 			panic("game: active skill " + def.id + " range is outside 1..CombatRadius")
@@ -360,11 +423,53 @@ func validateSkillActive(def *skillDef) {
 	}
 }
 
+// validateActiveEffect panics if an active's timed-effect payload disagrees
+// with its kind, or names instance values applyTimedEffectLocked cannot use.
+// The checks mirror validateItemAppliesEffect deliberately: the same
+// appliedEffect reaching the same applier deserves the same guards whatever
+// pulled the trigger.
+func validateActiveEffect(def *skillDef) {
+	ae := def.active.effect
+
+	if !activeAppliesEffect(def.active.kind) {
+		if ae != nil {
+			panic("game: active skill " + def.id + " carries an effect its kind " +
+				def.active.kind + " never applies")
+		}
+
+		return
+	}
+
+	if ae == nil {
+		panic("game: active skill " + def.id + " kind " + def.active.kind + " needs an effect")
+	}
+
+	if _, ok := effectDefByID[ae.effectID]; !ok {
+		panic("game: active skill " + def.id + " names unknown effect " + ae.effectID)
+	}
+
+	if ae.turns <= 0 {
+		panic("game: active skill " + def.id + " effect " + ae.effectID + " must have turns > 0")
+	}
+
+	// toSelf is an on-hit router (attacker vs victim); an active's KIND already
+	// says who is affected, so a set flag means the author expected it to be
+	// read and it never will be.
+	if ae.toSelf {
+		panic("game: active skill " + def.id + " must not set toSelf (the kind decides who is affected)")
+	}
+}
+
 // activeKnownKind reports whether kind is one this build can resolve. Content
 // naming an unknown kind panics at init like every other content error, rather
 // than failing silently mid-combat.
 func activeKnownKind(kind string) bool {
-	return kind == activeReposition
+	switch kind {
+	case activeReposition, activeSelfEffect:
+		return true
+	default:
+		return false
+	}
 }
 
 // validateSkillPrereqs panics if def names a prerequisite that is unknown,

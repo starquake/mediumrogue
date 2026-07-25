@@ -99,3 +99,127 @@ func TestTeleportIsRegisteredAsAnActive(t *testing.T) {
 		t.Errorf("blink carries %d rule cards, want 0 — an active's behaviour is its trigger", len(def.rules))
 	}
 }
+
+// --- The self-effect kind (#300) ------------------------------------------
+
+// TestValidateSkillDefsPanicsOnASelfEffectWithoutAnEffect: a kind whose entire
+// behaviour is its payload, shipped without one, would be a learnable skill
+// that does nothing when triggered — the silent failure the registry exists to
+// make impossible.
+func TestValidateSkillDefsPanicsOnASelfEffectWithoutAnEffect(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("validateSkillDefs did not panic on a self-effect active with no effect")
+		}
+	}()
+
+	validateSkillDefs([]*skillDef{{
+		id: "x", tree: treeSurvival, active: &activeDef{kind: activeSelfEffect, cooldownTurns: 3},
+	}})
+}
+
+// TestValidateSkillDefsPanicsOnAnEffectTheKindIgnores: the mirror. A reposition
+// carrying a regen row reads as a heal-and-teleport and is not one; nothing
+// would ever apply it.
+func TestValidateSkillDefsPanicsOnAnEffectTheKindIgnores(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("validateSkillDefs did not panic on an effect the kind never applies")
+		}
+	}()
+
+	validateSkillDefs([]*skillDef{{
+		id: "x", tree: treeSurvival, active: &activeDef{
+			kind: activeReposition, cooldownTurns: 3, rangeHex: 3,
+			effect: &appliedEffect{effectID: idEffectRegen, magnitude: 3, turns: 3},
+		},
+	}})
+}
+
+// TestValidateSkillDefsPanicsOnASelfEffectNamingAnUnknownRow: the same guard
+// every other effect-carrying content type gets (validateItemAppliesEffect) —
+// a typo'd id must fail at load, not resolve to nothing mid-fight.
+func TestValidateSkillDefsPanicsOnASelfEffectNamingAnUnknownRow(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("validateSkillDefs did not panic on an unknown effect id")
+		}
+	}()
+
+	validateSkillDefs([]*skillDef{{
+		id: "x", tree: treeSurvival, active: &activeDef{
+			kind: activeSelfEffect, cooldownTurns: 3,
+			effect: &appliedEffect{effectID: "no-such-effect", magnitude: 3, turns: 3},
+		},
+	}})
+}
+
+// TestValidateSkillDefsPanicsOnASelfEffectWithNoDuration: applyTimedEffectLocked
+// treats turns <= 0 as a no-op, so a zero-duration payload is a skill that
+// visibly fires and changes nothing.
+func TestValidateSkillDefsPanicsOnASelfEffectWithNoDuration(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("validateSkillDefs did not panic on a zero-duration effect")
+		}
+	}()
+
+	validateSkillDefs([]*skillDef{{
+		id: "x", tree: treeSurvival, active: &activeDef{
+			kind: activeSelfEffect, cooldownTurns: 3,
+			effect: &appliedEffect{effectID: idEffectRegen, magnitude: 3, turns: 0},
+		},
+	}})
+}
+
+// TestSelfCastActivesAreRegistered: the two content rows, and the fact that
+// neither carries a range — the descriptor's promise that a self-cast has
+// nothing to aim at.
+func TestSelfCastActivesAreRegistered(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		id, effectID string
+		magnitude    int
+	}{
+		{skillSecondWind, idEffectRegen, 3},
+		{skillBulwark, idEffectWard, percentBase - 25},
+	} {
+		def, ok := skillDefByID[tc.id]
+		if !ok {
+			t.Fatalf("%s is not registered", tc.id)
+		}
+
+		if def.active == nil {
+			t.Fatalf("%s is not an active", tc.id)
+		}
+
+		if activeNeedsTarget(def.active.kind) {
+			t.Errorf("%s needs a target, want a self-cast", tc.id)
+		}
+
+		if got, want := def.active.rangeHex, 0; got != want {
+			t.Errorf("%s range = %d, want %d — a self-cast has nothing to aim at", tc.id, got, want)
+		}
+
+		if def.active.effect == nil {
+			t.Fatalf("%s carries no effect", tc.id)
+		}
+
+		if got, want := def.active.effect.effectID, tc.effectID; got != want {
+			t.Errorf("%s effect = %q, want %q", tc.id, got, want)
+		}
+
+		if got, want := def.active.effect.magnitude, tc.magnitude; got != want {
+			t.Errorf("%s magnitude = %d, want %d", tc.id, got, want)
+		}
+	}
+}

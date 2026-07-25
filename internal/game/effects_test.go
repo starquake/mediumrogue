@@ -267,7 +267,7 @@ func TestBloodrageCleaverSelfBuffsOnHit(t *testing.T) {
 // slice 2): the Hydra's bite (idHydraFangs, toSelf) self-applies a regen effect,
 // so the monster knits itself back together as it fights — the second real
 // evEndOfTurn consumer the foundation left as a white-box test. Application is
-// AFTER the tick (applyPendingOnHitLocked), so the bite turn only lands the
+// AFTER the tick (applyPendingEffectsLocked), so the bite turn only lands the
 // effect; the heal starts next turn, at full duration — exactly mirroring the
 // Serpent's poison timing but in the heal direction. A follow-up tick proves the
 // heal actually restores HP.
