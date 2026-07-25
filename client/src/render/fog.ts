@@ -13,14 +13,18 @@ import { HEX_SIZE } from "./hex";
 // GROUND fades. Entities keep full contrast: a monster at 19 hexes is exactly
 // the one about to matter, and dimming it would be the opposite of helpful.
 //
-// Drawn as concentric RINGS rather than one big gradient quad, and that is a
-// performance decision, not a stylistic one. The obvious implementation — a
-// screen-covering sprite with a radial gradient — costs a full-viewport alpha
-// blend every frame even though its middle is entirely transparent. Measured
-// under CI's software renderer that was ~6 s on a 14 s e2e spec, pushing it
-// against its 30 s timeout. Rings rasterise only the annulus that actually has
-// alpha, so at the default zoom — where the boundary sits at the screen edge —
-// almost nothing is drawn at all.
+// The boundary is a HEXAGON, not a circle or an ellipse, because that is what
+// a constant hex distance actually is. An earlier ellipse through the north and
+// east vertices looked close but left the east/west corners of the true
+// boundary OUTSIDE the fog — so in-range monsters standing there appeared over
+// unfogged black, which reads as a rendering fault rather than as fog.
+//
+// Drawn as concentric rings rather than one big gradient quad, and that is a
+// performance decision. A screen-covering sprite costs a full-viewport alpha
+// blend every frame even though its middle is entirely transparent; under CI's
+// software renderer that measured ~6 s on a 14 s e2e spec. Rings rasterise only
+// the annulus that actually has alpha, so at the default zoom — where the
+// boundary sits at the screen edge — almost nothing is drawn.
 
 // FADE_HEXES is how far inside the boundary the fade begins — the last few
 // hexes wash out rather than ending on a line, which is what makes it variant A
@@ -31,9 +35,17 @@ const FADE_HEXES = 5;
 // steps are invisible against the hex grid, few enough to stay cheap.
 const BANDS = 24;
 
+// FADE_END is where the fade reaches full opacity: one hex PAST the interest
+// radius, not on it. Landing it exactly on the boundary blacks out the
+// outermost ring of hexes the server still sends, so a monster standing there —
+// in range, drawn above the fog — appears to float on void. Finishing a hex
+// later keeps some ground under every entity the client can be told about, and
+// full opacity then begins where there is never anything to draw.
+const FADE_END = (InterestRadius + 1) / InterestRadius;
+
 // SKIRT is how far past the boundary the opaque fill reaches, as a multiple of
-// the boundary radius. Beyond the boundary the fog is fully opaque, and it has
-// to out-reach the widest viewport anyone can pull up at ZOOM_MIN — otherwise
+// the boundary. Beyond the fade the fog is fully opaque, and it has to
+// out-reach the widest viewport anyone can pull up at ZOOM_MIN — otherwise
 // undimmed ground would show past its edge.
 const SKIRT = 3;
 
@@ -41,14 +53,26 @@ const SKIRT = 3;
 // reads as the void the map sits on rather than a grey film over it.
 const FOG_COLOR = 0x0b0f0b;
 
-// A hex ring maps to an ELLIPSE in pixels, not a circle: with flat-top hexes
-// the east–west extent is 1.5 × HEX_SIZE × radius while north–south is
-// √3 × HEX_SIZE × radius. The geometry is built at the true east–west size, so
-// the curves tessellate smoothly, and the container is stretched on Y by the
-// ratio — drawing a unit circle and scaling it up would leave visible polygon
-// edges.
-const EAST_WEST = 1.5 * HEX_SIZE * InterestRadius;
-const NORTH_SOUTH = Math.sqrt(3) * HEX_SIZE * InterestRadius;
+// CIRCUMRADIUS is the pixel distance to any corner of the hex-distance-
+// InterestRadius ring. Under hex.ts's flat-top layout (x = 1.5·s·q,
+// y = s·(√3/2·q + √3·r)) the corner (q=R, r=0) lands at (1.5·s·R, √3/2·s·R) and
+// (q=0, r=R) at (0, √3·s·R) — both √3·s·R from the centre. All six corners are
+// equidistant, so the boundary is a REGULAR hexagon and its corners can be
+// generated from an angle rather than tabulated.
+const CIRCUMRADIUS = Math.sqrt(3) * HEX_SIZE * InterestRadius;
+
+// CORNERS is how many corners a hexagon has. Named so the geometry below reads
+// as "walk the boundary" rather than as a bare 6.
+const CORNERS = 6;
+
+/** corner returns hexagon corner i, on a boundary scaled by `scale`. */
+function corner(i: number, scale: number): [number, number] {
+  // 30° puts points north and south with flat faces east and west, matching
+  // how a constant hex distance actually falls on this grid.
+  const angle = (Math.PI / 180) * (30 + (360 / CORNERS) * i);
+
+  return [Math.cos(angle) * CIRCUMRADIUS * scale, Math.sin(angle) * CIRCUMRADIUS * scale];
+}
 
 export interface FogLayer {
   container: Container;
@@ -56,11 +80,22 @@ export interface FogLayer {
   update(x: number, y: number): void;
 }
 
-/** ring strokes one constant-alpha annulus between radii r0 and r1. */
-function ring(g: Graphics, r0: number, r1: number, alpha: number): void {
-  const width = r1 - r0;
+/**
+ * band fills the region between two scaled copies of the boundary hexagon.
+ *
+ * Built as six quads, one per hexagon edge, rather than as a polygon with a
+ * hole: adjacent quads share their end edges, so the annulus tiles exactly with
+ * no seams, and it needs no even-odd fill rule to punch the middle out.
+ */
+function band(g: Graphics, inner: number, outer: number, alpha: number): void {
+  for (let i = 0; i < CORNERS; i++) {
+    const [aix, aiy] = corner(i, inner);
+    const [bix, biy] = corner(i + 1, inner);
+    const [aox, aoy] = corner(i, outer);
+    const [box, boy] = corner(i + 1, outer);
 
-  g.ellipse(0, 0, r0 + width / 2, r0 + width / 2).stroke({ width, color: FOG_COLOR, alpha });
+    g.poly([aix, aiy, bix, biy, box, boy, aox, aoy]).fill({ color: FOG_COLOR, alpha });
+  }
 }
 
 /**
@@ -75,27 +110,22 @@ export function createFogLayer(): FogLayer {
   const container = new Container();
   const g = new Graphics();
 
-  const fadeStart = ((InterestRadius - FADE_HEXES) / InterestRadius) * EAST_WEST;
+  const fadeStart = (InterestRadius - FADE_HEXES) / InterestRadius;
+  const span = FADE_END - fadeStart;
 
   for (let i = 0; i < BANDS; i++) {
-    const r0 = fadeStart + ((EAST_WEST - fadeStart) * i) / BANDS;
-    const r1 = fadeStart + ((EAST_WEST - fadeStart) * (i + 1)) / BANDS;
-
-    ring(g, r0, r1, (i + 1) / BANDS);
+    band(g, fadeStart + (span * i) / BANDS, fadeStart + (span * (i + 1)) / BANDS, (i + 1) / BANDS);
   }
 
-  // Everything past the boundary is simply gone.
-  ring(g, EAST_WEST, EAST_WEST * SKIRT, 1);
+  // Past the fade there is nothing the server would ever send.
+  band(g, FADE_END, SKIRT, 1);
 
   container.addChild(g);
-  container.scale.set(1, NORTH_SOUTH / EAST_WEST);
 
   return {
     container,
     update(x: number, y: number): void {
-      // The container carries the Y stretch, so the centre has to be divided
-      // back out of it to land on the player's true pixel.
-      container.position.set(x, (y * EAST_WEST) / NORTH_SOUTH);
+      container.position.set(x, y);
     },
   };
 }
