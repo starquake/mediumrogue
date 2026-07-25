@@ -918,3 +918,32 @@ entities on `partyId` — so a party that spread out would have watched its own
 roster shrink, name by name, with no explanation. `TurnEvent.Party` carries id
 and name for every member regardless of distance. Roster membership is identity
 data; only position and combat state are positional.
+
+## Terrain reads as land, and water is shaded by depth *(built 2026-07-25, #296)*
+
+The ground was flat fills with an outline on every hex, which made a screenful
+read as a quilt of identical cells. Six treatments were mocked over the same
+patch and the maintainer picked the combined one; the water in it was then
+reworked after it read as stripes. Three decisions are worth keeping.
+
+**Outlining only the seams is the structural fix, and it is free.** Per-hex
+outlines are what made the world a grid — no fill treatment survives them. Once
+an interior hex draws no outline at all, a forest becomes a mass and a lake
+gets a shoreline. It also turned out to be the performance story: dropping ~6
+segments × 43,561 hexes made per-frame rendering ~1.75× faster at radius 120,
+which paid for the grain and motifs several times over. The atmospheric pass is
+a net render *win*, not a cost.
+
+**Water is shaded by depth rather than textured.** A tiling texture ignores the
+shape of a lake — the mockup's banded version ran straight through the shore
+and read as a swatch laid over hexes. Distance-to-shore follows the coastline
+instead, so a lake gets a shape and a bottom for free, out of the same
+neighbour walk the seam outlines already need. The palette range is
+deliberately narrow and centred on the original flat water colour: the first
+attempt widened it for legibility and made lakes pop out of the muted world.
+
+**Everything is hashed from the hex's own coordinates.** No rng, no server
+involvement, nothing animated. That is what allows the whole thing to be baked
+once at map build, and it means two players standing on the same tile see the
+same ground — the alternative, per-client variation, would have been a subtle
+multiplayer inconsistency nobody would have thought to test.

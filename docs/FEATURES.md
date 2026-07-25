@@ -1070,6 +1070,34 @@ roll, so it is ARPG-legal on jewelry.
   concentric rings rather than one gradient quad: a screen-covering quad costs
   a full-viewport alpha blend every frame even where it is transparent, which
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
+- **Terrain atmosphere** (#296, `client/src/render/map.ts` + `terrain.ts`,
+  `grain.ts`, `scatter.ts`): the ground is drawn to read as land rather than as
+  a quilt of flat cells. Client-render-only — no server, protocol, or gameplay
+  involvement, and every variation is hashed from a hex's own `q,r`, so it is
+  identical on every client and never animates.
+  - **Per-hex noise**: fill brightness varies ±15% per hex.
+  - **Outlines only where terrain changes**: an interior hex draws no outline
+    at all; seams between terrains (and the map rim) are stroked as one path.
+    `EDGE_DIRECTIONS` (`hex.ts`) maps each `hexCorners` edge to the neighbour it
+    faces, pinned geometrically by `hex.test.ts`.
+  - **Grain**: a procedural tiling texture per land terrain — speckle on grass,
+    mottle on forest, fracture on rock — sharing ONE fill matrix so it tiles in
+    world space. Per-hex tiling would print a repeat inside every cell, i.e.
+    the grid this removes. Generated at runtime, so `TERRAIN_COLORS` stays the
+    single source of truth and nothing extra enters the bundle.
+  - **Water is shaded by DEPTH, not textured**: each water hex takes its colour
+    from its hex distance to the nearest shore (`waterDepths`, a multi-source
+    BFS capped at `MAX_WATER_DEPTH`), `#244c73` shallow → `#162e45` deep —
+    a band whose midpoint is the old flat `#1d3d5c`, so depth reads without
+    lakes popping out of the muted palette. **The map edge counts as a shore**,
+    or a water-rimmed world would render its boundary as the deepest ocean.
+  - **Scatter motifs**: forest tufts, rock flecks, and water glints that
+    cluster in the shallows. Grass is deliberately bare. Their own Graphics, so
+    the heaviest pass stays separately measurable and cuttable.
+  - **Cost**, measured at `WORLD_RADIUS=120` (43,561 tiles): map build 84 →
+    213 ms, one-time at startup (`window.game.mapBuildMs`). Frame time went the
+    other way — **116.6 → 66.6 ms, ~1.75× faster** — because no longer stroking
+    six edges per hex (~261,000 segments) outweighs everything added.
 - **Response compression** (#288, `internal/server/compress.go`): responses
   are gzipped for clients that send `Accept-Encoding: gzip`, decided by a
   media-type allowlist (`application/json`, `text/event-stream`, and the
