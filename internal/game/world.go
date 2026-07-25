@@ -1503,67 +1503,188 @@ func (w *World) Turn() int64 {
 	return w.turn
 }
 
+// interestCentreLocked returns the hex a bundle for viewerToken is culled
+// around (#289) and the viewer's entity id, or the origin and 0 when there is
+// no viewer to centre on.
+//
+// A token-less or unknown-token watcher — the "viewer-less bundle"
+// handleEvents allows — has no position, so it is centred on the origin
+// rather than exempted from culling. Exempting it would quietly reinstate the
+// full-world bundle this slice exists to remove, on the one stream path that
+// authenticates nothing.
+//
+// Callers hold w.mu.
+func (w *World) interestCentreLocked(viewerToken string) (protocol.Hex, int64) {
+	if viewerToken == "" {
+		return protocol.Hex{}, 0
+	}
+
+	viewer, ok := w.byToken[viewerToken]
+	if !ok || viewer == nil {
+		return protocol.Hex{}, 0
+	}
+
+	return viewer.hex, viewer.id
+}
+
+// withinInterest reports whether hex is near enough to centre to ride a bundle
+// culled around it. Inclusive at the radius itself.
+//
+// Deliberately straight hex distance, NOT line of sight: sight.go's raycast is
+// what gates aggro and bubble formation, and running it per entity per viewer
+// per turn would be far more expensive than the bundle it saves. The terrain
+// is already fully known to the client from /api/map, so this hides what is
+// MOVING, not the ground. Seeing a monster across a ridge you could not spot
+// it through is the accepted consequence.
+func withinInterest(centre, hex protocol.Hex) bool {
+	return HexDistance(centre, hex) <= protocol.InterestRadius
+}
+
+// anyVisible reports whether any of ids survived the interest cull.
+func anyVisible(ids []int64, visible map[int64]bool) bool {
+	for _, id := range ids {
+		if visible[id] {
+			return true
+		}
+	}
+
+	return false
+}
+
 // SnapshotFor renders the turn bundle as the holder of viewerToken sees it.
 // Skills and the unspent point bank are OWN-ONLY (#124 Q9): they are filled
 // in on the viewer's own entity and left zero on everyone else's, so another
 // player's build never reaches this client at all.
 //
+// It is also culled to protocol.InterestRadius around the viewer (#289) —
+// entities, ground items, bubbles and hits alike — so the world beyond is
+// known ground with nothing moving on it.
+//
 // Cost: one bundle per open stream per turn rather than one shared bundle —
 // ~15 at this game's scale, which is why own-only was affordable. The hub's
 // coalescing contract is untouched: this is still "fetch the latest state",
-// just rendered per viewer.
+// just rendered per viewer, and culling keeps each bundle a COMPLETE snapshot
+// of what is relevant to that viewer rather than a delta.
 func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	centre, viewerID := w.interestCentreLocked(viewerToken)
+
 	entities := w.entityViewsLocked()
 	w.fillOwnOnlyLocked(entities, viewerToken)
 
-	slices.SortFunc(entities, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
+	entities, visible := cullEntities(entities, centre, viewerID)
 
-	now := w.now()
+	return protocol.TurnEvent{
+		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities,
+		Bubbles: w.bubbleViewsLocked(w.now(), visible), Quests: w.questViewsLocked(),
+		GroundItems: w.groundItemViewsLocked(centre), WorldID: w.worldID,
+		Hits: w.hitViewsLocked(visible),
+	}
+}
 
+// cullEntities drops every entity outside the interest radius (#289) and
+// returns what survived plus the set of ids it contains. `visible` gates the
+// rest of the bundle, so a client can never receive a reference — a bubble
+// member, a hit participant — to an entity it was not also sent and therefore
+// cannot resolve. The viewer's own row is unconditional: the client cannot
+// render anything without it.
+func cullEntities(entities []protocol.Entity, centre protocol.Hex, viewerID int64,
+) ([]protocol.Entity, map[int64]bool) {
+	visible := make(map[int64]bool, len(entities))
+	kept := entities[:0]
+
+	for _, e := range entities {
+		if e.ID != viewerID && !withinInterest(centre, e.Hex) {
+			continue
+		}
+
+		visible[e.ID] = true
+		kept = append(kept, e)
+	}
+
+	slices.SortFunc(kept, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
+
+	return kept, visible
+}
+
+// bubbleViewsLocked renders the bubbles this viewer can resolve: one with no
+// surviving member is a set of ids the bundle does not contain.
+func (w *World) bubbleViewsLocked(now time.Time, visible map[int64]bool) []protocol.BubbleView {
 	bubbles := make([]protocol.BubbleView, 0, len(w.bubbles))
+
 	for _, b := range w.bubbles {
-		bubbles = append(bubbles, w.bubbleViewLocked(b, now))
+		view := w.bubbleViewLocked(b, now)
+		if !anyVisible(view.MemberIDs, visible) {
+			continue
+		}
+
+		bubbles = append(bubbles, view)
 	}
 
 	slices.SortFunc(bubbles, func(a, b protocol.BubbleView) int { return int(a.ID - b.ID) })
 
-	questViews := make([]protocol.QuestView, 0, len(w.quests))
+	return bubbles
+}
+
+// questViewsLocked renders the quest list. Quests are NOT positional — they
+// belong to a holder, not a hex — so the interest radius does not touch them.
+func (w *World) questViewsLocked() []protocol.QuestView {
+	views := make([]protocol.QuestView, 0, len(w.quests))
 	for _, q := range w.quests {
-		questViews = append(questViews, protocol.QuestView{
+		views = append(views, protocol.QuestView{
 			ID: q.id, Name: q.name, Kind: q.kind, TargetN: q.targetN,
 			GoalHex: q.goalHex, Progress: q.progress, RewardXP: q.rewardXP,
 			State: q.state, HolderEntityID: q.holderEntity, HolderPartyID: q.holderParty,
 		})
 	}
 
-	groundItems := make([]protocol.GroundItemView, 0, len(w.groundItems))
+	return views
+}
+
+// groundItemViewsLocked renders the loot within the interest radius — what is
+// lying on a floor you cannot see is not yours to know about.
+func (w *World) groundItemViewsLocked(centre protocol.Hex) []protocol.GroundItemView {
+	items := make([]protocol.GroundItemView, 0, len(w.groundItems))
 
 	for hex, stacks := range w.groundItems {
+		if !withinInterest(centre, hex) {
+			continue
+		}
+
 		for _, gs := range stacks {
-			groundItems = append(groundItems, groundItemViewOf(gs.inst, hex, gs.count))
+			items = append(items, groundItemViewOf(gs.inst, hex, gs.count))
 		}
 	}
 
-	slices.SortFunc(groundItems, func(a, b protocol.GroundItemView) int { return int(a.ID - b.ID) })
+	slices.SortFunc(items, func(a, b protocol.GroundItemView) int { return int(a.ID - b.ID) })
 
-	// Hits ride in append order — already deterministic (hits are recorded in
-	// resolution order under w.mu). Always non-nil, matching the generated TS
-	// type's non-optional HitView[] (the itemViewsLocked precedent).
+	return items
+}
+
+// hitViewsLocked renders the combat moments this viewer can resolve. Hits ride
+// in append order — already deterministic (recorded in resolution order under
+// w.mu). Always non-nil, matching the generated TS type's non-optional
+// HitView[] (the itemViewsLocked precedent).
+func (w *World) hitViewsLocked(visible map[int64]bool) []protocol.HitView {
 	hits := make([]protocol.HitView, 0, len(w.recentHits))
+
 	for _, h := range w.recentHits {
+		// Both participants culled means ids this bundle does not contain.
+		// ONE visible participant is enough: being hit by something you cannot
+		// see is a real situation, and the damage still has to render.
+		if !visible[h.attacker] && !visible[h.victim] {
+			continue
+		}
+
 		hits = append(hits, protocol.HitView{
 			Turn: h.turn, AttackerID: h.attacker, VictimID: h.victim,
 			Amount: h.amount, Crit: h.crit, Glance: h.glance,
 		})
 	}
 
-	return protocol.TurnEvent{
-		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities, Bubbles: bubbles,
-		Quests: questViews, GroundItems: groundItems, WorldID: w.worldID, Hits: hits,
-	}
+	return hits
 }
 
 // itemViewsLocked builds the wire item list for one entity: an ItemView per
