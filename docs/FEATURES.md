@@ -1059,7 +1059,7 @@ roll, so it is ARPG-legal on jewelry.
   from this field — deriving it from `entities` would make the panel shrink
   as a party spread out.
   **The visible edge** (`client/src/render/fog.ts`): a soft vignette (variant
-  A) starting 5 hexes inside the boundary and reaching full opacity one hex
+  A) starting 2 hexes inside the boundary and reaching full opacity one hex
   PAST it — so nothing the server still sends is left without ground under it.
   Added to `world` LAST, above every world-space layer, so entities dim with
   the terrain: a monster near the limit is meant to be harder to make out, not

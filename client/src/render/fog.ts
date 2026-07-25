@@ -26,10 +26,15 @@ import { HEX_SIZE } from "./hex";
 // the annulus that actually has alpha, so at the default zoom — where the
 // boundary sits at the screen edge — almost nothing is drawn.
 
-// FADE_HEXES is how far inside the boundary the fade begins — the last few
-// hexes wash out rather than ending on a line, which is what makes it variant A
+// FADE_HEXES is how far inside the boundary the fade begins — the last hexes
+// wash out rather than ending on a line, which is what makes it variant A
 // rather than a drawn rim.
-const FADE_HEXES = 5;
+//
+// The band is FADE_HEXES + 1 hexes wide in total, because FADE_END carries it
+// one hex past the boundary: at 2 that is a 3-hex ramp. It started at 5 (a
+// 6-hex ramp), which read as a soft gradient across a third of the visible
+// world rather than as an edge.
+const FADE_HEXES = 2;
 
 // BANDS is how many constant-alpha rings approximate the ramp: enough that the
 // steps are invisible against the hex grid, few enough to stay cheap.
