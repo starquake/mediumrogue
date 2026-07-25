@@ -66,6 +66,11 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // client-alive (#170): the regression guard for #167 — bundles keep being
   // APPLIED after an inventory action. Monster-free: the failure is in the
   // client's own turn handler, not in combat.
+  // sound (#298): monster-free. The specs assert the audio RULES — unlock
+  // gating, mute persistence, the panel hook — none of which need a fight,
+  // and a wandering monster would only add combat sounds that make the
+  // played-counter assertions ambiguous.
+  { name: "sound" },
   { name: "client-alive" },
   { name: "identity" },
   { name: "identity-multitab" },

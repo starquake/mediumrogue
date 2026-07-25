@@ -1070,6 +1070,38 @@ roll, so it is ARPG-legal on jewelry.
   concentric rings rather than one gradient quad: a screen-covering quad costs
   a full-viewport alpha blend every frame even where it is transparent, which
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
+- **Sound effects** (#298, `client/src/audio/sound.ts`): combat, movement and
+  inventory audio via **Howler**, effects only — no music or ambient. Assets
+  are 18 CC0 clips from Kenney's RPG Audio in `client/public/audio/` (~225 KB;
+  `Preview.ogg`, 44% of the pack, is deliberately excluded), copied by Vite
+  into `dist/` and embedded with the rest of the bundle.
+  - **Events**: hit / crit / glance from `TurnEvent.Hits` (#114), plus equip,
+    drop, pickup, panel open/close, and the viewer's OWN footstep. Footsteps
+    are own-entity only — one per moving entity would be a stampede at fifteen
+    players.
+  - **Silent by design**: RPG Audio has no death, level-up, ranged or magic
+    sound, so those events make none rather than borrowing a wrong one.
+  - **The unlock**: browsers block audio until a user gesture, and a returning
+    player never makes one (`isNewPlayer` skips the start screen when a stored
+    identity matches). A one-shot pointer/key listener releases it, or sound
+    would silently never work for the people who play most.
+  - **Budget**: at most **4 sounds per turn**, refilled once per bundle before
+    anything plays, so a six-way bubble resolution is a fight and not a wall
+    of noise.
+  - **Falloff**: volume drops linearly with hex distance to a floor, never to
+    silence — everything in a bundle is within `InterestRadius` (#289), so a
+    hit the server bothered to send is a hit you can hear. Your own actions
+    play at full.
+  - **Variants are chosen at RANDOM** — a deliberate exception to this
+    codebase's hash-everything determinism, because a hashed pick would give a
+    player walking in a straight line the same footstep every time. Nothing
+    about audio is snapshotted, replayed or asserted on.
+  - **Toggle**: a `sound: on/off` HUD button, persisted in `localStorage`.
+    Like every HUD button it sets `pointer-events: auto` on itself — `#hud` is
+    click-through so the canvas works beneath it, and a button without that
+    rule renders perfectly and is silently unclickable.
+  - `window.game.audio` (played count, last sound, unlocked, muted) is the
+    test surface: an e2e cannot hear.
 - **Terrain atmosphere** (#296, `client/src/render/map.ts` + `terrain.ts`,
   `grain.ts`, `scatter.ts`): the ground is drawn to read as land rather than as
   a quilt of flat cells. Client-render-only — no server, protocol, or gameplay

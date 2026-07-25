@@ -116,8 +116,14 @@
       }
       /* Inventory toggle: the character/paper-doll panel is large, so it is
          not always-on — the `i` key (input/keys.ts) and this HUD button open
-         and close it. Same click-through-HUD discipline as #copy-link. */
-      #toggle-help {
+         and close it. Same click-through-HUD discipline as #copy-link.
+         #toggle-sound (#298) shares this rule rather than copying it: #hud is
+         pointer-events:none so the canvas stays usable through it, and every
+         button must re-enable pointer events ON ITSELF. A HUD button added
+         without that renders perfectly and is silently unclickable — the
+         canvas swallows the click. */
+      #toggle-help,
+      #toggle-sound {
         display: block;
         margin-top: 0.4rem;
         padding: 0.15rem 0.5rem;
@@ -129,8 +135,10 @@
         cursor: pointer;
         pointer-events: auto;
       }
-      #toggle-help:hover { background: #2a3d2b; border-color: var(--accent); }
-      #toggle-help[hidden] { display: none; }
+      #toggle-help:hover,
+      #toggle-sound:hover { background: #2a3d2b; border-color: var(--accent); }
+      #toggle-help[hidden],
+      #toggle-sound[hidden] { display: none; }
       #controls-overlay {
         position: fixed;
         top: 50%;
