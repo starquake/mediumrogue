@@ -52,10 +52,16 @@ const (
 	// same event/verb the poison DoT does — a second harmful DoT flavor, not a
 	// new pipeline kind — so an Antivenom cleanses it too.
 	idEffectBurning = "burning"
+	// idEffectVulnerable is Ward's mirror (#300): a take-damage effMulPct with
+	// a magnitude ABOVE percentBase, so the holder takes more. Marked harmful,
+	// which is the whole of its cleanse behaviour — an Antivenom strips it
+	// without a line of code mentioning it.
+	idEffectVulnerable = "vulnerable"
 )
 
-// effectDefs is the timed-effect content registry (#271). Three defs, two of
-// which back the slice's proof consumers:
+// effectDefs is the timed-effect content registry (#271), grown since by #271
+// slices 2/5 and #300. The three that opened it, two of which back the slice's
+// proof consumers:
 //   - poison: a DoT — a negative effAdd folded at end-of-turn (the Serpent's
 //     bite applies it, idVenomSting.onHit). The first evEndOfTurn consumer.
 //   - frenzy: a self-buff — a deal-damage mulPct (idBloodrageCleaver.onHit
@@ -83,6 +89,7 @@ var effectDefs = []*effectDef{
 	{id: idEffectFrenzy, name: "Frenzy", event: evDealDamage, effect: effMulPct},
 	{id: idEffectWard, name: "Ward", event: evTakeDamage, effect: effMulPct},
 	{id: idEffectBurning, name: "Burning", event: evEndOfTurn, effect: effAdd, harmful: true},
+	{id: idEffectVulnerable, name: "Vulnerable", event: evTakeDamage, effect: effMulPct, harmful: true},
 }
 
 // speciesCards returns a species' passive rule cards (nil for monsters'

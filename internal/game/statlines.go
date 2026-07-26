@@ -246,6 +246,13 @@ func subjectText(c ruleCard) string {
 		noun = "XP"
 	case evAggroRange:
 		noun = "Aggro Range"
+	case evEndOfTurn:
+		// An end-of-turn effect is an HP delta per turn, not damage dealt.
+		// Falling through to "Damage" shipped in #271 and reads exactly
+		// backwards on both signs: a regen (+3) read as bonus damage, and a
+		// poison or burning DoT (−3) as a damage REDUCTION — the fire flask's
+		// tooltip has said "−3 Damage for 3 turns" for a rider that drains HP.
+		noun = "HP per turn"
 	}
 
 	for _, cond := range c.when {
@@ -379,6 +386,94 @@ func kindDisplayName(id string) string {
 // null — the exact shape that froze the client in #167.
 func statViewsFor(def *itemDef) []protocol.StatView {
 	lines := statLinesFor(def)
+	out := make([]protocol.StatView, 0, len(lines))
+
+	for _, l := range lines {
+		out = append(out, protocol.StatView{Text: l.text, Drawback: l.drawback})
+	}
+
+	return out
+}
+
+// activeStatLines renders an ACTIVE skill's descriptor as stat lines (#300).
+//
+// The same problem buff potions had (consumableEffectStatLines, above): an
+// active carries no rule cards — its behaviour is its trigger — so without this
+// its panel entry shows a flavor line and nothing else. A player reading "Here,
+// then not." learns neither that Blink moves them three hexes nor that it costs
+// a cooldown.
+//
+// Derived, never authored, for the reason the whole file exists: an authored
+// line restating the descriptor is a drift surface, and validateFlavorHasNoStats
+// already forbids putting numbers in the flavor. Every line below reads its
+// numbers from the same activeDef that resolution reads.
+func activeStatLines(a *activeDef) []statLine {
+	if a == nil {
+		return nil
+	}
+
+	var out []statLine
+
+	switch a.kind {
+	case activeReposition:
+		out = append(out, statLine{text: "Teleport Range " + strconv.Itoa(a.rangeHex)})
+	case activeSelfEffect:
+		out = append(out, activeEffectLine(a.effect, "on yourself"))
+	case activeTargetEffect:
+		out = append(out, statLine{text: "Range " + strconv.Itoa(a.rangeHex)})
+		out = append(out, activeEffectLine(a.effect, "on the target"))
+	case activeAreaDamage:
+		if a.damage != 0 {
+			out = append(out, statLine{text: "Blast Damage " + strconv.Itoa(a.damage) + " " + titleWord(a.damageType)})
+		}
+
+		out = append(out, statLine{text: "Range " + strconv.Itoa(a.rangeHex)})
+
+		if a.aoeRadius != 0 {
+			out = append(out, statLine{text: "Blast " + strconv.Itoa(a.aoeRadius)})
+		}
+
+		if a.effect != nil {
+			out = append(out, activeEffectLine(a.effect, "on each victim"))
+		}
+	}
+
+	return append(out, statLine{text: "Cooldown " + strconv.Itoa(a.cooldownTurns) + " " + turnPlural(a.cooldownTurns)})
+}
+
+// activeEffectLine renders one applied timed effect through the SAME card
+// renderer a gear card uses, suffixed with its duration and who receives it.
+//
+// The drawback flag is deliberately cleared. It answers "does this make its
+// HOLDER worse", which is the right question for a potion you drink and the
+// wrong one for a debuff you throw: Expose's Vulnerable renders as a drawback
+// because it worsens whoever holds it, and whoever holds it is the enemy. The
+// "on the target" suffix carries that instead.
+func activeEffectLine(ae *appliedEffect, who string) statLine {
+	if ae == nil {
+		return statLine{text: who}
+	}
+
+	line := cardStatLine(timedEffect{defID: ae.effectID, magnitude: ae.magnitude}.card())
+	line.text += " " + turnsText(ae.turns) + ", " + who
+	line.drawback = false
+
+	return line
+}
+
+// turnPlural is turnsText's bare counterpart, for a count that is not a
+// duration ("Cooldown 3 turns" rather than "for 3 turns").
+func turnPlural(n int) string {
+	if n == 1 {
+		return "turn"
+	}
+
+	return "turns"
+}
+
+// activeStatViews is statViewsFor's counterpart for an active skill.
+func activeStatViews(a *activeDef) []protocol.StatView {
+	lines := activeStatLines(a)
 	out := make([]protocol.StatView, 0, len(lines))
 
 	for _, l := range lines {

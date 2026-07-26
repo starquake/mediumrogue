@@ -54,6 +54,7 @@ import type { GroundItemView, Hex, HitView, ItemView, QuestView, SkillView, Turn
 import { mountQuests } from "./quest/QuestPanel";
 import { mountSkills } from "./skills/SkillsPanel";
 import { applyLearnedLocally, panelOpen as skillsPanelOpen, setSkills, toggleSkillsPanel } from "./skills/store";
+import { clickOutcome, pressOutcome } from "./skills/targeting";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
@@ -64,6 +65,7 @@ import {
   IntentAttack,
   IntentMove,
   PlaybackSeconds,
+  SkillAimHex,
   SkillPointsPerLevel,
   SkillPointCost,
   SpeciesHuman,
@@ -85,7 +87,7 @@ import { FeedbackLayer } from "./render/feedback";
 import { hexDistance, hexToPixel, pixelToHex } from "./render/hex";
 import { HoverHighlightLayer, type HoverMoveTile } from "./render/hover";
 import { GroundItemLayer } from "./render/items";
-import { MoveRangeLayer } from "./render/range";
+import { MoveRangeLayer, SkillRangeLayer } from "./render/range";
 import { buildMapLayer } from "./render/map";
 import { QuestMarkerLayer } from "./render/questmarker";
 import * as tactics from "./tactics";
@@ -431,6 +433,7 @@ window.game = {
   controlsOpen: false,
   armedSkill: (): string | null => null,
   armedThrow: null,
+  skillTiles: [],
   died: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
@@ -553,6 +556,8 @@ async function start(): Promise<void> {
   // loot and entities alike.
   const moveRangeLayer = new MoveRangeLayer();
   world.addChild(moveRangeLayer.container);
+  const skillRangeLayer = new SkillRangeLayer();
+  world.addChild(skillRangeLayer.container);
 
   // lastReach mirrors the tactical overlay's move/melee split for click
   // routing (window.game.combatMoves merges them for the e2e surface).
@@ -1313,10 +1318,16 @@ async function start(): Promise<void> {
   // the other). null when nothing is armed to throw.
   let armedThrow: number | null = null;
 
-  const activeSlots = (): { id: string; name: string; ready: boolean; cd: number }[] =>
+  const activeSlots = (): { id: string; name: string; ready: boolean; cd: number; aim: string }[] =>
     window.game.skills
       .filter((sk) => sk.learned && sk.active)
-      .map((sk) => ({ id: sk.id, name: sk.name, ready: sk.turnsUntilReady === 0, cd: sk.turnsUntilReady }));
+      .map((sk) => ({
+        id: sk.id,
+        name: sk.name,
+        ready: sk.turnsUntilReady === 0,
+        cd: sk.turnsUntilReady,
+        aim: sk.aim,
+      }));
 
   function renderActionBar(): void {
     const slots = activeSlots();
@@ -1345,12 +1356,24 @@ async function start(): Promise<void> {
     });
   }
 
+  // drawSkillRange paints the armed active's reachable tiles (#300), or clears
+  // them. Called wherever armedSkill changes AND once per bundle, because the
+  // set moves with the caster and with the monsters in it.
+  const drawSkillRange = (): void => {
+    const s = armedSkill === null ? undefined : activeSlots().find((x) => x.id === armedSkill);
+    const def = s === undefined ? undefined : window.game.skills.find((k) => k.id === s.id);
+    window.game.skillTiles =
+      def === undefined ? [] : tactics.skillTargetTiles(tacticsCtx(), def.aim, def.rangeHex);
+    skillRangeLayer.update(window.game.skillTiles);
+  };
+
   const cancelArm = (): void => {
     if (armedSkill !== null || armedThrow !== null) {
       armedSkill = null;
       armedThrow = null;
       window.game.armedThrow = null;
       renderActionBar();
+      drawSkillRange();
     }
   };
 
@@ -1361,8 +1384,21 @@ async function start(): Promise<void> {
     }
     armedThrow = null; // arming a skill cancels a queued throw
     window.game.armedThrow = null;
+
+    // #300: a self-cast fires on the press; everything else arms. The rule
+    // lives in skills/targeting.ts so it is testable.
+    if (pressOutcome(s.aim).kind === "fire") {
+      armedSkill = null;
+      renderActionBar();
+      drawSkillRange();
+      clearItemPending(); // a real intent replaces a queued in-bubble action
+      void submitUseSkill(identity, s.id, { q: 0, r: 0 });
+      return;
+    }
+
     armedSkill = armedSkill === s.id ? null : s.id; // toggle
     renderActionBar();
+    drawSkillRange();
   };
   actionSlotEls.forEach((el, i) => el.addEventListener("click", () => armSlot(i)));
   window.game.armedSkill = (): string | null => armedSkill;
@@ -1398,9 +1434,18 @@ async function start(): Promise<void> {
     // #185: an armed active consumes the next map click as its target.
     if (armedSkill !== null) {
       const skill = armedSkill;
+      const aim = activeSlots().find((s) => s.id === skill)?.aim ?? SkillAimHex;
+      const outcome = clickOutcome(aim, hostileIdAt(target));
+
+      // #300: an entity-aimed active given bare ground stays ARMED — see
+      // skills/targeting.ts for why that beats spending the arm.
+      if (outcome.kind === "ignore") return Promise.resolve();
+
       armedSkill = null;
       renderActionBar();
-      return submitUseSkill(identity, skill, target).then(() => undefined);
+      drawSkillRange();
+      clearItemPending(); // a real intent replaces a queued in-bubble action
+      return submitUseSkill(identity, skill, target, outcome.targetEntityId).then(() => undefined);
     }
 
     if (window.game.inCombat) {
@@ -1719,6 +1764,7 @@ async function start(): Promise<void> {
           cooldownTurns: s.cooldownTurns,
           rangeHex: s.rangeHex,
           turnsUntilReady: s.turnsUntilReady,
+          aim: s.aim,
         }));
         renderActionBar();
         window.game.skillPoints = mine.skillPoints ?? 0;
@@ -1932,6 +1978,11 @@ async function start(): Promise<void> {
         window.game.combatRanged = [];
         moveRangeLayer.update([], [], []);
       }
+
+      // The armed skill's tiles move with the caster and with the monsters in
+      // them, so they are re-derived every bundle like the hover highlights
+      // below — not only when the skill is armed.
+      drawSkillRange();
 
       // Re-derive the hover highlights from the state this handler just
       // refreshed — the mouse hasn't moved, but reach/positions/weapons have

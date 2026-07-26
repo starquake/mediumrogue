@@ -435,14 +435,17 @@ export async function submitLearnSkill(
 }
 
 /**
- * Triggers a learned ACTIVE skill (#185) at a target hex — Blink and future
- * actives. The server validates learned/cooldown/range/walkable/LOS and, on a
- * rejection, surfaces the reason via the #193 toast; a false here is a no-op.
+ * Triggers a learned ACTIVE skill (#185). Which of `target`/`targetEntityId`
+ * matters is decided by the skill's `aim` (#300) — the server reads only the
+ * one its behaviour kind uses, and a self-cast reads neither. The server
+ * validates learned/cooldown/range/hostility/LOS and, on a rejection, surfaces
+ * the reason via the #193 toast; a false here is a no-op.
  */
 export async function submitUseSkill(
   identity: Pick<Identity, "entityId" | "token">,
   skillId: string,
   target: Hex,
+  targetEntityId = 0,
 ): Promise<boolean> {
   return postIntent({
     entityId: identity.entityId,
@@ -451,7 +454,7 @@ export async function submitUseSkill(
     kind: IntentUseSkill,
     itemId: 0,
     groundItemId: 0,
-    targetEntityId: 0,
+    targetEntityId,
     skillId,
   });
 }

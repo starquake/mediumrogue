@@ -47,6 +47,14 @@ const (
 	// Actives (#161). Blink is the first — the category exists so the second
 	// one is content rather than another special case.
 	skillBlink = "blink"
+
+	// Actives 2 (#300). Both are self-casts over rows the potions already
+	// use, which is the proof the descriptor was worth having: neither
+	// needed a line of resolution code of its own.
+	skillSecondWind = "second-wind"
+	skillBulwark    = "bulwark"
+	skillExpose     = "expose"
+	skillEmberNova  = "ember-nova"
 )
 
 // activeDef is a skill's triggerable half (#161). A skill is passive (rules,
@@ -57,12 +65,116 @@ const (
 // in wall-clock than world turns, and that dilation is the bubble's point, so
 // a turn-denominated cooldown rides it instead of fighting it (#161).
 type activeDef struct {
+	// kind names WHAT this active does. Without it every new active would be
+	// another hardcoded branch at resolution, and the category would become a
+	// switch statement pretending to be a system (#300). Each kind routes to
+	// machinery that already exists for consumables and throwables, so a new
+	// active is content rather than engine work.
+	kind string
 	// cooldownTurns is how many turns must pass before it can fire again.
 	// Must be > 0: a zero cooldown is a skill with no cost.
 	cooldownTurns int
 	// rangeHex is the furthest target hex, capped at protocol.CombatRadius so
 	// an active cannot leave a bubble from anywhere inside it by accident.
+	// ZERO for a self-cast kind, which has no target to range-check.
 	rangeHex int
+	// effect is the timed effect this active applies, for the kinds that apply
+	// one (activeAppliesEffect); nil otherwise. It is the SAME appliedEffect a
+	// potion carries, handed to the same applyTimedEffectLocked — a skill and a
+	// drink are two triggers on one mechanism, not two mechanisms. For
+	// activeAreaDamage it is OPTIONAL and rides as the blast's on-hit rider,
+	// exactly as a flask's onLand does.
+	effect *appliedEffect
+	// The blast payload, for activeAreaDamage only (zero on every other kind).
+	// Deliberately the throwPayload's own fields under the throwPayload's own
+	// rules: aoeRadius 0 means the landing hex alone, damage may be 0 for a
+	// pure-DoT nova, and rangeHex+aoeRadius obeys the same CombatRadius reach
+	// cap a flask does (validateActiveBlast) — a skill must not be able to
+	// kill outside its own bubble any more than an item can.
+	aoeRadius  int
+	damage     int
+	damageType string
+}
+
+// The active kinds. Each names an existing resolution path rather than a new
+// mechanism — see #300's wildfire-gate note: these pass only BECAUSE the
+// behaviour already exists for potions and thrown flasks.
+const (
+	// activeReposition moves the caster to the target hex (Blink, #161).
+	activeReposition = "reposition"
+	// activeSelfEffect applies the def's timed effect to the CASTER (#300) —
+	// the same call a potion makes, with a cooldown instead of an inventory
+	// slot as its cost.
+	activeSelfEffect = "self-effect"
+	// activeTargetEffect applies the def's timed effect to a named hostile
+	// entity (#300) — a debuff, aimed the way a ranged attack is aimed.
+	activeTargetEffect = "target-effect"
+	// activeAreaDamage blasts a hex (#300) — the thrown flask's resolution
+	// without the flask. It is the one kind that resolves in the ATTACK phase
+	// rather than the move phase; see resolveActiveBlastsLocked.
+	activeAreaDamage = "area-damage"
+)
+
+// activeAim names what a kind is POINTED at. The three modes need three
+// different submit-time validations and three different client flows, and a
+// bool cannot say which — a self-cast and an entity-targeted debuff both fail
+// "needs a hex" for entirely different reasons.
+//
+// The values ARE the wire's (protocol.SkillAim*) rather than an engine enum
+// mapped to them at the boundary: the client needs this exact fact, and a
+// mapping function is one more place the two can disagree.
+type activeAim = string
+
+const (
+	// aimSelf is a self-cast: no target at all. Validating it against a hex it
+	// never supplies would reject every cast.
+	aimSelf activeAim = protocol.SkillAimSelf
+	// aimHex is pointed at a hex — a Blink destination or a nova's ground
+	// zero.
+	aimHex activeAim = protocol.SkillAimHex
+	// aimEntity is pointed at another entity (Expose) — range, hostility and
+	// line of sight, exactly as a ranged attack is.
+	aimEntity activeAim = protocol.SkillAimEntity
+)
+
+// aimFor reports a kind's targeting mode. Kept as one function so submit-time
+// validation, resolution and the wire can never disagree about it.
+func aimFor(kind string) activeAim {
+	switch kind {
+	case activeReposition, activeAreaDamage:
+		return aimHex
+	case activeTargetEffect:
+		return aimEntity
+	default:
+		return aimSelf
+	}
+}
+
+// activeResolvesInAttackPhase reports whether a kind is resolved by
+// resolveActiveBlastsLocked (attack phase) rather than resolveActivesLocked
+// (move phase).
+//
+// A blast IS an attack: it needs the rng and the shared damage map that only
+// the attack phase has, and it must land against PRE-move positions like every
+// other hit, or walking away this turn would dodge it while a thrown flask at
+// the same hex still connects.
+func activeResolvesInAttackPhase(kind string) bool {
+	return kind == activeAreaDamage
+}
+
+// activeAppliesEffect reports whether a kind uses activeDef.effect. Kinds that
+// do not must leave it nil — a def carrying a payload nothing reads is a
+// content bug that would otherwise look like a working skill.
+//
+// For the two *Effect kinds the effect IS the skill and is required; for
+// activeAreaDamage it is an optional rider on the blast (validateActiveEffect).
+func activeAppliesEffect(kind string) bool {
+	switch kind {
+	case activeSelfEffect, activeTargetEffect, activeAreaDamage:
+		return true
+	default:
+		return false
+	}
 }
 
 // skillDef is one entry in the skill registry: what it is, which tree it
@@ -114,6 +226,22 @@ var skillDefs = []*skillDef{
 		},
 	},
 	{
+		// Expose (#300): the first entity-aimed active, and Ward's mirror —
+		// a take-damage effMulPct ABOVE percentBase instead of below. Marked
+		// harmful on the row, which is the whole of its counterplay: a monster
+		// that could cleanse would shrug it off, and nothing here says so.
+		//
+		// A party skill by shape: the debuff helps whoever hits the target
+		// next, which is usually not the caster.
+		id: skillExpose, name: "Expose", tree: treeClass,
+		prereqs: []string{skillWeakSpot},
+		flavor:  "You point. Everyone else understands.",
+		active: &activeDef{
+			kind: activeTargetEffect, cooldownTurns: 5, rangeHex: 4,
+			effect: &appliedEffect{effectID: idEffectVulnerable, magnitude: percentBase + 20, turns: 3},
+		},
+	},
+	{
 		id: skillWeakSpot, name: "Weak Spot", tree: treeClass,
 		prereqs: []string{skillCombatTraining},
 		flavor:  "The first cut is the one you plan.",
@@ -162,6 +290,24 @@ var skillDefs = []*skillDef{
 		rules: []ruleCard{
 			{event: evDealDamage, when: []condition{{kind: condDamageType, s: protocol.DamageTypeFire}},
 				then: effect{kind: effMulPct, n: percentBase + 10}},
+		},
+	},
+	{
+		// Ember Nova (#300): the Flask of Alchemist's Fire, minus the flask.
+		// Same shape (fire, 1-hex blast at range 4, a burning rider), one
+		// point weaker per cast and one turn shorter on the DoT — the flask
+		// costs an item, this costs a cooldown, and the consumable must stay
+		// worth carrying.
+		//
+		// Behind Kindler on purpose: the fire line's own payoff, and Kindler's
+		// +10% fire folds into it through the ordinary pipeline.
+		id: skillEmberNova, name: "Ember Nova", tree: treeClass,
+		prereqs: []string{skillKindler},
+		flavor:  "The air remembers being lit.",
+		active: &activeDef{
+			kind: activeAreaDamage, cooldownTurns: 5, rangeHex: 4,
+			aoeRadius: 1, damage: 5, damageType: protocol.DamageTypeFire,
+			effect: &appliedEffect{effectID: idEffectBurning, magnitude: -2, turns: 2},
 		},
 	},
 	{
@@ -224,7 +370,37 @@ var skillDefs = []*skillDef{
 		id: skillBlink, name: "Blink", tree: treeSurvival,
 		prereqs: []string{skillSurvivalist},
 		flavor:  "Here, then not.",
-		active:  &activeDef{cooldownTurns: 3, rangeHex: 3},
+		active:  &activeDef{kind: activeReposition, cooldownTurns: 3, rangeHex: 3},
+	},
+
+	{
+		// Second Wind (#300): the Healing Draught's regen row, triggered by a
+		// cooldown instead of by spending an item. Deliberately the SAME
+		// numbers as the potion — a skill that outheals the consumable would
+		// make the consumable dead content, and the point of the slice is that
+		// actives cost no new vocabulary.
+		//
+		// Longer cooldown than Blink: a heal that returns every third turn is
+		// attrition removed rather than managed.
+		id: skillSecondWind, name: "Second Wind", tree: treeSurvival,
+		prereqs: []string{skillSurvivalist},
+		flavor:  "You find the breath you had put down somewhere.",
+		active: &activeDef{
+			kind: activeSelfEffect, cooldownTurns: 6,
+			effect: &appliedEffect{effectID: idEffectRegen, magnitude: 3, turns: 3},
+		},
+	},
+	{
+		// Bulwark (#300): the Warding Tonic's row. Sits behind Hardy rather
+		// than beside Blink so the Survival tree has actual depth — this is
+		// the tree's strongest defensive button and should cost the walk.
+		id: skillBulwark, name: "Bulwark", tree: treeSurvival,
+		prereqs: []string{skillHardy},
+		flavor:  "Set, and stay set.",
+		active: &activeDef{
+			kind: activeSelfEffect, cooldownTurns: 6,
+			effect: &appliedEffect{effectID: idEffectWard, magnitude: percentBase - 25, turns: 4},
+		},
 	},
 
 	{
@@ -312,8 +488,121 @@ func validateSkillActive(def *skillDef) {
 		panic("game: active skill " + def.id + " has no cooldown")
 	}
 
+	if !activeKnownKind(def.active.kind) {
+		panic("game: active skill " + def.id + " has unknown kind " + def.active.kind)
+	}
+
+	validateActiveRange(def)
+	validateActiveEffect(def)
+	validateActiveBlast(def)
+}
+
+// validateActiveBlast panics if an active's blast payload disagrees with its
+// kind, or breaks the rules a thrown flask's payload already obeys
+// (validateThrowPayload / validateMaxReach).
+func validateActiveBlast(def *skillDef) {
+	a := def.active
+
+	if a.kind != activeAreaDamage {
+		if a.aoeRadius != 0 || a.damage != 0 || a.damageType != "" {
+			panic("game: active skill " + def.id + " carries a blast its kind " + a.kind + " never fires")
+		}
+
+		return
+	}
+
+	if a.aoeRadius < 0 || a.damage < 0 {
+		panic("game: active skill " + def.id + " must not have negative aoeRadius or damage")
+	}
+
+	// A blast that neither hits nor lingers is a cooldown spent on nothing.
+	if a.damage == 0 && a.effect == nil {
+		panic("game: active skill " + def.id + " blasts for no damage and no effect")
+	}
+
+	if !validDamageType(a.damageType) {
+		panic("game: active skill " + def.id + " has unknown or missing damage type " + a.damageType)
+	}
+
+	// The same reach invariant every item obeys (validateMaxReach): the
+	// furthest hex a blast touches must already be inside the caster's combat
+	// bubble, or a monster could be killed in the WORLD domain, which awards no
+	// kill-XP.
+	if a.rangeHex+a.aoeRadius > protocol.CombatRadius {
+		panic("game: active skill " + def.id + " reach exceeds CombatRadius")
+	}
+}
+
+// validateActiveRange panics if an active's range disagrees with its aim: a
+// kind that points at something needs a usable one, a self-cast must NOT carry
+// one, or the def is lying about what it does and the next reader will believe
+// it.
+func validateActiveRange(def *skillDef) {
+	if aimFor(def.active.kind) == aimSelf {
+		if def.active.rangeHex != 0 {
+			panic("game: self-cast active skill " + def.id + " must not carry a range")
+		}
+
+		return
+	}
+
 	if def.active.rangeHex <= 0 || def.active.rangeHex > protocol.CombatRadius {
 		panic("game: active skill " + def.id + " range is outside 1..CombatRadius")
+	}
+}
+
+// validateActiveEffect panics if an active's timed-effect payload disagrees
+// with its kind, or names instance values applyTimedEffectLocked cannot use.
+// The checks mirror validateItemAppliesEffect deliberately: the same
+// appliedEffect reaching the same applier deserves the same guards whatever
+// pulled the trigger.
+func validateActiveEffect(def *skillDef) {
+	ae := def.active.effect
+
+	if !activeAppliesEffect(def.active.kind) {
+		if ae != nil {
+			panic("game: active skill " + def.id + " carries an effect its kind " +
+				def.active.kind + " never applies")
+		}
+
+		return
+	}
+
+	// A blast's effect is a RIDER — the damage is the skill, the DoT is a
+	// bonus — so it may be absent. Every other applying kind IS its effect.
+	if ae == nil {
+		if def.active.kind == activeAreaDamage {
+			return
+		}
+
+		panic("game: active skill " + def.id + " kind " + def.active.kind + " needs an effect")
+	}
+
+	if _, ok := effectDefByID[ae.effectID]; !ok {
+		panic("game: active skill " + def.id + " names unknown effect " + ae.effectID)
+	}
+
+	if ae.turns <= 0 {
+		panic("game: active skill " + def.id + " effect " + ae.effectID + " must have turns > 0")
+	}
+
+	// toSelf is an on-hit router (attacker vs victim); an active's KIND already
+	// says who is affected, so a set flag means the author expected it to be
+	// read and it never will be.
+	if ae.toSelf {
+		panic("game: active skill " + def.id + " must not set toSelf (the kind decides who is affected)")
+	}
+}
+
+// activeKnownKind reports whether kind is one this build can resolve. Content
+// naming an unknown kind panics at init like every other content error, rather
+// than failing silently mid-combat.
+func activeKnownKind(kind string) bool {
+	switch kind {
+	case activeReposition, activeSelfEffect, activeTargetEffect, activeAreaDamage:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -424,7 +713,7 @@ func learnableFor(e *entity, def *skillDef) bool {
 //
 // The destination needs range, walkability AND line of sight: an active does
 // not pass through walls, so cover stays real.
-func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error {
+func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, targetEntityID int64) error {
 	def, ok := skillDefByID[id]
 	if !ok {
 		return ErrNoSuchSkill
@@ -442,34 +731,96 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex) error 
 		return ErrSkillOnCooldown
 	}
 
+	switch aimFor(def.active.kind) {
+	case aimSelf:
+		// Nothing to validate — checking range, walkability and line of sight
+		// against a hex it never supplies would refuse every cast.
+		return w.commitActiveLocked(e, id, nil, 0)
+	case aimEntity:
+		return w.useEntityAimedSkillLocked(e, def, targetEntityID)
+	case aimHex:
+	}
+
 	if HexDistance(e.hex, target) > def.active.rangeHex {
 		return ErrOutOfRange
 	}
 
-	if !w.walkableLocked(target) {
-		return ErrNotWalkable
+	// Walkability and occupancy belong to REPOSITION, not to hex-aiming: they
+	// ask "can you stand there", and a blast does not want to stand anywhere.
+	// Aiming one at an occupied hex is the normal case — it is where the
+	// monsters are.
+	if def.active.kind == activeReposition {
+		if err := w.checkBlinkDestinationLocked(e, target); err != nil {
+			return err
+		}
 	}
 
 	if w.sightBlockedLocked(e.hex, target, def.active.rangeHex) {
 		return ErrNoLineOfSight
 	}
 
-	// #196: a blink onto an opposing-held or StackCap-full hex is refused here
-	// for the same reason an ordinary mover is turned away — occupancy is not
-	// negotiable. resolveActivesLocked re-checks against the evolving board for
-	// the rare hex that fills between this window and resolution.
+	return w.commitActiveLocked(e, id, &target, 0)
+}
+
+// checkBlinkDestinationLocked reports whether e may land on target: it must be
+// walkable, and it must have room under the occupancy rules an ordinary mover
+// obeys (#196 — occupancy is not negotiable). resolveActivesLocked re-checks
+// against the evolving board for the rare hex that fills between this window
+// and resolution. Callers hold w.mu.
+func (w *World) checkBlinkDestinationLocked(e *entity, target protocol.Hex) error {
+	if !w.walkableLocked(target) {
+		return ErrNotWalkable
+	}
+
 	if w.occupiedForLocked(e, target) {
 		return ErrHexOccupied
 	}
 
-	// The turn's action, so it displaces any queued move or attack — the
-	// latest intent in the window wins, exactly as elsewhere.
+	return nil
+}
+
+// useEntityAimedSkillLocked validates an entity-aimed active (#300, Expose).
+//
+// The gates are queueAttackLocked's entity branch, deliberately: a debuff you
+// can land is a debuff you could have shot, so the same hostility, reach and
+// line-of-sight rules apply and terrain stays real cover. Callers hold w.mu.
+func (w *World) useEntityAimedSkillLocked(e *entity, def *skillDef, targetEntityID int64) error {
+	victim, ok := w.entities[targetEntityID]
+	if !ok || victim.hp <= 0 {
+		return ErrAttackTargetNotFound
+	}
+
+	// Hostile-only. A debuff is a weapon; landing one on an ally is not a
+	// mis-click to be forgiven, it is an action that should not exist.
+	if !opposing(e, victim) {
+		return ErrAttackTargetNotHostile
+	}
+
+	if HexDistance(e.hex, victim.hex) > def.active.rangeHex {
+		return ErrOutOfRange
+	}
+
+	if !w.seesLocked(e.hex, victim.hex) {
+		return ErrNoLineOfSight
+	}
+
+	return w.commitActiveLocked(e, def.id, nil, targetEntityID)
+}
+
+// commitActiveLocked queues an active as this turn's action.
+//
+// It displaces any queued move, attack or throw — the latest intent in the
+// window wins, exactly as elsewhere. Exactly one of `target`/`targetEntityID`
+// is set, or neither for a self-cast — the one place an active legitimately has
+// nowhere to point. Callers hold w.mu.
+func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex, targetEntityID int64) error {
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
 	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
 	e.activeSkill = id
-	e.activeTarget = &target
+	e.activeTarget = target
+	e.activeTargetEntity = targetEntityID
 
 	return nil
 }
@@ -537,8 +888,13 @@ func skillViewsLocked(e *entity, turn int64) []protocol.SkillView {
 
 		if def.active != nil {
 			view.Active = true
+			// An active has no rule cards, so statViewsFor produced nothing —
+			// render its descriptor instead (#300), or the panel shows flavor
+			// and no mechanics at all.
+			view.Stats = activeStatViews(def.active)
 			view.CooldownTurns = def.active.cooldownTurns
 			view.RangeHex = def.active.rangeHex
+			view.Aim = aimFor(def.active.kind)
 
 			if ready := e.activeReadyTurn[def.id]; ready > turn {
 				view.TurnsUntilReady = int(ready - turn)

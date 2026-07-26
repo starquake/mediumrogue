@@ -1,6 +1,7 @@
 package game //nolint:testpackage // white-box: renders unexported cards; see rules_test.go's file doc.
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -241,5 +242,76 @@ func TestVampiricBladeRendersLifesteal(t *testing.T) {
 
 	if !found {
 		t.Error("Vampiric Blade stat lines missing the +25% Lifesteal affix")
+	}
+}
+
+// TestActiveStatLinesDescribeEveryActive (#300): an active carries no rule
+// cards, so without activeStatLines its panel entry is a flavor line and
+// nothing else — a player reading "Here, then not." learns neither the range
+// nor the cooldown. Every shipped active must render its numbers.
+func TestActiveStatLinesDescribeEveryActive(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		id   string
+		want []string
+	}{
+		{skillBlink, []string{"Teleport Range 3", "Cooldown 3 turns"}},
+		{skillSecondWind, []string{"+3 HP per turn for 3 turns, on yourself", "Cooldown 6 turns"}},
+		{skillBulwark, []string{"+25% Damage Resistance for 4 turns, on yourself", "Cooldown 6 turns"}},
+		{skillExpose, []string{"Range 4", "−20% Damage Resistance for 3 turns, on the target", "Cooldown 5 turns"}},
+		{skillEmberNova, []string{
+			"Blast Damage 5 Fire", "Range 4", "Blast 1",
+			"−2 HP per turn for 2 turns, on each victim", "Cooldown 5 turns",
+		}},
+	} {
+		def, ok := skillDefByID[tc.id]
+		if !ok {
+			t.Fatalf("%s is not registered", tc.id)
+		}
+
+		got := make([]string, 0, len(tc.want))
+		for _, l := range activeStatLines(def.active) {
+			got = append(got, l.text)
+		}
+
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s lines = %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}
+
+// TestEndOfTurnEffectsReadAsHPNotDamage: the #271 rendering bug this slice
+// tripped over. An end-of-turn effect is an HP delta per turn, and calling it
+// "Damage" reads exactly backwards on BOTH signs — a regen (+3) as bonus
+// damage, and a DoT (−3) as damage REDUCTION. The fire flask shipped saying
+// "−3 Damage for 3 turns" for a rider that drains HP, and nothing asserted it,
+// which is why it survived.
+func TestEndOfTurnEffectsReadAsHPNotDamage(t *testing.T) {
+	t.Parallel()
+
+	regen := cardStatLine(timedEffect{defID: idEffectRegen, magnitude: 3}.card()).text
+	if got, want := regen, "+3 HP per turn"; got != want {
+		t.Errorf("regen line = %q, want %q", got, want)
+	}
+
+	poison := cardStatLine(timedEffect{defID: idEffectPoison, magnitude: -2}.card()).text
+	if got, want := poison, "−2 HP per turn"; got != want {
+		t.Errorf("poison line = %q, want %q", got, want)
+	}
+}
+
+// TestExposeLineIsNotFlaggedADrawback: the drawback flag answers "does this
+// make its HOLDER worse", which is right for a potion and wrong for a debuff
+// you throw — Vulnerable worsens whoever holds it, and whoever holds it is the
+// enemy. Styling Expose as a drawback would tell the player their own skill is
+// bad for them.
+func TestExposeLineIsNotFlaggedADrawback(t *testing.T) {
+	t.Parallel()
+
+	for _, l := range activeStatLines(skillDefByID[skillExpose].active) {
+		if l.drawback {
+			t.Errorf("expose line %q is flagged a drawback", l.text)
+		}
 	}
 }

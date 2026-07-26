@@ -258,10 +258,14 @@ type entity struct {
 	// usable again (#161). Absent means ready. Counted in TURNS, whichever
 	// clock is ticking — see activeDef.
 	activeReadyTurn map[string]int64
-	// activeSkill/activeTarget are this turn's queued active-skill trigger
-	// (#161) — transient like path and attackTarget, never snapshotted.
-	activeSkill  string
-	activeTarget *protocol.Hex
+	// activeSkill/activeTarget/activeTargetEntity are this turn's queued
+	// active-skill trigger (#161) — transient like path and attackTarget,
+	// never snapshotted. Which of the two targets is set (or neither) follows
+	// from the skill's aimFor (#300), the same way an attack's hex and entity
+	// targets are mutually exclusive.
+	activeSkill        string
+	activeTarget       *protocol.Hex
+	activeTargetEntity int64
 	// throwItem/throwTarget are this turn's queued throw (#271): the owned
 	// throwable consumable's instance id and its aim hex. 0/nil for none.
 	// Resolved in the attack phase (resolveThrowsLocked) — a throw is a
@@ -481,13 +485,14 @@ type World struct {
 	// crit/glance moments. Transient cosmetics: deliberately NOT persisted in
 	// the snapshot (like entity.path), so no snapshot version bump.
 	recentHits []hitRecord
-	// pendingOnHit buffers the on-hit timed-effect applications (#271) that the
-	// CURRENT resolution's hits collect in rollDamageLocked, drained by
-	// applyPendingOnHitLocked after the end-of-turn tick (so a fresh effect
-	// takes hold next turn). Purely intra-resolution scratch: reset at the top
-	// of resolveCombatLocked and cleared on drain, never carried across a
-	// resolution and never persisted.
-	pendingOnHit []pendingEffectApply
+	// pendingEffects buffers every timed-effect application the CURRENT
+	// resolution produced — on-hit riders from rollDamageLocked (#271) and
+	// self-cast actives from resolveActivesLocked (#300) — drained by
+	// applyPendingEffectsLocked after the end-of-turn tick, so a fresh effect
+	// takes hold next turn whatever applied it. Purely intra-resolution
+	// scratch: reset at the top of resolveCombatLocked and cleared on drain,
+	// never carried across a resolution and never persisted.
+	pendingEffects []pendingEffectApply
 	// pendingLifesteal buffers the lifesteal HP each attacker earns THIS
 	// resolution (#271): rollDamageLocked accumulates attacker-id -> heal (a
 	// percent of the damage each hit's victim takes, effLifesteal), and
@@ -495,7 +500,7 @@ type World struct {
 	// vampiric-blade wielder heals as its hits land, but a mutual kill still
 	// kills (damage is applied first; a dead attacker does not leech). Per-entity
 	// heals are independent and clamp-to-maxHP, so the map's iteration order is
-	// irrelevant. Like pendingOnHit: reset at the top of resolveCombatLocked,
+	// irrelevant. Like pendingEffects: reset at the top of resolveCombatLocked,
 	// cleared on apply, never carried across a resolution and never persisted.
 	pendingLifesteal map[int64]int
 }
@@ -1206,7 +1211,7 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 	case protocol.IntentLearnSkill:
 		return w.learnSkillLocked(e, req.SkillID)
 	case protocol.IntentUseSkill:
-		return w.useSkillLocked(e, req.SkillID, req.Target)
+		return w.useSkillLocked(e, req.SkillID, req.Target, req.TargetEntityID)
 	case protocol.IntentThrow:
 		return w.queueThrowLocked(e, req.ItemID, req.Target)
 	case protocol.IntentRecall:
@@ -2068,7 +2073,7 @@ func (w *World) resolveCombatLocked(
 	// picks + damage folds draw first, the mover shuffle draws after.
 	attacks, attacked := w.collectMeleeAttacksLocked(byHex, members)
 
-	w.pendingOnHit = nil     // #271: this resolution's on-hit effects buffer starts empty.
+	w.pendingEffects = nil   // #271/#300: this resolution's timed-effect buffer starts empty.
 	w.pendingLifesteal = nil // #271: this resolution's lifesteal buffer starts empty.
 
 	w.attackLocked(rng, byHex, attacks)
@@ -2083,7 +2088,7 @@ func (w *World) resolveCombatLocked(
 	// This turn's fresh on-hit effects (buffered by rollDamageLocked) apply
 	// AFTER the tick, so they first take hold next turn.
 	w.tickEffectsLocked(members)
-	w.applyPendingOnHitLocked()
+	w.applyPendingEffectsLocked()
 
 	slain, died := w.resolveDeathsLocked(rng, members)
 
@@ -2197,12 +2202,12 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 
 	// On-hit timed effects (#271): every landed hit — melee (both paths),
 	// ranged, AoE — flows through here, so this is the one place a weapon's
-	// onHit riders are collected. They are BUFFERED (applyPendingOnHitLocked
+	// onHit riders are collected. They are BUFFERED (applyPendingEffectsLocked
 	// drains them after the end-of-turn tick), never applied inline: a self-buff
 	// must not fold into the same turn's later hits, and a DoT must not drain
 	// the turn it lands. A weapon with no onHit (all but the #271 proof
 	// consumers) appends nothing.
-	w.pendingOnHit = collectOnHitEffects(w.pendingOnHit, attacker, victim, weapon)
+	w.pendingEffects = collectOnHitEffects(w.pendingEffects, attacker, victim, weapon)
 
 	// Lifesteal (#271): a deal-damage rider read from the trace, not a transform
 	// of the damage. The attacker heals for lifestealPct% of the damage the
@@ -2491,20 +2496,69 @@ func (w *World) movePhaseLocked(
 // A trigger is DROPPED, not deferred, if its caster attacked or died this
 // turn: the queue is one action per turn, and a stale blink firing a turn late
 // would teleport someone who has since chosen something else.
-func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool) {
+// activeCasters picks the members with an active queued this turn, in id order
+// so resolution is reproducible regardless of map iteration.
+//
+// A SELF-CAST carries no target, so the presence of the skill is the whole
+// signal; an aimed kind still needs whatever it points at before it can
+// resolve — which is different per aim, so the check follows aimFor rather
+// than assuming a hex.
+func activeCasters(members []*entity) []*entity {
 	casters := make([]*entity, 0, len(members))
 
 	for _, e := range members {
-		if e.activeSkill != "" && e.activeTarget != nil {
-			casters = append(casters, e)
+		if e.activeSkill == "" {
+			continue
 		}
+
+		def, ok := skillDefByID[e.activeSkill]
+		if !ok || def.active == nil {
+			continue
+		}
+
+		// A blast already resolved and cleared itself in the attack phase, so
+		// this is unreachable today — but it is the guard that keeps the two
+		// phases from ever both claiming one trigger if that ordering changes.
+		if activeResolvesInAttackPhase(def.active.kind) {
+			continue
+		}
+
+		switch aimFor(def.active.kind) {
+		case aimHex:
+			if e.activeTarget == nil {
+				continue
+			}
+		case aimEntity:
+			if e.activeTargetEntity == 0 {
+				continue
+			}
+		case aimSelf:
+		}
+
+		casters = append(casters, e)
 	}
 
 	slices.SortFunc(casters, byEntityID)
 
+	return casters
+}
+
+func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool) {
+	casters := activeCasters(members)
+
 	for _, e := range casters {
-		id, target := e.activeSkill, *e.activeTarget
-		e.activeSkill, e.activeTarget = "", nil // consumed, hit or dropped
+		id := e.activeSkill
+
+		var target protocol.Hex
+
+		if e.activeTarget != nil {
+			target = *e.activeTarget
+		}
+
+		victimID := e.activeTargetEntity
+
+		// Consumed, hit or dropped.
+		e.activeSkill, e.activeTarget, e.activeTargetEntity = "", nil, 0
 
 		if attacked[e.id] || e.hp <= 0 {
 			continue
@@ -2520,25 +2574,123 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 		// the live board and DROP (no move, no cooldown) rather than teleport
 		// onto an opposing/over-cap hex; useSkillLocked already refused the
 		// common static case with a surfaced reason.
-		if blockedFor(e, byHex, target) {
+		from := e.hex
+
+		switch def.active.kind {
+		case activeReposition:
+			// #196: the board evolves as actives resolve — an earlier blink
+			// this same turn may have taken the destination's last slot.
+			if blockedFor(e, byHex, target) {
+				continue
+			}
+
+			byHex[from] = removeEntity(byHex[from], e)
+			byHex[target] = append(byHex[target], e)
+			e.hex = target
+			e.path = nil
+		case activeSelfEffect:
+			// Buffered, not applied here — see applyPendingEffectsLocked for
+			// why. Same applier a potion reaches in the end, so
+			// refresh-not-stack, the sorted fold order and the cleanse rules
+			// all come along unwritten.
+			w.pendingEffects = append(w.pendingEffects, pendingEffectApply{target: e, ae: *def.active.effect})
+		case activeTargetEffect:
+			// The victim may have died to this turn's attack phase, which
+			// resolves first. Debuffing a corpse is a wasted cooldown for no
+			// reason, so drop it the way a blocked blink drops.
+			victim, alive := w.entities[victimID]
+			if !alive || victim.hp <= 0 {
+				continue
+			}
+
+			w.pendingEffects = append(w.pendingEffects, pendingEffectApply{target: victim, ae: *def.active.effect})
+		default:
+			// Unknown kinds cannot reach here: validateSkillActive panics at
+			// init on content naming one.
 			continue
 		}
 
-		from := e.hex
-		byHex[from] = removeEntity(byHex[from], e)
-		byHex[target] = append(byHex[target], e)
-		e.hex = target
-		e.path = nil
+		w.startActiveCooldownLocked(e, id, def.active)
 
-		if e.activeReadyTurn == nil {
-			e.activeReadyTurn = make(map[string]int64, 1)
+		// "to" is the caster's hex AFTER resolution, not the submitted target:
+		// they agree for a reposition, and for a self-cast the submitted target
+		// is the zero hex, which would read as a blink to the world origin.
+		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id, "from", from, "to", e.hex)
+	}
+}
+
+// startActiveCooldownLocked marks id ready again N turns from the turn being
+// resolved. Counts TURNS, whichever clock is ticking (activeDef). Shared by
+// both resolution phases so a blast's cooldown can never drift from a blink's.
+// Callers hold w.mu.
+func (w *World) startActiveCooldownLocked(e *entity, id string, a *activeDef) {
+	if e.activeReadyTurn == nil {
+		e.activeReadyTurn = make(map[string]int64, 1)
+	}
+
+	e.activeReadyTurn[id] = w.turn + 1 + int64(a.cooldownTurns)
+}
+
+// resolveActiveBlastsLocked fires every queued area-damage active (#300) into
+// the turn's shared damage map, in caster-id order so two novas in one turn
+// resolve reproducibly.
+//
+// This is the ONE active kind that resolves in the attack phase rather than the
+// move phase, and it is here for the same reasons a thrown flask is: it needs
+// the rng and the shared map, and it must land against PRE-move positions like
+// every other hit. Routing it through resolveAoELocked with a synthesized
+// pure-data weapon means faction filtering, the damage pipeline, damage-type
+// resistances and the buffered on-hit rider all come along unwritten — the
+// caster's own Kindler card folds into their nova exactly as it folds into
+// their flask.
+//
+// The trigger is CONSUMED whether it blasts or fizzles, so the move phase never
+// sees it. Callers hold w.mu.
+func (w *World) resolveActiveBlastsLocked(
+	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, damage map[int64]int,
+) {
+	var casters []*entity
+
+	for _, occs := range byHex {
+		for _, e := range occs {
+			if e.activeSkill == "" || e.activeTarget == nil {
+				continue
+			}
+
+			def, ok := skillDefByID[e.activeSkill]
+			if ok && def.active != nil && activeResolvesInAttackPhase(def.active.kind) {
+				casters = append(casters, e)
+			}
+		}
+	}
+
+	slices.SortFunc(casters, byEntityID)
+
+	for _, e := range casters {
+		id, target := e.activeSkill, *e.activeTarget
+		e.activeSkill, e.activeTarget, e.activeTargetEntity = "", nil, 0
+
+		if e.hp <= 0 {
+			continue
 		}
 
-		// Ready again N turns from the turn being resolved. Counts TURNS,
-		// whichever clock is ticking (activeDef).
-		e.activeReadyTurn[id] = w.turn + 1 + int64(def.active.cooldownTurns)
+		def := skillDefByID[id]
+		a := def.active
 
-		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id, "from", from, "to", target)
+		// A pure-data weapon synthesized from the blast, exactly as
+		// resolveThrowsLocked synthesizes one from a throw payload.
+		var onHit []appliedEffect
+		if a.effect != nil {
+			onHit = []appliedEffect{*a.effect}
+		}
+
+		wpn := &itemDef{id: def.id, name: def.name, damageType: a.damageType, onHit: onHit}
+
+		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id,
+			"target", target, "radius", a.aoeRadius)
+
+		w.resolveAoELocked(rng, byHex, e, wpn, target, a.aoeRadius, a.damage, damage)
+		w.startActiveCooldownLocked(e, id, a)
 	}
 }
 
@@ -2635,7 +2787,8 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
-	w.resolveThrowsLocked(rng, byHex, damage) // #271: thrown flasks land in the same shared map.
+	w.resolveThrowsLocked(rng, byHex, damage)       // #271: thrown flasks land in the same shared map.
+	w.resolveActiveBlastsLocked(rng, byHex, damage) // #300: so do area-damage actives.
 
 	for id, dmg := range damage {
 		w.entities[id].hp -= dmg
@@ -2662,20 +2815,28 @@ func (w *World) applyLifestealLocked() {
 	w.pendingLifesteal = nil
 }
 
-// applyPendingOnHitLocked applies the on-hit timed effects (#271) that this
-// resolution's hits collected in w.pendingOnHit (rollDamageLocked, the single
-// choke point every landed hit flows through — melee both paths, ranged, AoE),
-// then clears the buffer. Called AFTER the end-of-turn tick so a freshly
-// applied effect uniformly takes hold NEXT turn: a self-buff first folds into
-// next turn's hits, a DoT first drains on next turn's tick. Order is
-// deterministic — the hits were collected in the resolution's fixed rng-order.
-// Callers hold w.mu.
-func (w *World) applyPendingOnHitLocked() {
-	for _, oh := range w.pendingOnHit {
+// applyPendingEffectsLocked applies the timed effects this resolution buffered
+// in w.pendingEffects — on-hit riders (#271) from rollDamageLocked, the single
+// choke point every landed hit flows through (melee both paths, ranged, AoE),
+// and self-cast actives (#300) — then clears the buffer. Called AFTER the
+// end-of-turn tick so a freshly applied effect uniformly takes hold NEXT turn:
+// a self-buff first folds into next turn's hits, a DoT first drains on next
+// turn's tick.
+//
+// That "uniformly" is why a self-cast active queues here rather than applying
+// where it resolves (#300). Actives resolve after the attack phase, so a ward
+// applied in place would never see the turn it was cast on — it would burn one
+// of its declared turns doing nothing, and a 4-turn ward would protect for 3.
+// Buffering makes the number on the content row the number the player feels.
+//
+// Order is deterministic — the entries were collected in the resolution's fixed
+// rng-order. Callers hold w.mu.
+func (w *World) applyPendingEffectsLocked() {
+	for _, oh := range w.pendingEffects {
 		applyTimedEffectLocked(oh.target, oh.ae.effectID, oh.ae.magnitude, oh.ae.turns)
 	}
 
-	w.pendingOnHit = nil
+	w.pendingEffects = nil
 }
 
 // resolveRangedLocked folds every pending queued attack intent into the

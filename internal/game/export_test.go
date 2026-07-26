@@ -440,7 +440,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 		byHex[e.hex] = append(byHex[e.hex], e)
 	}
 
-	w.pendingOnHit = nil
+	w.pendingEffects = nil
 
 	attacks, attacked := w.collectMeleeAttacksLocked(byHex, members)
 	w.attackLocked(rng, byHex, attacks)
@@ -448,7 +448,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 	// #271: mirror resolveCombatLocked — tick, then apply this turn's fresh
 	// on-hit effects (so they take hold next turn), then reap deaths.
 	w.tickEffectsLocked(members)
-	w.applyPendingOnHitLocked()
+	w.applyPendingEffectsLocked()
 	w.resolveDeathsLocked(rng, members)
 	// #271: mirror resolveCombatLocked's in-combat summon hook (worldDomain
 	// false — this bridge resolves a combat/bubble turn). A no-op for a set

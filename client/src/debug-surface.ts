@@ -80,6 +80,8 @@ export interface GameDebug {
     cooldownTurns: number;
     rangeHex: number;
     turnsUntilReady: number;
+    /** Targeting mode of an active — a SkillAim* value; "" for a passive (#300). */
+    aim: string;
   }[];
   /** The viewer's unspent skill-point bank. */
   skillPoints: number;
@@ -91,6 +93,12 @@ export interface GameDebug {
   armedSkill: () => string | null;
   /** The flask instance id whose throw is armed for targeting, or null (#271). */
   armedThrow: number | null;
+  /**
+   * Tiles the currently armed active can be aimed at (#300); empty when
+   * nothing is armed. A SUPERSET — it models neither line of sight nor
+   * occupancy, matching what the overlay draws.
+   */
+  skillTiles: Hex[];
   /** Whether the death card is showing (#204). */
   died: boolean;
   /** Current HP by entity id, from the latest bundle — for observing combat in tests. */
