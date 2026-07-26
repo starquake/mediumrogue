@@ -888,6 +888,10 @@ func skillViewsLocked(e *entity, turn int64) []protocol.SkillView {
 
 		if def.active != nil {
 			view.Active = true
+			// An active has no rule cards, so statViewsFor produced nothing —
+			// render its descriptor instead (#300), or the panel shows flavor
+			// and no mechanics at all.
+			view.Stats = activeStatViews(def.active)
 			view.CooldownTurns = def.active.cooldownTurns
 			view.RangeHex = def.active.rangeHex
 			view.Aim = aimFor(def.active.kind)

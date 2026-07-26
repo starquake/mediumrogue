@@ -359,6 +359,16 @@ Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
     Rejections are 422 — not learned, not an active, on cooldown, out of
     range, not walkable, no line of sight, hex occupied, target not found,
     target not hostile.
+  - **Descriptions are rendered, never authored** (#300). An active carries no
+    rule cards, so `statViewsFor` produced nothing and its panel entry was a
+    flavor line with no mechanics — "Here, then not." told a player neither the
+    range nor the cooldown. `activeStatLines` renders the descriptor instead
+    ("Teleport Range 3", "Cooldown 3 turns", "+3 HP per turn for 3 turns, on
+    yourself"), reading the same `activeDef` resolution reads, because an
+    authored line restating the descriptor is a drift surface and
+    `validateFlavorHasNoStats` already forbids numbers in flavor. A debuff's
+    line is deliberately NOT flagged a drawback: that flag asks "does this
+    worsen its holder", and for Expose the holder is the enemy.
   - **Client** (#185, #300): the action bar shows every learned active, keys
     **1–4** or a click. A **self-cast fires on the press**; a hex- or
     entity-aimed one arms, and the next map click is its target. An
@@ -1321,7 +1331,10 @@ roll, so it is ARPG-legal on jewelry.
     through the same buffered on-hit path (the synthesized flask weapon's
     `onHit`), so a thrown DoT (the **Burning** effect, `−3/turn` for 3 turns)
     also first bites next turn and is cleansed by an Antivenom like any harmful
-    effect; and an **active skill** (`activeDef.effect`, #300) applies one to
+    effect (its stat line reads "−3 HP per turn"; it said "−3 Damage" until
+    #300 — an end-of-turn HP delta is not damage dealt, and that wording read
+    backwards on both signs, a regen as bonus damage and a DoT as damage
+    reduction); and an **active skill** (`activeDef.effect`, #300) applies one to
     the caster (Second Wind, Bulwark), to a named hostile (Expose), or to every
     victim of its blast (Ember Nova) — buffered like the others, so the number
     on the content row is the number of turns the player actually feels.
