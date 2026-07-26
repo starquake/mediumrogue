@@ -276,6 +276,9 @@ pipeline cannot tell them apart from a sword's.
 | Survivalist | Survival | `take-damage` ×0.9 — the tree's root (#57) |
 | Hardy | Survival | `take-damage` ×0.85 below 40% HP (requires Survivalist) (#57) |
 
+Plus five **actives**, which carry a trigger and a cooldown instead of cards —
+Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
+
 - **The Survival tree is defensive/attrition** (settled #57, 2026-07-19). It
   shipped empty in v1, which meant a player could spend points into a tree with
   nothing in it; `TestSurvivalTreeIsNotEmpty` now fails loudly if any tree is
@@ -289,31 +292,78 @@ pipeline cannot tell them apart from a sword's.
   hands. A two-handed weapon is **not** dual-wielding — it occupies both slots
   but is one weapon, so the condition counts weapons rather than filled slots.
 
-- **Active skills** (#161): a skill is **passive** (rule cards) or **active**
-  (a trigger + cooldown) — never both, rejected at content load. An active is
-  the turn's action, exactly like a move: not a bonus action, and it displaces
-  a queued move or attack.
-  - **Blink** — Survival tree, 3 hexes, **3-turn cooldown**. The destination
-    needs range, walkability, line of sight **and room**: it does *not* pass
-    through walls, deliberately unlike the classic ARPG blink, so cover stays
-    real, and it respects hex occupancy exactly like an ordinary mover (#196) —
-    a hex held by a monster or already at `StackCap` friendlies is refused, so
-    a blink is never a teleport onto (or through) someone. The occupancy check
-    runs at both submit (surfaced 422) and resolution (a hex that fills between
-    the two — e.g. another blink the same turn — drops the later lander, no
-    move, no cooldown).
+- **Active skills** (#161, #300): a skill is **passive** (rule cards) or
+  **active** (a trigger + cooldown) — never both, rejected at content load. An
+  active is the turn's action, exactly like a move: not a bonus action, and it
+  displaces a queued move or attack.
+
+  An active carries a **behaviour kind** (#300) naming what it does. Every kind
+  routes to machinery that already exists for potions and thrown flasks, so a
+  new active is a registry row rather than a branch at resolution.
+
+| Kind | Aim | What it does | Reuses |
+|---|---|---|---|
+| `reposition` | hex | moves the caster to the target hex | the Blink/recall teleport |
+| `self-effect` | *none* | applies a timed effect to the caster | `applyTimedEffectLocked` (a drink) |
+| `target-effect` | entity | applies a timed effect to a hostile | the same, plus a shot's target gates |
+| `area-damage` | hex | damages every hostile in a radius | `resolveAoELocked` (a thrown flask) |
+
+| Active | Tree (requires) | Cooldown | Effect |
+|---|---|---|---|
+| **Blink** | Survival (Survivalist) | 3 turns | teleport up to **3 hexes** |
+| **Second Wind** | Survival (Survivalist) | 6 turns | Regeneration **+3 HP/turn for 3 turns** on self |
+| **Bulwark** | Survival (Hardy) | 6 turns | Ward **×0.75 damage taken for 4 turns** on self |
+| **Expose** | Class (Weak Spot) | 5 turns | Vulnerable **×1.20 damage taken for 3 turns** on one hostile at **4 hexes** |
+| **Ember Nova** | Class (Kindler) | 5 turns | **5 fire** in a **1-hex blast** at **4 hexes**, plus Burning **−2 HP/turn for 2 turns** |
+
+  - **Blink's destination** needs range, walkability, line of sight **and
+    room**: it does *not* pass through walls, deliberately unlike the classic
+    ARPG blink, so cover stays real, and it respects hex occupancy exactly like
+    an ordinary mover (#196) — a hex held by a monster or already at `StackCap`
+    friendlies is refused, so a blink is never a teleport onto (or through)
+    someone. The occupancy check runs at both submit (surfaced 422) and
+    resolution (a hex that fills between the two — e.g. another blink the same
+    turn — drops the later lander, no move, no cooldown). Walkability and
+    occupancy are **reposition's rules, not every hex-aimed active's**: a blast
+    is aimed at occupied hexes on purpose, because that is where the monsters
+    are.
+  - **Expose is hostile-only**, gated exactly as a ranged shot is (hostility,
+    reach, line of sight). Its Vulnerable row is marked *harmful*, so an
+    **Antivenom cleanses it** — inherited from the effect registry, not written
+    for the skill. Bulwark's Ward is beneficial and survives a cleanse.
+  - **Ember Nova cannot hit an ally.** It routes through the same AoE path a
+    thrown flask does, which damages *every opposing-faction entity in radius*
+    — friendly fire is absent by construction, not by a check. Its reach obeys
+    `rangeHex + aoeRadius ≤ CombatRadius`, the same invariant items obey, so a
+    blast can never kill outside its own bubble (where no kill-XP is awarded).
+  - **A blast resolves in the ATTACK phase**, every other kind in the move
+    phase. It needs the turn's rng and shared damage map, and it must land
+    against **pre-move** positions like every other hit — resolving it with the
+    blinks would let a monster dodge by walking away this turn while a flask
+    thrown at the same hex still connected.
+  - **A freshly applied effect takes hold NEXT turn**, whatever applied it.
+    Actives resolve after the attack phase, so an effect applied where it
+    resolves would silently lose the turn it was cast on — a "4-turn" ward
+    would protect for 3. Self-casts and blast riders therefore queue on the
+    same buffer a weapon's on-hit rider uses.
   - **Cooldowns count TURNS, whichever clock is ticking.** A bubble turn is
     slower in wall-clock than a world turn, and that dilation is the bubble's
     point — a turn-denominated cooldown rides it instead of fighting it. A
     seconds-denominated one would run *through* bullet time and break it.
   - Cooldowns **persist** (`snapshotVersion` 7), so a server restart is not a
     free reset.
-  - Wire: `IntentUseSkill` with a skill id + target hex. Rejections are 422 —
-    not learned, not an active, on cooldown, out of range, not walkable, no
-    line of sight, hex occupied.
-  - **No client UI yet**: no button, no keybind. Reachable only by POSTing the
-    intent directly until #161's client half lands (blocked on a palette
-    decision; the action bar is #185).
+  - Wire: `IntentUseSkill` with a skill id, plus whichever of `target` /
+    `targetEntityId` the skill's aim uses (a self-cast uses neither).
+    `SkillView.aim` is one of `SkillAimSelf` / `SkillAimHex` /
+    `SkillAimEntity`, so the client never infers the flow from `rangeHex`.
+    Rejections are 422 — not learned, not an active, on cooldown, out of
+    range, not walkable, no line of sight, hex occupied, target not found,
+    target not hostile.
+  - **Client** (#185, #300): the action bar shows every learned active, keys
+    **1–4** or a click. A **self-cast fires on the press**; a hex- or
+    entity-aimed one arms, and the next map click is its target. An
+    entity-aimed active clicked onto bare ground **stays armed** rather than
+    spending the arm on a mis-click.
 - **Points**: `SkillPointsPerLevel = 3` per level, `HumanBonusSkillPoints = 1`
   extra for Humans. The grant works off a persisted high-water mark, not a
   level-up event (the engine has none — level is derived from XP), so dying
@@ -1254,22 +1304,27 @@ roll, so it is ARPG-legal on jewelry.
   seeded pin moves. **Stacking**: a re-applied same-def effect **refreshes** its
   timer and magnitude (never stacks N copies) — an ARPG bounded modifier, not a
   TTRPG status (no save, no roll; see design-decisions.md). The **effect defs**
-  (`effectDefs`, content) are `poison` (harmful DoT), `regen` (heal), `frenzy`
-  (deal-damage buff) and `ward` (take-damage/resist buff); `poison` is the only
-  one flagged **harmful**, which is what the cleanse path keys on.
-  - **Three application triggers**, all pure-data riders (no combat-site special
+  (`effectDefs`, content) are `poison` (harmful DoT), `burning` (harmful DoT),
+  `vulnerable` (harmful take-damage multiplier ABOVE 1, #300), `regen` (heal),
+  `frenzy` (deal-damage buff) and `ward` (take-damage/resist buff). The three
+  **harmful** ones are what the cleanse path keys on — a flag on the row, never
+  a list at the cleanse site.
+  - **Four application triggers**, all pure-data riders (no combat-site special
     case): a weapon's **on-hit rider** (`itemDef.onHit`) applies an effect when
     a melee hit lands — collected at `rollDamageLocked`, applied *after* the tick
     so a fresh effect first bites next turn; a consumable's **drink riders**
     (`itemDef.appliesEffect` / `cleansesHarmful`) apply an effect (or clear
     effects) *now*, on drink (`drinkItemLocked`) — a Warding Tonic must turn
     aside the incoming blow the turn it is drunk, and a drink is already the
-    player's whole turn in a bubble; and a throwable's **on-land rider**
+    player's whole turn in a bubble; a throwable's **on-land rider**
     (`throwPayload.onLand`, #271) applies an effect to every blast victim — routed
     through the same buffered on-hit path (the synthesized flask weapon's
     `onHit`), so a thrown DoT (the **Burning** effect, `−3/turn` for 3 turns)
     also first bites next turn and is cleansed by an Antivenom like any harmful
-    effect.
+    effect; and an **active skill** (`activeDef.effect`, #300) applies one to
+    the caster (Second Wind, Bulwark), to a named hostile (Expose), or to every
+    victim of its blast (Ember Nova) — buffered like the others, so the number
+    on the content row is the number of turns the player actually feels.
   - **Cleanse is harmful-only** (`clearHarmfulEffectsLocked`): an Antivenom
     strips every effect whose def is `harmful` (the poison) and leaves your own
     buffs intact — curing the poison must not also strip the buff you drank.
@@ -1284,7 +1339,7 @@ roll, so it is ARPG-legal on jewelry.
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (46 e2e tests across 28 spec files). The client exposes **`window.game`**
+  embedded-client binary (55 e2e tests across 29 spec files). The client exposes **`window.game`**
   (positions incl. `monsterKind`, hp, inventory, equipped, backpack,
   panelOpen, pickupModal, combatMoves, damage events, tapHex, hexToScreen,
   sendChat, identityLink, turnReceived, turnApplied, clientError…) as the

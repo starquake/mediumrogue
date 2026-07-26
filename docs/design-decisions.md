@@ -129,7 +129,8 @@ spawn (Q9 first half).
   (UI2)** — so a future skill system would be **passive-only**. (2026-07-14)
   **Reopened and shipped**: the *passive* skill system shipped as #124, and
   **active skills shipped 2026-07-19 as a category** (#161), with Blink as
-  their first content — server side; the client half is still pending. Worth knowing
+  their first content; the action bar followed (#185), and #300 cashed the
+  category's promise with a behaviour descriptor and four more actives. Worth knowing
   the original cut was a **scope** decision taken during a roadmap
   walk-through, not an identity one — `game-identity.md` explicitly says an
   action economy of the "your one action can be something other than attack"
@@ -974,3 +975,58 @@ regulars" is what a missing gesture gate looks like.
 means a bundle only contains what is within 20 hexes, so audio needed no
 culling of its own — only a volume ramp over a known, bounded range. A feature
 built earlier for bandwidth turned out to define the audible world.
+## Actives are expressed in existing vocabulary, not hardcoded per skill *(decided 2026-07-26, #300)*
+
+Blink shipped as a category (#161) so the second active would not be a second
+special case. When four more arrived, the promise had to be cashed: at that
+point Blink's teleport WAS the resolution — `resolveActivesLocked` did the one
+thing an active could do — and adding Second Wind by writing a heal beside it
+would have made the "category" a switch statement wearing a costume.
+
+So an `activeDef` gained a **behaviour kind**, and each kind names machinery
+that **already existed for potions and thrown flasks**:
+
+| Kind | Reuses |
+|---|---|
+| `reposition` | the Blink/recall teleport |
+| `self-effect` | `applyTimedEffectLocked` — the same call a drink makes |
+| `target-effect` | the same, behind a ranged shot's target gates |
+| `area-damage` | `resolveAoELocked` — the same path a thrown flask takes |
+
+That reuse is the point, not an implementation convenience. It is why Expose's
+Vulnerable is cleansed by an Antivenom without a line of code mentioning
+skills, why Ember Nova cannot hit an ally (the AoE path damages *every
+opposing-faction entity in radius* — friendly fire is absent by construction,
+not by a check), and why the caster's own Kindler card folds into their nova
+exactly as it folds into their flask. **A kind that needed new machinery would
+be the signal to stop and design, not to write it** — the four here pass
+precisely because they did not.
+
+Three things the build settled that the spec had not:
+
+- **The aim is a third axis, not a boolean.** "Does this need a target" cannot
+  distinguish a self-cast from an entity-aimed debuff — they fail it for
+  entirely different reasons, and they need different submit-time validation
+  *and* different client flows. `aimFor` returns self/hex/entity, and its
+  values **are** the wire's (`protocol.SkillAim*`): the client needs this exact
+  fact, and a mapping at the boundary is one more place the two can disagree.
+- **A fresh effect takes hold NEXT turn, whoever applied it.** Actives resolve
+  after the attack phase, so an effect applied where it resolves would silently
+  lose the turn it was cast on — a "4-turn" ward would protect for 3. The
+  on-hit buffer already existed to make this uniform, so self-casts and blast
+  riders queue there too. The number on the content row is the number the
+  player feels.
+- **A blast resolves in the ATTACK phase**, alone among the kinds. It needs the
+  turn's rng and shared damage map, and it must land against **pre-move**
+  positions like every other hit — resolving it with the blinks would let a
+  monster dodge by walking away this turn while a flask thrown at the same hex
+  still connected.
+
+**Skills do not outperform the consumables they mirror.** Second Wind is the
+Healing Draught's exact regen row; Bulwark is the Warding Tonic's; Ember Nova
+is the Flask of Alchemist's Fire one point weaker with a shorter burn. A skill
+that beat its potion would make the potion dead content, and the potions are
+the loot.
+
+**Cost stays uniform at `SkillPointCost = 3`** (maintainer, #300 Q3),
+confirming the 2026-07-19 decision rather than pricing actives separately.

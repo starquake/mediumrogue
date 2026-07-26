@@ -59,8 +59,9 @@ const (
 	idEffectVulnerable = "vulnerable"
 )
 
-// effectDefs is the timed-effect content registry (#271). Three defs, two of
-// which back the slice's proof consumers:
+// effectDefs is the timed-effect content registry (#271), grown since by #271
+// slices 2/5 and #300. The three that opened it, two of which back the slice's
+// proof consumers:
 //   - poison: a DoT — a negative effAdd folded at end-of-turn (the Serpent's
 //     bite applies it, idVenomSting.onHit). The first evEndOfTurn consumer.
 //   - frenzy: a self-buff — a deal-damage mulPct (idBloodrageCleaver.onHit
