@@ -84,7 +84,10 @@ test("importing a link with an unknown token falls back to the start screen inst
   expect(new URL(page.url()).hash).toBe("");
 
   // The rejected join surfaces the start screen — not a dead error state.
-  await expect(page.locator("#start-screen")).toBeVisible({ timeout: 15_000 });
+  // The CREATION half: recovery from a dead token drops you to a fresh
+  // character, not to a Continue card for the identity that just failed.
+  await expect(page.locator("#creation")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#returning")).toBeHidden();
 
   // And a normal join from it works; the dead identity is gone.
   await page.locator("#start-enter").click();

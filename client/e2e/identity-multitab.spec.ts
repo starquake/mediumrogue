@@ -44,7 +44,9 @@ test("a second tab joining as a different player triggers the first tab to reloa
   await page2.goto("/");
   await continueIfReturning(page2);
 
-  await expect(page2.locator("#start-screen")).toBeVisible();
+  // Tab 2 cleared the shared identity, so it is a brand-new player — the
+  // creation half, not the returning card (#303).
+  await expect(page2.locator("#creation")).toBeVisible();
   await page2.locator("#start-name").fill("bob");
   await page2.locator('.card[data-class="rogue"]').click();
   await page2.locator('.card[data-species="elf"]').click();
