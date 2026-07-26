@@ -589,6 +589,23 @@ teleport — more expensive once, no rewrite when the second active arrives.
 - **Blink does NOT pass through walls**, the opposite of the genre's usual
   blink. Escaping still requires somewhere you can see, so a rock wall stays
   cover rather than a suggestion.
+- **A blink buys distance; it does not break contact** *(clarified 2026-07-26,
+  #161)*. `CombatRadius` is 6 and Blink's range is 3, so blinking directly away
+  from an ADJACENT monster ends at distance 4 — still inside the bubble. The
+  fight follows you.
+
+  This is the intended reading of the range the maintainer picked ("a head
+  start you still have to run with", confirmed 2026-07-26), but it is worth
+  stating because #161's own plan promised the opposite — "a player blinks out
+  of a bubble and the bubble recomputes without them" — and its option note
+  ("4+ can clear a bubble in one jump") was wrong for the same arithmetic:
+  clearing from adjacent needs range 6.
+
+  So a blink escapes only by breaking LINE OF SIGHT — around a corner — never
+  by range alone. `TestBlinkBuysDistanceButDoesNotClearABubble` pins it, so
+  raising the range later is a deliberate act rather than a silent one. **#98
+  (multi-hex travel for fleeing) inherits this**: #161's title claims it
+  unblocks the escape problem, and it only partly does.
 - **A queued active is dropped, not deferred**, if its caster attacked or died
   that turn: a stale trigger firing a turn late would teleport someone who has
   since chosen something else.

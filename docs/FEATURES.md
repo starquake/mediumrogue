@@ -316,6 +316,10 @@ Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
 | **Expose** | Class (Weak Spot) | 5 turns | Vulnerable **×1.20 damage taken for 3 turns** on one hostile at **4 hexes** |
 | **Ember Nova** | Class (Kindler) | 5 turns | **5 fire** in a **1-hex blast** at **4 hexes**, plus Burning **−2 HP/turn for 2 turns** |
 
+  - **A blink buys distance, it does not break contact** (#161): `CombatRadius`
+    is 6 and Blink reaches 3, so blinking away from an adjacent monster ends at
+    distance 4 — still in the bubble. Escaping needs a corner (breaking line of
+    sight), never range alone.
   - **Blink's destination** needs range, walkability, line of sight **and
     room**: it does *not* pass through walls, deliberately unlike the classic
     ARPG blink, so cover stays real, and it respects hex occupancy exactly like
