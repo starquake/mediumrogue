@@ -9,7 +9,7 @@
 // static walkability set), never module state, so it stays correct regardless
 // of when it's called. The server independently re-checks everything on
 // resolution — these only drive the UX preview.
-import { EntityMonster, StackCap } from "./protocol.gen";
+import { EntityMonster, SkillAimEntity, SkillAimHex, StackCap } from "./protocol.gen";
 import type { Hex } from "./protocol.gen";
 import { DIRECTIONS, hexDistance, neighbor } from "./render/hex";
 
@@ -227,4 +227,58 @@ export function combatReach(ctx: TacticsCtx): { moves: Hex[]; melees: Hex[] } {
   }
 
   return { moves, melees };
+}
+
+/**
+ * skillTargetTiles returns the tiles an ARMED active can be aimed at (#300),
+ * so a player pressing Blink sees where it reaches instead of guessing and
+ * eating a 422.
+ *
+ * - **hex** — every walkable tile in range. Rock and water are excluded (never
+ *   a landing spot, never a sensible aim point); nothing else is.
+ * - **entity** — the tiles of hostiles in range. The intent sends an entity id,
+ *   so bare ground is not a target however close it is.
+ * - **self** — nothing. A self-cast never arms (it fires on the press), so
+ *   there is nothing to preview.
+ *
+ * PREVIEW ONLY, like every function in this file, and deliberately a SUPERSET.
+ * It models neither line of sight nor occupancy, so a Blink onto a
+ * monster-held hex still appears selectable and is refused on submit with a
+ * surfaced reason. That is the same fidelity the ranged attack wash already
+ * has, and it is why the wire carries `aim` but not the behaviour kind: the
+ * client would need the kind ONLY to decide whether an occupied hex is a legal
+ * target, and at preview fidelity it does not have to decide.
+ */
+export function skillTargetTiles(ctx: TacticsCtx, aim: string, rangeHex: number): Hex[] {
+  const me = ctx.me;
+  if (me === null || rangeHex <= 0) {
+    return [];
+  }
+
+  if (aim === SkillAimEntity) {
+    return ctx.positions
+      .filter((p) => p.kind === EntityMonster && hexDistance(me, p.hex) <= rangeHex)
+      .map((p) => p.hex);
+  }
+
+  if (aim !== SkillAimHex) {
+    return [];
+  }
+
+  const out: Hex[] = [];
+
+  for (let dq = -rangeHex; dq <= rangeHex; dq++) {
+    for (let dr = -rangeHex; dr <= rangeHex; dr++) {
+      const h = { q: me.q + dq, r: me.r + dr };
+      if (sameHex(h, me) || hexDistance(me, h) > rangeHex) {
+        continue;
+      }
+
+      if (ctx.walkable.has(`${h.q},${h.r}`)) {
+        out.push(h);
+      }
+    }
+  }
+
+  return out;
 }

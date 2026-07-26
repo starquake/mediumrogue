@@ -48,3 +48,46 @@ export class MoveRangeLayer {
     drawHexTile(this.gfx, h, { size: HEX_SIZE - 2, color, fillAlpha, strokeWidth: 1.5, strokeAlpha });
   }
 }
+
+// The action bar's own arming green (#action-bar .aslot.arming, index.html).
+// Deliberately NOT the move-tile blue: an armed skill and a walkable tile are
+// different questions, and the bar already turns this colour when you arm one —
+// so the tiles it enables light up in the same colour that lit up the button.
+const SKILL_TILE_COLOR = 0x7cb342;
+
+/**
+ * The armed-skill target overlay (#300): while an active is armed, every tile
+ * it can be aimed at is tinted, so pressing Blink shows its reach instead of
+ * leaving the player to guess and eat a rejection.
+ *
+ * Separate from MoveRangeLayer rather than a fourth set on it, for two
+ * reasons: that layer is empty outside combat by design (click-anywhere
+ * pathing makes it noise out there) while an active can be used anywhere, and
+ * its question is "where can I move", not "where can this skill go".
+ *
+ * The set is a SUPERSET (tactics.ts's skillTargetTiles) — it models neither
+ * line of sight nor occupancy — so this shows where a skill REACHES, not a
+ * promise that every tile will be accepted.
+ */
+export class SkillRangeLayer {
+  readonly container = new Container();
+  private readonly gfx = new Graphics();
+
+  constructor() {
+    this.container.addChild(this.gfx);
+  }
+
+  update(tiles: Hex[]): void {
+    this.gfx.clear();
+
+    for (const h of tiles) {
+      drawHexTile(this.gfx, h, {
+        size: HEX_SIZE - 3,
+        color: SKILL_TILE_COLOR,
+        fillAlpha: 0.14,
+        strokeWidth: 1.5,
+        strokeAlpha: 0.55,
+      });
+    }
+  }
+}

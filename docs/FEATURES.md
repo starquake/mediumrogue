@@ -374,6 +374,20 @@ Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
     entity-aimed one arms, and the next map click is its target. An
     entity-aimed active clicked onto bare ground **stays armed** rather than
     spending the arm on a mis-click.
+  - **Arming shows the reach** (`render/range.ts`'s `SkillRangeLayer`): while an
+    active is armed, every tile it can be aimed at is tinted in the action
+    bar's own arming green — press Blink and you see where it reaches instead
+    of guessing and eating a 422. Hex-aimed skills light walkable ground in
+    range; entity-aimed ones light the hostiles. Its own layer rather than a
+    fourth set on `MoveRangeLayer`, which is empty outside combat by design
+    while an active works anywhere.
+    - The set is a deliberate **superset**: it models neither line of sight nor
+      occupancy, so a Blink onto a monster-held hex still lights up and is
+      refused on submit. That is the same fidelity the ranged attack wash has,
+      and it is why the wire carries `aim` but not the behaviour kind — the
+      client would need the kind ONLY to decide whether an occupied hex is
+      legal, and at preview fidelity it does not have to decide.
+    - `window.game.skillTiles` mirrors it for tests.
 - **Points**: `SkillPointsPerLevel = 3` per level, `HumanBonusSkillPoints = 1`
   extra for Humans. The grant works off a persisted high-water mark, not a
   level-up event (the engine has none — level is derived from XP), so dying
