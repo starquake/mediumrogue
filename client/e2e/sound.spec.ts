@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { gotoReady } from "./helpers";
+import { gotoReady, continueIfReturning } from "./helpers";
 
 // sound.spec.ts (#298): the audio a test can verify without hearing anything.
 //
@@ -44,6 +44,7 @@ test("the HUD toggle mutes, persists, and silences playback", async ({ page }) =
 
   // The setting survives a reload — it is stored, not just held in memory.
   await page.reload();
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.audio.muted)).toBe(true);
   await expect(page.locator("#toggle-sound")).toHaveText("sound: off");
 });

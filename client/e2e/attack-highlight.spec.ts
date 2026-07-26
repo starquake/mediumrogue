@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { ClassMage, ClassRogue, EntityMonster } from "../src/protocol.gen";
 import type { Hex, HitView } from "../src/protocol.gen";
-import { chaseIntoCombat, dumpState, gotoReady, hexDist, progressTracker, seedIdentity } from "./helpers";
+import { chaseIntoCombat, dumpState, gotoReady, hexDist, progressTracker, seedIdentity, continueIfReturning } from "./helpers";
 
 // This file runs against its OWN private monster server (see
 // playwright.config.ts) with a short COMBAT_PATIENCE, for the same reasons as
@@ -348,6 +348,8 @@ test("rogue: hovering a hostile in bow range highlights exactly its tile; a plai
 
   await page.goto("/");
 
+  await continueIfReturning(page);
+
   try {
     await expect
       .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))
@@ -531,6 +533,8 @@ test("committed attack indicator is cleared by the next turn-over (#252)", async
   await seedIdentity(page, { class: "rogue" });
 
   await page.goto("/");
+
+  await continueIfReturning(page);
 
   try {
     await expect

@@ -2,10 +2,11 @@ import { expect, test } from "@playwright/test";
 
 import { XPCurveBase } from "../src/protocol.gen";
 
-import { E2E_WORLD_RADIUS } from "./helpers";
+import { E2E_WORLD_RADIUS, continueIfReturning } from "./helpers";
 
 test("client connects and the turn counter advances live", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   // The SSE stream must connect and report itself in the UI.
   await expect(page.locator("#status")).toHaveAttribute("data-connected", "true");
@@ -26,6 +27,7 @@ test("a fresh player starts at level 1 with 0 XP, exposed on window.game and the
   page,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   // Each test gets its own browser context (no stored identity), so this is
   // always a brand-new entity — a fresh join floors xp at 0 and level at 1
@@ -58,6 +60,7 @@ test("a fresh player starts at level 1 with 0 XP, exposed on window.game and the
 
 test("the hex world renders from server map data", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   // The WebGL canvas is on the page.
   await expect(page.locator("canvas")).toBeVisible();
@@ -80,6 +83,7 @@ test("the hex world renders from server map data", async ({ page }) => {
 // showed only level/XP/coords, while any monster's HP was hover-readable).
 test("the HUD stats line shows the player's HP", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
   await expect(page.locator("#status")).toHaveAttribute("data-connected", "true");
 
   await expect

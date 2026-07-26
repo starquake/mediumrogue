@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { ClassMage, SpeciesElf } from "../src/protocol.gen";
+import { continueIfReturning } from "./helpers";
 
 // This file runs on the CORE (monster-free) server — see playwright.config.ts's
 // specs list, where "class" has no `monsters` entry.
@@ -17,6 +18,7 @@ test("a brand-new player sees the start screen, picks class/species, and joins o
   page,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect(page.locator("#start-screen")).toBeVisible();
 
@@ -56,6 +58,7 @@ test("a brand-new player sees the start screen, picks class/species, and joins o
   // — the screen must not reappear, and the same character is reclaimed
   // (same entity id, same class/species/name) rather than a fresh one.
   await page.reload();
+  await continueIfReturning(page);
 
   await expect(page.locator("#start-screen")).toBeHidden();
   await expect

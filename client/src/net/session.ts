@@ -20,6 +20,18 @@ export interface Identity {
   class: string;
   /** The species this identity joined as. */
   species: string;
+  /**
+   * Name and level, cached for the returning-player card (#303).
+   *
+   * The start screen renders BEFORE joining, so it can only show what is
+   * stored — and the join response carries neither. These are refreshed from
+   * every turn bundle, which makes the card a PREVIEW: play on another
+   * browser and the level here goes stale until you continue, at which point
+   * the server's value replaces it. Absent on an identity stored before this
+   * shipped, and on one imported from a character link.
+   */
+  name?: string;
+  level?: number;
 }
 
 /**
@@ -37,6 +49,22 @@ export interface Identity {
  * both on a live reclaim or an archived restore (world.go's Join). A no-op
  * when the URL carries no `#t=` fragment.
  */
+let arrivedByLink = false;
+
+/**
+ * cameFromCharacterLink reports whether THIS page load imported an identity
+ * from a `#t=` fragment (#303).
+ *
+ * The returning-player start screen shows on every ordinary load, but a
+ * character link is already an explicit "be this character" choice — putting a
+ * Continue button in front of it is friction on a flow built to be instant,
+ * and it would break the documented promise that an imported link joins
+ * straight through. In-memory, not stored: it describes this load only.
+ */
+export function cameFromCharacterLink(): boolean {
+  return arrivedByLink;
+}
+
 export function importIdentityFromFragment(): void {
   const match = /^#t=(.+)$/.exec(window.location.hash);
   const token = match?.[1];
@@ -46,6 +74,7 @@ export function importIdentityFromFragment(): void {
 
   const identity: Identity = { entityId: 0, token, class: "", species: "" };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
+  arrivedByLink = true;
 
   const url = new URL(window.location.href);
   url.hash = "";
@@ -77,6 +106,25 @@ export function loadIdentity(): Identity | null {
  */
 export function clearIdentity(): void {
   localStorage.removeItem(STORAGE_KEY);
+}
+
+/**
+ * Updates the cached name/level on the stored identity (#303), leaving the
+ * token and everything else untouched. Called once per turn bundle; a no-op
+ * when nothing is stored or the values have not moved, so it is not a write
+ * per turn forever.
+ */
+export function cacheCharacterSummary(name: string, level: number): void {
+  const id = loadIdentity();
+  if (id === null || (id.name === name && id.level === level)) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...id, name, level }));
+  } catch {
+    // Private-mode browsers throw; the card just falls back to "your character".
+  }
 }
 
 /**

@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 import type { MapResponse } from "../src/protocol.gen";
-import { pickDistance2Destination } from "./helpers";
+import { pickDistance2Destination, continueIfReturning } from "./helpers";
 
 test("the procedural world renders and the camera follows my movement", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   // The generated map (radius 24 by default) is on stage.
   await expect.poll(() => page.evaluate(() => window.game.tiles)).toBeGreaterThan(0);

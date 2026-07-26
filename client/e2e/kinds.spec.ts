@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 // The e2e server is started with MONSTER_COUNT=30 (playwright.config.ts):
 // ring-weighted placement (milestone 6c) distributes that many monsters
@@ -17,6 +18,7 @@ import { expect, test } from "@playwright/test";
 // placement before making the e2e world bigger.
 test("distinct monster kinds reach the client and render differently", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect
     .poll(() => page.evaluate(() => window.game.monsters), { timeout: 10_000 })

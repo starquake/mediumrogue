@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { ClassRogue } from "../src/protocol.gen";
-import { seedIdentity } from "./helpers";
+import { seedIdentity, continueIfReturning } from "./helpers";
 
 // Inventory-slots milestone (task 5), re-slotted for the gear keystone's
 // approved ARPG panel (task 3, docs/superpowers/specs/
@@ -46,6 +46,7 @@ const TURN_GATED = { timeout: 20_000 };
 async function seedRogue(page: Page): Promise<void> {
   await seedIdentity(page, { class: "rogue" });
   await page.goto("/");
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected), TURN_GATED).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.class), TURN_GATED).toBe(ClassRogue);
   // Both class defaults equipped into the two hands (dagger -> main-hand

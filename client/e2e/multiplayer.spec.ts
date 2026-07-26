@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { MapResponse } from "../src/protocol.gen";
+import { continueIfReturning } from "./helpers";
 
 // The e2e server is shared across the whole suite and entities never despawn,
 // so assert >= 2 and track specific entity ids rather than an exact count.
@@ -11,7 +12,10 @@ test("two clients share one world and see each other move", async ({ browser }) 
   const b = await ctxB.newPage();
 
   await a.goto("/");
+
+  await continueIfReturning(a);
   await b.goto("/");
+  await continueIfReturning(b);
 
   await expect.poll(() => a.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
   await expect.poll(() => b.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
@@ -89,6 +93,7 @@ test("the client stays disconnected while the stream is down, then reconnects an
   // route would silently stop intercepting the stream.
   await page.route("**/api/events**", (route) => route.abort());
   await page.goto("/");
+  await continueIfReturning(page);
 
   // Join (POST /api/join is not blocked) succeeds, but the stream is down: no
   // turn bundle has arrived (turn stays -1) and the HUD reports disconnected.

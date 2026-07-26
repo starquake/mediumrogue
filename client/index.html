@@ -396,6 +396,39 @@
         font-size: 0.7rem;
         margin-top: 0.7rem;
       }
+      #returning-card {
+        border: 1px solid var(--dim);
+        border-radius: 3px;
+        padding: 0.7rem 0.9rem;
+        margin: 0.9rem 0 1rem;
+        text-align: center;
+      }
+      #returning-card .who { font-size: 1.05rem; color: var(--ink); }
+      #returning-card .what { font-size: 0.72rem; color: var(--dim); margin-top: 0.2rem; }
+      #start-panel button.quiet {
+        background: none;
+        border: 1px solid var(--dim);
+        color: var(--dim);
+        font-size: 0.72rem;
+        margin-top: 0.5rem;
+      }
+      #start-panel button.danger { border-color: #a04a4a; color: #d98a8a; }
+      #startover-confirm {
+        margin-top: 0.9rem;
+        border: 1px solid #a04a4a;
+        border-radius: 3px;
+        padding: 0.7rem 0.9rem;
+        text-align: left;
+      }
+      #startover-confirm[hidden] { display: none; }
+      #startover-confirm .warn { color: #d98a8a; font-size: 0.8rem; margin-bottom: 0.35rem; }
+      #startover-confirm .explain { color: var(--dim); font-size: 0.68rem; line-height: 1.6; margin: 0 0 0.5rem; }
+      #startover-confirm .linkrow { display: flex; gap: 0.3rem; }
+      #startover-confirm .linkrow input {
+        flex: 1; min-width: 0; font-size: 0.62rem; padding: 0.25rem 0.35rem;
+      }
+      #startover-confirm .confirm-actions { display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 0.5rem; }
+      #returning[hidden], #creation[hidden] { display: none; }
       #start-panel .credit {
         text-align: center;
         color: var(--dim);
@@ -1353,6 +1386,37 @@
     <div id="start-screen" hidden>
       <div id="start-panel">
         <h1>Medium Rogue</h1>
+
+        <!-- Returning player (#303): shown INSTEAD of the creation form when a
+             stored identity exists. Continue is the default and the prominent
+             action; Start over is deliberately quiet and asks first. -->
+        <div id="returning" hidden>
+          <div class="tagline">welcome back</div>
+          <div id="returning-card">
+            <div class="who" id="returning-name">your character</div>
+            <div class="what" id="returning-what"></div>
+          </div>
+          <button id="continue-btn" type="button">Continue</button>
+          <button id="startover-btn" type="button" class="quiet">Start over with a new character</button>
+
+          <div id="startover-confirm" hidden>
+            <div class="warn">Start over?</div>
+            <p class="explain">
+              Your current character stays in the world and can be reclaimed —
+              <strong>but only with this link</strong>. Copy it first; it is the only way back.
+            </p>
+            <div class="linkrow">
+              <input id="startover-link" type="text" readonly />
+              <button id="startover-copy" type="button">Copy</button>
+            </div>
+            <div class="confirm-actions">
+              <button id="startover-cancel" type="button" class="quiet">Cancel</button>
+              <button id="startover-go" type="button" class="danger">Start over</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="creation">
         <!-- Derive-free wording (PR #50 review): no literal cadence number
              here to go stale when TurnSeconds is retuned again. -->
         <div class="tagline">a shared world · everyone moves on the same beat · bring friends</div>
@@ -1399,7 +1463,9 @@
         </div>
 
         <button id="start-enter" type="button">Enter the world</button>
-        <div class="hint">returning players skip this screen — your character remembers you</div>
+        </div>
+
+        <div class="hint" id="start-hint">your character is remembered on this browser</div>
         <div class="credit">glyph icons — <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0</div>
         <div class="credit">sound — <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0</div>
       </div>

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 // This file runs on its own private server (playwright.config.ts's specs
 // list) with the default pre-seeded identity for the `page` fixture (see
@@ -12,6 +13,7 @@ test("a copied character link rejoins the SAME character on a second browser con
   browser,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
   // Wait for a real turn bundle: window.game.class/species/name/xp start out
@@ -99,6 +101,7 @@ test("the copy-link button is hidden until joined, then reveals a link and flash
   page,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   const button = page.locator("#copy-link");
 

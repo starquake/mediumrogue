@@ -989,10 +989,27 @@ roll, so it is ARPG-legal on jewelry.
   combat log.
 
 ### Joining & identity
-- **Character-creation start screen** (new players only): name, class card,
-  species card, Enter — keyboard operable. Identity (token) persists in
-  localStorage; **returning players skip the screen** and reclaim their
-  character.
+- **Start screen — shown on every load** (#303). A **new** player gets the
+  creation form (name, class card, species card, Enter — keyboard operable).
+  A **returning** player gets their character card (name, class, species,
+  level) with **Continue** as the default and prominent action: Enter or a
+  click. Identity (token) persists in localStorage.
+  - It used to be skipped entirely for returning players, which meant the
+    people who play most never saw it — including its asset attribution.
+    Showing it every load is what makes that credit reachable.
+  - The card's name and level are **cached client-side** and refreshed each
+    turn bundle: the screen renders *before* joining, and the stored identity
+    carries only token/class/species. So the card is a preview — play on
+    another browser and the level here is stale until you continue, at which
+    point the server's value replaces it.
+- **Start over** (#303): abandons the current character for a fresh one,
+  behind a confirmation. **The confirm shows the old character's identity
+  link with a copy button, and that is the point** — the archive keeps the
+  character indefinitely (the disconnect sweep archives it, and archive
+  entries are deleted only on reclaim, never expired), so it stays reclaimable
+  *if you kept the link*. The link IS the token; clearing the identity without
+  copying it is what would make "recoverable" true on paper and false in
+  practice. No server change was needed for any of this.
 - **Character link** (milestone 10a — settles plan §9's identity question as
   "name + secret link"): `<origin>/#t=<token>`. A **"copy character link"**
   button appears in the HUD once joined; clicking it writes the link to the

@@ -94,8 +94,34 @@ export async function seedIdentity(page: Page, opts: { class?: string; species?:
  * stream is live — the `goto("/")` + poll(me !== null && connected) preamble
  * that opens nearly every spec.
  */
+/**
+ * continueIfReturning clicks past the returning-player start screen (#303).
+ *
+ * That screen now shows on EVERY load, and the committed storage-state
+ * template makes every spec a returning player — so without this the whole
+ * suite waits forever on a card it never asked about. Tolerant of the screen
+ * being absent, so a spec that clears storageState (class.spec.ts) still
+ * drives the creation form itself.
+ */
+export async function continueIfReturning(page: Page): Promise<void> {
+  const btn = page.locator("#continue-btn");
+  if (await btn.isVisible().catch(() => false)) {
+    await btn.click();
+  }
+}
+
 export async function gotoReady(page: Page): Promise<void> {
   await page.goto("/");
+
+  // #303: the start screen now shows on EVERY load, so a returning player
+  // (which the storage-state template makes every spec) lands on the character
+  // card and must Continue before the world exists. Handled here rather than
+  // in each spec — every spec reaches the world through this helper, and
+  // without it the whole suite stalls on a screen it never asked about.
+  //
+  // Tolerant of both states on purpose: a spec that clears storageState
+  // (class.spec.ts) gets the creation form instead and drives it itself.
+  await continueIfReturning(page);
 
   await expect
     .poll(() => page.evaluate(() => window.game.me !== null && window.game.connected))

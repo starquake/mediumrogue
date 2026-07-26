@@ -71,6 +71,10 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // and a wandering monster would only add combat sounds that make the
   // played-counter assertions ambiguous.
   { name: "sound" },
+  // returning (#303): the start screen a returning player sees. Monster-free —
+  // the spec is about the screen before the world, and the storage-state
+  // template already makes every project a returning player.
+  { name: "returning" },
   // credits (#298): monster-free. The CC0 packs ask for credit, so the credit
   // has to be reachable — the spec hit-tests the link rather than reading the
   // CSS, because #controls-overlay is pointer-events: none and a link without

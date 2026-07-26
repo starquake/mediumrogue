@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 // The default e2e identity is a fighter/human/traveler (playwright.config's
 // storageState) and this server is monster-free, so the player is always OUT of
@@ -10,6 +11,7 @@ import { expect, test } from "@playwright/test";
 // reflect it, then both clear once it resolves.
 test("out-of-combat item action shows pending feedback, then clears", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.turn), { timeout: 10_000 }).toBeGreaterThan(0);
   expect(await page.evaluate(() => window.game.inCombat)).toBe(false);
 
