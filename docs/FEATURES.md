@@ -1417,6 +1417,32 @@ roll, so it is ARPG-legal on jewelry.
   `make check` (rat win rate, starter-kind threat, a global threat
   ceiling, solo-carries-risk + parties-not-deadlier) — they move only when
   content moves.
+  - **`-mode composition`** (#299) sweeps the class MIX, which `-mode sim`
+    cannot: every party it builds is the same round-robin, so composition is
+    neither an input nor an output there. Enumerates class **multisets**
+    (turn order is not a class property, so 21 parties of 5 rather than 243),
+    runs each at 20 seeds, and reports every metric with its **range**, not
+    just its mean — at 3 seeds the per-seed variance is wide enough that a
+    ranking would be inventing its winner.
+    - **Ranked by tension** (maintainer's call): lowest close-call *among
+      parties whose deaths stay under a ceiling*. The ceiling is the whole
+      trick — a party being slaughtered also has a very low close-call, so
+      without it the ranking crowns the worst party in the table as the most
+      exciting one.
+    - **It checks that nothing dominates; it does not crown a winner.** If one
+      mix wins clearly, players copy it and the class choice stops being a
+      choice — so a flat field is the good result, and the verdict line says
+      so in words rather than leaving it to be inferred. "Separation" is
+      measured against the field's own per-seed spread: a gap smaller than the
+      noise it came from is not a finding.
+    - Parties **1–5 only**: by 10 deaths fall to ~0.3 per 100 turns and by 15
+      to ~0.09, so nothing dies and composition has nothing left to move.
+    - **Not in `make balance`** — ~1100 world runs against the default mode's
+      18 turns seconds into minutes, so it stays an opt-in mode.
+    - A composition run is **not comparable with a `sim` run**: different
+      classes join, so rng diverges. `PartySimConfig.Composition` defaults to
+      nil and reproduces the old round-robin byte-identically, which is what
+      keeps the four guardrails pinned.
 - **Combat event log** (item 1, playtest batch 2 — `internal/game`,
   structured `slog`, the milestone-12 analytics seed): every resolution
   path emits `slog.Info("combat", "event",

@@ -171,6 +171,10 @@ var (
 	// all five are 422s — the request was well-formed and the world simply
 	// says no.
 	ErrNoSuchSkill = errors.New("no such skill")
+	// ErrUnknownSimClass is a balance-harness composition naming a class that
+	// does not exist (#299) — a typo, rejected rather than quietly replaced
+	// with the round-robin default.
+	ErrUnknownSimClass = errors.New("unknown class in party composition")
 	// ErrSkillAlreadyLearned rejects re-learning — points are spent once and
 	// there is no respec in v1.
 	ErrSkillAlreadyLearned = errors.New("skill already learned")
