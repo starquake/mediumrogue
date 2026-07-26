@@ -38,6 +38,15 @@ const ICONS = {
   // directly.
   necromancer: { file: "skull-mask.svg", author: "Lorc" },
   risen: { file: "half-dead.svg", author: "Delapouite" },
+  // Active-skill glyphs for the action bar (#304). Unlike every key above,
+  // these are SKILL ids (content.go's skillDefs), not monster kinds — the
+  // action bar looks them up the same way entities.ts looks up a kind, so the
+  // key must equal the skill id exactly.
+  blink: { file: "teleport.svg", author: "Lorc" },
+  "second-wind": { file: "health-increase.svg", author: "Sbed" },
+  bulwark: { file: "edged-shield.svg", author: "Lorc" },
+  expose: { file: "targeting.svg", author: "Lorc" },
+  "ember-nova": { file: "fire-ray.svg", author: "Lorc" },
 };
 
 const svgDir = new URL("./svg/", import.meta.url);

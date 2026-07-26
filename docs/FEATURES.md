@@ -373,8 +373,25 @@ Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
     `validateFlavorHasNoStats` already forbids numbers in flavor. A debuff's
     line is deliberately NOT flagged a drawback: that flag asks "does this
     worsen its holder", and for Expose the holder is the enemy.
-  - **Client** (#185, #300): the action bar shows every learned active, keys
-    **1–4** or a click. A **self-cast fires on the press**; a hex- or
+  - **Client** (#185, #300, #304): the action bar shows four slots, keys
+    **1–4** or a click. Each slot's face is the skill's **game-icons glyph**
+    (the same source the entity dots use) — "Second Wind" never fitted at
+    0.6rem, so the name moved to a hover tooltip carrying the stat lines the
+    server already derives. A cooling slot draws a **translucent radial
+    sweep** with the turn count on top: the radial says "soon", the number
+    says "exactly N", and translucent because an opaque sweep blacks out the
+    glyph and reads as a broken slot rather than a cooling one.
+    - **Four slots, five actives — and that is a choice, not an overflow.**
+      **Right-click a slot** to pick which active lives there, or `— none —`
+      to empty it. An unslotted skill is shown as such in the menu rather
+      than being invisible. The assignment is **client-local**
+      (`localStorage`, like the mute setting): a UI preference, not world
+      state, so no wire field and no snapshot bump — and it does not follow
+      you to another browser.
+    - Learning a new active **fills an empty slot, never displaces an
+      assigned one**; a stored slot naming a skill this character has not
+      learned is emptied, because `localStorage` is per browser and outlives
+      the character it was set for. A **self-cast fires on the press**; a hex- or
     entity-aimed one arms, and the next map click is its target. An
     entity-aimed active clicked onto bare ground **stays armed** rather than
     spending the arm on a mis-click.
