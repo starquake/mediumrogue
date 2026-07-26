@@ -2,6 +2,7 @@ package game //nolint:testpackage // white-box: unexported classAt/validateParty
 
 import (
 	"errors"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -98,5 +99,121 @@ func TestValidatePartySimConfigRejectsAnUnknownClass(t *testing.T) {
 
 	if err := validatePartySimConfig(PartySimConfig{}); err != nil {
 		t.Errorf("nil composition rejected: %v", err)
+	}
+}
+
+// --- ranking and verdict (#299 tasks 4-5, 7) -------------------------------
+
+func statsFor(label string, deaths, closeCall, ccMin, ccMax float64) CompositionStats {
+	return CompositionStats{
+		Label:        label,
+		DeathsPer100: MetricSpread{Mean: deaths, Min: deaths, Max: deaths},
+		CloseCall:    MetricSpread{Mean: closeCall, Min: ccMin, Max: ccMax},
+	}
+}
+
+// TestRankByTensionPutsSqueakersFirst: lower close-call = nearer death without
+// dying = more tension, which is the maintainer's chosen definition of "best"
+// (#299 Q1).
+func TestRankByTensionPutsSqueakersFirst(t *testing.T) {
+	t.Parallel()
+
+	rows := []CompositionStats{
+		statsFor("3F", 1.0, 0.80, 0.7, 0.9),
+		statsFor("1F/1R/1M", 1.0, 0.30, 0.2, 0.4),
+		statsFor("3M", 1.0, 0.55, 0.5, 0.6),
+	}
+
+	rankByTension(rows)
+
+	if got, want := rows[0].Label, "1F/1R/1M"; got != want {
+		t.Errorf("most tense = %q, want %q", got, want)
+	}
+}
+
+// TestRankByTensionSinksTheDying is the constraint half, and the reason the
+// ceiling exists at all: a party that is being slaughtered ALSO has a very low
+// close-call, so without the ceiling the ranking would crown the worst party
+// in the table as the most exciting one.
+func TestRankByTensionSinksTheDying(t *testing.T) {
+	t.Parallel()
+
+	rows := []CompositionStats{
+		statsFor("survivors", 1.0, 0.40, 0.3, 0.5),
+		statsFor("bloodbath", deathsCeiling+5, 0.05, 0.0, 0.1), // lowest close-call in the table
+	}
+
+	rankByTension(rows)
+
+	if got, want := rows[0].Label, "survivors"; got != want {
+		t.Errorf("top = %q, want %q — a dying party is not a tense one", got, want)
+	}
+}
+
+// TestVerdictSaysNothingDominatesWhenTheGapIsNoise: the expected outcome, and
+// the one the tool must state plainly rather than leave to be inferred from
+// numbers that merely look different.
+func TestVerdictSaysNothingDominatesWhenTheGapIsNoise(t *testing.T) {
+	t.Parallel()
+
+	// Gap between the top two is 0.01; the field's own per-seed spread is 0.20.
+	rows := []CompositionStats{
+		statsFor("a", 1.0, 0.40, 0.30, 0.50),
+		statsFor("b", 1.0, 0.41, 0.31, 0.51),
+	}
+
+	if got := verdictFor(rows); !strings.Contains(got, "no composition dominates") {
+		t.Errorf("verdict = %q, want it to report no dominance", got)
+	}
+}
+
+// TestVerdictFlagsAGenuineStandout: the other branch, so the check is not
+// vacuously always-negative.
+func TestVerdictFlagsAGenuineStandout(t *testing.T) {
+	t.Parallel()
+
+	// Gap of 0.50 against a per-seed spread of 0.02.
+	rows := []CompositionStats{
+		statsFor("runaway", 1.0, 0.10, 0.09, 0.11),
+		statsFor("rest", 1.0, 0.60, 0.59, 0.61),
+	}
+
+	got := verdictFor(rows)
+	if !strings.Contains(got, "STANDOUT") || !strings.Contains(got, "runaway") {
+		t.Errorf("verdict = %q, want a standout naming runaway", got)
+	}
+}
+
+// TestCompositionLabelIsOrderIndependent: two equal multisets must render
+// identically, or the same party appears twice in a table under two names.
+func TestCompositionLabelIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+
+	a := compositionLabel([]string{protocol.ClassMage, protocol.ClassFighter, protocol.ClassFighter})
+	b := compositionLabel([]string{protocol.ClassFighter, protocol.ClassMage, protocol.ClassFighter})
+
+	if a != b {
+		t.Errorf("labels differ by order: %q vs %q", a, b)
+	}
+
+	if got, want := a, "2F/1M"; got != want {
+		t.Errorf("label = %q, want %q", got, want)
+	}
+}
+
+// TestSpreadOfCarriesTheRange: the mean alone is what would let a ranking
+// invent precision it does not have (#299 decision 3).
+func TestSpreadOfCarriesTheRange(t *testing.T) {
+	t.Parallel()
+
+	runs := []SizeStats{{CloseCall: 0.2}, {CloseCall: 0.6}, {CloseCall: 0.4}}
+	got := spreadOf(runs, func(r SizeStats) float64 { return r.CloseCall })
+
+	if got.Min != 0.2 || got.Max != 0.6 {
+		t.Errorf("range = %v..%v, want 0.2..0.6", got.Min, got.Max)
+	}
+
+	if math.Abs(got.Mean-0.4) > 1e-9 {
+		t.Errorf("mean = %v, want 0.4", got.Mean)
 	}
 }

@@ -26,11 +26,15 @@ const (
 var errBadLevel = errors.New("bad level")
 
 func main() {
-	mode := flag.String("mode", "matrix", "matrix | deltas | sim")
+	mode := flag.String("mode", "matrix", "matrix | deltas | sim | composition")
 	seed := flag.Uint64("seed", 1, "base seed — same seed, same report, to the digit")
 	duels := flag.Int("duels", defaultDuels, "duels per matchup cell")
 	levels := flag.String("levels", "1,3,5", "comma-separated player levels")
 	jsonPath := flag.String("json", "", "write the full report as JSON to this path")
+	// composition mode (#299). Parties 1-5 only: by 10 almost nothing dies, so
+	// there is no signal left for composition to move (the issue's own table).
+	party := flag.Int("party", 0, "composition mode: one party size, or 0 to sweep 1-5")
+	seeds := flag.Int("seeds", 0, "composition mode: seeds per composition (default 20)")
 
 	flag.Parse()
 
@@ -53,8 +57,15 @@ func main() {
 		report := game.RunPartySim(game.PartySimConfig{BaseSeed: *seed})
 		printSim(report)
 		writeJSON(*jsonPath, report)
+	case "composition":
+		reports := runCompositions(*seed, *party, *seeds)
+		for _, r := range reports {
+			printComposition(r)
+		}
+
+		writeJSON(*jsonPath, reports)
 	default:
-		fmt.Fprintf(os.Stderr, "balance: unknown mode %q (matrix | deltas | sim)\n", *mode)
+		fmt.Fprintf(os.Stderr, "balance: unknown mode %q (matrix | deltas | sim | composition)\n", *mode)
 		os.Exit(exitUsage)
 	}
 }
@@ -126,4 +137,58 @@ func printSim(r game.PartySimReport) {
 		outf("%-6d %-12.2f %-11.2f %-8.2f %-8.2f %.2f\n",
 			s.Players, s.DeathsPer100, s.CloseCall, s.CombatFrac, s.XPPerTurn, s.Spread)
 	}
+}
+
+// compositionSizes is the range the sweep defaults to (#299 Q4). Deliberately
+// not 10 and 15: the issue's own measurements show deaths falling to 0.32 and
+// 0.09 per 100 turns up there, so nothing dies and composition has nothing
+// left to move. It is also the range a real group actually feels its choices.
+//
+//nolint:gochecknoglobals // fixed default, effectively const.
+var compositionSizes = []int{1, 2, 3, 4, 5}
+
+// runCompositions sweeps one party size, or all of 1-5.
+func runCompositions(seed uint64, party, seeds int) []game.CompositionReport {
+	sizes := compositionSizes
+	if party > 0 {
+		sizes = []int{party}
+	}
+
+	out := make([]game.CompositionReport, 0, len(sizes))
+	for _, n := range sizes {
+		out = append(out, game.RunCompositionSweep(game.PartySimConfig{BaseSeed: seed, Seeds: seeds}, n))
+	}
+
+	return out
+}
+
+// printComposition prints one size's field, most-tense first, with the range
+// beside every mean — a bare mean is what would let the reader believe a
+// ranking is sharper than its seeds support.
+func printComposition(r game.CompositionReport) {
+	outf("\n== party of %d — %d compositions, ranked by tension ==\n", r.Players, len(r.Rows))
+	outln("mix       deaths/100t (min-max)   close-call (min-max)    xp/turn  combat%")
+
+	for _, c := range r.Rows {
+		outf("%-9s %-6.2f (%.2f-%.2f)%s %-6.3f (%.3f-%.3f)%s %-8.2f %.2f\n",
+			c.Label,
+			c.DeathsPer100.Mean, c.DeathsPer100.Min, c.DeathsPer100.Max, pad(c.DeathsPer100.Max),
+			c.CloseCall.Mean, c.CloseCall.Min, c.CloseCall.Max, pad(c.CloseCall.Max),
+			c.XPPerTurn.Mean, c.CombatFrac.Mean)
+	}
+
+	outf("\n%s\n", r.Verdict)
+}
+
+// singleDigitCeiling is where a printed number gains a character and the
+// range column would otherwise jog left by one.
+const singleDigitCeiling = 10
+
+// pad keeps the range column aligned when a number loses a digit.
+func pad(largest float64) string {
+	if largest < singleDigitCeiling {
+		return " "
+	}
+
+	return ""
 }

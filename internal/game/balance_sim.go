@@ -83,21 +83,7 @@ func RunPartySim(cfg PartySimConfig) PartySimReport {
 		cfg.Sizes = []int{1, 2, 3, 5, 10, 15}
 	}
 
-	if cfg.Seeds <= 0 {
-		cfg.Seeds = defaultSimSeeds
-	}
-
-	if cfg.Turns <= 0 {
-		cfg.Turns = defaultSimTurns
-	}
-
-	if cfg.Radius <= 0 {
-		cfg.Radius = defaultSimRadius
-	}
-
-	if cfg.Monsters <= 0 {
-		cfg.Monsters = defaultSimMonsters
-	}
+	cfg = withSimDefaults(cfg, defaultSimSeeds)
 
 	var report PartySimReport
 
@@ -442,4 +428,32 @@ func PartyCompositions(size int) [][]string {
 	build(0, make([]string, 0, size))
 
 	return out
+}
+
+// withSimDefaults fills the zero-valued knobs of a PartySimConfig.
+//
+// Shared by every mode rather than inlined per entry point (#299): the
+// composition sweep did exactly that and shipped a world of radius 0, which
+// surfaced as "world is full: no walkable hex with room left" from a config
+// nobody had written a zero into deliberately. seeds is a parameter because
+// the modes disagree about it — describing sizes needs 3, ranking
+// compositions needs 20.
+func withSimDefaults(cfg PartySimConfig, seeds int) PartySimConfig {
+	if cfg.Seeds <= 0 {
+		cfg.Seeds = seeds
+	}
+
+	if cfg.Turns <= 0 {
+		cfg.Turns = defaultSimTurns
+	}
+
+	if cfg.Radius <= 0 {
+		cfg.Radius = defaultSimRadius
+	}
+
+	if cfg.Monsters <= 0 {
+		cfg.Monsters = defaultSimMonsters
+	}
+
+	return cfg
 }
