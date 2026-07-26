@@ -88,6 +88,9 @@ var handledElsewhere = map[string]string{
 	"ErrQuestSlotFull":   "chat /quest — party quest slot busy",
 	"ErrQuestCompleted":  "chat /quest re-take",
 	"ErrNoActiveQuest":   "chat /abandon",
+	// Not an HTTP path at all: the balance harness validates its own config
+	// before running (#299). It never reaches a handler.
+	"ErrUnknownSimClass": "balance harness composition — offline tool, no request",
 }
 
 // TestIntentErrorStatus drives every mapped sentinel through the real

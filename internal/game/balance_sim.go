@@ -32,6 +32,16 @@ type PartySimConfig struct {
 	Turns    int
 	Radius   int
 	Monsters int
+	// Composition is the exact class multiset the party joins as (#299) —
+	// e.g. ["fighter","fighter","rogue","mage","mage"]. Its length IS the
+	// party size, so Sizes is ignored when it is set.
+	//
+	// NIL keeps the historical round-robin exactly as it was, and that is
+	// load-bearing rather than politeness: composition changes which classes
+	// join, which changes rng consumption, so a composition run is not
+	// comparable with a plain sim run. Leaving the default untouched is what
+	// keeps the coarse guardrail tests and every existing report pinned.
+	Composition []string
 }
 
 const (
@@ -150,12 +160,11 @@ func runPartyWorld(cfg PartySimConfig, size int, seed uint64) SizeStats {
 
 	w.SpawnMonsters(cfg.Monsters)
 
-	classes := []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage}
 	bots := make([]*botState, 0, size)
 
 	for i := range size {
 		resp, err := w.Join(fmt.Sprintf("balance-sim-%d", i), fmt.Sprintf("bot%d", i),
-			classes[i%len(classes)], protocol.SpeciesHuman)
+			classAt(cfg.Composition, i), protocol.SpeciesHuman)
 		if err != nil {
 			panic("game: RunPartySim join failed: " + err.Error())
 		}
@@ -357,4 +366,80 @@ func nearestMonsterLocked(w *World, e *entity) *entity {
 	}
 
 	return best
+}
+
+// simClasses is the round-robin order the harness has always used. Named so
+// classAt and the composition enumerator cannot drift apart.
+//
+//nolint:gochecknoglobals // fixed order, effectively const.
+var simClasses = []string{protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage}
+
+// classAt picks bot i's class: the configured composition when there is one,
+// and otherwise the historical round-robin (#299).
+//
+// The fallback is deliberately unconditional rather than a length check that
+// could silently half-apply a short composition — validatePartySimConfig
+// rejects a mismatched length up front, so reaching here with one is a bug,
+// not an input.
+func classAt(composition []string, i int) string {
+	if len(composition) == 0 {
+		return simClasses[i%len(simClasses)]
+	}
+
+	return composition[i]
+}
+
+// validatePartySimConfig reports what is wrong with a composition, or nil.
+// An unknown class or a size disagreement is an ERROR rather than a quiet
+// fallback to round-robin: a typo'd class silently producing the default party
+// would report numbers for a party nobody asked about.
+func validatePartySimConfig(cfg PartySimConfig) error {
+	if len(cfg.Composition) == 0 {
+		return nil
+	}
+
+	for _, c := range cfg.Composition {
+		if !slices.Contains(simClasses, c) {
+			return fmt.Errorf("%w: %q", ErrUnknownSimClass, c)
+		}
+	}
+
+	return nil
+}
+
+// PartyCompositions enumerates every class MULTISET of the given size (#299).
+//
+// Multisets, not permutations: turn order is not a class property, so
+// fighter/rogue/mage is the same party as mage/rogue/fighter and running both
+// would multiply the runtime to measure the same thing. The count is
+// C(size+2, 2) for three classes — 3, 6, 10, 15, 21 for sizes 1..5.
+//
+// Output order is deterministic (non-decreasing class index), so a report's
+// row order is stable across runs.
+func PartyCompositions(size int) [][]string {
+	if size <= 0 {
+		return nil
+	}
+
+	var out [][]string
+
+	var build func(start int, acc []string)
+
+	build = func(start int, acc []string) {
+		if len(acc) == size {
+			out = append(out, slices.Clone(acc))
+
+			return
+		}
+
+		// Starting at `start` rather than 0 is what makes these multisets: a
+		// class index never decreases, so each combination is generated once.
+		for i := start; i < len(simClasses); i++ {
+			build(i, append(acc, simClasses[i]))
+		}
+	}
+
+	build(0, make([]string, 0, size))
+
+	return out
 }
