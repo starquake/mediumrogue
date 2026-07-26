@@ -1339,7 +1339,7 @@ roll, so it is ARPG-legal on jewelry.
   fixed streams. Fully reproducible turns.
 - **Testing surface**: unit tests beside code; `test/integration` drives the
   real handler tree over real HTTP/SSE; Playwright e2e drives the real
-  embedded-client binary (55 e2e tests across 29 spec files). The client exposes **`window.game`**
+  embedded-client binary (59 e2e tests across 31 spec files). The client exposes **`window.game`**
   (positions incl. `monsterKind`, hp, inventory, equipped, backpack,
   panelOpen, pickupModal, combatMoves, damage events, tapHex, hexToScreen,
   sendChat, identityLink, turnReceived, turnApplied, clientError…) as the
