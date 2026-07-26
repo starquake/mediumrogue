@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// tsconfig sets `"types": []` deliberately, so Vite's ambient ImportMeta is not
+// in scope. Declared here rather than adding vite/client to the whole project's
+// types, which would also pull in its asset-module declarations.
+declare global {
+  interface ImportMeta {
+    glob: (pattern: string) => Record<string, unknown>;
+  }
+}
+
 // Howler touches the Web Audio API, which does not exist under vitest — stub it
 // to the surface sound.ts actually uses. The point of these tests is the RULES
 // (budget, mute, unlock, falloff), not that a browser makes a noise.
@@ -103,5 +112,44 @@ describe("sound", () => {
     }
 
     expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+// --- content wiring (#298) -------------------------------------------------
+
+describe("sound content", () => {
+  it("ships a real file for every sound the game can play", async () => {
+    // The failure this catches is SILENT: a typo'd or un-copied filename makes
+    // Howl 404 and play() still returns true, so the game looks fine and one
+    // event is simply mute forever. Nothing else in the suite would notice.
+    //
+    // import.meta.glob rather than node:fs — it needs no @types/node, and it
+    // resolves through Vite, which is what actually serves these files.
+    const { SOURCES } = await import("./sound");
+
+    // Written as a literal call on purpose: Vite replaces `import.meta.glob`
+    // at transform time, so aliasing it into a variable throws at runtime.
+    const shipped = new Set(
+      Object.keys(import.meta.glob("../../public/audio/*.ogg")).map((p) => p.split("/").pop()),
+    );
+
+    const missing: string[] = [];
+    for (const [name, files] of Object.entries(SOURCES)) {
+      if (files.length === 0) missing.push(`${name}: no files at all`);
+      for (const f of files) {
+        if (!shipped.has(f)) missing.push(`${name}: ${f}`);
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
+  it("covers the events #298 shipped silent", () => {
+    // The README's "known gaps" list, turned into an assertion so it cannot
+    // quietly regress to silence.
+    for (const name of ["death", "levelUp", "shoot", "blast", "uiClick"] as const) {
+      expect(play(name)).toBe(true);
+      startTurn();
+    }
   });
 });

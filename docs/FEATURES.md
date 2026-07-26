@@ -1072,15 +1072,33 @@ roll, so it is ARPG-legal on jewelry.
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
 - **Sound effects** (#298, `client/src/audio/sound.ts`): combat, movement and
   inventory audio via **Howler**, effects only — no music or ambient. Assets
-  are 18 CC0 clips from Kenney's RPG Audio in `client/public/audio/` (~225 KB;
-  `Preview.ogg`, 44% of the pack, is deliberately excluded), copied by Vite
-  into `dist/` and embedded with the rest of the bundle.
-  - **Events**: hit / crit / glance from `TurnEvent.Hits` (#114), plus equip,
-    drop, pickup, panel open/close, and the viewer's OWN footstep. Footsteps
-    are own-entity only — one per moving entity would be a stampede at fifteen
-    players.
-  - **Silent by design**: RPG Audio has no death, level-up, ranged or magic
-    sound, so those events make none rather than borrowing a wrong one.
+  are 27 CC0 clips from five Kenney packs in `client/public/audio/` (~400 KB;
+  every pack's `Preview.ogg` demo reel is deliberately excluded), copied by
+  Vite into `dist/` and embedded with the rest of the bundle.
+  - **Events**: hit / crit / glance / **ranged** / **death** from
+    `TurnEvent.Hits` (#114), plus **level-up**, the thrown flask's **burst**,
+    equip, drop, pickup, panel open/close, a **HUD button click**, and the
+    viewer's OWN footstep. Footsteps are own-entity only — one per moving
+    entity would be a stampede at fifteen players.
+  - **Death is on the wire** (`HitView.Fatal`), not derived. An entity missing
+    from a bundle either died or walked past the interest radius (#289), and
+    from outside those are identical — a client guessing would play a death
+    sound at whoever wandered off. The server stamps the victim's LAST hit of
+    the turn, because damage is applied as a summed map and no single blow
+    owns a shared kill. A death by DoT lands no hit, so it is still silent.
+  - **Ranged IS derived**: attacker and victim more than one hex apart is the
+    definition of a shot, since every entity is melee-armed at adjacency. Crit
+    and glance keep their own sounds — they describe the damage roll, not the
+    delivery.
+  - **Priority is play order**, because the budget is first-come-first-served.
+    Level-up goes first (you level by killing, so it competes with a full
+    combat turn and is the rarest cue in the game), then deaths, then ordinary
+    hits. A fatal hit plays the death INSTEAD of a sword swing — one sound per
+    hit.
+  - **Still silent by design**: drinking, learning a skill, completing a quest,
+    and rejected intents. Three of the filled events use approximations rather
+    than the real thing (there is no bowstring in any Kenney pack) — see
+    `client/public/audio/README.md`, which names each one.
   - **The unlock**: browsers block audio until a user gesture, and a returning
     player never makes one (`isNewPlayer` skips the start screen when a stored
     identity matches). A one-shot pointer/key listener releases it, or sound
@@ -1101,7 +1119,9 @@ roll, so it is ARPG-legal on jewelry.
     click-through so the canvas works beneath it, and a button without that
     rule renders perfectly and is silently unclickable.
   - `window.game.audio` (played count, last sound, unlocked, muted) is the
-    test surface: an e2e cannot hear.
+    test surface: an e2e cannot hear. A unit test also asserts every filename
+    in `SOURCES` exists on disk — a typo there 404s silently, leaving one
+    event mute forever while `play()` still reports success.
 - **Terrain atmosphere** (#296, `client/src/render/map.ts` + `terrain.ts`,
   `grain.ts`, `scatter.ts`): the ground is drawn to read as land rather than as
   a quilt of flat cells. Client-render-only — no server, protocol, or gameplay

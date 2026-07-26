@@ -203,3 +203,66 @@ func TestHitsPrunedAfterRetention(t *testing.T) {
 			game.HitRetentionTurnsForTest, got, want)
 	}
 }
+
+// TestHitViewFatalMarksTheKillingBlow (#298): the wire says which hit killed,
+// because a client cannot work it out. An entity missing from a bundle either
+// died or walked past the interest radius (#289), and from outside those are
+// the same observation — a client guessing would play a death sound at
+// whoever wandered off.
+func TestHitViewFatalMarksTheKillingBlow(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(critMissSeed)
+
+	me, err := w.Join("", "killer", protocol.ClassFighter, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	monsterHex := walkableNeighbor(t, w, me.Hex)
+	monsterID := w.PlaceMonsterForTest(monsterHex)
+
+	// One HP, so the next swing certainly kills.
+	w.SetHPForTest(monsterID, 1)
+	w.SetAttackTargetEntityForTest(me.EntityID, monsterID)
+	w.ResolveCombatOnlyForTest()
+
+	if got := hitOn(t, w.Snapshot(), monsterID); !got.Fatal {
+		t.Error("the killing blow is not marked Fatal")
+	}
+}
+
+// TestHitViewFatalIsClearOnASurvivedHit: the other half. Without this a
+// death sting would fire on every landed hit, which is worse than silence.
+func TestHitViewFatalIsClearOnASurvivedHit(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(critMissSeed)
+
+	me, err := w.Join("", "killer", protocol.ClassFighter, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	monsterHex := walkableNeighbor(t, w, me.Hex)
+	monsterID := w.PlaceMonsterForTest(monsterHex)
+	w.SetAttackTargetEntityForTest(me.EntityID, monsterID)
+	w.ResolveCombatOnlyForTest()
+
+	snap := w.Snapshot()
+
+	monster, ok := entityOfSnap(snap, monsterID)
+	if !ok {
+		t.Fatal("monster died on a full-HP wolf — pick a weaker scenario")
+	}
+
+	if monster.HP <= 0 {
+		t.Fatalf("monster HP = %d, want a survivor for this case", monster.HP)
+	}
+
+	if got := hitOn(t, snap, monsterID); got.Fatal {
+		t.Error("a survived hit is marked Fatal")
+	}
+}

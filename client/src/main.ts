@@ -197,6 +197,9 @@ function isControlsOverlayOpen(): boolean {
   return !controlsOverlayEl.hidden;
 }
 function toggleControlsOverlay(): void {
+  // The ? key, the HUD button and the × all route here, so the click sound
+  // lives at the junction rather than on each of the three.
+  sound.play("uiClick");
   setControlsOverlay(!isControlsOverlayOpen());
 }
 
@@ -990,6 +993,9 @@ async function start(): Promise<void> {
   toggleSoundEl.addEventListener("click", () => {
     sound.setMuted(!sound.isMuted());
     applySoundLabel();
+    // Only on the way ON: un-muting is the one press whose own click is
+    // audible, and it doubles as proof the audio actually works.
+    sound.play("uiClick");
   });
 
   // The skills panel (#124) toggles independently of the inventory: they are
@@ -1379,7 +1385,14 @@ async function start(): Promise<void> {
       armedThrow = null;
       window.game.armedThrow = null;
       clearItemPending(); // a real intent replaces a queued in-bubble action
-      return submitThrow(identity, itemId, target).then(() => undefined);
+
+      // The flask's burst (#298). Played on ACCEPT, not on the landing turn,
+      // for the same reason equip/drop/pickup are: it is feedback for the
+      // action you just took. The blast's own damage still arrives as hits
+      // next resolution and sounds like hits.
+      return submitThrow(identity, itemId, target).then((accepted) => {
+        if (accepted) sound.play("blast");
+      });
     }
 
     // #185: an armed active consumes the next map click as its target.
@@ -1575,6 +1588,19 @@ async function start(): Promise<void> {
       // silent after any busy combat turn.
       sound.startTurn();
 
+      // Level-up claims the budget FIRST — before footsteps, before hits.
+      // You level by landing a killing blow, so the level-up turn is exactly
+      // the turn most likely to be full of combat sound; last in line means
+      // the rarest and most important cue in the game is the one that gets
+      // dropped.
+      //
+      // COUPLING: this reads prevLevel before the #202 banner further down
+      // assigns it. Move that assignment above this and the sound stops
+      // firing, silently.
+      if (mine !== undefined && prevLevel > 0 && mine.level > prevLevel) {
+        sound.play("levelUp");
+      }
+
       // My own footstep only. One per moving entity would be a stampede at
       // fifteen players, and the sound is feedback for MY move (#298).
       if (mine !== undefined && window.game.me !== null) {
@@ -1587,12 +1613,41 @@ async function start(): Promise<void> {
       // Volume falls off with the victim's distance from me; my own hits play
       // at full. sound.play() enforces the per-turn budget, so a six-way
       // bubble resolution cannot fire six clips at once.
-      for (const h of freshHits) {
+      //
+      // ORDER IS THE PRIORITY RULE. The budget is first-come-first-served, so
+      // whatever plays first survives a busy turn. Deaths go before ordinary
+      // hits deliberately: a kill is rare and carries information, a fourth
+      // sword swing carries none, and the old order would have dropped the
+      // death sting of the monster you were fighting because three other
+      // people were also swinging.
+      const hitVolume = (h: (typeof freshHits)[number]): number => {
         const victim = event.entities.find((e) => e.id === h.victimId);
         const dist = victim === undefined || mine === undefined ? 0 : hexDistance(mine.hex, victim.hex);
         const involvesMe = mine !== undefined && (h.attackerId === mine.id || h.victimId === mine.id);
-        const name = h.crit ? "crit" : h.glance ? "glance" : "hit";
-        sound.play(name, involvesMe ? 1 : sound.volumeForDistance(dist));
+
+        return involvesMe ? 1 : sound.volumeForDistance(dist);
+      };
+
+      for (const h of freshHits) {
+        if (h.fatal) sound.play("death", hitVolume(h));
+      }
+
+      for (const h of freshHits) {
+        // Already spoken for above — one sound per hit stays the invariant, so
+        // a kill is a death and not also a sword swing.
+        if (h.fatal) continue;
+
+        // Ranged delivery gets its own voice, derived rather than sent: the
+        // attacker and victim standing more than one hex apart IS the
+        // definition of a shot (every entity is melee-armed at adjacency).
+        // Crits and glances keep their own sounds — those describe the damage
+        // roll, not how it was delivered.
+        const attacker = event.entities.find((e) => e.id === h.attackerId);
+        const victim = event.entities.find((e) => e.id === h.victimId);
+        const ranged =
+          attacker !== undefined && victim !== undefined && hexDistance(attacker.hex, victim.hex) > 1;
+        const name = h.crit ? "crit" : h.glance ? "glance" : ranged ? "shoot" : "hit";
+        sound.play(name, hitVolume(h));
       }
       if (mine !== undefined && window.game.me !== null) {
         window.game.me.hex = mine.hex;

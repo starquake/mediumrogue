@@ -15,25 +15,38 @@ export type SoundName =
   | "hit"
   | "crit"
   | "glance"
+  | "shoot"
+  | "death"
+  | "blast"
+  | "levelUp"
   | "footstep"
   | "pickup"
   | "drop"
   | "equip"
   | "panelOpen"
-  | "panelClose";
+  | "panelClose"
+  | "uiClick";
 
 // Variants exist only where repetition would grate — a single footstep clip
 // turns walking into a metronome. One entry means one clip, deliberately.
-const SOURCES: Record<SoundName, string[]> = {
+export const SOURCES: Record<SoundName, string[]> = {
   hit: ["knifeSlice.ogg", "knifeSlice2.ogg"],
   crit: ["chop.ogg"],
   glance: ["cloth1.ogg", "cloth2.ogg"],
+  // A bowstring/whoosh. RPG Audio has no bow at all, so this is the pack's
+  // cloth movement standing in for one — the closest honest approximation,
+  // and it stays inside a pack already shipped rather than adding one.
+  shoot: ["cloth3.ogg", "cloth4.ogg"],
+  death: ["impactSoft_heavy_000.ogg", "impactSoft_heavy_001.ogg"],
+  blast: ["explosionCrunch_000.ogg"],
+  levelUp: ["jingles_STEEL00.ogg"],
   footstep: ["footstep00.ogg", "footstep01.ogg", "footstep02.ogg", "footstep03.ogg", "footstep04.ogg"],
   pickup: ["handleCoins.ogg", "handleSmallLeather.ogg"],
   drop: ["dropLeather.ogg"],
   equip: ["clothBelt.ogg", "drawKnife1.ogg", "metalClick.ogg"],
   panelOpen: ["bookOpen.ogg"],
   panelClose: ["bookClose.ogg"],
+  uiClick: ["click1.ogg", "click2.ogg"],
 };
 
 const AUDIO_BASE = "audio/";
