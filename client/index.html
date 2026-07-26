@@ -157,6 +157,16 @@
         pointer-events: none;
       }
       #controls-overlay .close { pointer-events: auto; }
+      #controls-overlay .credits {
+        margin-top: 0.7rem;
+        padding-top: 0.6rem;
+        border-top: 1px solid var(--dim);
+        color: var(--dim);
+        font-size: 0.62rem;
+        opacity: 0.8;
+        line-height: 1.6;
+      }
+      #controls-overlay .credits a { color: var(--dim); pointer-events: auto; }
       #controls-overlay h2 {
         margin: 0 0 0.6rem;
         font-size: 0.7rem;
@@ -1322,6 +1332,10 @@
       <div>Panels <kbd>I</kbd>/<kbd>C</kbd> character · <kbd>K</kbd> skills · <kbd>Esc</kbd> close</div>
       <div style="margin-top:.5rem;color:var(--dim)">Chat: /help · /here · /quest &lt;id&gt;</div>
       <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /leave</div>
+      <div class="credits">
+        Sound <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0 ·
+        Glyphs <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0
+      </div>
     </div>
     <div id="death-card" hidden>
       <div class="big">YOU DIED</div>
@@ -1387,6 +1401,7 @@
         <button id="start-enter" type="button">Enter the world</button>
         <div class="hint">returning players skip this screen — your character remembers you</div>
         <div class="credit">glyph icons — <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0</div>
+        <div class="credit">sound — <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0</div>
       </div>
     </div>
     <div id="chat-root"></div>

@@ -1072,7 +1072,7 @@ roll, so it is ARPG-legal on jewelry.
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
 - **Sound effects** (#298, `client/src/audio/sound.ts`): combat, movement and
   inventory audio via **Howler**, effects only — no music or ambient. Assets
-  are 27 CC0 clips from five Kenney packs in `client/public/audio/` (~400 KB;
+  are 26 CC0 clips from five Kenney packs in `client/public/audio/` (~368 KB;
   every pack's `Preview.ogg` demo reel is deliberately excluded), copied by
   Vite into `dist/` and embedded with the rest of the bundle.
   - **Events**: hit / crit / glance / **ranged** / **death** from
@@ -1114,14 +1114,24 @@ roll, so it is ARPG-legal on jewelry.
     codebase's hash-everything determinism, because a hashed pick would give a
     player walking in a straight line the same footstep every time. Nothing
     about audio is snapshotted, replayed or asserted on.
+  - **Attribution**: the CC0 packs ask only that credit "would be nice", and it
+    is given in two places — the start panel (beside the glyph credit) and the
+    **controls overlay**. Both, because `isNewPlayer` skips the start screen
+    for anyone with a stored identity, so a credit living only there would be
+    invisible to the people who play most. The overlay is `pointer-events:
+    none`, so its links set `auto` on themselves; `credits.spec.ts` hit-tests
+    that with `elementFromPoint` rather than reading the CSS.
   - **Toggle**: a `sound: on/off` HUD button, persisted in `localStorage`.
     Like every HUD button it sets `pointer-events: auto` on itself — `#hud` is
     click-through so the canvas works beneath it, and a button without that
     rule renders perfectly and is silently unclickable.
   - `window.game.audio` (played count, last sound, unlocked, muted) is the
-    test surface: an e2e cannot hear. A unit test also asserts every filename
-    in `SOURCES` exists on disk — a typo there 404s silently, leaving one
-    event mute forever while `play()` still reports success.
+    test surface: an e2e cannot hear. Unit tests assert the asset wiring in
+    BOTH directions: every filename in `SOURCES` exists on disk (a typo 404s
+    silently, leaving one event mute forever while `play()` still reports
+    success), and every shipped file is named by `SOURCES` (every clip is
+    preloaded, so a dead one costs binary size, first-download bytes and a
+    preload fetch for a sound nothing can trigger).
 - **Terrain atmosphere** (#296, `client/src/render/map.ts` + `terrain.ts`,
   `grain.ts`, `scatter.ts`): the ground is drawn to read as land rather than as
   a quilt of flat cells. Client-render-only — no server, protocol, or gameplay

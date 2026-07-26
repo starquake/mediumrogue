@@ -144,6 +144,21 @@ describe("sound content", () => {
     expect(missing).toEqual([]);
   });
 
+  it("ships no clip that nothing plays", async () => {
+    // The reverse direction, and the one that already bit: switch2.ogg was
+    // copied in for a toggle sound, the design consolidated onto uiClick, and
+    // the file stayed — embedded in the Go binary and PRELOADED by every
+    // client, for a sound nothing can trigger. Forward-only checking cannot
+    // see that.
+    const { SOURCES } = await import("./sound");
+    const used = new Set(Object.values(SOURCES).flat());
+    const shipped = Object.keys(import.meta.glob("../../public/audio/*.ogg")).map((p) =>
+      p.split("/").pop(),
+    );
+
+    expect(shipped.filter((f) => f !== undefined && !used.has(f))).toEqual([]);
+  });
+
   it("covers the events #298 shipped silent", () => {
     // The README's "known gaps" list, turned into an assertion so it cannot
     // quietly regress to silence.

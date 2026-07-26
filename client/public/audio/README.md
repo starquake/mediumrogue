@@ -17,17 +17,22 @@ licence file ships verbatim beside these files (`License.txt` is RPG Audio's;
 the rest are `License-<pack>.txt`). No attribution is required; the packs ask
 only that credit "would be nice".
 
-## Why only 27 files out of five whole packs
+## Why only 26 files out of five whole packs
 
 The client is embedded into the Go binary (`//go:embed all:dist`), so every
 file here inflates both the binary and a player's first download. RPG Audio
 alone is ~711 KB against a 676 KB client bundle — shipping it whole would have
 more than doubled it, and the five packs together are several megabytes.
 
-This is a curated subset (~400 KB): one sound per game event, plus variants
-only where repetition would grate. It grew from ~225 KB when the five silent
-events were filled in — six new files, four of them one-offs from a
+This is a curated subset (~368 KB of `.ogg`): one sound per game event, plus
+variants only where repetition would grate. It grew from ~225 KB when the five
+silent events were filled in — eight new files, five of them one-offs from a
 supplementary pack.
+
+Every file here is **preloaded** (`sound.ts`'s `load()`), so an unused one is
+not free: it rides the Go binary, the player's first download, and the preload
+pass. A unit test asserts both directions — every name in `SOURCES` exists, and
+every shipped file is named by `SOURCES`.
 
 **`Preview.ogg` is deliberately absent**: it is a 313 KB demo reel, 44% of the
 pack's weight, and plays every sound in sequence. It is not a game asset.

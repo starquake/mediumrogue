@@ -71,6 +71,11 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // and a wandering monster would only add combat sounds that make the
   // played-counter assertions ambiguous.
   { name: "sound" },
+  // credits (#298): monster-free. The CC0 packs ask for credit, so the credit
+  // has to be reachable — the spec hit-tests the link rather than reading the
+  // CSS, because #controls-overlay is pointer-events: none and a link without
+  // its own `auto` renders perfectly while swallowing every click.
+  { name: "credits" },
   { name: "client-alive" },
   { name: "identity" },
   { name: "identity-multitab" },
