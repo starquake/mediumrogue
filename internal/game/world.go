@@ -511,6 +511,10 @@ type hitRecord struct {
 	amount   int
 	crit     bool
 	glance   bool
+	// fatal is stamped by resolveDeathsLocked, not at record time: whether a
+	// hit killed is only knowable after the whole turn's damage is applied
+	// (a victim can take three hits in one resolution and die to their sum).
+	fatal bool
 }
 
 // hitRetentionTurns is how many turn resolutions a hitRecord rides bundles
@@ -1709,7 +1713,7 @@ func (w *World) hitViewsLocked(visible map[int64]bool) []protocol.HitView {
 
 		hits = append(hits, protocol.HitView{
 			Turn: h.turn, AttackerID: h.attacker, VictimID: h.victim,
-			Amount: h.amount, Crit: h.crit, Glance: h.glance,
+			Amount: h.amount, Crit: h.crit, Glance: h.glance, Fatal: h.fatal,
 		})
 	}
 
@@ -3194,6 +3198,40 @@ func levelFloorXP(xp int) int { return xpFloorFor(levelFor(xp)) }
 // (resolveCombatLocked/ResolveCombatOnlyForTest) — one drop roll per dead
 // monster, consumed in the same id-sorted order as the rest of this pass, so
 // a full turn stays reproducible from the seed alone. Callers hold w.mu.
+// markFatalHitsLocked stamps HitView.Fatal (#298) on the blow that killed each
+// entity in dead: the LAST hit it took this turn.
+//
+// Last, not "the one that crossed zero", because damage is applied as a summed
+// map — three hits in one resolution kill together and no single one owns it.
+// The last is the one a listener perceives as the kill, and it is the only
+// choice that stays stable if the damage map's fold order ever changes.
+//
+// Only THIS turn's hits are considered: w.recentHits retains several turns for
+// coalescing SSE clients (hitRetentionTurns), and a hit from two turns ago
+// belongs to a fight the victim survived. Callers hold w.mu.
+func (w *World) markFatalHitsLocked(dead []*entity) {
+	if len(dead) == 0 {
+		return
+	}
+
+	dying := make(map[int64]bool, len(dead))
+	for _, e := range dead {
+		dying[e.id] = true
+	}
+
+	// Walk backwards so the first match per victim IS its last hit.
+	seen := make(map[int64]bool, len(dead))
+
+	for i, h := range slices.Backward(w.recentHits) {
+		if h.turn != w.turn+1 || !dying[h.victim] || seen[h.victim] {
+			continue
+		}
+
+		w.recentHits[i].fatal = true
+		seen[h.victim] = true
+	}
+}
+
 func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*monsterDef, map[int64]bool) {
 	var dead []*entity
 
@@ -3222,6 +3260,8 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 	// Sort by id so simultaneous respawns claim spawn hexes in a deterministic
 	// order (the map range above is unordered) — keeps a full turn reproducible.
 	slices.SortFunc(dead, byEntityID)
+
+	w.markFatalHitsLocked(dead)
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {

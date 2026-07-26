@@ -516,6 +516,15 @@ type HitView struct {
 	Amount     int   `json:"amount"`
 	Crit       bool  `json:"crit"`
 	Glance     bool  `json:"glance"`
+	// Fatal marks the blow that killed the victim (#298): the last hit it took
+	// on the turn its HP reached zero.
+	//
+	// It is on the wire because a client CANNOT derive death. An entity that
+	// vanishes from a bundle either died or walked past the interest radius
+	// (#289), and those look identical from outside — so a client guessing
+	// would play a death sound at whoever wandered off. The server is the only
+	// side that knows.
+	Fatal bool `json:"fatal"`
 }
 
 // QuestState is a quest's lifecycle stage on the board.

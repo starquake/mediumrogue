@@ -947,3 +947,30 @@ involvement, nothing animated. That is what allows the whole thing to be baked
 once at map build, and it means two players standing on the same tile see the
 same ground — the alternative, per-client variation, would have been a subtle
 multiplayer inconsistency nobody would have thought to test.
+
+## Sound is effects-only, and random where everything else is hashed *(built 2026-07-25, #298)*
+
+Audio via Howler, driven off state the server already sends. Three decisions
+worth keeping.
+
+**Variant choice is random, and that is a deliberate break with the codebase's
+determinism rule.** Everything else here — terrain noise, scatter motifs, fog —
+is hashed from coordinates so two clients agree pixel for pixel. Audio is the
+one place where that would be a defect rather than a virtue: a hashed pick
+gives a player walking in a straight line the identical footstep every step,
+which is the machine-gun artefact variant packs exist to prevent. It is safe
+precisely because nothing about audio is snapshotted, replayed, or asserted on
+— the exception is scoped by what audio *is*, not by convenience.
+
+**The autoplay unlock is the whole feature's failure mode.** Browsers block
+playback until a user gesture, and a returning player never makes one:
+`isNewPlayer` skips the start screen when a stored identity matches. Without an
+explicit unlock listener, sound works perfectly in every fresh browser a
+developer tests with and is silent for everyone who actually plays. Worth
+remembering as a shape, not just a fact: "works when tested, broken for
+regulars" is what a missing gesture gate looks like.
+
+**Distance filtering was already done by the wire.** #289's interest radius
+means a bundle only contains what is within 20 hexes, so audio needed no
+culling of its own — only a volume ramp over a known, bounded range. A feature
+built earlier for bandwidth turned out to define the audible world.

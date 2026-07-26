@@ -116,8 +116,14 @@
       }
       /* Inventory toggle: the character/paper-doll panel is large, so it is
          not always-on — the `i` key (input/keys.ts) and this HUD button open
-         and close it. Same click-through-HUD discipline as #copy-link. */
-      #toggle-help {
+         and close it. Same click-through-HUD discipline as #copy-link.
+         #toggle-sound (#298) shares this rule rather than copying it: #hud is
+         pointer-events:none so the canvas stays usable through it, and every
+         button must re-enable pointer events ON ITSELF. A HUD button added
+         without that renders perfectly and is silently unclickable — the
+         canvas swallows the click. */
+      #toggle-help,
+      #toggle-sound {
         display: block;
         margin-top: 0.4rem;
         padding: 0.15rem 0.5rem;
@@ -129,8 +135,10 @@
         cursor: pointer;
         pointer-events: auto;
       }
-      #toggle-help:hover { background: #2a3d2b; border-color: var(--accent); }
-      #toggle-help[hidden] { display: none; }
+      #toggle-help:hover,
+      #toggle-sound:hover { background: #2a3d2b; border-color: var(--accent); }
+      #toggle-help[hidden],
+      #toggle-sound[hidden] { display: none; }
       #controls-overlay {
         position: fixed;
         top: 50%;
@@ -149,6 +157,16 @@
         pointer-events: none;
       }
       #controls-overlay .close { pointer-events: auto; }
+      #controls-overlay .credits {
+        margin-top: 0.7rem;
+        padding-top: 0.6rem;
+        border-top: 1px solid var(--dim);
+        color: var(--dim);
+        font-size: 0.62rem;
+        opacity: 0.8;
+        line-height: 1.6;
+      }
+      #controls-overlay .credits a { color: var(--dim); pointer-events: auto; }
       #controls-overlay h2 {
         margin: 0 0 0.6rem;
         font-size: 0.7rem;
@@ -1285,6 +1303,7 @@
         <div id="stats">Lv — · —/— XP</div>
         <button id="copy-link" type="button" hidden>copy character link</button>
         <button id="toggle-inventory" type="button" hidden>inventory (i)</button>
+        <button id="toggle-sound" type="button" hidden>sound: on</button>
         <button id="toggle-help" type="button" hidden>? controls</button>
         <div id="turn-timer" data-phase="input"><div id="turn-timer-fill"></div></div>
         <div id="combat-panel" hidden>
@@ -1313,6 +1332,10 @@
       <div>Panels <kbd>I</kbd>/<kbd>C</kbd> character · <kbd>K</kbd> skills · <kbd>Esc</kbd> close</div>
       <div style="margin-top:.5rem;color:var(--dim)">Chat: /help · /here · /quest &lt;id&gt;</div>
       <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /leave</div>
+      <div class="credits">
+        Sound <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0 ·
+        Glyphs <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0
+      </div>
     </div>
     <div id="death-card" hidden>
       <div class="big">YOU DIED</div>
@@ -1378,6 +1401,7 @@
         <button id="start-enter" type="button">Enter the world</button>
         <div class="hint">returning players skip this screen — your character remembers you</div>
         <div class="credit">glyph icons — <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0</div>
+        <div class="credit">sound — <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0</div>
       </div>
     </div>
     <div id="chat-root"></div>

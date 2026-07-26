@@ -131,6 +131,14 @@ export interface GameDebug {
    * rather than the camera or the origin.
    */
   fogCenter: { x: number; y: number };
+  /**
+   * Sound state (#298). An e2e cannot hear anything, so this is the only way
+   * to assert that a hit made a noise: `played` counts sounds actually
+   * started, `last` names the most recent, `unlocked` reports whether a user
+   * gesture has released the browser's autoplay block, and `muted` mirrors the
+   * persisted setting.
+   */
+  audio: { played: number; last: string; unlocked: boolean; muted: boolean };
   /** Runtime turn interval from the latest bundle, in ms. */
   intervalMs: number;
   /** Count of named heartbeat frames received — proves the keep-alive is observable. */

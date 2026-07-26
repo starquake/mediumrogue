@@ -1070,6 +1070,68 @@ roll, so it is ARPG-legal on jewelry.
   concentric rings rather than one gradient quad: a screen-covering quad costs
   a full-viewport alpha blend every frame even where it is transparent, which
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
+- **Sound effects** (#298, `client/src/audio/sound.ts`): combat, movement and
+  inventory audio via **Howler**, effects only — no music or ambient. Assets
+  are 26 CC0 clips from five Kenney packs in `client/public/audio/` (~368 KB;
+  every pack's `Preview.ogg` demo reel is deliberately excluded), copied by
+  Vite into `dist/` and embedded with the rest of the bundle.
+  - **Events**: hit / crit / glance / **ranged** / **death** from
+    `TurnEvent.Hits` (#114), plus **level-up**, the thrown flask's **burst**,
+    equip, drop, pickup, panel open/close, a **HUD button click**, and the
+    viewer's OWN footstep. Footsteps are own-entity only — one per moving
+    entity would be a stampede at fifteen players.
+  - **Death is on the wire** (`HitView.Fatal`), not derived. An entity missing
+    from a bundle either died or walked past the interest radius (#289), and
+    from outside those are identical — a client guessing would play a death
+    sound at whoever wandered off. The server stamps the victim's LAST hit of
+    the turn, because damage is applied as a summed map and no single blow
+    owns a shared kill. A death by DoT lands no hit, so it is still silent.
+  - **Ranged IS derived**: attacker and victim more than one hex apart is the
+    definition of a shot, since every entity is melee-armed at adjacency. Crit
+    and glance keep their own sounds — they describe the damage roll, not the
+    delivery.
+  - **Priority is play order**, because the budget is first-come-first-served.
+    Level-up goes first (you level by killing, so it competes with a full
+    combat turn and is the rarest cue in the game), then deaths, then ordinary
+    hits. A fatal hit plays the death INSTEAD of a sword swing — one sound per
+    hit.
+  - **Still silent by design**: drinking, learning a skill, completing a quest,
+    and rejected intents. Three of the filled events use approximations rather
+    than the real thing (there is no bowstring in any Kenney pack) — see
+    `client/public/audio/README.md`, which names each one.
+  - **The unlock**: browsers block audio until a user gesture, and a returning
+    player never makes one (`isNewPlayer` skips the start screen when a stored
+    identity matches). A one-shot pointer/key listener releases it, or sound
+    would silently never work for the people who play most.
+  - **Budget**: at most **4 sounds per turn**, refilled once per bundle before
+    anything plays, so a six-way bubble resolution is a fight and not a wall
+    of noise.
+  - **Falloff**: volume drops linearly with hex distance to a floor, never to
+    silence — everything in a bundle is within `InterestRadius` (#289), so a
+    hit the server bothered to send is a hit you can hear. Your own actions
+    play at full.
+  - **Variants are chosen at RANDOM** — a deliberate exception to this
+    codebase's hash-everything determinism, because a hashed pick would give a
+    player walking in a straight line the same footstep every time. Nothing
+    about audio is snapshotted, replayed or asserted on.
+  - **Attribution**: the CC0 packs ask only that credit "would be nice", and it
+    is given in two places — the start panel (beside the glyph credit) and the
+    **controls overlay**. Both, because `isNewPlayer` skips the start screen
+    for anyone with a stored identity, so a credit living only there would be
+    invisible to the people who play most. The overlay is `pointer-events:
+    none`, so its links set `auto` on themselves; `credits.spec.ts` hit-tests
+    that with `elementFromPoint` rather than reading the CSS.
+  - **Toggle**: a `sound: on/off` HUD button, persisted in `localStorage`.
+    Like every HUD button it sets `pointer-events: auto` on itself — `#hud` is
+    click-through so the canvas works beneath it, and a button without that
+    rule renders perfectly and is silently unclickable.
+  - `window.game.audio` (played count, last sound, unlocked, muted) is the
+    test surface: an e2e cannot hear. Unit tests assert the asset wiring in
+    BOTH directions: every filename in `SOURCES` exists on disk (a typo 404s
+    silently, leaving one event mute forever while `play()` still reports
+    success), and every shipped file is named by `SOURCES` (every clip is
+    preloaded, so a dead one costs binary size, first-download bytes and a
+    preload fetch for a sound nothing can trigger).
 - **Terrain atmosphere** (#296, `client/src/render/map.ts` + `terrain.ts`,
   `grain.ts`, `scatter.ts`): the ground is drawn to read as land rather than as
   a quilt of flat cells. Client-render-only — no server, protocol, or gameplay
