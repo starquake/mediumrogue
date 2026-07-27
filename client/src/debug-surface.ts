@@ -91,6 +91,14 @@ export interface GameDebug {
   controlsOpen: boolean;
   /** The action-bar skill currently armed for targeting, or null (#185). */
   armedSkill: () => string | null;
+  /**
+   * Which active occupies each of the four action-bar slots (#304), by skill
+   * id; "" for an empty slot. Client-local (localStorage), so it is a UI
+   * preference rather than world state.
+   */
+  actionSlots: string[];
+  /** The slot whose right-click assignment menu is open, or -1 (#304). */
+  slotMenuOpen: number;
   /** The flask instance id whose throw is armed for targeting, or null (#271). */
   armedThrow: number | null;
   /**

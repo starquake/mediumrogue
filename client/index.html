@@ -764,11 +764,51 @@
         color: #33402f;
         cursor: default;
       }
-      #action-bar .aslot .num { position: absolute; top: 0.1rem; left: 0.25rem; font-size: 0.55rem; color: var(--dim); }
-      #action-bar .aslot.filled { border-color: #4a7fb5; color: #4a7fb5; cursor: pointer; }
-      #action-bar .aslot.cooling { border-color: #2a3d2b; color: var(--dim); opacity: 0.55; cursor: default; }
-      #action-bar .aslot .cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--dim); }
-      #action-bar .aslot.arming { border-color: #7cb342; color: #7cb342; }
+      #action-bar .aslot .num { position: absolute; top: 0.1rem; left: 0.25rem; font-size: 0.55rem; color: var(--dim); z-index: 2; }
+      /* The glyph is the slot's face (#304): "Second Wind" never fitted at
+         0.6rem, and the name lives in the hover tooltip now. */
+      #action-bar .aslot .glyph { width: 1.75rem; height: 1.75rem; }
+      #action-bar .aslot .glyph path { fill: #33402f; }
+      #action-bar .aslot.filled { border-color: #4a7fb5; cursor: pointer; }
+      #action-bar .aslot.filled .glyph path { fill: #4a7fb5; }
+      #action-bar .aslot.cooling { border-color: #2a3d2b; cursor: default; }
+      #action-bar .aslot.cooling .glyph path { fill: #55607a; }
+      /* Translucent on purpose: an opaque sweep blacks out the glyph and the
+         slot reads as broken rather than cooling. */
+      #action-bar .aslot .sweep { position: absolute; inset: 0; z-index: 1; }
+      #action-bar .aslot .cd { position: absolute; inset: 0; display: flex; align-items: center;
+        justify-content: center; font-size: 1.05rem; font-weight: 700; color: #cfcbdd;
+        text-shadow: 0 1px 3px #000; z-index: 2; }
+      #action-bar .aslot.arming { border-color: #7cb342; }
+      #action-bar .aslot.arming .glyph path { fill: #7cb342; }
+
+      /* Right-click assignment menu (#304). Four slots, five actives — which
+         one lives where is the player's choice, so an unslotted skill is a
+         decision rather than an unreachable one. */
+      #slot-menu {
+        position: fixed; z-index: 130; min-width: 11rem; pointer-events: auto;
+        background: #1b1b26; border: 1px solid #34344a; border-radius: 3px; overflow: hidden;
+      }
+      #slot-menu[hidden] { display: none; }
+      #slot-menu .hd { padding: 0.35rem 0.6rem; font-size: 0.55rem; letter-spacing: 0.12em;
+        text-transform: uppercase; color: var(--dim); border-bottom: 1px solid #2a2a3a; }
+      #slot-menu .row { padding: 0.35rem 0.6rem; display: flex; align-items: center; gap: 0.5rem;
+        font-size: 0.7rem; color: #b9b6c6; cursor: pointer; }
+      #slot-menu .row:hover { background: #232333; color: var(--ink); }
+      #slot-menu .row.on { background: #232333; color: var(--ink); }
+      #slot-menu .row .glyph { width: 0.9rem; height: 0.9rem; }
+      #slot-menu .row .glyph path { fill: #6f6c82; }
+      #slot-menu .row.on .glyph path { fill: #7cb342; }
+      #slot-menu .row .tag { margin-left: auto; font-size: 0.52rem; color: #5d5a70; }
+
+      /* Hover tooltip: name + the stat lines #300 already renders. */
+      #slot-tip {
+        position: fixed; z-index: 125; max-width: 18rem; pointer-events: none;
+        background: #1b1b26; border: 1px solid #34344a; border-radius: 3px; padding: 0.45rem 0.6rem;
+      }
+      #slot-tip[hidden] { display: none; }
+      #slot-tip .name { color: var(--ink); font-size: 0.72rem; margin-bottom: 0.25rem; }
+      #slot-tip .stats { color: #8f8ca0; font-size: 0.62rem; line-height: 1.6; }
       #toast {
         position: fixed;
         bottom: 4.5rem;
@@ -1361,10 +1401,10 @@
       </div>
     </div>
     <div id="action-bar">
-      <div class="aslot" data-slot="0"><span class="num">1</span><span class="lbl">—</span></div>
-      <div class="aslot" data-slot="1"><span class="num">2</span><span class="lbl">—</span></div>
-      <div class="aslot" data-slot="2"><span class="num">3</span><span class="lbl">—</span></div>
-      <div class="aslot" data-slot="3"><span class="num">4</span><span class="lbl">—</span></div>
+      <div class="aslot" data-slot="0"><span class="num">1</span><span class="face"></span></div>
+      <div class="aslot" data-slot="1"><span class="num">2</span><span class="face"></span></div>
+      <div class="aslot" data-slot="2"><span class="num">3</span><span class="face"></span></div>
+      <div class="aslot" data-slot="3"><span class="num">4</span><span class="face"></span></div>
     </div>
     <div id="client-error" hidden></div>
     <div id="toast" hidden></div>
@@ -1489,6 +1529,8 @@
         <div class="credit">sound — <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0</div>
       </div>
     </div>
+    <div id="slot-menu" hidden></div>
+    <div id="slot-tip" hidden></div>
     <div id="chat-root"></div>
     <div id="roster-root"></div>
     <div id="hover-tooltip" hidden>

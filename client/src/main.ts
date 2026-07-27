@@ -56,8 +56,16 @@ import { setParty } from "./party/store";
 import type { GroundItemView, Hex, HitView, ItemView, QuestView, SkillView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
 import { mountSkills } from "./skills/SkillsPanel";
-import { applyLearnedLocally, panelOpen as skillsPanelOpen, setSkills, toggleSkillsPanel } from "./skills/store";
+import {
+  applyLearnedLocally,
+  panelOpen as skillsPanelOpen,
+  setSkills,
+  skills as skillList,
+  toggleSkillsPanel,
+} from "./skills/store";
 import { clickOutcome, pressOutcome } from "./skills/targeting";
+import * as slots from "./skills/slots";
+import { GLYPH_ICON_SVG, GLYPH_ICON_VIEWBOX } from "./render/glyphIcons";
 import { setQuests } from "./quest/store";
 import {
   ClassFighter,
@@ -504,6 +512,8 @@ window.game = {
   startMode: "fresh",
   startOverConfirmOpen: false,
   skillTiles: [],
+  actionSlots: [],
+  slotMenuOpen: -1,
   died: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
@@ -1475,41 +1485,84 @@ async function start(): Promise<void> {
   // the other). null when nothing is armed to throw.
   let armedThrow: number | null = null;
 
-  const activeSlots = (): { id: string; name: string; ready: boolean; cd: number; aim: string }[] =>
-    window.game.skills
-      .filter((sk) => sk.learned && sk.active)
-      .map((sk) => ({
-        id: sk.id,
-        name: sk.name,
-        ready: sk.turnsUntilReady === 0,
-        cd: sk.turnsUntilReady,
-        aim: sk.aim,
-      }));
+  // learnedActives is every triggerable skill this player owns, registry order
+  // — the pool the four slots are drawn FROM (#304). Five actives exist and
+  // the bar holds four, so which ones are slotted is a choice, not an overflow.
+  const learnedActives = (): SkillView[] => skillList().filter((sk) => sk.learned && sk.active);
+
+  let assignment: string[] = slots.load();
+
+  const skillByID = (id: string): SkillView | undefined =>
+    skillList().find((sk) => sk.id === id && sk.active);
+
+  // activeSlots maps the ASSIGNMENT onto the bar: index = slot, and an empty
+  // slot is a real state rather than "ran out of skills".
+  const activeSlots = (): ({ id: string; name: string; ready: boolean; cd: number; aim: string } | undefined)[] => {
+    assignment = slots.reconcile(assignment, learnedActives().map((sk) => sk.id));
+
+    return assignment.map((id) => {
+      const sk = id === slots.EMPTY ? undefined : skillByID(id);
+
+      return sk === undefined
+        ? undefined
+        : { id: sk.id, name: sk.name, ready: sk.turnsUntilReady === 0, cd: sk.turnsUntilReady, aim: sk.aim };
+    });
+  };
+
+  // glyphMarkup renders a skill's game-icons glyph, or nothing for an empty
+  // slot. Same inline-path source the entity dots use (render/glyphIcons.ts),
+  // so a skill's icon in the bar is the icon everywhere else.
+  const glyphMarkup = (id: string): string => {
+    const inner = GLYPH_ICON_SVG[id];
+
+    return inner === undefined
+      ? ""
+      : `<svg class="glyph" viewBox="0 0 ${GLYPH_ICON_VIEWBOX} ${GLYPH_ICON_VIEWBOX}">${inner}</svg>`;
+  };
 
   function renderActionBar(): void {
-    const slots = activeSlots();
-    actionBarEl.classList.toggle("shown", slots.length > 0);
+    const filled = activeSlots();
+    // The bar appears once you have ANY active, even if some slots are empty —
+    // an empty slot is where you right-click to put something.
+    actionBarEl.classList.toggle("shown", learnedActives().length > 0);
+    window.game.actionSlots = [...assignment];
+
     actionSlotEls.forEach((el, i) => {
-      const s = slots[i];
-      const lbl = el.querySelector<HTMLElement>(".lbl");
-      const existingCd = el.querySelector(".cd");
-      if (existingCd !== null) existingCd.remove();
+      const s = filled[i];
+      const face = el.querySelector<HTMLElement>(".face");
+      el.querySelector(".cd")?.remove();
+      el.querySelector(".sweep")?.remove();
       el.classList.remove("filled", "cooling", "arming");
-      if (s === undefined) {
-        if (lbl !== null) lbl.textContent = "—";
-        return;
-      }
-      if (lbl !== null) lbl.textContent = s.name;
+
+      if (face !== null) face.innerHTML = s === undefined ? "" : glyphMarkup(s.id);
+
+      if (s === undefined) return;
+
       if (s.ready) {
         el.classList.add("filled");
         if (armedSkill === s.id) el.classList.add("arming");
-      } else {
-        el.classList.add("cooling");
-        const cd = document.createElement("span");
-        cd.className = "cd";
-        cd.textContent = String(s.cd);
-        el.appendChild(cd);
+
+        return;
       }
+
+      el.classList.add("cooling");
+
+      // Radial sweep: translucent so the glyph stays identifiable while the
+      // skill is unavailable — an opaque one reads as a broken slot. The turn
+      // count rides on top, because the radial says "soon" and the number says
+      // "exactly N".
+      const total = skillByID(s.id)?.cooldownTurns ?? s.cd;
+      const remaining = total <= 0 ? 0 : Math.min(1, s.cd / total);
+      const sweep = document.createElement("span");
+      sweep.className = "sweep";
+      sweep.style.background =
+        `conic-gradient(rgba(8,10,14,.62) 0 ${remaining * 100}%, rgba(124,179,66,.10) ${remaining * 100}% 100%)`;
+      el.appendChild(sweep);
+
+      const cd = document.createElement("span");
+      cd.className = "cd";
+      cd.textContent = String(s.cd);
+      el.appendChild(cd);
     });
   }
 
@@ -1517,7 +1570,7 @@ async function start(): Promise<void> {
   // them. Called wherever armedSkill changes AND once per bundle, because the
   // set moves with the caster and with the monsters in it.
   const drawSkillRange = (): void => {
-    const s = armedSkill === null ? undefined : activeSlots().find((x) => x.id === armedSkill);
+    const s = armedSkill === null ? undefined : activeSlots().find((x) => x?.id === armedSkill);
     const def = s === undefined ? undefined : window.game.skills.find((k) => k.id === s.id);
     window.game.skillTiles =
       def === undefined ? [] : tactics.skillTargetTiles(tacticsCtx(), def.aim, def.rangeHex);
@@ -1557,7 +1610,105 @@ async function start(): Promise<void> {
     renderActionBar();
     drawSkillRange();
   };
-  actionSlotEls.forEach((el, i) => el.addEventListener("click", () => armSlot(i)));
+  // --- tooltip + right-click assignment (#304) -----------------------------
+
+  // These strings come from the server's content registry, not from players,
+  // so this is discipline rather than a live XSS fix — but they reach the DOM
+  // through innerHTML (the glyph is inline SVG markup), and a future authored
+  // name containing a bracket should render as text, not as a tag.
+  const escapeHTML = (v: string): string =>
+    v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+
+  const slotTipEl = mustGet("slot-tip");
+  const slotMenuEl = mustGet("slot-menu");
+
+  // showSlotTip renders the skill's name plus the stat lines the SERVER
+  // already derives from its descriptor (#300), so nothing about an active is
+  // authored twice.
+  const showSlotTip = (el: HTMLElement, id: string): void => {
+    const sk = skillByID(id);
+    if (sk === undefined) return;
+
+    const stats = sk.stats.map((st) => escapeHTML(st.text)).join("<br>");
+    slotTipEl.innerHTML = `<div class="name">${escapeHTML(sk.name)}</div><div class="stats">${stats}</div>`;
+    slotTipEl.hidden = false;
+
+    const r = el.getBoundingClientRect();
+    const t = slotTipEl.getBoundingClientRect();
+    slotTipEl.style.left = `${Math.max(4, r.left + r.width / 2 - t.width / 2)}px`;
+    slotTipEl.style.top = `${r.top - t.height - 8}px`;
+  };
+
+  const hideSlotTip = (): void => {
+    slotTipEl.hidden = true;
+  };
+
+  const closeSlotMenu = (): void => {
+    slotMenuEl.hidden = true;
+    window.game.slotMenuOpen = -1;
+  };
+
+  // openSlotMenu lists every learned active plus an explicit "none", so a slot
+  // can be deliberately emptied rather than only ever swapped.
+  const openSlotMenu = (el: HTMLElement, slot: number): void => {
+    const learned = learnedActives();
+    const current = assignment[slot] ?? slots.EMPTY;
+    const free = new Set(slots.unslotted(assignment, learned.map((sk) => sk.id)));
+
+    const rows = learned
+      .map((sk) => {
+        const on = sk.id === current ? " on" : "";
+        const tag = sk.id === current ? "current" : free.has(sk.id) ? "unslotted" : "";
+
+        return `<div class="row${on}" data-id="${escapeHTML(sk.id)}">${glyphMarkup(sk.id)}` +
+          `${escapeHTML(sk.name)}<span class="tag">${tag}</span></div>`;
+      })
+      .join("");
+
+    slotMenuEl.innerHTML =
+      `<div class="hd">slot ${slot + 1}</div>${rows}` +
+      `<div class="row" data-id="">— none —</div>`;
+    slotMenuEl.hidden = false;
+    window.game.slotMenuOpen = slot;
+
+    const r = el.getBoundingClientRect();
+    const m = slotMenuEl.getBoundingClientRect();
+    slotMenuEl.style.left = `${Math.max(4, r.left + r.width / 2 - m.width / 2)}px`;
+    slotMenuEl.style.top = `${Math.max(4, r.top - m.height - 8)}px`;
+
+    for (const row of Array.from(slotMenuEl.querySelectorAll<HTMLElement>(".row"))) {
+      row.addEventListener("click", () => {
+        assignment = slots.assign(assignment, slot, row.dataset["id"] ?? slots.EMPTY);
+        slots.save(assignment);
+        closeSlotMenu();
+        renderActionBar();
+      });
+    }
+  };
+
+  actionSlotEls.forEach((el, i) => {
+    el.addEventListener("click", () => armSlot(i));
+    el.addEventListener("contextmenu", (e) => {
+      e.preventDefault(); // the browser menu would cover the one being opened
+      hideSlotTip();
+      openSlotMenu(el, i);
+    });
+    el.addEventListener("mouseenter", () => {
+      const id = assignment[i];
+      if (id !== undefined && id !== slots.EMPTY && slotMenuEl.hidden) showSlotTip(el, id);
+    });
+    el.addEventListener("mouseleave", hideSlotTip);
+  });
+
+  // A click anywhere else dismisses the menu — capture phase so it runs before
+  // a map click is routed as a move.
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!slotMenuEl.hidden && !slotMenuEl.contains(e.target as Node)) closeSlotMenu();
+    },
+    true,
+  );
   window.game.armedSkill = (): string | null => armedSkill;
 
   // armThrow arms a flask's throw (#271): the panel closes so the map is
@@ -1591,7 +1742,7 @@ async function start(): Promise<void> {
     // #185: an armed active consumes the next map click as its target.
     if (armedSkill !== null) {
       const skill = armedSkill;
-      const aim = activeSlots().find((s) => s.id === skill)?.aim ?? SkillAimHex;
+      const aim = activeSlots().find((s) => s?.id === skill)?.aim ?? SkillAimHex;
       const outcome = clickOutcome(aim, hostileIdAt(target));
 
       // #300: an entity-aimed active given bare ground stays ARMED — see
