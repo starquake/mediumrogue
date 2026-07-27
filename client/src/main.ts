@@ -624,16 +624,6 @@ async function start(): Promise<void> {
   mountRoster(mustGet("roster-root"));
   mountQuests(mustGet("quest-root"));
 
-  // #314: the canvas must not draw a glyph before its font exists. PixiJS
-  // rasterises Text to a texture at construction and never restyles it, and a
-  // name label is built once per entity and kept — so a label created while the
-  // webfont was still loading would render in the fallback face for as long as
-  // that entity is on screen, however long ago the font finished. Awaiting here
-  // costs one paint at startup and is bounded: fonts.ready resolves regardless
-  // of whether the font actually loaded, so a missing file degrades to the
-  // fallback rather than hanging the client.
-  await document.fonts.ready;
-
   const app = new Application();
   await app.init({
     background: "#0b0f0b",
@@ -998,6 +988,24 @@ async function start(): Promise<void> {
     }
   }
   startScreenEl.hidden = true;
+
+  // #314: the canvas must not draw a glyph before its font exists. PixiJS
+  // rasterises Text to a texture at construction and never restyles it, and a
+  // name label is built once per entity and kept — so a label created while the
+  // webfont was still loading would keep the fallback face for as long as that
+  // entity is on screen, however long ago the font finished loading.
+  //
+  // Deliberately HERE, after the start screen has been dismissed and before the
+  // join, rather than up beside app.init: canvas text is only ever built from a
+  // turn bundle, which cannot arrive until the join below. Awaiting earlier is
+  // no safer and actively harmful — the start screen's button listeners are not
+  // attached until after the engine/map load, so any await in front of that
+  // lengthens the window in which the buttons are painted but inert, and a
+  // click landing in it is silently dropped (17 e2e specs failed exactly that
+  // way). Bounded either way: fonts.ready resolves whether or not the font
+  // actually loaded, so a missing file degrades to the fallback rather than
+  // hanging the client.
+  await document.fonts.ready;
 
   let me;
   let joinedName: string;
