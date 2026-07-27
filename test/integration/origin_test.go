@@ -17,7 +17,7 @@ func TestCrossOriginPostRejected(t *testing.T) {
 
 	ts := startServer(t, time.Minute, time.Minute)
 
-	for _, path := range []string{"/api/join", "/api/intent", "/api/chat"} {
+	for _, path := range []string{"/api/join", "/api/intent", "/api/chat", "/api/token-check"} {
 		resp := postJSONWithOrigin(t, ts, path, "https://evil.example", struct{}{})
 		if got, want := resp.StatusCode, http.StatusForbidden; got != want {
 			t.Errorf("cross-origin POST %s status = %d, want %d", path, got, want)

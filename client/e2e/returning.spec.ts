@@ -96,3 +96,48 @@ test("Start over yields a genuinely new character, not the old one reclaimed", a
   await expect.poll(() => page.evaluate(() => window.game.level)).toBe(1);
   await expect.poll(() => page.evaluate(() => window.game.xp)).toBe(0);
 });
+
+// #311: the world was reset out from under a browser that still holds the old
+// token. The welcome-back card is rendered from localStorage alone, so before
+// the probe it happily offered to continue a character that no longer existed —
+// Continue then failed a reclaim, the panel silently became the creation form,
+// and the player had clicked twice to learn nothing. Reported from the dev
+// deployment after a `docker compose down -v`.
+//
+// The contract asserted here is the whole fix: the right form the FIRST time,
+// and a notice saying why.
+test("a token the world no longer knows goes straight to creation, with the reset notice", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "mediumrogue.identity",
+      JSON.stringify({
+        entityId: 7,
+        token: "a-token-from-a-world-that-no-longer-exists",
+        class: "rogue",
+        species: "elf",
+        name: "ghost",
+        level: 4,
+      }),
+    );
+  });
+
+  // Deliberately NOT a "/#t=" character link: that path skips the start screen
+  // entirely and is covered by identity.spec.ts.
+  await page.goto("/");
+
+  await expect(page.locator("#creation")).toBeVisible();
+  await expect(page.locator("#reset-notice")).toBeVisible();
+  await expect(page.locator("#returning")).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.game.startMode)).toBe("reset");
+
+  // The dead identity is discarded, so a refresh cannot re-fail on it.
+  expect(await page.evaluate(() => localStorage.getItem("mediumrogue.identity"))).toBeNull();
+
+  // ONE click — the two-click fumble is the bug.
+  await page.locator("#start-name").fill("survivor");
+  await page.locator("#start-enter").click();
+
+  await expect.poll(() => page.evaluate(() => window.game.connected)).toBe(true);
+  await expect(page.locator("#start-screen")).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.game.name)).toBe("survivor");
+});

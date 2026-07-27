@@ -429,6 +429,18 @@
       }
       #startover-confirm .confirm-actions { display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 0.5rem; }
       #returning[hidden], #creation[hidden] { display: none; }
+      #reset-notice {
+        border: 1px solid #a04a4a;
+        border-radius: 3px;
+        padding: 0.55rem 0.7rem;
+        margin-bottom: 0.9rem;
+        color: var(--dim);
+        font-size: 0.72rem;
+        line-height: 1.5;
+        text-align: left;
+      }
+      #reset-notice strong { color: #d98a8a; }
+      #reset-notice[hidden] { display: none; }
       #start-panel .credit {
         text-align: center;
         color: var(--dim);
@@ -1417,6 +1429,13 @@
         </div>
 
         <div id="creation">
+        <!-- #311: shown when the stored character turns out to be gone (the
+             token probe said so, or a reclaim was rejected). Wording matches
+             #reset-card above, which says the same thing mid-session. -->
+        <div id="reset-notice" hidden>
+          <strong>The world has reset.</strong>
+          A new world has begun — your old character is gone.
+        </div>
         <!-- Derive-free wording (PR #50 review): no literal cadence number
              here to go stale when TurnSeconds is retuned again. -->
         <div class="tagline">a shared world · everyone moves on the same beat · bring friends</div>

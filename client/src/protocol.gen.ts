@@ -1058,6 +1058,26 @@ export interface JoinResponse {
   hex: Hex;
 }
 /**
+ * TokenCheckRequest is the body of POST /api/token-check: the stored token the
+ * client is about to reclaim with. A POST with a body, never a GET with a query
+ * parameter — tokens are bearer secrets, and a URL is the one place they must
+ * never appear (logs, referrers, history).
+ */
+export interface TokenCheckRequest {
+  token: string;
+}
+/**
+ * TokenCheckResponse reports whether a token would still reclaim a character.
+ * Known is true for a live entity AND for an archived one — both are reclaimable
+ * via Join, so both mean "show the returning-player card". False means the world
+ * has never heard of this token (most plausibly it was reset out from under the
+ * client), which is what lets the start screen offer the creation form FIRST
+ * instead of a welcome-back card that a Continue click would only disprove.
+ */
+export interface TokenCheckResponse {
+  known: boolean;
+}
+/**
  * IntentRequest is the body of POST /api/intent: "walk to Target" or "attack Target".
  * Target is any walkable hex (for move) or target hex (for attack), not just a
  * neighbor — the server pathfinds from the entity's current position and walks the

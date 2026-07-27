@@ -299,3 +299,50 @@ func TestArchivePreservesSkillState(t *testing.T) {
 		t.Errorf("restored pointsGrantedLevel = %d, want %d (0 would re-pay all levels)", got, want)
 	}
 }
+
+// TestTokenKnown pins the lookup the start-screen probe reads (#311): a token
+// is "known" while its character is reclaimable — live OR archived — and
+// unknown once the world has never heard of it. The client shows the
+// welcome-back card on true and the creation form on false, so a wrong answer
+// either way is a lying start screen.
+func TestTokenKnown(t *testing.T) {
+	t.Parallel()
+
+	w, clk := newTimedWorld(t)
+	w.SetDisconnectGraceForTest(archiveGrace)
+
+	me, err := w.Join("", "tester", protocol.ClassRogue, protocol.SpeciesElf)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	if got, want := w.TokenKnown(me.Token), true; got != want {
+		t.Errorf("TokenKnown(live token) = %v, want %v", got, want)
+	}
+
+	if got, want := w.TokenKnown("never-seen-token"), false; got != want {
+		t.Errorf("TokenKnown(unknown token) = %v, want %v", got, want)
+	}
+
+	if got, want := w.TokenKnown(""), false; got != want {
+		t.Errorf("TokenKnown(empty token) = %v, want %v", got, want)
+	}
+
+	// Disconnect and sweep past grace: the character leaves the world but stays
+	// reclaimable from the archive, so the token must still read as known.
+	w.StreamOpened(me.Token)
+	w.StreamClosed(me.Token)
+	clk.advance(archiveGrace + time.Second)
+
+	if got, want := w.SweepForTest(clk.now()), true; got != want {
+		t.Fatalf("SweepForTest removed = %v, want %v", got, want)
+	}
+
+	if got, want := w.ArchivedForTest(me.Token), true; got != want {
+		t.Fatalf("ArchivedForTest after sweep = %v, want %v", got, want)
+	}
+
+	if got, want := w.TokenKnown(me.Token), true; got != want {
+		t.Errorf("TokenKnown(archived token) = %v, want %v", got, want)
+	}
+}

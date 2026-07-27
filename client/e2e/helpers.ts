@@ -104,6 +104,22 @@ export async function seedIdentity(page: Page, opts: { class?: string; species?:
  * drives the creation form itself.
  */
 export async function continueIfReturning(page: Page): Promise<void> {
+  // #311: WAIT for the screen to decide which half it is showing before
+  // reading it. A load carrying a real token now probes the server first, and
+  // both halves stay hidden until that answer lands — so a bare isVisible()
+  // races it, sees nothing, skips the click, and the spec then waits forever
+  // on a card that appeared a millisecond later. Specs that reload after a
+  // real join (move.spec, sound.spec) are exactly this shape.
+  await page
+    .locator("#returning:visible, #creation:visible")
+    .first()
+    .waitFor({ timeout: 10_000 })
+    .catch(() => {
+      // No start screen at all (a spec that arrives by character link, or one
+      // that cleared storageState and drives the form itself) — nothing to
+      // wait for, and nothing below will match either.
+    });
+
   const btn = page.locator("#continue-btn");
   if (await btn.isVisible().catch(() => false)) {
     await btn.click();
