@@ -31,6 +31,7 @@ import { fetchMap } from "./net/map";
 import {
   cacheCharacterSummary,
   cameFromCharacterLink,
+  checkToken,
   clearIdentity,
   importIdentityFromFragment,
   join,
@@ -374,6 +375,24 @@ function waitForContinueOrRestart(): Promise<boolean> {
   });
 }
 
+/**
+ * Switches the start screen to the creation form because the stored character
+ * is gone — the world was reset (#311). Both routes here mean the same thing to
+ * the player, so they show the same thing: the probe that answered "unknown"
+ * before the card was ever offered, and the reclaim the server rejected after
+ * a Continue that raced a reset.
+ *
+ * The notice is the whole point. Without it the panel simply becomes a
+ * creation form, which reads as a misclick rather than as news.
+ */
+function showResetCreation(): void {
+  mustGet("returning").hidden = true;
+  mustGet("creation").hidden = false;
+  mustGet("start-hint").hidden = false;
+  mustGet("reset-notice").hidden = false;
+  window.game.startMode = "reset";
+}
+
 function waitForEnter(): Promise<void> {
   return new Promise((resolve) => {
     const onEnter = (): void => {
@@ -548,11 +567,42 @@ async function start(): Promise<void> {
   // the documented promise is that it joins straight through.
   const skipStart = cameFromCharacterLink();
   startScreenEl.hidden = skipStart;
-  mustGet("returning").hidden = isNewPlayer;
+
+  // #311: a stored token proves nothing about the world currently running.
+  // Ask before offering to continue — otherwise a world that was reset out
+  // from under this browser is only discovered by the player clicking
+  // Continue and having the reclaim rejected, which costs a second click and
+  // says nothing about where their character went.
+  //
+  // Only worth asking when there is a token to ask about: a stored identity
+  // with an empty token (the class/species-only shape some e2e specs seed)
+  // never reclaims anything, and a link arrival has already made its choice.
+  const probeToken = !skipStart && !isNewPlayer && storedIdentity !== null && storedIdentity.token !== "";
+
+  // Both halves stay hidden while the answer is in flight, so the card never
+  // appears only to be swapped out from under a hand already moving to it.
+  mustGet("returning").hidden = isNewPlayer || probeToken;
   mustGet("creation").hidden = !isNewPlayer;
   mustGet("start-hint").hidden = !isNewPlayer;
 
-  if (!isNewPlayer && storedIdentity !== null) {
+  // True once the probe says the stored character is gone: the creation form
+  // takes over, carrying the notice that says why.
+  let worldWasReset = false;
+  if (probeToken && storedIdentity !== null) {
+    // null (offline, 5xx, timed out) is NOT "gone" — fall through to the
+    // returning card and let the reclaim below be the judge, exactly as
+    // before this probe existed.
+    worldWasReset = (await checkToken(storedIdentity.token)) === false;
+    if (worldWasReset) {
+      clearIdentity();
+      activeIdentity = null; // the join below must not reclaim a dead token
+      showResetCreation();
+    } else {
+      mustGet("returning").hidden = false;
+    }
+  }
+
+  if (!isNewPlayer && !worldWasReset && storedIdentity !== null) {
     const parts = [storedIdentity.class, storedIdentity.species].filter((v) => v !== "");
     if (storedIdentity.level !== undefined) parts.push(`level ${storedIdentity.level}`);
     mustGet("returning-name").textContent = storedIdentity.name ?? "your character";
@@ -908,7 +958,9 @@ async function start(): Promise<void> {
   // selection is irrelevant either way).
   if (skipStart) {
     // nothing to wait for — the link already decided.
-  } else if (isNewPlayer) {
+  } else if (isNewPlayer || worldWasReset) {
+    // worldWasReset: the probe above already replaced the card with the
+    // creation form, so this player commits the same way a new one does.
     await waitForEnter();
   } else {
     // A returning player commits with Continue. Start over clears the identity
@@ -978,11 +1030,12 @@ async function start(): Promise<void> {
     // the creation form, not the returning card. Without this the screen comes
     // back with no way to act on it, because the returning half was the
     // visible one when the join was attempted.
+    //
+    // Still reachable with the #311 probe in front of it, and deliberately so:
+    // the probe can answer "known" and the world reset in the moment between
+    // that answer and this reclaim. Same news, same notice.
     startScreenEl.hidden = false;
-    mustGet("returning").hidden = true;
-    mustGet("creation").hidden = false;
-    mustGet("start-hint").hidden = false;
-    window.game.startMode = "fresh";
+    showResetCreation();
     await waitForEnter();
     startScreenEl.hidden = true;
     me = await join(selectedName, selectedClass, selectedSpecies);

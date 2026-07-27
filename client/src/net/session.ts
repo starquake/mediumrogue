@@ -1,4 +1,13 @@
-import type { ChatRequest, ErrorResponse, Hex, IntentRequest, JoinRequest, JoinResponse } from "../protocol.gen";
+import type {
+  ChatRequest,
+  ErrorResponse,
+  Hex,
+  IntentRequest,
+  JoinRequest,
+  JoinResponse,
+  TokenCheckRequest,
+  TokenCheckResponse,
+} from "../protocol.gen";
 import {
   IntentDrink,
   IntentDrop,
@@ -124,6 +133,45 @@ export function cacheCharacterSummary(name: string, level: number): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...id, name, level }));
   } catch {
     // Private-mode browsers throw; the card just falls back to "your character".
+  }
+}
+
+/**
+ * How long the start screen will wait for the token probe below before giving
+ * up and showing the returning card anyway. Short on purpose: the probe exists
+ * for the case where the world was reset, and a server that just restarted is
+ * exactly the one whose first request can hang. Missing the answer costs the
+ * old two-click recovery; blocking on it would cost the whole start screen.
+ */
+const TOKEN_CHECK_TIMEOUT_MS = 2000;
+
+/**
+ * Asks whether `token` would still reclaim a character (#311), so the start
+ * screen can offer the right form the FIRST time instead of discovering a dead
+ * identity through a rejected Continue.
+ *
+ * Three-valued on purpose: true/false are the server's answer, and **null means
+ * the question could not be asked** (offline, 5xx, timeout). Null is not "gone"
+ * — a flaky network must never be read as "your character is gone", so the
+ * caller falls back to the optimistic returning card, where the existing
+ * reclaim-rejection path is still the backstop.
+ */
+export async function checkToken(token: string): Promise<boolean | null> {
+  const body: TokenCheckRequest = { token };
+  try {
+    const resp = await fetch("/api/token-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(TOKEN_CHECK_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      return null;
+    }
+
+    return ((await resp.json()) as TokenCheckResponse).known;
+  } catch {
+    return null;
   }
 }
 

@@ -95,9 +95,11 @@ export interface GameDebug {
   armedThrow: number | null;
   /**
    * What the start screen is offering (#303): "continue" for a returning
-   * player's character card, "fresh" for the creation form.
+   * player's character card, "fresh" for the creation form, and "reset" (#311)
+   * for the creation form shown BECAUSE the stored character turned out to be
+   * gone — the reset notice is visible in that state and not the other two.
    */
-  startMode: "continue" | "fresh";
+  startMode: "continue" | "fresh" | "reset";
   /** Whether the Start over confirmation is showing (#303). */
   startOverConfirmOpen: boolean;
   /**
