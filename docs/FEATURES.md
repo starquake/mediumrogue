@@ -1002,6 +1002,24 @@ roll, so it is ARPG-legal on jewelry.
     carries only token/class/species. So the card is a preview — play on
     another browser and the level here is stale until you continue, at which
     point the server's value replaces it.
+  - **The card is verified before it is offered** (#311). Because it renders
+    from cache alone, a world that was reset out from under the browser used
+    to be discovered only by clicking Continue: the reclaim came back 422, the
+    panel silently became the creation form, and the player had spent a click
+    learning nothing. The client now POSTs its stored token to
+    **`/api/token-check`** first and shows the creation form directly — with a
+    **"The world has reset"** notice, matching the mid-session reset card's
+    wording — when the answer is "unknown". Both halves of the screen stay
+    hidden for that one round trip, so the card never appears and then
+    vanishes.
+    - A token is "known" while it is **reclaimable** — live *or* archived.
+    - A probe that cannot be answered (offline, 5xx, 2s timeout) is **not**
+      read as "gone": the returning card shows exactly as before, and the
+      reclaim-rejection fallback (which now also shows the notice) stays the
+      backstop. That fallback is still genuinely reachable — the world can
+      reset in the gap between a "known" answer and the reclaim.
+    - Character-link arrivals (`#t=`) skip the start screen and the probe
+      alike; their dead-link handling is unchanged.
 - **Start over** (#303): abandons the current character for a fresh one,
   behind a confirmation. **The confirm shows the old character's identity
   link with a copy button, and that is the point** — the archive keeps the
@@ -1113,7 +1131,10 @@ roll, so it is ARPG-legal on jewelry.
   under one mutex; per-domain turn loops). Coalescing hub: a tick means
   "fetch latest state", never a delta.
 - **Wire**: POST `/api/join`, `/api/intent`
-  (move/attack/equip/unequip/drop/pickup/drink/learn-skill/use-skill/throw/recall), `/api/chat`;
+  (move/attack/equip/unequip/drop/pickup/drink/learn-skill/use-skill/throw/recall), `/api/chat`,
+  `/api/token-check` (`TokenCheckRequest`/`TokenCheckResponse` — read-only
+  "would this token still reclaim a character?", the start screen's pre-flight;
+  a POST body, never a URL parameter, because the token is a bearer secret);
   GET `/api/map` (once), `/api/events` (SSE: per-viewer snapshot turn bundles
   with turn-number ids, chat events, named heartbeats — complete for what the
   viewer can see, never a delta; see **Interest radius** below). Reconnect =

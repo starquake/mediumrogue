@@ -1047,3 +1047,39 @@ the loot.
 
 **Cost stays uniform at `SkillPointCost = 3`** (maintainer, #300 Q3),
 confirming the 2026-07-19 decision rather than pricing actives separately.
+
+## A cached welcome card must be verified before it is offered *(built 2026-07-27, #311)*
+
+The #303 start screen renders a returning player's character card from
+localStorage alone — it has to, because the screen shows *before* the join. That
+is fine right up until the world is reset out from under the browser, at which
+point the card cheerfully offers to continue a character that no longer exists.
+The player clicks Continue, the reclaim comes back 422, the panel silently
+becomes the creation form, and they have spent a click learning nothing. It was
+reported from the dev deployment exactly that way: *"I had to click the welcome
+window twice."*
+
+**The fix is to ask before offering, not to explain after failing.** Two designs
+were on the table. *Explain after failure* keeps the two-step flow and adds a
+notice to the rejection path — the smallest change, and it leaves the lie in
+place: the screen still offers something it cannot deliver. *Detect before
+showing* spends one read-only round trip (`POST /api/token-check`) so the screen
+is right the first time. The maintainer took the second, and the cost is the
+honest one: the card is now worth trusting because it has been checked.
+
+Three details carry the decision:
+
+- **"Known" means reclaimable, not alive.** An archived character is still
+  reclaimable via Continue, so the probe reports live *and* archived tokens as
+  known — `World.TokenKnown` already drew exactly this line for the join rate
+  limiter, so the endpoint is a lookup, not new logic.
+- **A question that cannot be asked is not an answer of "gone."** Offline, 5xx,
+  and a 2-second timeout all resolve to null, and null shows the returning card
+  unchanged. Reading a flaky network as "your character is deleted" would be a
+  far worse failure than the bug being fixed, and the reclaim rejection is still
+  there to catch it.
+- **The rejection path stays, and gains the notice.** The probe narrows the
+  window; it does not close it. A world can reset between a "known" answer and
+  the reclaim that follows, so both routes end in the same creation form with
+  the same message — the one the mid-session `#reset-card` already used, because
+  the player is being told the same thing.
