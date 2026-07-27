@@ -51,6 +51,29 @@ func handleJoin(deps Deps) http.Handler {
 	})
 }
 
+// handleTokenCheck reports whether a stored token would still reclaim a
+// character (#311). The client asks BEFORE the start screen offers its
+// welcome-back card: a world that was reset out from under the browser used to
+// be discovered only by clicking Continue and having the reclaim rejected,
+// which cost a second click and explained nothing.
+//
+// Deliberately NOT rate limited, unlike handleJoin above. The bucket there
+// throttles entity MINTING; this mints nothing, is one map lookup under the
+// world lock, and the only thing it could leak — whether a given token exists —
+// is already answerable by POSTing the same token to /api/join, against tokens
+// far too large to enumerate. The same-origin POST guard covers it like every
+// other mutating-shaped route.
+func handleTokenCheck(deps Deps) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req protocol.TokenCheckRequest
+		if !decodeJSON(w, r, deps.Logger, &req) {
+			return
+		}
+
+		respondJSON(w, deps.Logger, protocol.TokenCheckResponse{Known: deps.World.TokenKnown(req.Token)})
+	})
+}
+
 // intentErrorStatus maps a SubmitIntent error to its HTTP status, reporting
 // false for an error it does not recognize (which handleIntent surfaces as a
 // 500). Split out of the handler so a test can drive every domain sentinel

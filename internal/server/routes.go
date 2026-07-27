@@ -27,6 +27,11 @@ func addRoutes(mux *http.ServeMux, deps Deps) {
 	mux.Handle("POST /api/join", handleJoin(deps))
 	mux.Handle("POST /api/intent", handleIntent(deps))
 
+	// The start screen's pre-flight (#311): does this stored token still
+	// reclaim a character? Read-only, so it can answer before the player
+	// commits to anything.
+	mux.Handle("POST /api/token-check", handleTokenCheck(deps))
+
 	// Global chat: a joined player POSTs a line (or a "/command"); it fans out
 	// to every connected stream as an EventChat frame.
 	mux.Handle("POST /api/chat", handleChat(deps))
