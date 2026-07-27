@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 // Reproduces the seam behind item 2's investigation (playtest feedback batch
 // 3, "players swapped identities"): two browser TABS in the same context
@@ -25,6 +26,7 @@ test("a second tab joining as a different player triggers the first tab to reloa
   // Tab 1: the seeded storageState identity auto-joins (fighter/human/
   // traveler, no token yet — see playwright.config.ts's storageStateFor).
   await page.goto("/");
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game?.me?.id ?? null)).not.toBeNull();
   await expect.poll(() => page.evaluate(() => window.game?.class ?? "")).not.toBe("");
 
@@ -40,8 +42,11 @@ test("a second tab joining as a different player triggers the first tab to reloa
   const page2 = await context.newPage();
   await page2.addInitScript(() => localStorage.removeItem("mediumrogue.identity"));
   await page2.goto("/");
+  await continueIfReturning(page2);
 
-  await expect(page2.locator("#start-screen")).toBeVisible();
+  // Tab 2 cleared the shared identity, so it is a brand-new player — the
+  // creation half, not the returning card (#303).
+  await expect(page2.locator("#creation")).toBeVisible();
   await page2.locator("#start-name").fill("bob");
   await page2.locator('.card[data-class="rogue"]').click();
   await page2.locator('.card[data-species="elf"]').click();
@@ -79,6 +84,11 @@ test("a second tab joining as a different player triggers the first tab to reloa
     )
     .toBe("reload");
 
+  // The reload is triggered by the APP, not by this spec, so there is no
+  // goto/reload call to hook — the returning-player screen (#303) has to be
+  // cleared here, after the fact.
+  await continueIfReturning(page);
+
   // Generous timeout: the reloaded tab must re-fetch the app, reclaim, and
   // see a first turn bundle — slow under CI-grade parallel contention.
   await expect
@@ -113,6 +123,7 @@ test("a forced rejoin reclaims with the tab's own in-memory token, ignoring a cl
   page,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game?.me?.id ?? null)).not.toBeNull();
   await expect.poll(() => page.evaluate(() => (window.game?.forceRejoin ?? null) !== null)).toBe(true);
 

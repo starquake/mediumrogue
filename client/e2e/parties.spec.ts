@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 // Both clients auto-join with the default name "traveler" — that's fine here:
 // server-side /invite <name> resolves to the NEAREST player named <name>
@@ -11,7 +12,10 @@ test("parties: invite, accept, roster, and leave dissolves it", async ({ browser
   const b = await ctxB.newPage();
 
   await a.goto("/");
+
+  await continueIfReturning(a);
   await b.goto("/");
+  await continueIfReturning(b);
 
   // 1. Both join + connect, both start solo.
   await expect.poll(() => a.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();

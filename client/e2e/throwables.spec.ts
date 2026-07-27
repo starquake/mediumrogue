@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { seedIdentity } from "./helpers";
+import { seedIdentity, continueIfReturning } from "./helpers";
 
 // throwables.spec.ts (#271): the targeted-consumable client paths — arming a
 // flask's throw and consuming a map click as its aim, and using a scroll of
@@ -21,6 +21,7 @@ const scrollDef = "scroll-of-recall";
 async function seedWithStarterKit(page: Page): Promise<void> {
   await seedIdentity(page, { class: "fighter" });
   await page.goto("/");
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected), TURN_GATED).toBe(true);
   // The starter flask and scroll must land in the backpack before the panel
   // can render their cells.

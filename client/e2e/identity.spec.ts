@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 // This file runs on its own private server (playwright.config.ts's specs
 // list) with the default pre-seeded identity for the `page` fixture (see
@@ -12,6 +13,7 @@ test("a copied character link rejoins the SAME character on a second browser con
   browser,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
   // Wait for a real turn bundle: window.game.class/species/name/xp start out
@@ -82,7 +84,10 @@ test("importing a link with an unknown token falls back to the start screen inst
   expect(new URL(page.url()).hash).toBe("");
 
   // The rejected join surfaces the start screen — not a dead error state.
-  await expect(page.locator("#start-screen")).toBeVisible({ timeout: 15_000 });
+  // The CREATION half: recovery from a dead token drops you to a fresh
+  // character, not to a Continue card for the identity that just failed.
+  await expect(page.locator("#creation")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#returning")).toBeHidden();
 
   // And a normal join from it works; the dead identity is gone.
   await page.locator("#start-enter").click();
@@ -99,6 +104,7 @@ test("the copy-link button is hidden until joined, then reveals a link and flash
   page,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   const button = page.locator("#copy-link");
 

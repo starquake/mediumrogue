@@ -1,12 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 import type { Hex, MapResponse } from "../src/protocol.gen";
+import { continueIfReturning } from "./helpers";
 
 test("a one-hex tap move moves my entity on the next turn", async ({ page }) => {
   // #273 dropped the QWEASD movement keys — character movement is click/tap
   // only now (window.game.tapHex), so this exercises a single-step tap rather
   // than a key press. The multi-turn walk lives in walk.spec.ts.
   await page.goto("/");
+  await continueIfReturning(page);
 
   // Joined, connected, and standing somewhere.
   await expect
@@ -58,10 +60,13 @@ test("a one-hex tap move moves my entity on the next turn", async ({ page }) => 
 
 test("identity survives a page reload", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.me !== null)).toBe(true);
   const firstID = await page.evaluate(() => window.game.me?.id);
 
   await page.reload();
+
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.me !== null)).toBe(true);
   const secondID = await page.evaluate(() => window.game.me?.id);
 

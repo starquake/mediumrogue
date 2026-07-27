@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 import { CombatRadius, MonsterAggroRadius } from "../src/protocol.gen";
-import { gotoReady, progressTracker } from "./helpers";
+import { gotoReady, progressTracker, continueIfReturning } from "./helpers";
 
 test("monsters spawned server-side reach the client and render", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   // The e2e server is started with MONSTER_COUNT=3: the turn bundle must
   // carry at least one monster entity through to window.game.
@@ -41,6 +42,7 @@ test("monsters spawned server-side reach the client and render", async ({ page }
 // main.ts's listener does the same math regardless.
 test("hovering a monster shows its kind, and its HP only within CombatRadius", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect
     .poll(() => page.evaluate(() => window.game.monsters), { timeout: 10_000 })

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { Hex, MapResponse } from "../src/protocol.gen";
+import { continueIfReturning } from "./helpers";
 
 // axialNeighbors mirrors internal/game.HexNeighbors (see walk.spec.ts).
 function axialNeighbors(h: Hex): Hex[] {
@@ -43,7 +44,10 @@ test("chat: cross-client delivery, /here, readable command errors, and map click
   const b = await ctxB.newPage();
 
   await a.goto("/");
+
+  await continueIfReturning(a);
   await b.goto("/");
+  await continueIfReturning(b);
 
   // 1. Both auto-join (default name "traveler") and connect.
   await expect.poll(() => a.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();

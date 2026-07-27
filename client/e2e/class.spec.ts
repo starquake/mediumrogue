@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { ClassMage, SpeciesElf } from "../src/protocol.gen";
+import { continueIfReturning } from "./helpers";
 
 // This file runs on the CORE (monster-free) server — see playwright.config.ts's
 // specs list, where "class" has no `monsters` entry.
@@ -17,15 +18,20 @@ test("a brand-new player sees the start screen, picks class/species, and joins o
   page,
 }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
-  await expect(page.locator("#start-screen")).toBeVisible();
+  // #303: assert the CREATION half specifically. #start-screen is visible for
+  // returning players too now, so checking it alone no longer proves this is
+  // the brand-new-player path this spec exists to cover.
+  await expect(page.locator("#creation")).toBeVisible();
+  await expect(page.locator("#returning")).toBeHidden();
 
   // No join fires just from the screen being up and the map loading behind
   // it — window.game.me stays null for a real couple of seconds, not just
   // "hasn't happened yet on this tick".
   await page.waitForTimeout(2_000);
   expect(await page.evaluate(() => window.game.me)).toBeNull();
-  await expect(page.locator("#start-screen")).toBeVisible();
+  await expect(page.locator("#creation")).toBeVisible();
 
   // Fighter/Human are preselected by default.
   await expect(page.locator('.card[data-class="fighter"]')).toHaveClass(/selected/);
@@ -56,6 +62,7 @@ test("a brand-new player sees the start screen, picks class/species, and joins o
   // — the screen must not reappear, and the same character is reclaimed
   // (same entity id, same class/species/name) rather than a fresh one.
   await page.reload();
+  await continueIfReturning(page);
 
   await expect(page.locator("#start-screen")).toBeHidden();
   await expect

@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { seedIdentity } from "./helpers";
+import { seedIdentity, continueIfReturning } from "./helpers";
 
 // The near-sighted skills panel (#124). Every wait is metered on GAME state
 // (window.game fields flipping), never wall-clock — the de-race rule.
 test("the skills panel shows learnable skills and hides locked ones", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
   // A bundle must have landed before the panel has anything to render.
@@ -44,6 +45,8 @@ test("every tree renders real rows — the Survival tree is no longer empty", as
   await seedIdentity(page, { class: "fighter" });
 
   await page.goto("/");
+
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.skills.length)).toBeGreaterThan(0);
 
@@ -73,6 +76,8 @@ test("the action bar is hidden with no learned actives", async ({ page }) => {
   });
 
   await page.goto("/");
+
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.skills.length)).toBeGreaterThan(0);
 

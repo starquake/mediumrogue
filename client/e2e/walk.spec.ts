@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { MapResponse } from "../src/protocol.gen";
-import { gotoReady, pickDistance2Destination } from "./helpers";
+import { gotoReady, pickDistance2Destination, continueIfReturning } from "./helpers";
 
 test("clicking (tapHex) a distant hex walks my entity there over turns", async ({ page }) => {
   await gotoReady(page);
@@ -44,6 +44,7 @@ test("clicking (tapHex) a distant hex walks my entity there over turns", async (
 
 test("the turn timer bar exists and animates across a turn", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
   await expect(page.locator("#turn-timer")).toBeVisible();
 
   await expect.poll(() => page.evaluate(() => window.game.intervalMs)).toBeGreaterThan(0);

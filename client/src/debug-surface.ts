@@ -94,6 +94,13 @@ export interface GameDebug {
   /** The flask instance id whose throw is armed for targeting, or null (#271). */
   armedThrow: number | null;
   /**
+   * What the start screen is offering (#303): "continue" for a returning
+   * player's character card, "fresh" for the creation form.
+   */
+  startMode: "continue" | "fresh";
+  /** Whether the Start over confirmation is showing (#303). */
+  startOverConfirmOpen: boolean;
+  /**
    * Tiles the currently armed active can be aimed at (#300); empty when
    * nothing is armed. A SUPERSET — it models neither line of sight nor
    * occupancy, matching what the overlay draws.

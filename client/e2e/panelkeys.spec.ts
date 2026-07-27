@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 // Gear keystone, task 4: C / I toggle the character panel and Escape closes
 // it — guarded so none of the three fire while a text input (chat, or the
@@ -8,6 +9,7 @@ import { expect, test } from "@playwright/test";
 // chat-focus suppression the brief calls out explicitly.
 test("C and I toggle the panel, Esc closes, chat focus suppresses", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   // Wait for a real join and at least one resolved turn before touching keys
   // (a not-yet-joined character has no panel to toggle).
@@ -56,6 +58,7 @@ test("the ? controls overlay toggles, and Esc closes skills too", async ({ page 
   // Suppress the first-run auto-open so this test drives the toggle itself.
   await page.addInitScript(() => localStorage.setItem("mediumrogue.seenControls", "1"));
   await page.goto("/");
+  await continueIfReturning(page);
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.turn >= 1)).toBe(true);
 
@@ -77,7 +80,8 @@ test("the ? controls overlay toggles, and Esc closes skills too", async ({ page 
 
 // #203: a first-ever join auto-shows the controls overlay once.
 test("controls overlay auto-shows on a first-ever join", async ({ page }) => {
-  await page.goto("/"); // no seenControls flag set → first run
+  await page.goto("/");
+  await continueIfReturning(page); // no seenControls flag set → first run
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.controlsOpen)).toBe(true);
 });

@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { continueIfReturning } from "./helpers";
 
 test("the client receives named heartbeat events while turns also flow", async ({ page }) => {
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect.poll(() => page.evaluate(() => window.game.connected)).toBe(true);
 

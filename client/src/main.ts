@@ -29,6 +29,8 @@ import { connectEvents } from "./net/events";
 import type { EventsController } from "./net/events";
 import { fetchMap } from "./net/map";
 import {
+  cacheCharacterSummary,
+  cameFromCharacterLink,
   clearIdentity,
   importIdentityFromFragment,
   join,
@@ -325,6 +327,53 @@ startNameEl.addEventListener("input", () => {
  * insurance) is still captured. Never shown for a returning player — see
  * isNewPlayer in start(), which skips awaiting this entirely.
  */
+/**
+ * waitForContinueOrRestart resolves false when the returning player continues,
+ * true when they confirm starting over (#303).
+ *
+ * Start over is deliberately two steps. The confirm carries the character's
+ * own identity link, because "the old character stays reclaimable" is only
+ * TRUE IF THE PLAYER KEPT THE LINK — the link IS the token, and clearing the
+ * identity is what makes it unreachable. Archiving happens for free (the
+ * disconnect sweep already does it, and archive entries never expire), so the
+ * link is the entire difference between recoverable and lost.
+ */
+function waitForContinueOrRestart(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const confirmEl = mustGet("startover-confirm");
+    const linkEl = mustGet("startover-link") as HTMLInputElement;
+
+    const openConfirm = (): void => {
+      const id = loadIdentity();
+      linkEl.value = id === null ? "" : `${window.location.origin}/#t=${id.token}`;
+      confirmEl.hidden = false;
+      window.game.startOverConfirmOpen = true;
+    };
+
+    const closeConfirm = (): void => {
+      confirmEl.hidden = true;
+      window.game.startOverConfirmOpen = false;
+    };
+
+    mustGet("continue-btn").addEventListener("click", () => resolve(false));
+    mustGet("startover-btn").addEventListener("click", openConfirm);
+    mustGet("startover-cancel").addEventListener("click", closeConfirm);
+    mustGet("startover-go").addEventListener("click", () => resolve(true));
+    mustGet("startover-copy").addEventListener("click", () => {
+      linkEl.select();
+      void navigator.clipboard.writeText(linkEl.value).catch(() => {
+        // Clipboard can be refused; the field is selected either way, so the
+        // player can still copy it by hand.
+      });
+    });
+
+    // Enter takes the default action, so continuing costs one keypress.
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && confirmEl.hidden) resolve(false);
+    });
+  });
+}
+
 function waitForEnter(): Promise<void> {
   return new Promise((resolve) => {
     const onEnter = (): void => {
@@ -433,6 +482,8 @@ window.game = {
   controlsOpen: false,
   armedSkill: (): string | null => null,
   armedThrow: null,
+  startMode: "fresh",
+  startOverConfirmOpen: false,
   skillTiles: [],
   died: false,
   pickupModal: { open: false, rows: [] },
@@ -482,7 +533,26 @@ async function start(): Promise<void> {
   const isNewPlayer =
     storedIdentity === null ||
     (storedIdentity.token === "" && storedIdentity.class === "" && storedIdentity.species === "");
-  startScreenEl.hidden = !isNewPlayer;
+
+  // #303: the screen now shows for EVERYONE, every load. A returning player
+  // sees their character card instead of being dropped straight into the
+  // world — which is also what finally makes the asset attribution visible to
+  // regulars, who by definition never saw the creation form.
+  // A character link skips the screen entirely: clicking it IS the choice, and
+  // the documented promise is that it joins straight through.
+  const skipStart = cameFromCharacterLink();
+  startScreenEl.hidden = skipStart;
+  mustGet("returning").hidden = isNewPlayer;
+  mustGet("creation").hidden = !isNewPlayer;
+  mustGet("start-hint").hidden = !isNewPlayer;
+
+  if (!isNewPlayer && storedIdentity !== null) {
+    const parts = [storedIdentity.class, storedIdentity.species].filter((v) => v !== "");
+    if (storedIdentity.level !== undefined) parts.push(`level ${storedIdentity.level}`);
+    mustGet("returning-name").textContent = storedIdentity.name ?? "your character";
+    mustGet("returning-what").textContent = parts.join(" · ");
+    window.game.startMode = "continue";
+  }
 
   mountChat(mustGet("chat-root"));
   mountRoster(mustGet("roster-root"));
@@ -830,8 +900,23 @@ async function start(): Promise<void> {
   // straight through and reclaims by that exact token (see session.reclaim's
   // doc — never re-reads localStorage, so a stale start-screen picker
   // selection is irrelevant either way).
-  if (isNewPlayer) {
+  if (skipStart) {
+    // nothing to wait for — the link already decided.
+  } else if (isNewPlayer) {
     await waitForEnter();
+  } else {
+    // A returning player commits with Continue. Start over clears the identity
+    // and falls through to the creation form, so there is exactly one join
+    // path either way.
+    const restart = await waitForContinueOrRestart();
+    if (restart) {
+      clearIdentity();
+      mustGet("returning").hidden = true;
+      mustGet("creation").hidden = false;
+      mustGet("start-hint").hidden = false;
+      window.game.startMode = "fresh";
+      await waitForEnter();
+    }
   }
   startScreenEl.hidden = true;
 
@@ -878,7 +963,15 @@ async function start(): Promise<void> {
       throw err;
     }
     clearIdentity();
+    // #303: the rejected identity is gone, so this is now a NEW player — show
+    // the creation form, not the returning card. Without this the screen comes
+    // back with no way to act on it, because the returning half was the
+    // visible one when the join was attempted.
     startScreenEl.hidden = false;
+    mustGet("returning").hidden = true;
+    mustGet("creation").hidden = false;
+    mustGet("start-hint").hidden = false;
+    window.game.startMode = "fresh";
     await waitForEnter();
     startScreenEl.hidden = true;
     me = await join(selectedName, selectedClass, selectedSpecies);
@@ -1734,6 +1827,10 @@ async function start(): Promise<void> {
 
         // #202: my level rose since the last bundle → flash the banner.
         // prevLevel 0 guards the first bundle (fresh/reclaimed join).
+        // #303: keep the returning-player card's name/level fresh. Cheap —
+        // cacheCharacterSummary no-ops unless a value actually moved.
+        cacheCharacterSummary(mine.name, mine.level);
+
         if (prevLevel > 0 && mine.level > prevLevel) {
           showLevelUp(prevLevel, mine.level, mine.species);
         }

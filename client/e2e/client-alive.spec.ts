@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { seedIdentity } from "./helpers";
+import { seedIdentity, continueIfReturning } from "./helpers";
 
 // client-alive.spec.ts (#170): the client keeps APPLYING turn bundles after an
 // inventory action — the regression guard for #167.
@@ -32,6 +32,7 @@ test("bundles keep being APPLIED after equipping and unequipping", async ({ page
 
   await seedRogue(page);
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect.poll(() => page.evaluate(() => window.game.me?.id ?? null), TURN_GATED).not.toBeNull();
   await expect.poll(() => page.evaluate(() => window.game.turnApplied), TURN_GATED).toBeGreaterThanOrEqual(0);
@@ -83,6 +84,7 @@ test("bundles keep being APPLIED after equipping and unequipping", async ({ page
 test("the stuck marker stays hidden while the client is healthy", async ({ page }) => {
   await seedRogue(page);
   await page.goto("/");
+  await continueIfReturning(page);
 
   await expect.poll(() => page.evaluate(() => window.game.turnApplied), TURN_GATED).toBeGreaterThanOrEqual(0);
 
