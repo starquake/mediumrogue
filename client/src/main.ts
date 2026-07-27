@@ -624,6 +624,16 @@ async function start(): Promise<void> {
   mountRoster(mustGet("roster-root"));
   mountQuests(mustGet("quest-root"));
 
+  // #314: the canvas must not draw a glyph before its font exists. PixiJS
+  // rasterises Text to a texture at construction and never restyles it, and a
+  // name label is built once per entity and kept — so a label created while the
+  // webfont was still loading would render in the fallback face for as long as
+  // that entity is on screen, however long ago the font finished. Awaiting here
+  // costs one paint at startup and is bounded: fonts.ready resolves regardless
+  // of whether the font actually loaded, so a missing file degrades to the
+  // fallback rather than hanging the client.
+  await document.fonts.ready;
+
   const app = new Application();
   await app.init({
     background: "#0b0f0b",

@@ -5,12 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Medium Rogue</title>
     <style>
+      /* #314: self-hosted because the CSP (internal/server/middleware.go) sets
+         default-src 'self' with no font-src — a Google Fonts link would be
+         blocked and the text would silently fall back. Vite copies public/ to
+         the dist root verbatim and unfingerprinted, and does NOT rewrite url()
+         inside this inline style block, so /fonts/… is the path that works.
+         See client/public/fonts/README.md. */
+      @font-face {
+        font-family: "Literata";
+        src: url("/fonts/literata-latin-400.woff2") format("woff2");
+        font-weight: 400;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Cinzel";
+        src: url("/fonts/cinzel-latin-400.woff2") format("woff2");
+        font-weight: 400;
+        font-display: swap;
+      }
       :root {
         color-scheme: dark;
         --fg: #c8e6c9;
         --dim: #5a7a5c;
         --bg: #0b0f0b;
         --accent: #7cb342;
+        /* Body face carries every readable string, DOM and canvas alike;
+           the display face is spent only on titles. Canvas text cannot read
+           these — render/damage.ts and render/entities.ts name the family
+           directly, and must be changed with them. */
+        --font: "Literata", Georgia, "Times New Roman", serif;
+        --font-display: "Cinzel", "Literata", Georgia, serif;
       }
       * {
         box-sizing: border-box;
@@ -22,7 +46,31 @@
         overflow: hidden;
         background: var(--bg);
         color: var(--fg);
-        font-family: "Courier New", monospace;
+        font-family: var(--font);
+      }
+      /* #314: the body face is proportional, which costs two things Courier
+         gave for free — numeric readouts no longer form a column, and a value
+         going 118 → 119 can reflow its row. Tabular, lining figures on the
+         surfaces that READ OUT numbers; chat and the start screen are prose and
+         keep the natural figures. */
+      #hud,
+      #combat-panel,
+      #left-panels,
+      #tooltip-root,
+      #character-root,
+      #pickup-root,
+      #roster-root,
+      #quest-root,
+      #action-bar {
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      /* The display face, spent only on titles: the start screen's wordmark,
+         the HUD heading, every panel's title, and the controls overlay. */
+      #start-panel h1,
+      #hud h1,
+      .title,
+      #controls-overlay h2 {
+        font-family: var(--font-display);
       }
       canvas {
         display: block;
@@ -1419,7 +1467,9 @@
       <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /leave</div>
       <div class="credits">
         Sound <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0 ·
-        Glyphs <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0
+        Glyphs <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0 ·
+        Type <a href="https://fonts.google.com/specimen/Cinzel" target="_blank" rel="noopener">Cinzel</a> &amp;
+        <a href="https://fonts.google.com/specimen/Literata" target="_blank" rel="noopener">Literata</a>, OFL
       </div>
     </div>
     <div id="death-card" hidden>
@@ -1527,6 +1577,10 @@
         <div class="hint" id="start-hint">your character is remembered on this browser</div>
         <div class="credit">glyph icons — <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0</div>
         <div class="credit">sound — <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0</div>
+        <div class="credit">
+          type — <a href="https://fonts.google.com/specimen/Cinzel" target="_blank" rel="noopener">Cinzel</a> &amp;
+          <a href="https://fonts.google.com/specimen/Literata" target="_blank" rel="noopener">Literata</a>, OFL
+        </div>
       </div>
     </div>
     <div id="slot-menu" hidden></div>

@@ -34,14 +34,16 @@ const MONSTER_COLOR = 0xd6544f;
 const HP_BAR_BG = 0x1a1f1a;
 const HP_BAR_FG = 0x4fd66c;
 const COMBAT_RING_COLOR = 0xffcc33;
-const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
+// #314: see the note in render/damage.ts — canvas text names the body face
+// directly and is gated on document.fonts.ready in main.ts.
+const BADGE_STYLE = { fontFamily: "Literata", fontSize: 13, fill: 0xe8f0e8 } as const;
 
 // Player name labels (item 8, playtest batch 2): always-on, styled like the
 // count badge (same font/size), recolored by relationship to me — a
 // partymate tints the same green as their dot, mine is a brighter shade of
 // my own dot's blue (so it pops slightly above everyone else's), anyone
 // else gets the neutral near-white the badge itself uses.
-const NAME_LABEL_STYLE = { fontFamily: "Courier New", fontSize: 11, fill: 0xe8f0e8 } as const;
+const NAME_LABEL_STYLE = { fontFamily: "Literata", fontSize: 11, fill: 0xe8f0e8 } as const;
 const NAME_LABEL_MINE_COLOR = 0xd6efff;
 const NAME_LABEL_OTHER_COLOR = 0xe8f0e8;
 

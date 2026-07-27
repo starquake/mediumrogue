@@ -11,8 +11,12 @@ const CRIT_COLOR = 0xffc94d; // gold — a crit moment pops regardless of factio
 const GLANCE_COLOR = 0x9fc0d8; // pale steel — a glanced (halved) hit reads muted
 const CRIT_BURST_DURATION_MS = 450;
 
+// #314: canvas text does not inherit CSS, so the body face is named here and
+// must move with --font in index.html. main.ts gates the stage on
+// document.fonts.ready — Pixi bakes Text to a texture at construction, so a
+// label built before the font loads keeps the fallback for its whole life.
 const NUMBER_STYLE = {
-  fontFamily: "Courier New",
+  fontFamily: "Literata",
   fontSize: 15,
   fontWeight: "bold",
   stroke: { color: 0x0b0f0b, width: 3 },
