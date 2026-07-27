@@ -1083,3 +1083,51 @@ Three details carry the decision:
   the reclaim that follows, so both routes end in the same creation form with
   the same message — the one the mid-session `#reset-card` already used, because
   the player is being told the same thing.
+
+## Type is a pairing: fantasy on the titles, a book face on everything else *(built 2026-07-27, #314)*
+
+The client had exactly one font stack — `"Courier New", monospace` — and no
+document anywhere said why. It was never chosen; it was the thing that was
+there. The ask was type that "is legible but a bit more fantasy like", which is
+two requirements pulling in opposite directions, so the slice was run
+mockups-first: four candidate sheets, judged at the sizes the UI actually uses,
+before a line of UI code existed.
+
+**Monospace was the first assumption to fall.** The initial mockups only showed
+monospaced candidates, on the reasoning that ~60 font sizes and the three canvas
+text sizes were tuned against Courier's advance width. That is a real cost, but
+it is not a requirement — nothing in the engine needs a fixed advance, and
+treating the tuning as a constraint would have thrown away the whole book-serif
+family, which is where "fantasy but legible" actually lives. The maintainer
+called it: proportional, and the field was redrawn.
+
+**The pairing splits the job.** Cinzel carries the fantasy on the handful of
+strings that never have to be read small — the wordmark, the HUD heading, panel
+titles. Literata, drawn for e-readers, carries everything else including the
+11 px name labels over the map, which are the tightest typographic constraint in
+the game. Spending the decorative budget only where legibility is free is what
+lets both halves of the request be satisfied at once; a single face doing both
+jobs would have had to compromise one.
+
+Three details worth keeping:
+
+- **Self-hosting is not a preference here.** The CSP sets `default-src 'self'`
+  with no `font-src`, so a Google Fonts link is blocked and the text silently
+  falls back to the fallback face. The fonts ship latin-subset, one weight,
+  34 KB total — the same "curate it, don't ship the whole pack" discipline the
+  audio set already follows.
+- **Proportional digits had to be paid for.** Courier was quietly keeping every
+  numeric readout in a column. Tabular lining figures are forced on the surfaces
+  that read out numbers, and deliberately not on chat or the start screen, which
+  are prose.
+- **The canvas needed a gate, not just a family name.** PixiJS rasterises `Text`
+  to a texture at construction and never restyles it, and name labels are built
+  once per entity and kept. Without `await document.fonts.ready` before the
+  stage is built, every entity on screen during those first frames would keep
+  the fallback face for its whole life — a bug that would have looked like a
+  font that "sometimes doesn't apply".
+
+The identity docs still say "chunky retro… old-school roguelike charm rather
+than modern polish", and a book serif leans against that. That tension was named
+in the ticket rather than resolved quietly, and the maintainer chose the book
+serif with it on the table.

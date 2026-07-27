@@ -1203,6 +1203,37 @@ roll, so it is ARPG-legal on jewelry.
   concentric rings rather than one gradient quad: a screen-covering quad costs
   a full-viewport alpha blend every frame even where it is transparent, which
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
+- **Typography** (#314): **Cinzel** for display strings, **Literata** for
+  everything else — the project's first deliberate type choice, replacing the
+  `"Courier New", monospace` default nobody ever picked. Both are OFL, both
+  self-hosted from `client/public/fonts/` as **latin-subset WOFF2 at one weight**
+  (14 KB + 20 KB); see that directory's `README.md` for sources and the size
+  rationale. Self-hosting is mandatory, not stylistic: the CSP sets
+  `default-src 'self'` with no `font-src`, so a CDN link is blocked and the text
+  silently falls back.
+  - **Two variables, one stack each**: `--font` (body) and `--font-display`
+    (titles) in `client/index.html`. The display face is spent on the start
+    screen wordmark, the HUD heading, panel titles and the controls overlay —
+    nothing that must be read at small sizes.
+  - **The body face is proportional.** Monospace was a property of the Courier
+    default, never a requirement. It cost two things that are restored
+    explicitly: numeric readouts get
+    `font-variant-numeric: tabular-nums lining-nums` so HUD, combat, tooltip,
+    inventory, roster and quest numbers stay in a column and a value going
+    118 → 119 cannot reflow its row. Chat and the start screen are prose and
+    keep natural figures.
+  - **Canvas text names the face directly** — PixiJS does not inherit CSS, so
+    the damage numbers (`render/damage.ts`) and the name label / stack badge
+    (`render/entities.ts`) carry the family themselves, and must move with
+    `--font`. **`main.ts` awaits `document.fonts.ready` before building the
+    stage**: Pixi rasterises `Text` to a texture at construction and never
+    restyles it, so a name label built before the font arrived would keep the
+    fallback for as long as that entity is on screen. The await is bounded —
+    `fonts.ready` resolves whether or not the font loaded, so a missing file
+    degrades to the fallback instead of hanging the client.
+  - **Credited in both surfaces** (start screen and controls overlay) even
+    though the OFL requires no attribution — the same courtesy this repo
+    already extends to its CC0 audio.
 - **Sound effects** (#298, `client/src/audio/sound.ts`): combat, movement and
   inventory audio via **Howler**, effects only — no music or ambient. Assets
   are 26 CC0 clips from five Kenney packs in `client/public/audio/` (~368 KB;
