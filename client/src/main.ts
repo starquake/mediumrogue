@@ -530,6 +530,12 @@ async function start(): Promise<void> {
   // class/species choice, so this never shows for them: join() fires exactly
   // as before, immediately once assets are ready.
   const storedIdentity = loadIdentity();
+  // MUTABLE, and that is the point: "start over" clears localStorage, but the
+  // join below used to read this captured const, still see a token, and
+  // reclaim the very character it had just been asked to abandon (#303 bug —
+  // "the character is not reset, I'm still level 3"). Clearing storage is not
+  // enough; the in-memory copy the join reads has to go too.
+  let activeIdentity = storedIdentity;
   const isNewPlayer =
     storedIdentity === null ||
     (storedIdentity.token === "" && storedIdentity.class === "" && storedIdentity.species === "");
@@ -911,6 +917,7 @@ async function start(): Promise<void> {
     const restart = await waitForContinueOrRestart();
     if (restart) {
       clearIdentity();
+      activeIdentity = null; // the join below must not reclaim the old token
       mustGet("returning").hidden = true;
       mustGet("creation").hidden = false;
       mustGet("start-hint").hidden = false;
@@ -925,16 +932,16 @@ async function start(): Promise<void> {
   let joinedClass: string;
   let joinedSpecies: string;
   try {
-    if (storedIdentity !== null && storedIdentity.token !== "") {
-      me = await reclaim(storedIdentity);
+    if (activeIdentity !== null && activeIdentity.token !== "") {
+      me = await reclaim(activeIdentity);
       // A reclaim sends no name (reclaim-or-fail contract) and JoinResponse
       // doesn't carry one — the real name arrives with the first bundle
       // (onTurn's `window.game.name = mine.name`). Claiming selectedName here
       // reported the default "traveler" for a returning player until that
       // bundle landed (#208); "" is the honest "not known yet".
       joinedName = "";
-      joinedClass = storedIdentity.class;
-      joinedSpecies = storedIdentity.species;
+      joinedClass = activeIdentity.class;
+      joinedSpecies = activeIdentity.species;
     } else {
       // No token to reclaim (nothing stored, or a class/species-only
       // pre-seeded identity with an empty token — a technique some e2e
@@ -943,9 +950,13 @@ async function start(): Promise<void> {
       // (if any) still wins over the picker's live selection, same as
       // before this batch's reclaim/join split — there is no token
       // involved here, so no cross-tab reclaim hazard to guard against.
+      // activeIdentity, NOT storedIdentity: after "start over" the stored one
+      // is the abandoned character, and reading it here would override the
+      // class/species just picked on the creation form with the old
+      // character's — the same stale-capture bug as the reclaim above.
       joinedName = selectedName;
-      joinedClass = storedIdentity?.class || selectedClass;
-      joinedSpecies = storedIdentity?.species || selectedSpecies;
+      joinedClass = activeIdentity?.class || selectedClass;
+      joinedSpecies = activeIdentity?.species || selectedSpecies;
       me = await join(selectedName, joinedClass, joinedSpecies);
     }
   } catch (err) {
