@@ -20,7 +20,7 @@
     "@types/howler": "^2.2.13",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
-    "vite-plugin-solid": "^2.11.13",
+    "vite-plugin-solid": "^2.11.14",
     "vitest": "^4.1.10"
   }
 }
