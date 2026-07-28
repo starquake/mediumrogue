@@ -22,18 +22,26 @@ PROJECT_OWNER=starquake
 PROJECT_ID="PVT_kwHOAA_wQM4BeuXF"
 STATUS_FIELD_ID="PVTSSF_lAHOAA_wQM4BeuXFzhZGbpQ"
 
-# Status name -> single-select option id.
+# Status name -> single-select option id, looked up LIVE by name.
+#
+# These ids used to be hardcoded here, which broke the moment the board's
+# columns were reordered (2026-07-28): reordering a single-select REPLACES every
+# option, minting new ids and clearing every item's value. Names are the stable
+# handle; ids are not. Resolving by name costs one API call per write and cannot
+# go stale.
 option_id() {
-  case "$1" in
-    Backlog)         echo 4534558a ;;
-    Spec)            echo b13ea411 ;;
-    Plan)            echo 3b093184 ;;
-    Build)           echo d13d6a2e ;;
-    "Your input")    echo 6e229673 ;;
-    "Your sign-off") echo c55b7cb4 ;;
-    Done)            echo 0805dd0d ;;
-    *) echo "unknown state: $1" >&2; echo "valid: Backlog, Spec, Plan, Build, Your input, Your sign-off, Done" >&2; return 1 ;;
-  esac
+  local id
+  id=$(gh api graphql -f query="{ user(login:\"$PROJECT_OWNER\"){ projectV2(number: $PROJECT_NUMBER){
+        field(name:\"Status\"){ ... on ProjectV2SingleSelectField { options{ id name } } } } } }" \
+      --jq ".data.user.projectV2.field.options[] | select(.name==\"$1\") | .id" 2>/dev/null)
+  if [ -z "$id" ]; then
+    echo "unknown state: $1" >&2
+    echo "valid: $(gh api graphql -f query="{ user(login:\"$PROJECT_OWNER\"){ projectV2(number: $PROJECT_NUMBER){
+          field(name:\"Status\"){ ... on ProjectV2SingleSelectField { options{ name } } } } } }" \
+        --jq '[.data.user.projectV2.field.options[].name] | join(", ")')" >&2
+    return 1
+  fi
+  printf '%s' "$id"
 }
 
 # Item id for an issue number, adding the issue to the project if it is missing
@@ -69,7 +77,9 @@ case "${1:-}" in
       --jq ".items[] | select(.status==\"$2\") | .content.number" | sort -n
     ;;
   states)
-    printf '%s\n' Backlog Spec Plan Build "Your input" "Your sign-off" Done
+    gh api graphql -f query="{ user(login:\"$PROJECT_OWNER\"){ projectV2(number: $PROJECT_NUMBER){
+        field(name:\"Status\"){ ... on ProjectV2SingleSelectField { options{ name } } } } } }" \
+      --jq '.data.user.projectV2.field.options[].name'
     ;;
   *)
     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
