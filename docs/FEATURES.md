@@ -1217,6 +1217,11 @@ roll, so it is ARPG-legal on jewelry.
   - Danger and warning colours (the error banner, the Start-over confirm, the
     reset notice) are deliberately left on their own red: they must read as
     *alarming* against chrome that is now itself red.
+  - Two canvas greens also stay, for the same reason: the targeting overlay
+    codes move-tiles blue (matching your own dot) and melee-tiles red (matching
+    hostiles), so the **skill-range tile** and the **party dot** are the third
+    distinct signal. Retinting either to bordeaux would collide with the
+    hostile red at exactly the moment a player is aiming.
 - **Typography** (#314): **Cinzel** for display strings, **Literata** for
   everything else — the project's first deliberate type choice, replacing the
   `"Courier New", monospace` default nobody ever picked. Both are OFL, both
