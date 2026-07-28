@@ -197,6 +197,13 @@ type skillDef struct {
 	// active is non-nil for a triggerable skill (#161). Mutually exclusive
 	// with rules.
 	active *activeDef
+	// universal marks a skill EVERYONE has, always, without learning it
+	// (#322): it bypasses the learned gate in useSkillLocked and never
+	// appears in the skill panel, because there is nothing to learn and no
+	// point to spend. Its tree is inert — kept only so the registry shape
+	// stays uniform. Evade is the first; the mechanic is triggered by its own
+	// key rather than an action-bar slot.
+	universal bool
 	// flavor is the skill's authored lore line, and the only authored text on
 	// a skillDef since #171 — its mechanical line is rendered from the cards
 	// (statlines.go). Carries no numbers (validateFlavorHasNoStats).
@@ -367,7 +374,7 @@ var skillDefs = []*skillDef{
 		// Destination needs line of sight as well as range: it does NOT pass
 		// through walls, deliberately unlike the classic ARPG evade, so cover
 		// stays real.
-		id: skillEvade, name: "Evade", tree: treeSurvival,
+		id: skillEvade, name: "Evade", tree: treeSurvival, universal: true,
 		prereqs: []string{skillSurvivalist},
 		flavor:  "Here, then not.",
 		active:  &activeDef{kind: activeReposition, cooldownTurns: 3, rangeHex: 3},
@@ -723,7 +730,9 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 		return ErrSkillNotActive
 	}
 
-	if !slices.Contains(e.learned, id) {
+	// A universal mechanic is not learned and cannot be — asking whether it is
+	// in e.learned would refuse every use (#322).
+	if !def.universal && !slices.Contains(e.learned, id) {
 		return ErrSkillNotLearned
 	}
 
@@ -876,6 +885,12 @@ func skillViewsLocked(e *entity, turn int64) []protocol.SkillView {
 	views := make([]protocol.SkillView, 0, len(skillDefs))
 
 	for _, def := range skillDefs {
+		// Universal mechanics are innate: nothing to learn, no point to spend,
+		// so they have no row in a panel about becoming something (#322).
+		if def.universal {
+			continue
+		}
+
 		learned := slices.Contains(e.learned, def.id)
 		if !learned && !learnableFor(e, def) {
 			continue

@@ -309,3 +309,56 @@ func TestEvadeCooldownSurvivesASnapshotRoundTrip(t *testing.T) {
 		t.Errorf("cooldown after restore = %d, want %d — a restart must not be a free reset", got, want)
 	}
 }
+
+// TestEvadeNeedsNoLearning pins the #322 change: evade is a MECHANIC, so a
+// brand-new player who has spent no skill points can use it. Before it became
+// universal this returned ErrSkillNotLearned.
+func TestEvadeNeedsNoLearning(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	origin := protocol.Hex{Q: 0, R: 0}
+	id, token := w.PlaceEntityForTest(origin)
+
+	target := protocol.Hex{Q: 2, R: 0}
+	clearLine(w, origin, protocol.Hex{Q: 1, R: 0}, target)
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
+		SkillID: skillEvadeID, Target: target,
+	}); err != nil {
+		t.Fatalf("evade by an unlearned player = %v, want nil", err)
+	}
+}
+
+// TestEvadeIsNotInTheSkillPanel: a universal mechanic has nothing to learn, so
+// it must not occupy a row in the panel about what you can BECOME. Read off the
+// turn bundle rather than the registry — the panel is built from what the wire
+// carries, so that is where its absence has to hold.
+//
+//nolint:paralleltest // drives a shared world.
+func TestEvadeIsNotInTheSkillPanel(t *testing.T) {
+	w := newWorld()
+
+	me, err := w.Join("", "evader", protocol.ClassRogue, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// Points to spend and a learned prerequisite: the state most likely to
+	// surface a learnable row if evade were still one.
+	w.SetSkillStateForTest(me.EntityID, []string{skillSurvivalistID}, 5, 3)
+
+	for _, e := range w.SnapshotFor(me.Token).Entities {
+		if e.ID != me.EntityID {
+			continue
+		}
+
+		for _, v := range e.Skills {
+			if got := v.ID; got == skillEvadeID {
+				t.Errorf("skill panel offers %q, want it absent — it is universal", got)
+			}
+		}
+	}
+}
