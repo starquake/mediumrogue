@@ -151,6 +151,14 @@ drift between calls; use absolute paths or `cd` to the repo root before
 ## How work lands
 
 - **Everything lands via a pull request**, never a direct push to `main`.
+- **Every PR has an issue behind it**, linked from the PR body with
+  `Closes #NN`. Create the issue first if none exists — **including for chores
+  and docs PRs**, which are exactly the ones that get skipped. The board is
+  **issues-only**, so a PR with no ticket is invisible in the state machine:
+  it cannot be seen, filtered, or handed back and forth, and the board's
+  built-in **Linked pull requests** field — the only thing that shows "this
+  issue has a PR in flight" on a card — stays empty. (2026-07-28: four PRs
+  landed with no ticket and none of that work showed on the board.)
 - **Merges outrank builds.** In any pass that both merges and builds, land the
   merges first and branch the build off the freshly-merged `main` — work built
   on a stale base has to rebase. When two open PRs touch the same files, note
