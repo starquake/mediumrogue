@@ -98,9 +98,13 @@ func TestEvadeIsRejectedOnCooldown(t *testing.T) {
 	}
 }
 
-// TestEvadeRejectsAnUnlearnedSkill: an active you have not learned is not a
+// TestUseSkillRejectsAnUnlearnedSkill: an active you have not learned is not a
 // thing you can trigger, near-sightedness notwithstanding.
-func TestEvadeRejectsAnUnlearnedSkill(t *testing.T) {
+//
+// Uses Second Wind rather than Evade since #322: evade is universal, so being
+// unlearned is no longer a reason to refuse it — the gate it once demonstrated
+// still has to hold for everything else.
+func TestUseSkillRejectsAnUnlearnedSkill(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -112,9 +116,9 @@ func TestEvadeRejectsAnUnlearnedSkill(t *testing.T) {
 
 	if got := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: resp.EntityID, Token: resp.Token, Kind: protocol.IntentUseSkill,
-		SkillID: skillEvadeID, Target: resp.Hex,
+		SkillID: skillSecondWindID, Target: resp.Hex,
 	}); got == nil {
-		t.Fatal("unlearned evade was accepted")
+		t.Fatal("unlearned second wind was accepted")
 	}
 }
 
