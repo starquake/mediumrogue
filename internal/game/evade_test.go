@@ -366,3 +366,39 @@ func TestEvadeIsNotInTheSkillPanel(t *testing.T) {
 		}
 	}
 }
+
+// TestEvadeWorksInForest pins #322 decision 4, which is also #313's third
+// defect: the ordinary sight rule spends ForestSightCost against the skill's
+// own range, so a single intervening forest hex refused every evade of 2 hexes
+// or more — in the terrain an escape is most wanted. Rock still blocks; see
+// TestEvadeDoesNotPassThroughWalls.
+func TestEvadeWorksInForest(t *testing.T) {
+	t.Parallel()
+
+	for _, dist := range []int{1, 2, 3} {
+		w := newWorld()
+
+		origin := protocol.Hex{Q: 0, R: 0}
+		id, token := w.PlaceEntityForTest(origin)
+
+		target := protocol.Hex{Q: dist, R: 0}
+
+		hexes := []protocol.Hex{origin}
+		for q := 1; q <= dist; q++ {
+			hexes = append(hexes, protocol.Hex{Q: q, R: 0})
+		}
+
+		clearLine(w, hexes...)
+
+		for _, h := range hexes {
+			w.SetTerrainForTest(h, protocol.TerrainForest)
+		}
+
+		if err := w.SubmitIntent(protocol.IntentRequest{
+			EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
+			SkillID: skillEvadeID, Target: target,
+		}); err != nil {
+			t.Errorf("evade %d hex(es) through forest = %v, want nil", dist, err)
+		}
+	}
+}

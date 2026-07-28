@@ -104,25 +104,56 @@ func sightBlocked(a, b protocol.Hex, radius int, terrainAt func(protocol.Hex) pr
 		a, b = b, a
 	}
 
-	line := HexLine(a, b)
-	if len(line) <= 2 { //nolint:mnd // a line of at most two hexes is the two endpoints: nothing in between.
-		return false // adjacent or same hex: nothing strictly between them
+	rock, forestCost := rayObstacles(a, b, terrainAt)
+	if rock {
+		return true
 	}
 
-	cost := HexDistance(a, b)
+	return HexDistance(a, b)+forestCost > radius
+}
+
+// rayObstacles walks the hexes STRICTLY BETWEEN a and b and reports what the
+// ray met: whether a rock wall stands in it, and what the forest it crossed
+// costs. Split out because two rules read the same ray and must not drift:
+// ordinary sight spends the forest cost against a budget, while evade (#322)
+// only asks whether a wall is in the way — a wall stays real cover, but woods
+// no longer refuse the escape they were most needed for (#313).
+//
+// Endpoints are assumed canonically ordered by the caller.
+// Returns (a wall stands in the ray, the forest cost the ray crossed).
+func rayObstacles(a, b protocol.Hex, terrainAt func(protocol.Hex) protocol.Terrain) (bool, int) {
+	forestCost := 0
+
+	line := HexLine(a, b)
+	if len(line) <= 2 { //nolint:mnd // a line of at most two hexes is the two endpoints: nothing in between.
+		return false, 0 // adjacent or same hex: nothing strictly between them
+	}
 
 	for _, h := range line[1 : len(line)-1] {
 		switch terrainAt(h) {
 		case protocol.TerrainRock:
-			return true
+			return true, 0
 		case protocol.TerrainForest:
-			cost += protocol.ForestSightCost
+			forestCost += protocol.ForestSightCost
 		case protocol.TerrainGrass, protocol.TerrainWater:
 			// Grass is open; water is unwalkable but transparent.
 		}
 	}
 
-	return cost > radius
+	return false, forestCost
+}
+
+// hardSightBlocked reports whether a WALL stands between a and b — terrain that
+// blocks outright, ignoring the forest cost that ordinary sight pays. Evade
+// uses it (#322 decision 4).
+func hardSightBlocked(a, b protocol.Hex, terrainAt func(protocol.Hex) protocol.Terrain) bool {
+	if compareHexQR(a, b) > 0 {
+		a, b = b, a
+	}
+
+	rock, _ := rayObstacles(a, b, terrainAt)
+
+	return rock
 }
 
 // seesLocked reports whether an entity at a can spot one at b: within
@@ -137,4 +168,10 @@ func (w *World) seesLocked(a, b protocol.Hex) bool {
 // rather than CombatRadius (#95). Callers hold w.mu.
 func (w *World) sightBlockedLocked(a, b protocol.Hex, radius int) bool {
 	return sightBlocked(a, b, radius, func(h protocol.Hex) protocol.Terrain { return w.terrain[h] })
+}
+
+// hardSightBlockedLocked is sightBlockedLocked's wall-only sibling. Callers
+// hold w.mu.
+func (w *World) hardSightBlockedLocked(a, b protocol.Hex) bool {
+	return hardSightBlocked(a, b, func(h protocol.Hex) protocol.Terrain { return w.terrain[h] })
 }
