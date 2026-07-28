@@ -192,8 +192,7 @@ drift between calls; use absolute paths or `cd` to the repo root before
   labels, so the maintainer can drag a card from the board (web or mobile) and
   Claude can set the same value from the CLI. **Gate states**
   (`Your input` / `Your sign-off` / `Your review`) stop the work and are the
-  maintainer's;
-  **work states** (`Spec` / `Plan` / `Build`) mean proceed and are Claude's.
+  maintainer's; **work states** (`Spec` / `Plan` / `Build`) mean proceed and are Claude's.
   The test is the wording itself: **if the state says "your", it is a gate.**
   `Backlog` is "filed, no baton yet"; `Done` is closed/merged. The flow:
 
@@ -206,16 +205,6 @@ drift between calls; use absolute paths or `cd` to the repo root before
   the build — approve the spec, plan or mockup so work can start. `Your review`
   comes **after** it — the work is done, its PR is open, and it is waiting for
   `ready to merge`. Decide-the-design versus review-the-diff.
-- **One issue = one deliverable.** A ticket needing several PRs *in different
-  states* is several tickets: split it into **sub-issues** (the board carries
-  `Parent issue` and `Sub-issues progress`, and the auto-add-sub-issues workflow
-  is already on), each with one deliverable, one PR, one lane position. The
-  parent then reports progress instead of pretending to be in three states at
-  once. Do **not** split when one deliverable merely needs a follow-up PR —
-  there the issue's state names the next action on the whole issue, and per-PR
-  state lives on the PRs as labels and checks. `Your review` accordingly means
-  "everything this issue needs is in a PR awaiting merge"; if work remains after
-  that PR, the issue stays in `Build`.
   **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
   an issue state, and **PRs are not board items**. The auto-add workflow must
   filter `is:issue` or it drags every new PR onto the board unstatused (seen
@@ -266,6 +255,16 @@ drift between calls; use absolute paths or `cd` to the repo root before
   — never edit the previous in place**: the thread is the ticket's history, and
   appending keeps it readable in order. Nothing changed since the last one? Post
   nothing.
+- **One issue = one deliverable.** A ticket needing several PRs *in different
+  states* is several tickets: split it into **sub-issues** (the board carries
+  `Parent issue` and `Sub-issues progress`, and the auto-add-sub-issues workflow
+  is already on), each with one deliverable, one PR, one lane position. The
+  parent then reports progress instead of pretending to be in three states at
+  once. Do **not** split when one deliverable merely needs a follow-up PR —
+  there the issue's state names the next action on the whole issue, and per-PR
+  state lives on the PRs as labels and checks. `Your review` accordingly means
+  "everything this issue needs is in a PR awaiting merge"; if work remains after
+  that PR, the issue stays in `Build`.
 - **Milestone slices are designed before they're built**: the spec and the
   implementation plan live **in the GitHub issue** (the "Design slice" issue
   template, `.github/ISSUE_TEMPLATE/design-slice.md`) — write the spec,
