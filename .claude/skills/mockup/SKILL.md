@@ -80,11 +80,10 @@ under discussion, with the 🤖 attribution header if it's a comment).
 
 ## Step 5 — STOP for approval
 
-Set `needs: your sign-off` on the design issue (removing any other `needs:*`
-label: `gh issue edit <n> --add-label "needs: your sign-off" --remove-label
-"<old>"`) — the embedded screenshot now awaits the maintainer's yes/no, and
-the label is how they see it's their turn. The maintainer says yes/no to the
-screenshot. No real UI code before that. Iterate the HTML + re-screenshot on
-the same filename if they want changes (same URL keeps rendering the new
-commit's blob at the branch ref) — the label stays put while they're the ones
-deciding.
+Move the design issue to `Your sign-off`
+(`.claude/scripts/board.sh state <n> "Your sign-off"`) — the embedded screenshot
+now awaits the maintainer's yes/no, and the board is how they see it's their
+turn. The maintainer says yes/no to the screenshot. No real UI code before that.
+Iterate the HTML + re-screenshot on the same filename if they want changes (same
+URL keeps rendering the new commit's blob at the branch ref) — the state stays
+put while they're the ones deciding.

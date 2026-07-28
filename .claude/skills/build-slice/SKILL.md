@@ -34,9 +34,8 @@ maintainer has OK'd it. If either is missing, stop and route to the
   point your own webServer at an isolated range instead of freeing the shared
   one.
 - **Label**: the maintainer's OK just moved the issue into your court — set
-  `needs: build` on it (removing `needs: your sign-off`:
-  `gh issue edit <n> --add-label "needs: build" --remove-label
-  "needs: your sign-off"`), so it reads as in-progress, not awaiting them.
+  `Build` on it (removing `Your sign-off`:
+  `.claude/scripts/board.sh state <n> "Build"`), so it reads as in-progress, not awaiting them.
 - Re-verify the plan against the current tree before the first commit: named
   symbols still exist, no interim merge moved the ground. Surface drift;
   don't silently improvise.
@@ -183,8 +182,8 @@ scanning past it.
   `ready to merge` label is the maintainer's; the `merge-pr` skill handles
   the landing when they add it.
 - **Label**: the build is done and the ball is now on the PR's
-  `ready to merge` gate, so clear the issue's `needs: build`
-  (`gh issue edit <n> --remove-label "needs: build"`) — don't move it to a
+  `ready to merge` gate, so clear the issue's `Build`
+  (`.claude/scripts/board.sh state <n> "Your sign-off"` — the PR gate is where it waits) — don't move it to a
   `needs:*` maintainer label, because `ready to merge` on the PR is already
   that signal and setting both double-counts. On merge the `Closes #NN` PR
   auto-closes the issue.
