@@ -16,7 +16,7 @@
     "solid-js": "^1.9.14"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.62.0",
     "@types/howler": "^2.2.13",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
