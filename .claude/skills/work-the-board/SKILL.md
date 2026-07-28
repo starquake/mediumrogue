@@ -137,6 +137,7 @@ resisted.)
 | `Plan` | write the plan → `Your sign-off` | `design-slice` |
 | `Your sign-off` | **stop** — UNLESS the maintainer signalled **go** (a `go`/`build`/`approved` comment, OR they flipped it to `Build`) → build | `build-slice` |
 | `Build` | build the approved slice → **green draft PR** (never ready, never merge) | `build-slice` |
+| `Your review` | **stop** — the build is done and its PR is open; the maintainer's `ready to merge` is the only thing that moves it. Do keep the PR mergeable: CI green, rebased if behind. | `merge-pr` |
 | PR with new maintainer comments | address them, re-push | rework |
 | PR carrying `ready to merge` | **merge it** (label + green CI + rebase-if-behind + squash), then **close the milestone if that was its last open issue** | `merge-pr` |
 | **latent breakage you trip over while sweeping** (a dangling reference, a stale doc claim, an asset something embeds but that never reached `main`) | fix it → **green draft PR** | debug → PR |
