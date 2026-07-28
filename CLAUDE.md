@@ -178,19 +178,38 @@ drift between calls; use absolute paths or `cd` to the repo root before
   land themselves. **The `/tools` ecosystem is excluded**: a tools bump needs its
   version mirrored to the Makefile pin by hand first (see `.github/dependabot.yml`),
   so the workflow only comments and leaves it for manual review.
-- **The `needs:*` labels are the handoff baton** — exactly one per issue names
-  the next action and whose court it's in. **Gate labels**
-  (`needs: your input` / `needs: your sign-off`) stop the work and are the
-  maintainer's; **work labels** (`needs: spec` / `needs: plan` /
-  `needs: build`) mean proceed and are Claude's. The test is the wording
-  itself: **if the label says "your", it is a gate.** `ready to merge` is the
-  PR-level gate above. The design/mockup/build skills flip it at each pause.
-  **The whole board can be driven async through comments + labels**: the
-  `work-the-board` skill runs one triage-and-advance pass — replying to
-  comments, doing the work-label work, building slices the maintainer authorised (a
-  `go`/`build`/`approved` comment or a flip to `needs: build`), and merging PRs
-  that carry `ready to merge` — while **stopping at every maintainer gate**, at
-  most **one build per pass**, and skipping anything labelled **`hold`**.
+- **The Project's Status field is the handoff baton** — one value per issue
+  names the next action and whose court it's in. It lives on the **mediumrogue
+  user Project** (`https://github.com/users/starquake/projects/3`), not in
+  labels, so the maintainer can drag a card from the board (web or mobile) and
+  Claude can set the same value from the CLI. **Gate states**
+  (`Your input` / `Your sign-off`) stop the work and are the maintainer's;
+  **work states** (`Spec` / `Plan` / `Build`) mean proceed and are Claude's.
+  The test is the wording itself: **if the state says "your", it is a gate.**
+  `Backlog` is "filed, no baton yet"; `Done` is closed/merged.
+  **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
+  an issue state, and PRs are not board items.
+  Read and write it through **`.claude/scripts/board.sh`**, which holds the
+  project/field/option node ids so they are in one place rather than pasted
+  into every skill:
+
+  ```bash
+  .claude/scripts/board.sh list "Build"        # issue numbers awaiting a build
+  .claude/scripts/board.sh get 322             # one issue's state
+  .claude/scripts/board.sh state 322 "Build"   # move the baton
+  ```
+
+  It needs the `project` scope (`gh auth refresh -s project`); a token with
+  only `repo` can read issues but not the board, which is the first thing to
+  check if a board command fails. The design/mockup/build skills move the state
+  at each pause.
+  **The whole board can be driven async through comments + the Status field**:
+  the `work-the-board` skill runs one triage-and-advance pass — replying to
+  comments, doing the work-state work, building slices the maintainer authorised
+  (a `go`/`build`/`approved` comment or a move to `Build`), and merging PRs that
+  carry `ready to merge` — while **stopping at every maintainer gate**, at most
+  **one build per pass**, and skipping anything labelled **`hold`** (still a
+  label — it is an override, not a position in the flow).
   Design direction and `ready to merge` are never Claude's to decide/grant.
   Every open ticket also carries an auto-maintained `> 🤖 **Next steps**`
   comment stating its state and the actions available to move it, so a

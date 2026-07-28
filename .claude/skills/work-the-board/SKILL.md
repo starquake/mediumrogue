@@ -12,31 +12,33 @@ description: >
 ---
 
 You run the issue tracker forward so the maintainer can drive everything through
-comments and labels. A pass reads the board, does every **work-label** step it
+comments and the board. A pass reads the board, does every **work-state** step it
 can, executes the actions the maintainer has already authorised (a "go"
 signal, a `ready to merge` label), and **stops at every gate that is theirs**.
-The `needs:*` labels are the state machine; this skill just drives it.
+The Status field is the state machine; this skill just drives it. Read it with
+`.claude/scripts/board.sh list "<state>"` and move it with
+`.claude/scripts/board.sh state <n> "<state>"`.
 
-**Two kinds of label, and the wording tells you which:**
+**Two kinds of state, and the wording tells you which:**
 
-- **Gate labels** — `needs: your input`, `needs: your sign-off`. Work *stops*.
+- **Gate states** — `Your input`, `Your sign-off`. Work *stops*.
   The maintainer decides; you may ask, never answer.
-- **Work labels** — `needs: spec`, `needs: plan`, `needs: build`. Work
-  *proceeds*. The label is the instruction; acting on it needs no further
+- **Work states** — `Spec`, `Plan`, `Build`. Work
+  *proceeds*. The state is the instruction; acting on it needs no further
   permission.
 
-The test is in the label itself: **if it says "your", it is a gate.** No colour
-legend, no memorised list — a label you have never seen before still sorts
-correctly.
+The test is in the state name itself: **if it says "your", it is a gate.** No
+colour legend, no memorised list — a state you have never seen before still
+sorts correctly.
 
-**Do not re-ask permission on a work label — not even a big or scary one.**
+**Do not re-ask permission on a work state — not even a big or scary one.**
 Size, architectural weight, or serialization/design risk does NOT downgrade a
-`needs: build` (or `needs: spec`/`needs: plan`) to a gate. You start it *now*.
+`Build` (or `Spec`/`Plan`) to a gate. You start it *now*.
 If the build carries load-bearing decisions, you make them and **surface them in
 the draft PR for review** — the PR review plus the `ready to merge` label IS the
-sign-off. Converting a work label back into a "should I kick this off, or hold?"
+sign-off. Converting a work state back into a "should I kick this off, or hold?"
 question re-invents a gate the maintainer already opened, and stalls their own
-authorised work. (2026-07-21: held #271's `needs: build` mechanics slice and
+authorised work. (2026-07-21: held #271's `Build` mechanics slice and
 asked "kick it off now, or park it?" — the maintainer: *"why don't you pick up
 the needs build now?"* The rule was already here; the build being large and
 architectural is exactly when the pull to re-ask is strongest and must be
@@ -45,7 +47,7 @@ resisted.)
 ## The autonomy contract — do not cross
 
 - **Never decide design direction.** Open questions are surfaced TO the
-  maintainer (`needs: your input`), never answered by you.
+  maintainer (`Your input`), never answered by you.
 - **Never grant `ready to merge`, and never merge without it.** The label is the
   maintainer's approval — you may *act* on it (merge), never *create* it.
   **Re-read the label at the moment you merge, from the API, not from a
@@ -56,9 +58,9 @@ resisted.)
   the add; merging on that event alone would have landed a PR whose approval
   had been explicitly withdrawn.) Same for CI: a green result seen before a
   push is not a green result after it.
-- **Build only what's authorised:** a plan the maintainer OK'd (`needs: build`,
-  or a go-signal on a `needs: your sign-off` issue), or a **bug** (no design gate
-  — straight to a PR). Never build a `needs: your input` / `needs: your sign-off`
+- **Build only what's authorised:** a plan the maintainer OK'd (`Build`,
+  or a go-signal on a `Your sign-off` issue), or a **bug** (no design gate
+  — straight to a PR). Never build a `Your input` / `Your sign-off`
   slice.
 - **Skip anything labelled `hold`** entirely — no comment, no build, no merge.
 - Every comment you post carries the 🤖 attribution header (it goes through the
@@ -107,7 +109,7 @@ resisted.)
    thread is the record, including the noise in it.
 
    **A label REMOVED without a comment is a signal, not noise.** The maintainer
-   answering in prose and then clearing the `needs:*` label is a normal way to
+   answering in prose and then clearing the board state is a normal way to
    say "done, over to you" — so a label that vanished since your last pass means
    go and re-read the thread, not "they tidied up".
 2. **Classify + act** in this order — **merges always before builds**. Anything
@@ -128,13 +130,13 @@ resisted.)
 | State | Action | Owner |
 |---|---|---|
 | unanswered comment (issue/PR) | reply — factual auto-post, substantive draft for OK | `issue-comment-replies` |
-| new issue, no `needs:` label | triage: mechanic → draft spec + questions → `needs: your input`; tweak → PR | `design-slice` |
+| new issue, no `needs:` label | triage: mechanic → draft spec + questions → `Your input`; tweak → PR | `design-slice` |
 | **bug** (new, or a reproduced report) | reproduce → root-cause → open a **green draft PR** fix | debug → PR |
-| `needs: spec` | draft the spec + its open questions → `needs: your input` | `design-slice` |
-| `needs: your input` | **stop** — UNLESS a new maintainer comment answers the questions → fold in → `needs: plan` → plan → `needs: your sign-off` | `design-slice` |
-| `needs: plan` | write the plan → `needs: your sign-off` | `design-slice` |
-| `needs: your sign-off` | **stop** — UNLESS the maintainer signalled **go** (a `go`/`build`/`approved` comment, OR they flipped it to `needs: build`) → build | `build-slice` |
-| `needs: build` | build the approved slice → **green draft PR** (never ready, never merge) | `build-slice` |
+| `Spec` | draft the spec + its open questions → `Your input` | `design-slice` |
+| `Your input` | **stop** — UNLESS a new maintainer comment answers the questions → fold in → `Plan` → plan → `Your sign-off` | `design-slice` |
+| `Plan` | write the plan → `Your sign-off` | `design-slice` |
+| `Your sign-off` | **stop** — UNLESS the maintainer signalled **go** (a `go`/`build`/`approved` comment, OR they flipped it to `Build`) → build | `build-slice` |
+| `Build` | build the approved slice → **green draft PR** (never ready, never merge) | `build-slice` |
 | PR with new maintainer comments | address them, re-push | rework |
 | PR carrying `ready to merge` | **merge it** (label + green CI + rebase-if-behind + squash), then **close the milestone if that was its last open issue** | `merge-pr` |
 | **latent breakage you trip over while sweeping** (a dangling reference, a stale doc claim, an asset something embeds but that never reached `main`) | fix it → **green draft PR** | debug → PR |
@@ -154,9 +156,9 @@ resisted.)
 5. **Looks-driven** design steps still get their mockup first (`mockup` skill) —
    never build UI a pass hasn't previewed for the maintainer.
 6. **A ticket a pass FILES gets the same treatment as one it finds**: a
-   `needs:*` label naming whose court it lands in (a finding with open
-   directions is `needs: your input`, not a silent backlog entry; a **bug** is
-   `needs: build`, since bugs have no design gate) and a Next-steps reminder.
+   board state naming whose court it lands in (a finding with open
+   directions is `Your input`, not a silent backlog entry; a **bug** is
+   `Build`, since bugs have no design gate) and a Next-steps reminder.
    A filed-and-unlabelled issue is invisible.
 
    **Filing is not done when `gh issue create` returns — do the label and the
@@ -202,10 +204,10 @@ PR opening or merging) — not on every pass. If nothing changed since the last
 reminder, say nothing: an unchanged state re-posted is noise, and the previous
 comment is still accurate.
 
-**Posting an answer block IS a `needs: your input` move — set the label in the
+**Posting an answer block IS a `Your input` move — set the label in the
 same action.** The reminder reflects the label, but the reverse also holds:
 the moment you write a copy-paste answer block asking the maintainer to decide,
-the ticket is in their court, so `needs: your input` goes on **in the same
+the ticket is in their court, so `Your input` goes on **in the same
 step** — even if it was previously unlabelled backlog. Don't let the ticket's
 prior state carry: your question is what moved it, and a prior "open-ended
 backlog, no label" framing does not survive your posting a concrete decision.
@@ -216,7 +218,7 @@ belonging to nobody.)
 
 Content by state (state line + a "Next:" line naming the action and who does it):
 
-- `needs: your input` — waiting on the maintainer. *Next: answer the open
+- `Your input` — waiting on the maintainer. *Next: answer the open
   questions in a comment; the next pass folds them in and writes the plan.*
   **Always include a copy-paste answer block**: a fenced code block listing each
   open question as one line with its shorthand options (`Q3 scope = world-only |
@@ -224,12 +226,12 @@ Content by state (state line + a "Next:" line naming the action and who does it)
   `notes =` line. The maintainer answers by pasting one filled-in block — no
   prose required, and a pass can read the answers unambiguously. Free-form
   questions get a labelled blank instead of options.
-- `needs: your sign-off` — settled, waiting on the maintainer's OK. *Next:
-  comment `go` / `build` / `approved` (or flip the label to `needs: build`); the
+- `Your sign-off` — settled, waiting on the maintainer's OK. *Next:
+  comment `go` / `build` / `approved` (or flip the label to `Build`); the
   next pass builds it into a draft PR.*
-- `needs: spec` / `needs: plan` — Claude's court. *Next: a pass drafts the
+- `Spec` / `Plan` — Claude's court. *Next: a pass drafts the
   spec/plan and hands back to a gate — nothing needed from you.*
-- `needs: build` — approved. *Next: a pass builds a draft PR; then add
+- `Build` — approved. *Next: a pass builds a draft PR; then add
   `ready to merge` once you've reviewed it.*
 - no `needs:` label — tailor: **blocked** (name the blocker — "blocked by #NN"),
   a **reference/record** (no action), or **un-triaged** (*Next: say "work the
@@ -240,8 +242,8 @@ Content by state (state line + a "Next:" line naming the action and who does it)
 
 ## Blue work is not a menu — pick it up
 
-**A work label gets worked, not reported.** `needs: spec`, `needs: plan`,
-`needs: build`, and any **bug** are already authorised: the label IS the
+**A work label gets worked, not reported.** `Spec`, `Plan`,
+`Build`, and any **bug** are already authorised: the label IS the
 instruction. Listing one back to the maintainer as "available" turns a state
 machine into a suggestion box, and makes them the scheduler for work they
 already assigned.
@@ -249,7 +251,7 @@ already assigned.
 This fails most often **outside a loop**, answering messages one at a time:
 each reply feels complete on its own, and authorised work sits in the queue
 because no reply happened to be about it. (2026-07-19: #181 sat labelled
-`needs: build` across several exchanges until the maintainer asked *"why are
+`Build` across several exchanges until the maintainer asked *"why are
 you not picking up #181 automatically?"* — there was no reason. Nothing
 blocked it.)
 
@@ -262,11 +264,11 @@ is a complete pass. Work you were handed and left is not.
 **Drafting a spec or mockup is safe autonomous work — never defer it as
 "needs supervision."** The one-build-per-pass cap and the "hold risky/large
 builds for the maintainer's eyes" judgement are about *building code*. They do
-NOT apply to advancing a `needs: spec` ticket: drafting the spec (and the
-mockup for a looks-driven one) ends at `needs: your input` — the maintainer's
+NOT apply to advancing a `Spec` ticket: drafting the spec (and the
+mockup for a looks-driven one) ends at `Your input` — the maintainer's
 gate — so it is reversible and commits nothing. The mockup-first rule means
 *get a mockup approved before building the UI*; it does not mean *wait for the
-maintainer before drafting the mockup*. (2026-07-20: three `needs: spec`
+maintainer before drafting the mockup*. (2026-07-20: three `Spec`
 tickets sat undrafted through two quiet loop passes because "looks-driven,
 needs approval before building" was misread as "can't advance without them";
 the maintainer asked *"why aren't you working on the needs:spec ones?"* — there
@@ -277,7 +279,7 @@ spec+mockup is the highest-value thing still in your court.
 
 End the pass with a short summary: **what moved** (and to what state), **what you
 built or merged**, and — most important — **what's now waiting on the
-maintainer** (the `needs: your input` / `needs: your sign-off` gate queue). In a
+maintainer** (the `Your input` / `Your sign-off` gate queue). In a
 loop this becomes a push notification ONLY when something needs them.
 
 Report what a pass *chose not to do* as plainly as what it did: a build it
