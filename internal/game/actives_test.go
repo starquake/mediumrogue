@@ -80,25 +80,25 @@ func TestValidateSkillDefsPanicsOnAnActiveOutOfReach(t *testing.T) {
 func TestTeleportIsRegisteredAsAnActive(t *testing.T) {
 	t.Parallel()
 
-	def, ok := skillDefByID[skillBlink]
+	def, ok := skillDefByID[skillEvade]
 	if !ok {
-		t.Fatal("blink is not registered")
+		t.Fatal("evade is not registered")
 	}
 
 	if def.active == nil {
-		t.Fatal("blink is not an active")
+		t.Fatal("evade is not an active")
 	}
 
 	if got, want := def.active.cooldownTurns, 3; got != want {
-		t.Errorf("blink cooldown = %d turns, want %d", got, want)
+		t.Errorf("evade cooldown = %d turns, want %d", got, want)
 	}
 
 	if got, want := def.active.rangeHex, 3; got != want {
-		t.Errorf("blink range = %d hexes, want %d", got, want)
+		t.Errorf("evade range = %d hexes, want %d", got, want)
 	}
 
 	if len(def.rules) != 0 {
-		t.Errorf("blink carries %d rule cards, want 0 — an active's behaviour is its trigger", len(def.rules))
+		t.Errorf("evade carries %d rule cards, want 0 — an active's behaviour is its trigger", len(def.rules))
 	}
 }
 
@@ -271,7 +271,7 @@ func TestValidateSkillDefsPanicsOnABlastThatDoesNothing(t *testing.T) {
 }
 
 // TestValidateSkillDefsPanicsOnABlastPayloadTheKindIgnores: the mirror of the
-// effect check. A blink carrying a blast radius reads as an explosive teleport
+// effect check. A evade carrying a blast radius reads as an explosive teleport
 // and is not one.
 func TestValidateSkillDefsPanicsOnABlastPayloadTheKindIgnores(t *testing.T) {
 	t.Parallel()

@@ -42,7 +42,7 @@ const ICONS = {
   // these are SKILL ids (content.go's skillDefs), not monster kinds — the
   // action bar looks them up the same way entities.ts looks up a kind, so the
   // key must equal the skill id exactly.
-  blink: { file: "teleport.svg", author: "Lorc" },
+  evade: { file: "teleport.svg", author: "Lorc" },
   "second-wind": { file: "health-increase.svg", author: "Sbed" },
   bulwark: { file: "edged-shield.svg", author: "Lorc" },
   expose: { file: "targeting.svg", author: "Lorc" },

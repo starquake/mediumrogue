@@ -88,9 +88,9 @@ describe("submitUseSkill (#185)", () => {
       return Promise.resolve(new Response(null, { status: 202 }));
     });
 
-    const ok = await submitUseSkill({ entityId: 1, token: "t" }, "blink", { q: 2, r: -3 });
+    const ok = await submitUseSkill({ entityId: 1, token: "t" }, "evade", { q: 2, r: -3 });
 
     expect(ok).toBe(true);
-    expect(body).toMatchObject({ kind: "use-skill", skillId: "blink", target: { q: 2, r: -3 } });
+    expect(body).toMatchObject({ kind: "use-skill", skillId: "evade", target: { q: 2, r: -3 } });
   });
 });

@@ -7,11 +7,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// blink_test.go (#161): the first ACTIVE skill, end to end.
+// evade_test.go (#161): the first ACTIVE skill, end to end.
 
 const (
-	skillBlinkID = "blink"
-	// skillSurvivalistID is Blink's prerequisite, and is also seeded by
+	skillEvadeID = "evade"
+	// skillSurvivalistID is Evade's prerequisite, and is also seeded by
 	// wire_nil_test.go's board — shared so goconst stays quiet.
 	skillSurvivalistID = "survivalist"
 	// Shared across game_test specs (archive/snapshot/skills-wire) so the
@@ -20,27 +20,27 @@ const (
 	skillWeakSpotID       = "weak-spot"
 )
 
-// blinkReady seeds a player who has learned Blink and can use it.
-func blinkReady(t *testing.T, w *game.World) (int64, string) {
+// evadeReady seeds a player who has learned Evade and can use it.
+func evadeReady(t *testing.T, w *game.World) (int64, string) {
 	t.Helper()
 
-	resp, err := w.Join("", "blinker", protocol.ClassRogue, protocol.SpeciesHuman)
+	resp, err := w.Join("", "evader", protocol.ClassRogue, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
-	w.SetSkillStateForTest(resp.EntityID, []string{skillSurvivalistID, skillBlinkID}, 0, 1)
+	w.SetSkillStateForTest(resp.EntityID, []string{skillSurvivalistID, skillEvadeID}, 0, 1)
 
 	return resp.EntityID, resp.Token
 }
 
-// TestBlinkMovesThePlayerAndStartsItsCooldown: the whole point, through the
+// TestEvadeMovesThePlayerAndStartsItsCooldown: the whole point, through the
 // real intent path rather than by poking fields.
-func TestBlinkMovesThePlayerAndStartsItsCooldown(t *testing.T) {
+func TestEvadeMovesThePlayerAndStartsItsCooldown(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	id, token := blinkReady(t, w)
+	id, token := evadeReady(t, w)
 
 	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
 
@@ -49,7 +49,7 @@ func TestBlinkMovesThePlayerAndStartsItsCooldown(t *testing.T) {
 
 	if err := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-		SkillID: skillBlinkID, Target: target,
+		SkillID: skillEvadeID, Target: target,
 	}); err != nil {
 		t.Fatalf("SubmitIntent use-skill: %v", err)
 	}
@@ -57,21 +57,21 @@ func TestBlinkMovesThePlayerAndStartsItsCooldown(t *testing.T) {
 	snap := step(t, w)
 
 	if got, want := entityHexIn(t, snap, id), target; got != want {
-		t.Errorf("player at %v after blink, want %v", got, want)
+		t.Errorf("player at %v after evade, want %v", got, want)
 	}
 
-	if got := w.ActiveReadyTurnForTest(id, skillBlinkID); got == 0 {
-		t.Error("blink did not start its cooldown")
+	if got := w.ActiveReadyTurnForTest(id, skillEvadeID); got == 0 {
+		t.Error("evade did not start its cooldown")
 	}
 }
 
-// TestBlinkIsRejectedOnCooldown: the cost is real. A second trigger before the
+// TestEvadeIsRejectedOnCooldown: the cost is real. A second trigger before the
 // ready turn is refused at submit time, not silently dropped later.
-func TestBlinkIsRejectedOnCooldown(t *testing.T) {
+func TestEvadeIsRejectedOnCooldown(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	id, token := blinkReady(t, w)
+	id, token := evadeReady(t, w)
 
 	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
 
@@ -80,11 +80,11 @@ func TestBlinkIsRejectedOnCooldown(t *testing.T) {
 
 	req := protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-		SkillID: skillBlinkID, Target: target,
+		SkillID: skillEvadeID, Target: target,
 	}
 
 	if err := w.SubmitIntent(req); err != nil {
-		t.Fatalf("first blink: %v", err)
+		t.Fatalf("first evade: %v", err)
 	}
 
 	step(t, w)
@@ -94,13 +94,13 @@ func TestBlinkIsRejectedOnCooldown(t *testing.T) {
 	req.Target = back
 
 	if got, want := w.SubmitIntent(req), game.ErrSkillOnCooldown; got == nil {
-		t.Fatalf("second blink = nil, want %v", want)
+		t.Fatalf("second evade = nil, want %v", want)
 	}
 }
 
-// TestBlinkRejectsAnUnlearnedSkill: an active you have not learned is not a
+// TestEvadeRejectsAnUnlearnedSkill: an active you have not learned is not a
 // thing you can trigger, near-sightedness notwithstanding.
-func TestBlinkRejectsAnUnlearnedSkill(t *testing.T) {
+func TestEvadeRejectsAnUnlearnedSkill(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -112,19 +112,19 @@ func TestBlinkRejectsAnUnlearnedSkill(t *testing.T) {
 
 	if got := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: resp.EntityID, Token: resp.Token, Kind: protocol.IntentUseSkill,
-		SkillID: skillBlinkID, Target: resp.Hex,
+		SkillID: skillEvadeID, Target: resp.Hex,
 	}); got == nil {
-		t.Fatal("unlearned blink was accepted")
+		t.Fatal("unlearned evade was accepted")
 	}
 }
 
-// TestBlinkRejectsAPassiveSkill: use-skill names an ACTIVE. A passive has no
+// TestEvadeRejectsAPassiveSkill: use-skill names an ACTIVE. A passive has no
 // trigger, and accepting one would make the category meaningless.
-func TestBlinkRejectsAPassiveSkill(t *testing.T) {
+func TestEvadeRejectsAPassiveSkill(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	id, token := blinkReady(t, w)
+	id, token := evadeReady(t, w)
 
 	if got, want := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
@@ -134,12 +134,12 @@ func TestBlinkRejectsAPassiveSkill(t *testing.T) {
 	}
 }
 
-// TestBlinkRejectsAnOutOfRangeTarget: range is 3 hexes.
-func TestBlinkRejectsAnOutOfRangeTarget(t *testing.T) {
+// TestEvadeRejectsAnOutOfRangeTarget: range is 3 hexes.
+func TestEvadeRejectsAnOutOfRangeTarget(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	id, token := blinkReady(t, w)
+	id, token := evadeReady(t, w)
 
 	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
 
@@ -147,22 +147,22 @@ func TestBlinkRejectsAnOutOfRangeTarget(t *testing.T) {
 
 	if got, want := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-		SkillID: skillBlinkID, Target: far,
+		SkillID: skillEvadeID, Target: far,
 	}), game.ErrOutOfRange; got == nil {
-		t.Fatalf("out-of-range blink accepted, want %v", want)
+		t.Fatalf("out-of-range evade accepted, want %v", want)
 	}
 }
 
-// TestBlinkRejectsAMonsterHeldTarget (#196): blink used to ignore occupancy,
+// TestEvadeRejectsAMonsterHeldTarget (#196): evade used to ignore occupancy,
 // so a player could teleport onto a melee monster's hex — an opposing
 // co-occupancy where the monster's Pathfind(from==to) is empty and it can
 // never attack, i.e. a permanent safe spot. An occupied destination is now
-// refused at submit like every other invalid blink.
-func TestBlinkRejectsAMonsterHeldTarget(t *testing.T) {
+// refused at submit like every other invalid evade.
+func TestEvadeRejectsAMonsterHeldTarget(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	id, token := blinkReady(t, w)
+	id, token := evadeReady(t, w)
 
 	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
 
@@ -172,20 +172,20 @@ func TestBlinkRejectsAMonsterHeldTarget(t *testing.T) {
 
 	if got, want := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-		SkillID: skillBlinkID, Target: target,
+		SkillID: skillEvadeID, Target: target,
 	}), game.ErrHexOccupied; got == nil {
-		t.Fatalf("blink onto a monster's hex accepted, want %v", want)
+		t.Fatalf("evade onto a monster's hex accepted, want %v", want)
 	}
 }
 
-// TestBlinkRejectsAStackCappedTarget (#196): blink onto a hex already holding
+// TestEvadeRejectsAStackCappedTarget (#196): evade onto a hex already holding
 // protocol.StackCap friendly entities would breach the per-hex cap every
 // ordinary mover respects. Refused at submit.
-func TestBlinkRejectsAStackCappedTarget(t *testing.T) {
+func TestEvadeRejectsAStackCappedTarget(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	id, token := blinkReady(t, w)
+	id, token := evadeReady(t, w)
 
 	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
 
@@ -198,20 +198,20 @@ func TestBlinkRejectsAStackCappedTarget(t *testing.T) {
 
 	if got, want := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-		SkillID: skillBlinkID, Target: target,
+		SkillID: skillEvadeID, Target: target,
 	}), game.ErrHexOccupied; got == nil {
-		t.Fatalf("blink onto a StackCap-full hex accepted, want %v", want)
+		t.Fatalf("evade onto a StackCap-full hex accepted, want %v", want)
 	}
 }
 
-// TestBlinkDropsAnActiveWhoseHexFilledThisTurn (#196): the submit check reads
+// TestEvadeDropsAnActiveWhoseHexFilledThisTurn (#196): the submit check reads
 // occupancy as it stands in the intent window, but the board shifts at
-// resolution — another blink the same turn can take the last slot on a hex.
+// resolution — another evade the same turn can take the last slot on a hex.
 // resolveActivesLocked re-checks against the evolving board and DROPS the
 // second lander (no move, no cooldown) rather than breaching StackCap. Two
-// players blink onto a hex already holding StackCap-1 friendlies: the lower-id
+// players evade onto a hex already holding StackCap-1 friendlies: the lower-id
 // caster lands (filling the cap), the higher-id caster is turned away.
-func TestBlinkDropsAnActiveWhoseHexFilledThisTurn(t *testing.T) {
+func TestEvadeDropsAnActiveWhoseHexFilledThisTurn(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -224,25 +224,25 @@ func TestBlinkDropsAnActiveWhoseHexFilledThisTurn(t *testing.T) {
 		w.PlaceEntityForTest(target)
 	}
 
-	blinkFrom := func(from protocol.Hex) int64 {
+	evadeFrom := func(from protocol.Hex) int64 {
 		t.Helper()
 
 		id, token := w.PlaceEntityForTest(from)
-		w.SetSkillStateForTest(id, []string{skillSurvivalistID, skillBlinkID}, 0, 1)
+		w.SetSkillStateForTest(id, []string{skillSurvivalistID, skillEvadeID}, 0, 1)
 		clearSightLine(t, w, from, target)
 
 		if err := w.SubmitIntent(protocol.IntentRequest{
 			EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-			SkillID: skillBlinkID, Target: target,
+			SkillID: skillEvadeID, Target: target,
 		}); err != nil {
-			t.Fatalf("SubmitIntent blink from %v: %v", from, err)
+			t.Fatalf("SubmitIntent evade from %v: %v", from, err)
 		}
 
 		return id
 	}
 
-	first := blinkFrom(walkableHexAtDistance(t, w, target, 2, 2))
-	second := blinkFrom(walkableHexAtDistance(t, w, target, 3, 3))
+	first := evadeFrom(walkableHexAtDistance(t, w, target, 2, 2))
+	second := evadeFrom(walkableHexAtDistance(t, w, target, 3, 3))
 
 	snap := step(t, w)
 
@@ -255,26 +255,26 @@ func TestBlinkDropsAnActiveWhoseHexFilledThisTurn(t *testing.T) {
 	}
 
 	if got, want := occ, protocol.StackCap; got != want {
-		t.Errorf("target occupancy after two blinks = %d, want %d (StackCap not breached)", got, want)
+		t.Errorf("target occupancy after two evades = %d, want %d (StackCap not breached)", got, want)
 	}
 
 	if got, want := entityHexIn(t, snap, first), target; got != want {
-		t.Errorf("first (lower-id) blinker at %v, want it to have landed at %v", got, want)
+		t.Errorf("first (lower-id) evader at %v, want it to have landed at %v", got, want)
 	}
 
 	if got := entityHexIn(t, snap, second); got == target {
-		t.Error("second (higher-id) blinker landed on a now-full hex, breaching StackCap")
+		t.Error("second (higher-id) evader landed on a now-full hex, breaching StackCap")
 	}
 }
 
-// TestBlinkCooldownSurvivesASnapshotRoundTrip: the reason snapshotVersion went
+// TestEvadeCooldownSurvivesASnapshotRoundTrip: the reason snapshotVersion went
 // to 7. Without persistence a server restart is a free cooldown reset — which
 // a player would find, and use.
-func TestBlinkCooldownSurvivesASnapshotRoundTrip(t *testing.T) {
+func TestEvadeCooldownSurvivesASnapshotRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	id, token := blinkReady(t, w)
+	id, token := evadeReady(t, w)
 
 	w.SetHexForTest(id, protocol.Hex{Q: 0, R: 0})
 
@@ -283,14 +283,14 @@ func TestBlinkCooldownSurvivesASnapshotRoundTrip(t *testing.T) {
 
 	if err := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: id, Token: token, Kind: protocol.IntentUseSkill,
-		SkillID: skillBlinkID, Target: target,
+		SkillID: skillEvadeID, Target: target,
 	}); err != nil {
 		t.Fatalf("SubmitIntent: %v", err)
 	}
 
 	step(t, w)
 
-	want := w.ActiveReadyTurnForTest(id, skillBlinkID)
+	want := w.ActiveReadyTurnForTest(id, skillEvadeID)
 	if want == 0 {
 		t.Fatal("cooldown never started, nothing to round-trip")
 	}
@@ -305,7 +305,7 @@ func TestBlinkCooldownSurvivesASnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("RestoreState: %v", err)
 	}
 
-	if got := restored.ActiveReadyTurnForTest(id, skillBlinkID); got != want {
+	if got := restored.ActiveReadyTurnForTest(id, skillEvadeID); got != want {
 		t.Errorf("cooldown after restore = %d, want %d — a restart must not be a free reset", got, want)
 	}
 }

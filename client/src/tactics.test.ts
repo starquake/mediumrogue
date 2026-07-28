@@ -53,8 +53,8 @@ describe("skillTargetTiles", () => {
 
   it("keeps OCCUPIED tiles for a hex-aimed skill", () => {
     // Deliberate: the preview is a superset. A blast wants to land on the
-    // occupied hex, and the client cannot tell a blast from a blink — only
-    // the aim is on the wire. The server refuses an illegal blink on submit.
+    // occupied hex, and the client cannot tell a blast from a evade — only
+    // the aim is on the wire. The server refuses an illegal evade on submit.
     const ctx = ctxWith({ positions: [{ kind: EntityMonster, hex: { q: 1, r: 0 } }] });
 
     expect(skillTargetTiles(ctx, SkillAimHex, 2).some((t) => t.q === 1 && t.r === 0)).toBe(true);

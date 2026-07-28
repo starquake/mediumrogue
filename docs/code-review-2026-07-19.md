@@ -118,14 +118,14 @@ independently by the client and UX lenses.
   else's frozen bubble at world cadence. The invariant comment itself says to
   add an in-domain guard the day it's violated; #95 violated it and none was
   added.
-- **[medium/confirmed ✔verified]** **Blink ignores occupancy at submit and
+- **[medium/confirmed ✔verified]** **Evade ignores occupancy at submit and
   resolution** (from #161, this session). `useSkillLocked` checks range,
   walkability, LOS only; `resolveActivesLocked` teleports with no `blockedFor`
   check — `byHex[target] = append(...); e.hex = target` (`world.go:1957-1960`),
-  while every ordinary mover is gated by opposing-held/StackCap rules. Blink onto
+  while every ordinary mover is gated by opposing-held/StackCap rules. Evade onto
   a melee monster's hex → co-occupancy where the monster's `Pathfind(from==to)`
-  is empty and it can never attack: **a permanent safe spot**. Blink onto a
-  5-stack breaks `StackCap`. `blink_test.go` has no occupied-destination case.
+  is empty and it can never attack: **a permanent safe spot**. Evade onto a
+  5-stack breaks `StackCap`. `evade_test.go` has no occupied-destination case.
 - **[low/confirmed]** **`SetLogger` writes `w.logger` without the mutex**
   (`world.go:538-544`) while its mirror `SetAnnounce` locks and every reader
   reads under the lock. Safe only because it's called before `Run`; any future
@@ -189,7 +189,7 @@ independently by the client and UX lenses.
   announces kills and deaths but never a level; the bank shows only inside the
   `k` panel, so a player who never presses `k` never learns points exist.
 - **[medium/confirmed]** **Active-skill cooldown/range/ready never reach the
-  wire.** `SkillView` has no active fields; a learned Blink shows a flavor line
+  wire.** `SkillView` has no active fields; a learned Evade shows a flavor line
   and no numbers, with no way to know its range or cooldown until a submit
   bounces. This is a **prerequisite for #161's client half** — that slice needs
   protocol work, not just UI. `protocol.go:485-497`, `skills.go:509-531`.

@@ -93,7 +93,7 @@ type itemDef struct {
 	// recall marks a CONSUMABLE that, on use (IntentRecall), teleports the user
 	// to a safe sanctuary hex — a scroll of recall (#271). Pure data,
 	// consumables only (validateRecall). Distinct from the throw payload: recall
-	// targets the user, needs no aim hex, and reuses the Blink teleport path.
+	// targets the user, needs no aim hex, and reuses the Evade teleport path.
 	recall bool
 }
 

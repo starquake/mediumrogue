@@ -128,7 +128,7 @@ spawn (Q9 first half).
   shields. This also cuts **active skills (SK5)** and the **skill-usage UI
   (UI2)** — so a future skill system would be **passive-only**. (2026-07-14)
   **Reopened and shipped**: the *passive* skill system shipped as #124, and
-  **active skills shipped 2026-07-19 as a category** (#161), with Blink as
+  **active skills shipped 2026-07-19 as a category** (#161), with Evade as
   their first content; the action bar followed (#185), and #300 cashed the
   category's promise with a behaviour descriptor and four more actives. Worth knowing
   the original cut was a **scope** decision taken during a roadmap
@@ -586,23 +586,23 @@ teleport — more expensive once, no rewrite when the second active arrives.
   Measured in turns there is no asymmetry — 3 turns is 3 turns everywhere — and
   the wall-clock difference *is* the bubble's conceit. A seconds-denominated
   cooldown would run through bullet time and break the effect.
-- **Blink does NOT pass through walls**, the opposite of the genre's usual
-  blink. Escaping still requires somewhere you can see, so a rock wall stays
+- **Evade does NOT pass through walls**, the opposite of the genre's usual
+  evade. Escaping still requires somewhere you can see, so a rock wall stays
   cover rather than a suggestion.
-- **A blink buys distance; it does not break contact** *(clarified 2026-07-26,
-  #161)*. `CombatRadius` is 6 and Blink's range is 3, so blinking directly away
+- **A evade buys distance; it does not break contact** *(clarified 2026-07-26,
+  #161)*. `CombatRadius` is 6 and Evade's range is 3, so evading directly away
   from an ADJACENT monster ends at distance 4 — still inside the bubble. The
   fight follows you.
 
   This is the intended reading of the range the maintainer picked ("a head
   start you still have to run with", confirmed 2026-07-26), but it is worth
-  stating because #161's own plan promised the opposite — "a player blinks out
+  stating because #161's own plan promised the opposite — "a player evades out
   of a bubble and the bubble recomputes without them" — and its option note
   ("4+ can clear a bubble in one jump") was wrong for the same arithmetic:
   clearing from adjacent needs range 6.
 
-  So a blink escapes only by breaking LINE OF SIGHT — around a corner — never
-  by range alone. `TestBlinkBuysDistanceButDoesNotClearABubble` pins it, so
+  So a evade escapes only by breaking LINE OF SIGHT — around a corner — never
+  by range alone. `TestEvadeBuysDistanceButDoesNotClearABubble` pins it, so
   raising the range later is a deliberate act rather than a silent one. **#98
   (multi-hex travel for fleeing) inherits this**: #161's title claims it
   unblocks the escape problem, and it only partly does.
@@ -828,7 +828,7 @@ slice, and the most independent of the sibling content slices.
 - **A throw/recall is a COMBAT action, not an inventory action.** The existing
   five inventory actions (equip/unequip/drop/pickup/drink) follow the
   free-outside/turn-inside rule (`commitItemActionLocked`) — applied instantly
-  out of combat. Throw and recall do **not**: like an attack or a Blink they are
+  out of combat. Throw and recall do **not**: like an attack or a Evade they are
   resolved in the turn pipeline against the evolving board (a throw needs the
   shared damage map + turn rng; a recall reuses the teleport mechanism), never
   applied at submit. They clear any queued move/attack and are the entity's
@@ -843,7 +843,7 @@ slice, and the most independent of the sibling content slices.
   ARPG identity — no to-hit roll), **range- and LOS-gated** at submit (the #195
   invariant: reach ≤ `CombatRadius`, so a monster can never be throw-killed at
   world cadence through a wall). No friendly fire.
-- **Recall is "blink to home", not a new teleport engine.** It reuses the Blink
+- **Recall is "evade to home", not a new teleport engine.** It reuses the Evade
   (#161) teleport, but the destination is **server-chosen** — a guarded safe hex
   in the shared **sanctuary** (`spawnHexLocked`, the join/respawn placement) —
   not a client target, so there is no range/LOS check (recall breaks contact
@@ -868,7 +868,7 @@ slice, and the most independent of the sibling content slices.
 - **Client: arm-then-click, reusing the #185 action-bar pattern.** A flask's
   backpack cell **arms** its throw (`window.game.armedThrow` = its id, panel
   closes); the next map click is the aim, routed through the same `clickTarget`
-  the Blink arming uses. A recall scroll's cell fires immediately. `ItemView`
+  the Evade arming uses. A recall scroll's cell fires immediately. `ItemView`
   gained `throwable`/`recall` booleans so the client renders the right verb
   without hardcoding def ids.
 
@@ -994,9 +994,9 @@ culling of its own — only a volume ramp over a known, bounded range. A feature
 built earlier for bandwidth turned out to define the audible world.
 ## Actives are expressed in existing vocabulary, not hardcoded per skill *(decided 2026-07-26, #300)*
 
-Blink shipped as a category (#161) so the second active would not be a second
+Evade shipped as a category (#161) so the second active would not be a second
 special case. When four more arrived, the promise had to be cashed: at that
-point Blink's teleport WAS the resolution — `resolveActivesLocked` did the one
+point Evade's teleport WAS the resolution — `resolveActivesLocked` did the one
 thing an active could do — and adding Second Wind by writing a heal beside it
 would have made the "category" a switch statement wearing a costume.
 
@@ -1005,7 +1005,7 @@ that **already existed for potions and thrown flasks**:
 
 | Kind | Reuses |
 |---|---|
-| `reposition` | the Blink/recall teleport |
+| `reposition` | the Evade/recall teleport |
 | `self-effect` | `applyTimedEffectLocked` — the same call a drink makes |
 | `target-effect` | the same, behind a ranged shot's target gates |
 | `area-damage` | `resolveAoELocked` — the same path a thrown flask takes |
@@ -1035,7 +1035,7 @@ Three things the build settled that the spec had not:
   player feels.
 - **A blast resolves in the ATTACK phase**, alone among the kinds. It needs the
   turn's rng and shared damage map, and it must land against **pre-move**
-  positions like every other hit — resolving it with the blinks would let a
+  positions like every other hit — resolving it with the evades would let a
   monster dodge by walking away this turn while a flask thrown at the same hex
   still connected.
 

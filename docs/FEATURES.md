@@ -277,7 +277,7 @@ pipeline cannot tell them apart from a sword's.
 | Hardy | Survival | `take-damage` ×0.85 below 40% HP (requires Survivalist) (#57) |
 
 Plus five **actives**, which carry a trigger and a cooldown instead of cards —
-Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
+Evade, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
 
 - **The Survival tree is defensive/attrition** (settled #57, 2026-07-19). It
   shipped empty in v1, which meant a player could spend points into a tree with
@@ -303,30 +303,30 @@ Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
 
 | Kind | Aim | What it does | Reuses |
 |---|---|---|---|
-| `reposition` | hex | moves the caster to the target hex | the Blink/recall teleport |
+| `reposition` | hex | moves the caster to the target hex | the Evade/recall teleport |
 | `self-effect` | *none* | applies a timed effect to the caster | `applyTimedEffectLocked` (a drink) |
 | `target-effect` | entity | applies a timed effect to a hostile | the same, plus a shot's target gates |
 | `area-damage` | hex | damages every hostile in a radius | `resolveAoELocked` (a thrown flask) |
 
 | Active | Tree (requires) | Cooldown | Effect |
 |---|---|---|---|
-| **Blink** | Survival (Survivalist) | 3 turns | teleport up to **3 hexes** |
+| **Evade** | Survival (Survivalist) | 3 turns | teleport up to **3 hexes** |
 | **Second Wind** | Survival (Survivalist) | 6 turns | Regeneration **+3 HP/turn for 3 turns** on self |
 | **Bulwark** | Survival (Hardy) | 6 turns | Ward **×0.75 damage taken for 4 turns** on self |
 | **Expose** | Class (Weak Spot) | 5 turns | Vulnerable **×1.20 damage taken for 3 turns** on one hostile at **4 hexes** |
 | **Ember Nova** | Class (Kindler) | 5 turns | **5 fire** in a **1-hex blast** at **4 hexes**, plus Burning **−2 HP/turn for 2 turns** |
 
-  - **A blink buys distance, it does not break contact** (#161): `CombatRadius`
-    is 6 and Blink reaches 3, so blinking away from an adjacent monster ends at
+  - **A evade buys distance, it does not break contact** (#161): `CombatRadius`
+    is 6 and Evade reaches 3, so evading away from an adjacent monster ends at
     distance 4 — still in the bubble. Escaping needs a corner (breaking line of
     sight), never range alone.
-  - **Blink's destination** needs range, walkability, line of sight **and
+  - **Evade's destination** needs range, walkability, line of sight **and
     room**: it does *not* pass through walls, deliberately unlike the classic
-    ARPG blink, so cover stays real, and it respects hex occupancy exactly like
+    ARPG evade, so cover stays real, and it respects hex occupancy exactly like
     an ordinary mover (#196) — a hex held by a monster or already at `StackCap`
-    friendlies is refused, so a blink is never a teleport onto (or through)
+    friendlies is refused, so a evade is never a teleport onto (or through)
     someone. The occupancy check runs at both submit (surfaced 422) and
-    resolution (a hex that fills between the two — e.g. another blink the same
+    resolution (a hex that fills between the two — e.g. another evade the same
     turn — drops the later lander, no move, no cooldown). Walkability and
     occupancy are **reposition's rules, not every hex-aimed active's**: a blast
     is aimed at occupied hexes on purpose, because that is where the monsters
@@ -343,7 +343,7 @@ Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
   - **A blast resolves in the ATTACK phase**, every other kind in the move
     phase. It needs the turn's rng and shared damage map, and it must land
     against **pre-move** positions like every other hit — resolving it with the
-    blinks would let a monster dodge by walking away this turn while a flask
+    evades would let a monster dodge by walking away this turn while a flask
     thrown at the same hex still connected.
   - **A freshly applied effect takes hold NEXT turn**, whatever applied it.
     Actives resolve after the attack phase, so an effect applied where it
@@ -397,13 +397,13 @@ Blink, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
     spending the arm on a mis-click.
   - **Arming shows the reach** (`render/range.ts`'s `SkillRangeLayer`): while an
     active is armed, every tile it can be aimed at is tinted in the action
-    bar's own arming green — press Blink and you see where it reaches instead
+    bar's own arming green — press Evade and you see where it reaches instead
     of guessing and eating a 422. Hex-aimed skills light walkable ground in
     range; entity-aimed ones light the hostiles. Its own layer rather than a
     fourth set on `MoveRangeLayer`, which is empty outside combat by design
     while an active works anywhere.
     - The set is a deliberate **superset**: it models neither line of sight nor
-      occupancy, so a Blink onto a monster-held hex still lights up and is
+      occupancy, so a Evade onto a monster-held hex still lights up and is
       refused on submit. That is the same fidelity the ranged attack wash has,
       and it is why the wire carries `aim` but not the behaviour kind — the
       client would need the kind ONLY to decide whether an occupied hex is
@@ -791,7 +791,7 @@ roll, so it is ARPG-legal on jewelry.
     map click is the aim.
   - **recall** (#271) — a **scroll of recall** teleports the user to a safe hex
     in the shared **sanctuary** (`IntentRecall`, `ItemID`; no target). It reuses
-    the **Blink** teleport (#161): occupancy/`StackCap` respected, the scroll
+    the **Evade** teleport (#161): occupancy/`StackCap` respected, the scroll
     consumed only on a *successful* recall (a blocked/saturated destination
     fizzles and keeps it), resolved in the move phase. The sanctuary is every
     player's shared "home" until per-player beds land. Non-recall item → 422

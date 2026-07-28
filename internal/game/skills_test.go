@@ -532,8 +532,8 @@ func TestActiveSkillViewCarriesState(t *testing.T) {
 
 	e := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassFighter,
-		learned:         []string{skillSurvivalist, skillBlink},
-		activeReadyTurn: map[string]int64{skillBlink: 10},
+		learned:         []string{skillSurvivalist, skillEvade},
+		activeReadyTurn: map[string]int64{skillEvade: 10},
 	}
 
 	byID := map[string]protocol.SkillView{}
@@ -541,22 +541,22 @@ func TestActiveSkillViewCarriesState(t *testing.T) {
 		byID[v.ID] = v
 	}
 
-	blink := byID[skillBlink]
-	if !blink.Active {
-		t.Fatal("blink SkillView not marked active")
+	evade := byID[skillEvade]
+	if !evade.Active {
+		t.Fatal("evade SkillView not marked active")
 	}
 
-	if got, want := blink.RangeHex, 3; got != want {
-		t.Errorf("blink range = %d, want %d", got, want)
+	if got, want := evade.RangeHex, 3; got != want {
+		t.Errorf("evade range = %d, want %d", got, want)
 	}
 
-	if got, want := blink.CooldownTurns, 3; got != want {
-		t.Errorf("blink cooldown = %d, want %d", got, want)
+	if got, want := evade.CooldownTurns, 3; got != want {
+		t.Errorf("evade cooldown = %d, want %d", got, want)
 	}
 
 	// ready turn 10, current turn 7 → 3 turns until ready.
-	if got, want := blink.TurnsUntilReady, 3; got != want {
-		t.Errorf("blink turnsUntilReady = %d, want %d", got, want)
+	if got, want := evade.TurnsUntilReady, 3; got != want {
+		t.Errorf("evade turnsUntilReady = %d, want %d", got, want)
 	}
 
 	if survivalist := byID[skillSurvivalist]; survivalist.Active {

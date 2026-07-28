@@ -44,9 +44,9 @@ const (
 	skillTwinFangs   = "twin-fangs"
 	skillWandChorus  = "wand-chorus"
 
-	// Actives (#161). Blink is the first — the category exists so the second
+	// Actives (#161). Evade is the first — the category exists so the second
 	// one is content rather than another special case.
-	skillBlink = "blink"
+	skillEvade = "evade"
 
 	// Actives 2 (#300). Both are self-casts over rows the potions already
 	// use, which is the proof the descriptor was worth having: neither
@@ -100,7 +100,7 @@ type activeDef struct {
 // mechanism — see #300's wildfire-gate note: these pass only BECAUSE the
 // behaviour already exists for potions and thrown flasks.
 const (
-	// activeReposition moves the caster to the target hex (Blink, #161).
+	// activeReposition moves the caster to the target hex (Evade, #161).
 	activeReposition = "reposition"
 	// activeSelfEffect applies the def's timed effect to the CASTER (#300) —
 	// the same call a potion makes, with a cooldown instead of an inventory
@@ -129,7 +129,7 @@ const (
 	// aimSelf is a self-cast: no target at all. Validating it against a hex it
 	// never supplies would reject every cast.
 	aimSelf activeAim = protocol.SkillAimSelf
-	// aimHex is pointed at a hex — a Blink destination or a nova's ground
+	// aimHex is pointed at a hex — a Evade destination or a nova's ground
 	// zero.
 	aimHex activeAim = protocol.SkillAimHex
 	// aimEntity is pointed at another entity (Expose) — range, hostility and
@@ -365,9 +365,9 @@ var skillDefs = []*skillDef{
 		// cooldown — maintainer's defaults.
 		//
 		// Destination needs line of sight as well as range: it does NOT pass
-		// through walls, deliberately unlike the classic ARPG blink, so cover
+		// through walls, deliberately unlike the classic ARPG evade, so cover
 		// stays real.
-		id: skillBlink, name: "Blink", tree: treeSurvival,
+		id: skillEvade, name: "Evade", tree: treeSurvival,
 		prereqs: []string{skillSurvivalist},
 		flavor:  "Here, then not.",
 		active:  &activeDef{kind: activeReposition, cooldownTurns: 3, rangeHex: 3},
@@ -380,7 +380,7 @@ var skillDefs = []*skillDef{
 		// make the consumable dead content, and the point of the slice is that
 		// actives cost no new vocabulary.
 		//
-		// Longer cooldown than Blink: a heal that returns every third turn is
+		// Longer cooldown than Evade: a heal that returns every third turn is
 		// attrition removed rather than managed.
 		id: skillSecondWind, name: "Second Wind", tree: treeSurvival,
 		prereqs: []string{skillSurvivalist},
@@ -392,7 +392,7 @@ var skillDefs = []*skillDef{
 	},
 	{
 		// Bulwark (#300): the Warding Tonic's row. Sits behind Hardy rather
-		// than beside Blink so the Survival tree has actual depth — this is
+		// than beside Evade so the Survival tree has actual depth — this is
 		// the tree's strongest defensive button and should cost the walk.
 		id: skillBulwark, name: "Bulwark", tree: treeSurvival,
 		prereqs: []string{skillHardy},
@@ -750,7 +750,7 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 	// Aiming one at an occupied hex is the normal case — it is where the
 	// monsters are.
 	if def.active.kind == activeReposition {
-		if err := w.checkBlinkDestinationLocked(e, target); err != nil {
+		if err := w.checkEvadeDestinationLocked(e, target); err != nil {
 			return err
 		}
 	}
@@ -762,12 +762,12 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 	return w.commitActiveLocked(e, id, &target, 0)
 }
 
-// checkBlinkDestinationLocked reports whether e may land on target: it must be
+// checkEvadeDestinationLocked reports whether e may land on target: it must be
 // walkable, and it must have room under the occupancy rules an ordinary mover
 // obeys (#196 — occupancy is not negotiable). resolveActivesLocked re-checks
 // against the evolving board for the rare hex that fills between this window
 // and resolution. Callers hold w.mu.
-func (w *World) checkBlinkDestinationLocked(e *entity, target protocol.Hex) error {
+func (w *World) checkEvadeDestinationLocked(e *entity, target protocol.Hex) error {
 	if !w.walkableLocked(target) {
 		return ErrNotWalkable
 	}
