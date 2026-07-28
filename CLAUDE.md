@@ -188,10 +188,28 @@ drift between calls; use absolute paths or `cd` to the repo root before
   The test is the wording itself: **if the state says "your", it is a gate.**
   `Backlog` is "filed, no baton yet"; `Done` is closed/merged.
   **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
-  an issue state, and PRs are not board items.
+  an issue state, and **PRs are not board items**. The auto-add workflow must
+  filter `is:issue` or it drags every new PR onto the board unstatused (seen
+  with #323, #324 and #325 before the filter was corrected); a PR that slips
+  through is removed with `gh project item-delete`.
+  Two board **workflows** carry their weight and are configured in the project
+  UI, not the API — there is no create/update mutation, only read and delete:
+  **Item added → Backlog** (otherwise a newly filed issue lands in GitHub's
+  built-in **No Status** bucket, which is not one of our states and cannot be
+  deleted) and **Item closed → Done**.
+  Board access needs the `project` scope — `gh auth refresh -s project`; a
+  `repo`-only token reads issues fine and fails on every board call. A
+  user-level project also has to be **linked to the repository**
+  (`linkProjectV2ToRepository`) or it never appears under the repo at all,
+  which reads exactly like "there is no project".
   Read and write it through **`.claude/scripts/board.sh`**, which holds the
-  project/field/option node ids so they are in one place rather than pasted
-  into every skill:
+  project and field node ids in one place rather than pasted into every skill,
+  and resolves each **status option by NAME** at call time. That is deliberate:
+  reordering the board's columns REPLACES every option — new ids, and every
+  item's value silently cleared (learned the hard way, 2026-07-28). Names are
+  the stable handle; ids are not. If a reorder ever wipes the board, the values
+  have to be snapshotted first and restored after — the script cannot do it for
+  you:
 
   ```bash
   .claude/scripts/board.sh list "Build"        # issue numbers awaiting a build
@@ -250,10 +268,13 @@ drift between calls; use absolute paths or `cd` to the repo root before
   **github.com `/raw/` route**
   (`![mockup](https://github.com/starquake/mediumrogue/raw/<branch>/docs/mockups/<file>.png)`).
   GitHub has no upload API for issue attachments, so the repo is the image
-  host; and because the repo is private, the URL form matters — only
-  github.com routes carry the viewer's session, so a
-  `raw.githubusercontent.com` embed renders as a broken icon (verified
-  2026-07-16, PR #120).
+  host. **Keep the `/raw/` form.** It was originally required because the repo
+  was private — only github.com routes carry the viewer's session, so a
+  `raw.githubusercontent.com` embed rendered as a broken icon for everyone
+  (verified 2026-07-16, PR #120). The repo went **public on 2026-07-28**, so
+  that constraint has lifted and both forms now resolve; the rule stays anyway,
+  because one documented form means no per-embed decision, and churning image
+  URLs is how these embeds broke the last time.
 - **AI-authored GitHub content is marked as such**: any issue, pull request, or
   comment Claude creates on the maintainer's behalf (via `gh issue create`,
   `gh pr create`, `gh issue comment`/`gh pr comment --body-file`) opens with a
