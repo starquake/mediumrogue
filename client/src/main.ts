@@ -114,7 +114,6 @@ export type { GameDebug } from "./debug-surface";
 // comment (net/session.ts) for why this must happen this early.
 importIdentityFromFragment();
 
-const turnEl = mustGet("turn");
 const turnStuckEl = mustGet("turn-stuck");
 const turnReceivedEl = mustGet("turn-received");
 const clientErrorEl = mustGet("client-error");
@@ -1925,7 +1924,6 @@ async function start(): Promise<void> {
       window.game.hp = Object.fromEntries(event.entities.map((e) => [e.id, e.hp]));
       window.game.maxHp = Object.fromEntries(event.entities.map((e) => [e.id, e.maxHp]));
       window.game.intervalMs = event.intervalMs;
-      turnEl.textContent = String(event.turn);
 
       const playbackMs = event.intervalMs * (PlaybackSeconds / TurnSeconds);
       curIntervalMs = event.intervalMs;

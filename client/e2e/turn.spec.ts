@@ -18,9 +18,14 @@ test("client connects and the turn counter advances live", async ({ page }) => {
     .poll(() => page.evaluate(() => window.game.turn), { timeout: 10_000 })
     .toBeGreaterThan(first);
 
-  // The HUD paints what window.game reports.
-  const shown = await page.locator("#turn").textContent();
-  expect(Number(shown)).toBeGreaterThanOrEqual(first);
+  // The HUD paints the clock. There is no turn NUMBER any more (#314) — the
+  // progress bar IS the readout — so what is asserted is the surface that
+  // remains: the bar is on screen and reports a real phase, which only the
+  // per-turn wiring can set.
+  await expect(page.locator("#turn-timer")).toBeVisible();
+  await expect
+    .poll(() => page.locator("#turn-timer").getAttribute("data-phase"))
+    .toMatch(/^(input|playback)$/);
 });
 
 test("a fresh player starts at level 1 with 0 XP, exposed on window.game and the stats HUD", async ({

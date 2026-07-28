@@ -1203,6 +1203,14 @@ roll, so it is ARPG-legal on jewelry.
   concentric rings rather than one gradient quad: a screen-covering quad costs
   a full-viewport alpha blend every frame even where it is transparent, which
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
+- **The turn clock is the bar, at top centre** (#314): the WeGo turn timer sits
+  fixed at the top centre of the viewport, not in the viewer's left-hand HUD —
+  it is the one thing every player on the beat sees identically. Its fill is
+  **white** during the input window and `--dim` during playback, so the two
+  phases read apart at a glance. **There is no turn number in the UI**: the bar
+  is the whole signal. `window.game.turn` still carries it for tests and
+  debugging, and the `· stuck at N` freeze warning (#170) moved onto the status
+  line, which is the other "is this client healthy" readout.
 - **UI palette — bordeaux** (#314): the chrome is tinted wine-red rather than
   the original green. Five variables in `client/index.html` carry it: `--bg`
   (`#0f0a0c`), `--fg` (`#e7c9d1`), `--dim` (`#7d5560`), `--accent` (`#a32741`)
