@@ -16,7 +16,7 @@ const TERRAIN_COLORS: Record<Terrain, number> = {
   [TerrainForest]: 0x22391f,
   [TerrainWater]: 0x1d3d5c,
 };
-const OUTLINE = { width: 1, color: 0x0b0f0b, alpha: 0.8 };
+const OUTLINE = { width: 1, color: 0x0f0a0c, alpha: 0.8 };
 
 // Water is shaded by DEPTH rather than textured (#296): a texture ignores the
 // shape of a lake, while depth follows its shoreline. The range is deliberately

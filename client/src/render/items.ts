@@ -4,7 +4,7 @@ import type { GroundItemView } from "../protocol.gen";
 import { hexToPixel, HEX_SIZE } from "./hex";
 
 const ITEM_COLOR = 0xb266ff;
-const ITEM_OUTLINE = { width: 1.5, color: 0x0b0f0b };
+const ITEM_OUTLINE = { width: 1.5, color: 0x0f0a0c };
 const ITEM_SIZE = HEX_SIZE * 0.3;
 
 /**

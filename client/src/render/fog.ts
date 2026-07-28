@@ -54,9 +54,9 @@ const FADE_END = (InterestRadius + 1) / InterestRadius;
 // undimmed ground would show past its edge.
 const SKIRT = 3;
 
-// FOG_COLOR matches the app background (#0b0f0b, main.ts), so "fully fogged"
+// FOG_COLOR matches the app background (#0f0a0c, main.ts), so "fully fogged"
 // reads as the void the map sits on rather than a grey film over it.
-const FOG_COLOR = 0x0b0f0b;
+const FOG_COLOR = 0x0f0a0c;
 
 // CIRCUMRADIUS is the pixel distance to any corner of the hex-distance-
 // InterestRadius ring. Under hex.ts's flat-top layout (x = 1.5·s·q,

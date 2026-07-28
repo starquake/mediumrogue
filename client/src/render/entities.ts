@@ -34,14 +34,16 @@ const MONSTER_COLOR = 0xd6544f;
 const HP_BAR_BG = 0x1a1f1a;
 const HP_BAR_FG = 0x4fd66c;
 const COMBAT_RING_COLOR = 0xffcc33;
-const BADGE_STYLE = { fontFamily: "Courier New", fontSize: 13, fill: 0xe8f0e8 } as const;
+// #314: see the note in render/damage.ts — canvas text names the body face
+// directly and is gated on document.fonts.ready in main.ts.
+const BADGE_STYLE = { fontFamily: "Literata", fontSize: 13, fill: 0xe8f0e8 } as const;
 
 // Player name labels (item 8, playtest batch 2): always-on, styled like the
 // count badge (same font/size), recolored by relationship to me — a
 // partymate tints the same green as their dot, mine is a brighter shade of
 // my own dot's blue (so it pops slightly above everyone else's), anyone
 // else gets the neutral near-white the badge itself uses.
-const NAME_LABEL_STYLE = { fontFamily: "Courier New", fontSize: 11, fill: 0xe8f0e8 } as const;
+const NAME_LABEL_STYLE = { fontFamily: "Literata", fontSize: 11, fill: 0xe8f0e8 } as const;
 const NAME_LABEL_MINE_COLOR = 0xd6efff;
 const NAME_LABEL_OTHER_COLOR = 0xe8f0e8;
 
@@ -139,7 +141,7 @@ function buildGlyphIcon(key: string): Graphics {
     return g; // unknown key — an empty glyph (callers only pass known keys)
   }
 
-  const filled = inner.replace(/<path/g, '<path fill="#0b0f0b"');
+  const filled = inner.replace(/<path/g, '<path fill="#0f0a0c"');
   g.svg(`<svg viewBox="0 0 ${GLYPH_ICON_VIEWBOX} ${GLYPH_ICON_VIEWBOX}">${filled}</svg>`);
   g.pivot.set(GLYPH_ICON_VIEWBOX / 2, GLYPH_ICON_VIEWBOX / 2);
   g.scale.set(GLYPH_ICON_PX / GLYPH_ICON_VIEWBOX);
@@ -356,7 +358,7 @@ export class EntityLayer {
       .clear()
       .circle(x, y, HEX_SIZE * 0.45)
       .fill(color)
-      .stroke({ width: 2, color: 0x0b0f0b });
+      .stroke({ width: 2, color: 0x0f0a0c });
     dot.glyph?.position.set(x, y);
 
     // Player name label (item 8): always on, above the dot (a fixed offset

@@ -1203,6 +1203,64 @@ roll, so it is ARPG-legal on jewelry.
   concentric rings rather than one gradient quad: a screen-covering quad costs
   a full-viewport alpha blend every frame even where it is transparent, which
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
+- **The turn clock is the bar, at top centre** (#314): the WeGo turn timer sits
+  fixed at the top centre of the viewport, not in the viewer's left-hand HUD —
+  it is the one thing every player on the beat sees identically. Its fill is
+  **white** during the input window and `--dim` during playback, so the two
+  phases read apart at a glance. **There is no turn number in the UI**: the bar
+  is the whole signal. `window.game.turn` still carries it for tests and
+  debugging, and the `· stuck at N` freeze warning (#170) moved onto the status
+  line, which is the other "is this client healthy" readout.
+- **UI palette — bordeaux** (#314): the chrome is tinted wine-red rather than
+  the original green. Five variables in `client/index.html` carry it: `--bg`
+  (`#0f0a0c`), `--fg` (`#e7c9d1`), `--dim` (`#7d5560`), `--accent` (`#a32741`)
+  and `--on-accent` (`#fbeef1`). The last exists because the old lime accent was
+  light enough to carry near-black label text and bordeaux is not — anything
+  sitting ON the accent takes `--on-accent`, never `--bg`.
+  - **The world keeps its own colours.** Terrain (grass, forest, water, rock),
+    entity dots, HP bars and the combat ring are *semantic*, not chrome: green
+    means healthy, red means monster, gold means committed. Only the canvas
+    values that exist to match the page background moved with it (the damage
+    number's outline, item and map outlines, the fog colour).
+  - Danger and warning colours (the error banner, the Start-over confirm, the
+    reset notice) are deliberately left on their own red: they must read as
+    *alarming* against chrome that is now itself red.
+  - Two canvas greens also stay, for the same reason: the targeting overlay
+    codes move-tiles blue (matching your own dot) and melee-tiles red (matching
+    hostiles), so the **skill-range tile** and the **party dot** are the third
+    distinct signal. Retinting either to bordeaux would collide with the
+    hostile red at exactly the moment a player is aiming.
+- **Typography** (#314): **Cinzel** for display strings, **Literata** for
+  everything else — the project's first deliberate type choice, replacing the
+  `"Courier New", monospace` default nobody ever picked. Both are OFL, both
+  self-hosted from `client/public/fonts/` as **latin-subset WOFF2 at one weight**
+  (14 KB + 20 KB); see that directory's `README.md` for sources and the size
+  rationale. Self-hosting is mandatory, not stylistic: the CSP sets
+  `default-src 'self'` with no `font-src`, so a CDN link is blocked and the text
+  silently falls back.
+  - **Two variables, one stack each**: `--font` (body) and `--font-display`
+    (titles) in `client/index.html`. The display face is spent on the start
+    screen wordmark, the HUD heading, panel titles and the controls overlay —
+    nothing that must be read at small sizes.
+  - **The body face is proportional.** Monospace was a property of the Courier
+    default, never a requirement. It cost two things that are restored
+    explicitly: numeric readouts get
+    `font-variant-numeric: tabular-nums lining-nums` so HUD, combat, tooltip,
+    inventory, roster and quest numbers stay in a column and a value going
+    118 → 119 cannot reflow its row. Chat and the start screen are prose and
+    keep natural figures.
+  - **Canvas text names the face directly** — PixiJS does not inherit CSS, so
+    the damage numbers (`render/damage.ts`) and the name label / stack badge
+    (`render/entities.ts`) carry the family themselves, and must move with
+    `--font`. **`main.ts` awaits `document.fonts.ready` before building the
+    stage**: Pixi rasterises `Text` to a texture at construction and never
+    restyles it, so a name label built before the font arrived would keep the
+    fallback for as long as that entity is on screen. The await is bounded —
+    `fonts.ready` resolves whether or not the font loaded, so a missing file
+    degrades to the fallback instead of hanging the client.
+  - **Credited in both surfaces** (start screen and controls overlay) even
+    though the OFL requires no attribution — the same courtesy this repo
+    already extends to its CC0 audio.
 - **Sound effects** (#298, `client/src/audio/sound.ts`): combat, movement and
   inventory audio via **Howler**, effects only — no music or ambient. Assets
   are 26 CC0 clips from five Kenney packs in `client/public/audio/` (~368 KB;
