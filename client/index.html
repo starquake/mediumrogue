@@ -114,7 +114,11 @@
         margin: 0 0 0.25rem;
         font-weight: normal;
         letter-spacing: 0.3em;
-        color: var(--dim);
+        /* --fg, the same ink the quest rows and every other panel body uses.
+           It was --dim, which is a secondary-text value: wide letter-spacing
+           already thins a wordmark out, and at that weight against the dark
+           background it stopped being readable. */
+        color: var(--fg);
         font-size: 0.85rem;
         text-transform: uppercase;
       }
