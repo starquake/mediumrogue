@@ -118,8 +118,22 @@
         font-size: 0.85rem;
         text-transform: uppercase;
       }
+      /* The shared world clock, centred at the top of the VIEWPORT — it is the
+         one number every player on the beat sees the same, so it does not
+         belong in this viewer's personal left-hand HUD. White rather than the
+         bordeaux --fg: it reads over map terrain of any colour, and it is the
+         one readout that must stay legible at a glance. Its own text-shadow
+         and pointer-events, because it no longer inherits #hud's. */
       #turn-row {
+        position: fixed;
+        top: 0.75rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
         font-size: 1.1rem;
+        color: #fff;
+        text-shadow: 0 1px 3px #000;
+        pointer-events: none;
       }
       #status {
         margin-top: 0.25rem;
@@ -1432,10 +1446,14 @@
     </style>
   </head>
   <body>
+    <!-- The world clock is shared by everyone on the beat, so it reads at the
+         top centre rather than tucked into this viewer's own left-hand HUD.
+         A sibling of #left-column, not a child: the left column is a flex
+         stack and this has to be centred on the VIEWPORT, not on it. -->
+    <div id="turn-row">turn <span id="turn">—</span><span id="turn-stuck" hidden> · stuck at <span id="turn-received">—</span></span></div>
     <div id="left-column">
       <header id="hud">
         <h1>Medium Rogue</h1>
-        <div id="turn-row">turn <span id="turn">—</span><span id="turn-stuck" hidden> · stuck at <span id="turn-received">—</span></span></div>
         <div id="status" data-connected="false">connecting…</div>
         <div id="stats">Lv — · —/— XP</div>
         <button id="copy-link" type="button" hidden>copy character link</button>
