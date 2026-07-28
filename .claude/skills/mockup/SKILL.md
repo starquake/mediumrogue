@@ -66,8 +66,12 @@ disposable.
 ![mockup](https://github.com/starquake/mediumrogue/raw/<branch>/docs/mockups/<file>.png)
 ```
 
-The repo is **private**, so the URL shape decides whether the image renders
-(verified 2026-07-16, PR #120):
+Use the `/raw/` form. The repo was **private** when this was settled, and the
+URL shape decided whether the image rendered at all (verified 2026-07-16,
+PR #120). It went **public on 2026-07-28**, so `raw.githubusercontent.com` now
+resolves too — but keep to the one documented form: it needs no per-embed
+judgement, and rewriting existing embed URLs is exactly what broke them before.
+For the record, on a private repo:
 
 - `github.com/…/raw/…` — ✅ renders inline (redirects with the viewer's
   session token).
