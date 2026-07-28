@@ -1203,6 +1203,20 @@ roll, so it is ARPG-legal on jewelry.
   concentric rings rather than one gradient quad: a screen-covering quad costs
   a full-viewport alpha blend every frame even where it is transparent, which
   measured ~6 s on a 14 s e2e spec under CI's software renderer.
+- **UI palette — bordeaux** (#314): the chrome is tinted wine-red rather than
+  the original green. Five variables in `client/index.html` carry it: `--bg`
+  (`#0f0a0c`), `--fg` (`#e7c9d1`), `--dim` (`#7d5560`), `--accent` (`#a32741`)
+  and `--on-accent` (`#fbeef1`). The last exists because the old lime accent was
+  light enough to carry near-black label text and bordeaux is not — anything
+  sitting ON the accent takes `--on-accent`, never `--bg`.
+  - **The world keeps its own colours.** Terrain (grass, forest, water, rock),
+    entity dots, HP bars and the combat ring are *semantic*, not chrome: green
+    means healthy, red means monster, gold means committed. Only the canvas
+    values that exist to match the page background moved with it (the damage
+    number's outline, item and map outlines, the fog colour).
+  - Danger and warning colours (the error banner, the Start-over confirm, the
+    reset notice) are deliberately left on their own red: they must read as
+    *alarming* against chrome that is now itself red.
 - **Typography** (#314): **Cinzel** for display strings, **Literata** for
   everything else — the project's first deliberate type choice, replacing the
   `"Courier New", monospace` default nobody ever picked. Both are OFL, both

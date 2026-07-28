@@ -19,7 +19,7 @@ const NUMBER_STYLE = {
   fontFamily: "Literata",
   fontSize: 15,
   fontWeight: "bold",
-  stroke: { color: 0x0b0f0b, width: 3 },
+  stroke: { color: 0x0f0a0c, width: 3 },
 } as const;
 
 /**

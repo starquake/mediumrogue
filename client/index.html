@@ -25,14 +25,18 @@
       }
       :root {
         color-scheme: dark;
-        --fg: #c8e6c9;
-        --dim: #5a7a5c;
-        --bg: #0b0f0b;
-        --accent: #7cb342;
+        --fg: #e7c9d1;
+        --dim: #7d5560;
+        --bg: #0f0a0c;
+        --accent: #a32741;
         /* Body face carries every readable string, DOM and canvas alike;
            the display face is spent only on titles. Canvas text cannot read
            these — render/damage.ts and render/entities.ts name the family
            directly, and must be changed with them. */
+        /* Text ON the accent. The old lime accent was light enough to carry
+           near-black text; bordeaux is not, so this is its own value rather
+           than a reuse of --bg. */
+        --on-accent: #fbeef1;
         --font: "Literata", Georgia, "Times New Roman", serif;
         --font-display: "Cinzel", "Literata", Georgia, serif;
       }
@@ -124,7 +128,7 @@
       }
       #status[data-connected="true"]::before {
         content: "● ";
-        color: #7cb342;
+        color: #a32741;
       }
       #status[data-connected="false"]::before {
         content: "○ ";
@@ -146,21 +150,21 @@
         font-family: inherit;
         font-size: 0.75rem;
         color: var(--fg);
-        background: #16201a;
+        background: #201217;
         border: 1px solid var(--dim);
         cursor: pointer;
         pointer-events: auto;
       }
       #copy-link:hover {
-        background: #2a3d2b;
-        border-color: #7cb342;
+        background: #3d222a;
+        border-color: #a32741;
       }
       #copy-link[hidden] {
         display: none;
       }
       #copy-link.copied {
-        color: #7cb342;
-        border-color: #7cb342;
+        color: #a32741;
+        border-color: #a32741;
       }
       /* Inventory toggle: the character/paper-doll panel is large, so it is
          not always-on — the `i` key (input/keys.ts) and this HUD button open
@@ -178,13 +182,13 @@
         font-family: inherit;
         font-size: 0.75rem;
         color: var(--fg);
-        background: #16201a;
+        background: #201217;
         border: 1px solid var(--dim);
         cursor: pointer;
         pointer-events: auto;
       }
       #toggle-help:hover,
-      #toggle-sound:hover { background: #2a3d2b; border-color: var(--accent); }
+      #toggle-sound:hover { background: #3d222a; border-color: var(--accent); }
       #toggle-help[hidden],
       #toggle-sound[hidden] { display: none; }
       #controls-overlay {
@@ -195,7 +199,7 @@
         z-index: 120;
         max-width: 26rem;
         padding: 1rem 1.3rem;
-        background: #0d120d;
+        background: #120c0f;
         border: 1px solid var(--accent);
         color: var(--fg);
         font-size: 0.82rem;
@@ -242,13 +246,13 @@
         font-family: inherit;
         font-size: 0.75rem;
         color: var(--fg);
-        background: #16201a;
+        background: #201217;
         border: 1px solid var(--dim);
         cursor: pointer;
         pointer-events: auto;
       }
       #toggle-inventory:hover {
-        background: #2a3d2b;
+        background: #3d222a;
         border-color: var(--accent);
       }
       #toggle-inventory[hidden] {
@@ -262,13 +266,13 @@
         margin-top: 0.4rem;
         width: 8rem;
         height: 0.4rem;
-        background: #1a241a;
+        background: #241419;
         border: 1px solid var(--dim);
       }
       #turn-timer-fill {
         height: 100%;
         width: 0%;
-        background: #7cb342;
+        background: #a32741;
       }
       #turn-timer[data-phase="playback"] #turn-timer-fill {
         background: var(--dim);
@@ -341,12 +345,12 @@
         font-family: inherit;
         font-size: 1rem;
         color: var(--fg);
-        background: #16201a;
+        background: #201217;
         border: 1px solid var(--dim);
       }
       #start-name:focus {
         outline: none;
-        border-color: #7cb342;
+        border-color: #a32741;
       }
       #start-panel .cards {
         display: grid;
@@ -364,21 +368,21 @@
         text-align: left;
         color: var(--fg);
         border: 1px solid var(--dim);
-        background: #101710;
+        background: #170f12;
         padding: 0.7rem 0.8rem;
         cursor: pointer;
       }
       #start-panel .card:hover {
-        background: #18251a;
+        background: #221419;
       }
       #start-panel .card:focus-visible {
-        outline: 2px solid #7cb342;
+        outline: 2px solid #a32741;
         outline-offset: 2px;
       }
       #start-panel .card.selected {
-        border-color: #7cb342;
-        background: #1b2b1c;
-        box-shadow: 0 0 0 1px #7cb342 inset;
+        border-color: #a32741;
+        background: #26161c;
+        box-shadow: 0 0 0 1px #a32741 inset;
       }
       #start-panel .card .glyph {
         display: inline-block;
@@ -388,7 +392,7 @@
         text-align: center;
         line-height: 1.7rem;
         font-weight: bold;
-        color: #0b0f0b;
+        color: #0f0a0c;
         margin-bottom: 0.45rem;
       }
       /* .card-name/.card-desc are spans (a <button> only permits phrasing
@@ -419,7 +423,7 @@
         background: #c78fdf;
       }
       #start-panel .species .glyph {
-        background: #8fe08f;
+        background: #e3899b;
       }
       #start-enter {
         margin-top: 1.8rem;
@@ -429,14 +433,14 @@
         font-size: 1rem;
         letter-spacing: 0.25em;
         text-transform: uppercase;
-        color: #0b0f0b;
-        background: #7cb342;
-        border: 1px solid #7cb342;
+        color: var(--on-accent);
+        background: #a32741;
+        border: 1px solid #a32741;
         cursor: pointer;
         font-weight: bold;
       }
       #start-enter:hover {
-        background: #8fce53;
+        background: #c2405c;
       }
       #start-panel .hint {
         text-align: center;
@@ -554,7 +558,7 @@
         font-family: inherit;
         font-size: 0.8rem;
         color: var(--fg);
-        background: #16201a;
+        background: #201217;
         border: none;
       }
       #chat-input:focus {
@@ -565,13 +569,13 @@
         font-family: inherit;
         font-size: 0.8rem;
         color: var(--fg);
-        background: #16201a;
+        background: #201217;
         border: none;
         border-left: 1px solid var(--dim);
         cursor: pointer;
       }
       #chat-form button:hover {
-        background: #2a3d2b;
+        background: #3d222a;
       }
       /* Roster overlay: mirrors #chat-root's click-through discipline — the
          root spans a corner of the viewport but only the visible panel
@@ -639,7 +643,7 @@
         display: flex;
         justify-content: space-between;
         align-items: baseline;
-        border-bottom: 1px solid #2a3d2b;
+        border-bottom: 1px solid #3d222a;
         padding-bottom: 0.3rem;
         margin-bottom: 0.4rem;
       }
@@ -652,7 +656,7 @@
       .skills-points {
         font-size: 0.72rem;
         font-weight: bold;
-        color: #0b0f0b;
+        color: var(--on-accent);
         background: var(--accent);
         padding: 0.1rem 0.4rem;
       }
@@ -676,12 +680,12 @@
         gap: 0.45rem;
         padding: 0.3rem 0.4rem;
         margin-bottom: 0.2rem;
-        background: #16201a;
-        border: 1px solid #2a3d2b;
+        background: #201217;
+        border: 1px solid #3d222a;
       }
       .skill-row.learned {
-        background: #101710;
-        border-color: #1d2a1e;
+        background: #170f12;
+        border-color: #26171d;
       }
       .skill-mark {
         width: 0.9rem;
@@ -716,19 +720,19 @@
         letter-spacing: 0.08em;
         text-transform: uppercase;
         font-weight: bold;
-        color: #0b0f0b;
+        color: var(--on-accent);
         background: var(--accent);
         border: 1px solid var(--accent);
         padding: 0.2rem 0.45rem;
         cursor: pointer;
       }
       .skill-learn:hover:enabled {
-        background: #8fce53;
+        background: #c2405c;
       }
       .skill-learn:disabled {
         background: transparent;
         color: var(--dim);
-        border-color: #2a3d2b;
+        border-color: #3d222a;
         cursor: default;
       }
       .skill-tag {
@@ -741,7 +745,7 @@
       }
       .skill-empty {
         font-size: 0.65rem;
-        color: #3f5a41;
+        color: #4a2833;
         font-style: italic;
         padding: 0.1rem 0.4rem;
       }
@@ -760,7 +764,7 @@
       .skills-foot {
         margin-top: 0.5rem;
         padding-top: 0.35rem;
-        border-top: 1px solid #1d2a1e;
+        border-top: 1px solid #26171d;
         font-size: 0.62rem;
         color: var(--dim);
         line-height: 1.45;
@@ -802,24 +806,24 @@
       #action-bar .aslot {
         width: 3rem;
         height: 3rem;
-        border: 1px solid #2a3d2b;
-        background: #0d120d;
+        border: 1px solid #3d222a;
+        background: #120c0f;
         position: relative;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 0.6rem;
-        color: #33402f;
+        color: #3a222a;
         cursor: default;
       }
       #action-bar .aslot .num { position: absolute; top: 0.1rem; left: 0.25rem; font-size: 0.55rem; color: var(--dim); z-index: 2; }
       /* The glyph is the slot's face (#304): "Second Wind" never fitted at
          0.6rem, and the name lives in the hover tooltip now. */
       #action-bar .aslot .glyph { width: 1.75rem; height: 1.75rem; }
-      #action-bar .aslot .glyph path { fill: #33402f; }
+      #action-bar .aslot .glyph path { fill: #3a222a; }
       #action-bar .aslot.filled { border-color: #4a7fb5; cursor: pointer; }
       #action-bar .aslot.filled .glyph path { fill: #4a7fb5; }
-      #action-bar .aslot.cooling { border-color: #2a3d2b; cursor: default; }
+      #action-bar .aslot.cooling { border-color: #3d222a; cursor: default; }
       #action-bar .aslot.cooling .glyph path { fill: #55607a; }
       /* Translucent on purpose: an opaque sweep blacks out the glyph and the
          slot reads as broken rather than cooling. */
@@ -827,8 +831,8 @@
       #action-bar .aslot .cd { position: absolute; inset: 0; display: flex; align-items: center;
         justify-content: center; font-size: 1.05rem; font-weight: 700; color: #cfcbdd;
         text-shadow: 0 1px 3px #000; z-index: 2; }
-      #action-bar .aslot.arming { border-color: #7cb342; }
-      #action-bar .aslot.arming .glyph path { fill: #7cb342; }
+      #action-bar .aslot.arming { border-color: #a32741; }
+      #action-bar .aslot.arming .glyph path { fill: #a32741; }
 
       /* Right-click assignment menu (#304). Four slots, five actives — which
          one lives where is the player's choice, so an unslotted skill is a
@@ -846,7 +850,7 @@
       #slot-menu .row.on { background: #232333; color: var(--ink); }
       #slot-menu .row .glyph { width: 0.9rem; height: 0.9rem; }
       #slot-menu .row .glyph path { fill: #6f6c82; }
-      #slot-menu .row.on .glyph path { fill: #7cb342; }
+      #slot-menu .row.on .glyph path { fill: #a32741; }
       #slot-menu .row .tag { margin-left: auto; font-size: 0.52rem; color: #5d5a70; }
 
       /* Hover tooltip: name + the stat lines #300 already renders. */
@@ -880,8 +884,8 @@
         z-index: 100;
         padding: 0.45rem 1rem;
         background: rgba(124, 178, 66, 0.14);
-        color: #7cb342;
-        border: 1px solid #7cb342;
+        color: #a32741;
+        border: 1px solid #a32741;
         font-family: inherit;
         font-size: 0.85rem;
         letter-spacing: 0.04em;
@@ -988,7 +992,7 @@
         pointer-events: auto;
         /* Solid (not translucent like the mock's isolated panel): in-game it
            overlays the quest board, which must not bleed through. */
-        background: #0b0f0b;
+        background: #0f0a0c;
         border: 1px solid var(--dim);
         padding: 1rem 1.2rem;
         text-shadow: 0 1px 2px #000;
@@ -1062,7 +1066,7 @@
         position: absolute;
         inset: 2px;
         clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-        background: #101710;
+        background: #170f12;
         z-index: 0;
       }
       .hex > * {
@@ -1076,10 +1080,10 @@
         background: var(--accent);
       }
       .hex.filled::before {
-        background: #16241a;
+        background: #20141a;
       }
       .hex.filled:hover:not(:disabled)::before {
-        background: #1d3021;
+        background: #2a171f;
       }
       .hex .slotname {
         color: var(--dim);
@@ -1094,21 +1098,21 @@
         color: var(--fg);
       }
       .hex .empty {
-        color: #3d523f;
+        color: #45262f;
         font-size: 1.1rem;
       }
       /* Two-handed grip: the off-hand hex greys out and shows ghost text
          instead of an item name while offHandLocked() (a two-handed
          main-hand weapon) — the approved ARPG mockup. */
       .hex.greyed {
-        background: #26302a;
+        background: #2c1d23;
         cursor: default;
       }
       .hex.greyed::before {
-        background: #0d120e;
+        background: #120c0f;
       }
       .hex .ghost {
-        color: #5a6b60;
+        color: #6a4a53;
         font-size: 0.62rem;
         font-style: italic;
         text-align: center;
@@ -1217,7 +1221,7 @@
       }
       .stat-tip {
         width: 14rem;
-        background: #0d140d;
+        background: #120c0f;
         border: 1px solid var(--accent);
         padding: 0.5rem 0.6rem;
         color: var(--fg);
@@ -1274,7 +1278,7 @@
         width: 4.6rem;
         height: 4.6rem;
         border: 1px solid var(--dim);
-        background: #101710;
+        background: #170f12;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -1287,10 +1291,10 @@
       }
       .cell.filled {
         border-color: var(--accent);
-        background: #16241a;
+        background: #20141a;
       }
       .cell .empty {
-        color: #3d523f;
+        color: #45262f;
         font-size: 1.1rem;
       }
       .cell-use {
@@ -1326,7 +1330,7 @@
         color: var(--dim);
         border: 1px solid var(--dim);
         padding: 0.05rem 0.3rem;
-        background: #0d130d;
+        background: #120c0f;
         cursor: pointer;
       }
       .cell .drop:hover:not(:disabled) {
@@ -1352,8 +1356,8 @@
         align-items: center;
         justify-content: space-between;
         gap: 0.6rem;
-        border: 1px solid #22331f;
-        background: #0d130d;
+        border: 1px solid #2e1a20;
+        background: #120c0f;
         padding: 0.45rem 0.6rem;
       }
       .grow.rejected {
@@ -1379,7 +1383,7 @@
         font-size: 0.8rem;
         cursor: pointer;
         border: 1px solid var(--accent);
-        background: #1b2b1c;
+        background: #26161c;
         color: var(--fg);
       }
       .grow button:disabled {
@@ -1394,11 +1398,11 @@
         font-size: 0.85rem;
         cursor: pointer;
         border: 1px solid var(--dim);
-        background: #16201a;
+        background: #201217;
         color: var(--fg);
       }
       #pickup-modal .buttons button:hover {
-        background: #2a3d2b;
+        background: #3d222a;
         border-color: var(--accent);
       }
       /* Enemy hover tooltip (item 13, playtest batch 2): a small DOM tooltip

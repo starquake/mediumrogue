@@ -626,7 +626,7 @@ async function start(): Promise<void> {
 
   const app = new Application();
   await app.init({
-    background: "#0b0f0b",
+    background: "#0f0a0c",
     resizeTo: window,
     antialias: true,
     // HiDPI: render the backing store at the display's true pixel density so

@@ -141,7 +141,7 @@ function buildGlyphIcon(key: string): Graphics {
     return g; // unknown key — an empty glyph (callers only pass known keys)
   }
 
-  const filled = inner.replace(/<path/g, '<path fill="#0b0f0b"');
+  const filled = inner.replace(/<path/g, '<path fill="#0f0a0c"');
   g.svg(`<svg viewBox="0 0 ${GLYPH_ICON_VIEWBOX} ${GLYPH_ICON_VIEWBOX}">${filled}</svg>`);
   g.pivot.set(GLYPH_ICON_VIEWBOX / 2, GLYPH_ICON_VIEWBOX / 2);
   g.scale.set(GLYPH_ICON_PX / GLYPH_ICON_VIEWBOX);
@@ -358,7 +358,7 @@ export class EntityLayer {
       .clear()
       .circle(x, y, HEX_SIZE * 0.45)
       .fill(color)
-      .stroke({ width: 2, color: 0x0b0f0b });
+      .stroke({ width: 2, color: 0x0f0a0c });
     dot.glyph?.position.set(x, y);
 
     // Player name label (item 8): always on, above the dot (a fixed offset

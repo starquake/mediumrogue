@@ -76,7 +76,7 @@ export class QuestMarkerLayer {
         .poly([x, y - size, x + size * 0.65, y, x, y + size, x - size * 0.65, y])
         .fill({ color: GOAL_COLOR, alpha: 0.85 })
         .poly([x, y - size, x + size * 0.65, y, x, y + size, x - size * 0.65, y])
-        .stroke({ width: 2, color: 0x0b0f0b });
+        .stroke({ width: 2, color: 0x0f0a0c });
     }
   };
 }
