@@ -6,7 +6,11 @@
 // recenter. SPACE is still the explicit wait key (item 11, playtest batch 2) —
 // the same own-hex move that a click already waits/cancels with; standing still
 // without SPACE is still simply not sending an intent.
-const WAIT_KEY = "Space";
+// SPACE is EVADE since #322 — the mechanic everyone has. Wait moved to the
+// roguelike-conventional "." so the panic button gets the key a hand already
+// rests on; waiting is the deliberate, unhurried act and can afford a reach.
+const EVADE_KEY = "Space";
+const WAIT_KEY = "Period";
 const INVENTORY_KEY = "KeyI";
 // `c` is a second mnemonic for the character panel ("character" / "inventory"),
 // alongside `i`: #273 briefly repurposed it to camera-recenter, but #274's pure
@@ -26,6 +30,12 @@ export interface KeyCallbacks {
    * a normal move intent).
    */
   onWait: () => void;
+  /**
+   * SPACE: evade (#322) — the universal reposition, aimed at the hex under
+   * the cursor. A keypress carries no target, so the pointer supplies one;
+   * with the cursor off-map there is nothing to aim at and this is a no-op.
+   */
+  onEvade: () => void;
   /**
    * `i` or `c` (two mnemonics, "inventory" / "character", same action): toggle
    * the character/inventory panel (inventory-slots milestone, gear keystone
@@ -88,8 +98,14 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
       return;
     }
 
-    if (ev.code === WAIT_KEY) {
+    if (ev.code === EVADE_KEY) {
       ev.preventDefault(); // SPACE also scrolls/activates a focused button by default
+      callbacks.onEvade();
+
+      return;
+    }
+
+    if (ev.code === WAIT_KEY) {
       callbacks.onWait();
 
       return;

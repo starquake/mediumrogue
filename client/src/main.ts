@@ -432,6 +432,36 @@ let curPlaybackMs = 0;
 // dev. Zoom is a whole-scene container scale, eased frame-rate-independently
 // toward a wheel-driven target, applied around the followed player (Grim-Dawn-
 // style follow camera). There is NO pan — the camera always follows the player.
+// Evade's registry id (#322). Universal, so it never appears in the skill
+// list the bundle carries — the client names it directly.
+const EVADE_SKILL_ID = "evade";
+
+/**
+ * Paints the evade ball (#322): a turn count while cooling, a mark when ready,
+ * and a radial sweep that empties as the cooldown runs down — the same idiom
+ * the action bar uses for its slots rather than a second one.
+ */
+function renderEvadeBall(readyIn: number): void {
+  const ball = document.getElementById("evade-ball");
+  if (ball === null) {
+    return;
+  }
+
+  ball.classList.add("shown");
+  ball.classList.toggle("ready", readyIn <= 0);
+
+  const label = ball.querySelector(".n");
+  if (label !== null) {
+    label.textContent = readyIn > 0 ? String(readyIn) : "✦";
+  }
+
+  const sweep = ball.querySelector(".sweep");
+  if (sweep instanceof HTMLElement) {
+    const fraction = Math.min(Math.max(readyIn / EvadeCooldownTurns, 0), 1);
+    sweep.style.setProperty("--sweep", `${String(Math.round(fraction * 360))}deg`);
+  }
+}
+
 const ZOOM_MIN = 0.5; // most zoomed-OUT (survey the big world)
 const ZOOM_MAX = 2.5; // most zoomed-IN
 const ZOOM_EASE_RATE = 12; // 1/s — higher eases toward targetZoom faster (1 - e^(-rate·dt))
@@ -513,6 +543,7 @@ window.game = {
   skillTiles: [],
   actionSlots: [],
   slotMenuOpen: -1,
+  evadeReadyIn: 0,
   died: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
@@ -2096,6 +2127,8 @@ async function start(): Promise<void> {
         }));
         renderActionBar();
         window.game.skillPoints = mine.skillPoints ?? 0;
+        window.game.evadeReadyIn = mine.evadeReadyIn ?? 0;
+        renderEvadeBall(window.game.evadeReadyIn);
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
           defId: it.defId,
@@ -2365,6 +2398,17 @@ async function start(): Promise<void> {
         return;
       }
       void clickTarget(me.hex);
+    },
+    // SPACE: evade to the hex under the cursor (#322). A keypress supplies no
+    // destination, so the pointer is the aim — with the cursor off-map there
+    // is nothing to aim at and this does nothing rather than guessing. The
+    // server owns every rule about whether the hop is legal (range, a wall in
+    // the way, the cooldown); a refusal surfaces through the usual toast.
+    onEvade: (): void => {
+      if (window.game.me === null || hoveredHex === null) {
+        return;
+      }
+      void submitUseSkill(identity, EVADE_SKILL_ID, hoveredHex);
     },
     // `i` or `c` toggles the character/inventory panel, Escape closes it —
     // shares the typing-focus guard (input/keys.ts) so typing "i"/"c"/Escape

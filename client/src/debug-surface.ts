@@ -99,6 +99,12 @@ export interface GameDebug {
   actionSlots: string[];
   /** The slot whose right-click assignment menu is open, or -1 (#304). */
   slotMenuOpen: number;
+  /**
+   * Turns until evade is usable again (#322); 0 = ready now. Evade is
+   * universal, so it carries no SkillView — this mirrors the bundle's own-only
+   * EvadeReadyIn, and is what an e2e asserts the cooldown against.
+   */
+  evadeReadyIn: number;
   /** The flask instance id whose throw is armed for targeting, or null (#271). */
   armedThrow: number | null;
   /**
