@@ -496,20 +496,19 @@ roll, so it is ARPG-legal on jewelry.
   monster — same `spawnHexLocked` tiers as a fresh join, Q9); the camera
   **follows** the player, so it re-centres on the respawn automatically.
 - **Evade** (#322): a **mechanic everyone has**, not a learnable skill — no
-  point to spend, no row in the skills panel. `Space` repositions you up to
-  **3 hexes** to the hex **under the cursor**, on a
-  `protocol.EvadeCooldownTurns`-turn cooldown. A keypress carries no
-  destination, so the pointer is the aim; with the cursor off-map it does
-  nothing rather than guessing.
+  point to spend, no row in the skills panel. `Space` **arms** it and the next map click spends it, repositioning you up to
+  `protocol.EvadeRangeHex` hexes on a `protocol.EvadeCooldownTurns`-turn
+  cooldown. Pressing `Space` again cancels, as does Escape.
   - **Walls still stop it, woods no longer do.** Ordinary line of sight spends
     `ForestSightCost` against a skill's own range, which refused every evade of
     2+ hexes in forest — the terrain an escape is most wanted in. Evade asks
     only whether a **rock** stands in the ray, so cover stays real (the decided
     inversion of the genre default) while woods stop refusing the escape.
-  - **The reachable tiles are painted while it is ready** — everything within
-    `protocol.EvadeRangeHex`, on the same overlay an armed active uses (an
-    armed skill still wins). Without it the reach is invisible and the aim is a
-    guess. Cleared while cooling, since tiles you cannot reach are a lie.
+  - **Arming paints the reachable tiles** — everything within
+    `protocol.EvadeRangeHex`, on the same overlay an armed active uses. That is
+    the point of arming: the limit is visible **before** committing, rather
+    than learned from a refusal. Nothing is painted until it is armed, because
+    an always-on overlay is wallpaper.
   - **Its cooldown rides its own wire field**, `Entity.EvadeReadyIn` (own-only,
     like `Skills`): a universal mechanic carries no `SkillView`, so the HUD ball
     would otherwise have nothing to render.

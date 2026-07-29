@@ -1156,10 +1156,14 @@ Three things fell out of that, each of which is the interesting part:
   own-only like `Skills`. The number itself moved to
   `protocol.EvadeCooldownTurns` so the server gate and the ball's sweep cannot
   drift apart.
-- **The keypress has no target, so the cursor is the aim.** Blink was
-  hex-aimed: you clicked a destination. `Space` supplies none, so the pointer
-  does — and with the cursor off-map it does nothing rather than guessing at a
-  direction. Wait moved to `.`, the roguelike convention: the panic button
+- **`Space` arms; a click spends it.** Blink was hex-aimed — you clicked a
+  destination — and a keypress supplies none. Aiming at whatever the cursor
+  happened to be over was tried first and rejected: it fires on a hover, and
+  the reach stays invisible until a refusal teaches you where the edge was.
+  Arming instead paints the reachable tiles, so the limit is legible before
+  committing, and the click that follows is a deliberate choice of hex. An
+  always-on overlay was also tried and rejected — permanent decoration stops
+  being read. Wait moved to `.`, the roguelike convention: the panic button
   should have the key a hand already rests on.
 
 **Walls still stop it; woods no longer do.** Ordinary sight spends a forest cost

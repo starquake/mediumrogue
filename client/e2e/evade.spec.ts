@@ -9,7 +9,7 @@ import { continueIfReturning } from "./helpers";
 //
 // Every wait is metered on game state (window.game fields flipping), never
 // wall-clock — the de-race rule.
-test("Space evades to the hex under the cursor and starts its cooldown", async ({ page }) => {
+test("Space arms evade, a click spends it, and the cooldown starts", async ({ page }) => {
   await page.goto("/");
   await continueIfReturning(page);
 
@@ -21,22 +21,31 @@ test("Space evades to the hex under the cursor and starts its cooldown", async (
   const ids = await page.evaluate(() => window.game.skills.map((s) => s.id));
   expect(ids, "evade is universal — it has no panel row to learn").not.toContain("evade");
 
-  // The reachable set is painted while evade is ready, so the aim is never a
-  // guess: everything within EvadeRangeHex of the player, minus their own hex.
-  const tilesReady = await page.evaluate(() => window.game.skillTiles.length);
-  expect(tilesReady, "evade's reachable tiles should be painted while it is ready").toBeGreaterThan(0);
+  // Nothing is painted until evade is armed — an always-on overlay is
+  // wallpaper.
+  expect(await page.evaluate(() => window.game.skillTiles.length), "no overlay before arming").toBe(0);
+
+  await page.keyboard.press("Space");
+  await expect.poll(() => page.evaluate(() => window.game.armedSkill())).toBe("evade");
+
+  // Arming paints the reach, so the limit is visible BEFORE committing.
+  await expect.poll(() => page.evaluate(() => window.game.skillTiles.length)).toBeGreaterThan(0);
 
   const from = await page.evaluate(() => window.game.me?.hex ?? null);
-
-  // The pointer is the aim. Hover a few tiles to the right of centre, which is
-  // where the follow camera keeps the player.
-  const canvas = await page.locator("canvas").boundingBox();
-  if (canvas === null) {
-    throw new Error("no canvas to aim across");
+  if (from === null) {
+    throw new Error("no player hex");
   }
 
-  await page.mouse.move(canvas.x + canvas.width / 2 + 96, canvas.y + canvas.height / 2);
-  await page.keyboard.press("Space");
+  // Click a painted tile: that is what spends the arm.
+  const dest = await page.evaluate(() => window.game.skillTiles[0] ?? null);
+  if (dest === null) {
+    throw new Error("evade armed but painted no tiles");
+  }
+
+  expect(await page.evaluate(() => window.game.hexToScreen !== null)).toBe(true);
+
+  const at = await page.evaluate((d) => window.game.hexToScreen!(d.q, d.r), dest);
+  await page.mouse.click(at.x, at.y);
 
   // The cooldown starting is the server's acknowledgement — it is stamped by
   // the same commit that moves the player, so polling it avoids racing the
@@ -57,7 +66,7 @@ test("Space evades to the hex under the cursor and starts its cooldown", async (
   await expect.poll(() => page.evaluate(() => window.game.skillTiles.length)).toBe(0);
 });
 
-test("evade with the cursor off the map does nothing", async ({ page }) => {
+test("pressing Space twice cancels the arm without evading", async ({ page }) => {
   await page.goto("/");
   await continueIfReturning(page);
 
@@ -66,10 +75,12 @@ test("evade with the cursor off the map does nothing", async ({ page }) => {
 
   const from = await page.evaluate(() => window.game.me?.hex ?? null);
 
-  // Park the pointer over the chat panel: there is no hex under it, so the
-  // keypress has nothing to aim at and must not guess a direction.
-  await page.locator("#chat-input").hover();
   await page.keyboard.press("Space");
+  await expect.poll(() => page.evaluate(() => window.game.armedSkill())).toBe("evade");
+
+  await page.keyboard.press("Space");
+  await expect.poll(() => page.evaluate(() => window.game.armedSkill())).toBeNull();
+  await expect.poll(() => page.evaluate(() => window.game.skillTiles.length)).toBe(0);
 
   // Give the world a couple of turns to prove nothing was queued.
   const start = await page.evaluate(() => window.game.turn);

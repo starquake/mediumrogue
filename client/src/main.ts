@@ -451,6 +451,7 @@ function renderEvadeBall(readyIn: number): void {
 
   ball.classList.add("shown");
   ball.classList.toggle("ready", readyIn <= 0);
+  ball.classList.toggle("arming", window.game.armedSkill() === EVADE_SKILL_ID);
 
   const label = ball.querySelector(".n");
   if (label !== null) {
@@ -1630,15 +1631,14 @@ async function start(): Promise<void> {
       return;
     }
 
-    // Nothing armed: show where EVADE could put you, whenever it is ready
-    // (#322). Space aims at whatever the cursor is over, so without this the
-    // reach is invisible and the aim is a guess — and a hop refused for being
-    // one tile too greedy is the worst moment to learn where the edge was.
-    // Cleared while it is cooling, because tiles you cannot reach are a lie.
+    // Evade is armed but has no action-bar slot to look a def up from, so its
+    // reach comes from the protocol constants (#322). Painted only while
+    // armed — an always-on overlay is wallpaper, and the player stops seeing
+    // it long before they need it.
     window.game.skillTiles =
-      window.game.evadeReadyIn > 0
-        ? []
-        : tactics.skillTargetTiles(tacticsCtx(), SkillAimHex, EvadeRangeHex);
+      armedSkill === EVADE_SKILL_ID
+        ? tactics.skillTargetTiles(tacticsCtx(), SkillAimHex, EvadeRangeHex)
+        : [];
     skillRangeLayer.update(window.game.skillTiles);
   };
 
@@ -2419,16 +2419,21 @@ async function start(): Promise<void> {
       }
       void clickTarget(me.hex);
     },
-    // SPACE: evade to the hex under the cursor (#322). A keypress supplies no
-    // destination, so the pointer is the aim — with the cursor off-map there
-    // is nothing to aim at and this does nothing rather than guessing. The
-    // server owns every rule about whether the hop is legal (range, a wall in
-    // the way, the cooldown); a refusal surfaces through the usual toast.
+    // SPACE ARMS evade (#322); the next map click picks the hex and spends it.
+    // Arming first is what makes the reach legible: the overlay appears with
+    // the arm, so the limit is visible BEFORE committing rather than learned
+    // from a refusal. Pressing it again cancels, as does Escape.
     onEvade: (): void => {
-      if (window.game.me === null || hoveredHex === null) {
+      if (window.game.me === null) {
         return;
       }
-      void submitUseSkill(identity, EVADE_SKILL_ID, hoveredHex);
+
+      armedSkill = armedSkill === EVADE_SKILL_ID ? null : EVADE_SKILL_ID;
+      armedThrow = null;
+      window.game.armedThrow = null;
+      renderActionBar();
+      renderEvadeBall(window.game.evadeReadyIn);
+      drawSkillRange();
     },
     // `i` or `c` toggles the character/inventory panel, Escape closes it —
     // shares the typing-focus guard (input/keys.ts) so typing "i"/"c"/Escape
