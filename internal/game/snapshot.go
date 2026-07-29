@@ -53,7 +53,7 @@ import (
 // minion). Both are multi-turn state a restart must keep — otherwise a reloaded
 // necromancer hands a free summon and its adds escape the maxLiving cap. A v9
 // snapshot has neither field, so it is preserved-aside + fresh.
-const snapshotVersion = 10
+const snapshotVersion = 11
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -113,20 +113,23 @@ type backpackEntryDTO struct {
 // restored PLAYER additionally gets disconnectedAt stamped to load time (see
 // RestoreState) rather than persisting the pre-shutdown value.
 type entityDTO struct {
-	ID          int64                      `json:"id"`
-	Hex         protocol.Hex               `json:"hex"`
-	Token       string                     `json:"token"`
-	Kind        string                     `json:"kind"`
-	MonsterKind string                     `json:"monsterKind"`
-	Name        string                     `json:"name"`
-	PartyID     int64                      `json:"partyId"`
-	Class       string                     `json:"class"`
-	Species     string                     `json:"species"`
-	HP          int                        `json:"hp"`
-	MaxHP       int                        `json:"maxHp"`
-	XP          int                        `json:"xp"`
-	Equipped    map[string]itemInstanceDTO `json:"equipped"`
-	Backpack    []backpackEntryDTO         `json:"backpack"`
+	ID          int64        `json:"id"`
+	Hex         protocol.Hex `json:"hex"`
+	Token       string       `json:"token"`
+	Kind        string       `json:"kind"`
+	MonsterKind string       `json:"monsterKind"`
+	Name        string       `json:"name"`
+	PartyID     int64        `json:"partyId"`
+	Class       string       `json:"class"`
+	Species     string       `json:"species"`
+	HP          int          `json:"hp"`
+	MaxHP       int          `json:"maxHp"`
+	// Energy is the #322 action pool (v11). MaxEnergy is derived from class
+	// and level on load rather than stored, the same way MaxHP is.
+	Energy   int                        `json:"energy"`
+	XP       int                        `json:"xp"`
+	Equipped map[string]itemInstanceDTO `json:"equipped"`
+	Backpack []backpackEntryDTO         `json:"backpack"`
 	// HomeHex/ReturningHome are the monster leash state (#102, v5). Unlike
 	// path, these are multi-turn behavioral state, not per-turn transients:
 	// a restart must not teleport a monster's home or make one forget it was
@@ -322,6 +325,7 @@ func (w *World) RestoreState(data []byte) error {
 	for _, e := range w.entities {
 		if e.class != "" { // players only; a monster's maxHP is its kind's
 			syncMaxHPLocked(e)
+			syncMaxEnergyLocked(e)
 		}
 	}
 
@@ -418,7 +422,7 @@ func entityToDTO(e *entity) entityDTO {
 	return entityDTO{
 		ID: e.id, Hex: e.hex, Token: e.token, Kind: e.kind, MonsterKind: e.monsterKind,
 		Name: e.name, PartyID: e.partyID, Class: e.class, Species: e.species,
-		HP: e.hp, MaxHP: e.maxHP, XP: e.xp,
+		HP: e.hp, MaxHP: e.maxHP, Energy: e.energy, XP: e.xp,
 		Equipped: equippedToDTO(e.equipped), Backpack: backpackToDTO(e.backpack),
 		HomeHex: e.homeHex, ReturningHome: e.returningHome,
 		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
@@ -465,7 +469,7 @@ func entityFromDTO(ed entityDTO) *entity {
 	return &entity{
 		id: ed.ID, hex: ed.Hex, token: ed.Token, kind: ed.Kind, monsterKind: ed.MonsterKind,
 		name: ed.Name, partyID: ed.PartyID, class: ed.Class, species: ed.Species,
-		hp: ed.HP, maxHP: ed.MaxHP, xp: ed.XP,
+		hp: ed.HP, maxHP: ed.MaxHP, energy: ed.Energy, xp: ed.XP,
 		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
 		homeHex: ed.HomeHex, returningHome: ed.ReturningHome,
 		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,

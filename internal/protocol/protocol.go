@@ -743,6 +743,12 @@ type Entity struct {
 	Skills []SkillView `json:"skills"`
 	// SkillPoints is the viewer's own unspent bank; zero on other entities.
 	SkillPoints int `json:"skillPoints"`
+	// Energy / MaxEnergy are the viewer's OWN action-currency pool (#322);
+	// zero on every other entity. Own-only rather than public like HP: another
+	// player's remaining energy is build information, and nothing on screen
+	// needs it.
+	Energy    int `json:"energy"`
+	MaxEnergy int `json:"maxEnergy"`
 	// EvadeReadyIn is how many turns until the viewer may evade again (#322);
 	// 0 means ready now. Own-only, like Skills.
 	//

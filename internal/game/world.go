@@ -4126,6 +4126,8 @@ func (w *World) fillOwnOnlyLocked(entities []protocol.Entity, viewerToken string
 			entities[i].Skills = skillViewsLocked(viewer, w.turn)
 			entities[i].SkillPoints = viewer.skillPoints
 			entities[i].EvadeReadyIn = max(int(viewer.activeReadyTurn[skillEvade]-w.turn), 0)
+			entities[i].Energy = viewer.energy
+			entities[i].MaxEnergy = viewer.maxEnergy
 
 			return
 		}
