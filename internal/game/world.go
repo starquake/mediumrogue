@@ -109,6 +109,8 @@ var (
 	ErrSkillOnCooldown = errors.New("skill is on cooldown")
 	// ErrNotEnoughEnergy: the active costs more than the caster has (#322).
 	ErrNotEnoughEnergy = errors.New("not enough energy")
+	// ErrPotionOnCooldown: that draught is still cooling (#322).
+	ErrPotionOnCooldown = errors.New("potion is on cooldown")
 
 	// ErrNoLineOfSight is an active-skill target the caster cannot see: an
 	// active does not pass through walls (#161).
@@ -243,6 +245,11 @@ type entity struct {
 	species string
 	hp      int
 	maxHP   int
+	// healthPotionReadyTurn / energyPotionReadyTurn are the turns the two
+	// always-available draughts come back (#322). Independent, so draining one
+	// pool never locks the other.
+	healthPotionReadyTurn int64
+	energyPotionReadyTurn int64
 	// energy is the action currency actives spend (#322); players only.
 	// maxEnergy follows class and level (maxEnergyFor), the same way maxHP
 	// does, and syncMaxEnergyLocked keeps it honest across a level-up.
@@ -1224,6 +1231,10 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 		return w.queuePickupLocked(e, req.GroundItemID)
 	case protocol.IntentDrink:
 		return w.queueDrinkLocked(e, req.ItemID)
+	case protocol.IntentQuaffHealth:
+		return w.quaffLocked(e, true)
+	case protocol.IntentQuaffEnergy:
+		return w.quaffLocked(e, false)
 	case protocol.IntentLearnSkill:
 		return w.learnSkillLocked(e, req.SkillID)
 	case protocol.IntentUseSkill:
@@ -1948,6 +1959,31 @@ func (w *World) advanceTurnLocked() {
 	w.recentHits = slices.DeleteFunc(w.recentHits, func(h hitRecord) bool {
 		return h.turn <= w.turn-hitRetentionTurns
 	})
+}
+
+// quaffLocked drinks the always-available health or energy draught (#322).
+//
+// Immediate rather than queued as a turn action, and legal inside a bubble:
+// these exist to be reachable in the moment you need them, and making the
+// panic response cost your turn would defeat that. The cooldown is the whole
+// price — there is no item, no stack and no inventory slot, which is why this
+// takes a bool rather than an item id.
+//
+// Callers hold w.mu.
+func (w *World) quaffLocked(e *entity, health bool) error {
+	ready, pool, poolMax := &e.energyPotionReadyTurn, &e.energy, e.maxEnergy
+	if health {
+		ready, pool, poolMax = &e.healthPotionReadyTurn, &e.hp, e.maxHP
+	}
+
+	if w.turn < *ready {
+		return ErrPotionOnCooldown
+	}
+
+	*pool = min(*pool+poolMax*protocol.PotionRestorePercent/100, poolMax)
+	*ready = w.turn + 1 + protocol.PotionCooldownTurns
+
+	return nil
 }
 
 // regenPlayersLocked tops up both player pools once per turn (#322): HP by
@@ -4132,6 +4168,8 @@ func (w *World) fillOwnOnlyLocked(entities []protocol.Entity, viewerToken string
 			entities[i].Skills = skillViewsLocked(viewer, w.turn)
 			entities[i].SkillPoints = viewer.skillPoints
 			entities[i].EvadeReadyIn = max(int(viewer.activeReadyTurn[skillEvade]-w.turn), 0)
+			entities[i].HealthPotionReadyIn = max(int(viewer.healthPotionReadyTurn-w.turn), 0)
+			entities[i].EnergyPotionReadyIn = max(int(viewer.energyPotionReadyTurn-w.turn), 0)
 			entities[i].Energy = viewer.energy
 			entities[i].MaxEnergy = viewer.maxEnergy
 

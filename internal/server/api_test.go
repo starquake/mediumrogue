@@ -58,8 +58,10 @@ var intentSentinelStatus = map[error]int{
 	// #322: an active you cannot afford. A well-formed request the world says
 	// no to, like the cooldown it sits beside.
 	game.ErrNotEnoughEnergy: http.StatusUnprocessableEntity,
-	game.ErrNoLineOfSight:   http.StatusUnprocessableEntity,
-	game.ErrHexOccupied:     http.StatusUnprocessableEntity,
+	// #322: the always-available draught, still cooling.
+	game.ErrPotionOnCooldown: http.StatusUnprocessableEntity,
+	game.ErrNoLineOfSight:    http.StatusUnprocessableEntity,
+	game.ErrHexOccupied:      http.StatusUnprocessableEntity,
 }
 
 // handledElsewhere are the sentinels SubmitIntent can never return, each with

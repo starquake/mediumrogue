@@ -112,6 +112,7 @@ func intentErrorStatus(err error) (int, bool) {
 		// behind a wall — all well-formed requests the world says no to.
 		errors.Is(err, game.ErrSkillNotActive), errors.Is(err, game.ErrSkillNotLearned),
 		errors.Is(err, game.ErrSkillOnCooldown), errors.Is(err, game.ErrNotEnoughEnergy),
+		errors.Is(err, game.ErrPotionOnCooldown),
 		errors.Is(err, game.ErrNoLineOfSight),
 		// A evade onto an occupied/StackCap-full hex (#196).
 		errors.Is(err, game.ErrHexOccupied):

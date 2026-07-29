@@ -53,7 +53,7 @@ import (
 // minion). Both are multi-turn state a restart must keep — otherwise a reloaded
 // necromancer hands a free summon and its adds escape the maxLiving cap. A v9
 // snapshot has neither field, so it is preserved-aside + fresh.
-const snapshotVersion = 11
+const snapshotVersion = 12
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -126,10 +126,14 @@ type entityDTO struct {
 	MaxHP       int          `json:"maxHp"`
 	// Energy is the #322 action pool (v11). MaxEnergy is derived from class
 	// and level on load rather than stored, the same way MaxHP is.
-	Energy   int                        `json:"energy"`
-	XP       int                        `json:"xp"`
-	Equipped map[string]itemInstanceDTO `json:"equipped"`
-	Backpack []backpackEntryDTO         `json:"backpack"`
+	Energy int `json:"energy"`
+	// The two draught cooldowns (v12, #322): multi-turn state, so a restart
+	// must not hand back a free heal.
+	HealthPotionReadyTurn int64                      `json:"healthPotionReadyTurn"`
+	EnergyPotionReadyTurn int64                      `json:"energyPotionReadyTurn"`
+	XP                    int                        `json:"xp"`
+	Equipped              map[string]itemInstanceDTO `json:"equipped"`
+	Backpack              []backpackEntryDTO         `json:"backpack"`
 	// HomeHex/ReturningHome are the monster leash state (#102, v5). Unlike
 	// path, these are multi-turn behavioral state, not per-turn transients:
 	// a restart must not teleport a monster's home or make one forget it was
@@ -423,6 +427,7 @@ func entityToDTO(e *entity) entityDTO {
 		ID: e.id, Hex: e.hex, Token: e.token, Kind: e.kind, MonsterKind: e.monsterKind,
 		Name: e.name, PartyID: e.partyID, Class: e.class, Species: e.species,
 		HP: e.hp, MaxHP: e.maxHP, Energy: e.energy, XP: e.xp,
+		HealthPotionReadyTurn: e.healthPotionReadyTurn, EnergyPotionReadyTurn: e.energyPotionReadyTurn,
 		Equipped: equippedToDTO(e.equipped), Backpack: backpackToDTO(e.backpack),
 		HomeHex: e.homeHex, ReturningHome: e.returningHome,
 		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
@@ -470,6 +475,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		id: ed.ID, hex: ed.Hex, token: ed.Token, kind: ed.Kind, monsterKind: ed.MonsterKind,
 		name: ed.Name, partyID: ed.PartyID, class: ed.Class, species: ed.Species,
 		hp: ed.HP, maxHP: ed.MaxHP, energy: ed.Energy, xp: ed.XP,
+		healthPotionReadyTurn: ed.HealthPotionReadyTurn, energyPotionReadyTurn: ed.EnergyPotionReadyTurn,
 		equipped: equippedFromDTO(ed.Equipped), backpack: backpackFromDTO(ed.Backpack),
 		homeHex: ed.HomeHex, returningHome: ed.ReturningHome,
 		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,
