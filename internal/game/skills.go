@@ -846,7 +846,7 @@ func (w *World) useEntityAimedSkillLocked(e *entity, def *skillDef, targetEntity
 // window wins, exactly as elsewhere. Exactly one of `target`/`targetEntityID`
 // is set, or neither for a self-cast — the one place an active legitimately has
 // nowhere to point. Callers hold w.mu.
-func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex, targetEntityID int64) error {
+func (*World) commitActiveLocked(e *entity, id string, target *protocol.Hex, targetEntityID int64) error {
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
@@ -862,7 +862,7 @@ func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex, t
 // combat and rejected inside a bubble (#124 Decision 4): learning is a
 // between-fights decision, so unlike equip/drop/drink it is never queued as a
 // turn's action. Callers hold w.mu.
-func (w *World) learnSkillLocked(e *entity, id string) error {
+func (*World) learnSkillLocked(e *entity, id string) error {
 	if e.bubbleID != 0 {
 		return ErrLearnInCombat
 	}

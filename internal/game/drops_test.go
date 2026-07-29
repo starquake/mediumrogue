@@ -101,7 +101,7 @@ func TestPickDropCoversWolfsWholeTable(t *testing.T) {
 
 	want := game.DropTableIDsForTest("wolf")
 	if len(want) == 0 {
-		t.Fatalf("wolf's drop table is empty — nothing to distribute")
+		t.Fatal("wolf's drop table is empty — nothing to distribute")
 	}
 
 	seen := make(map[string]bool, len(want))
@@ -303,7 +303,7 @@ func TestWalkOverDoesNotAutoPickup(t *testing.T) {
 
 	player, ok := entityOfSnap(snap, alice.EntityID)
 	if !ok {
-		t.Fatalf("alice missing from snapshot")
+		t.Fatal("alice missing from snapshot")
 	}
 
 	idx := slices.IndexFunc(player.Items, func(it protocol.ItemView) bool { return it.ID == itemID })

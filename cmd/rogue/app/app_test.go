@@ -146,7 +146,7 @@ func TestLoadSnapshotPreservesRejectedFile(t *testing.T) {
 	}
 
 	if got, want := string(preserved), string(original); got != want {
-		t.Errorf("preserved rejected snapshot bytes differ from the original")
+		t.Error("preserved rejected snapshot bytes differ from the original")
 	}
 
 	// The live path is free again: a fresh save lands there without touching

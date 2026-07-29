@@ -67,7 +67,7 @@ func (w *World) queueThrowLocked(e *entity, itemID int64, target protocol.Hex) e
 // line-of-sight check. The scroll is consumed at resolution
 // (resolveRecallsLocked), not here — a later intent cancels the recall and
 // keeps the scroll. Callers hold w.mu.
-func (w *World) queueRecallLocked(e *entity, itemID int64) error {
+func (*World) queueRecallLocked(e *entity, itemID int64) error {
 	inst, ok := e.itemByID(itemID)
 	if !ok {
 		return ErrItemNotOwned

@@ -332,7 +332,7 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 	w.ResolveTurnForTest()
 
 	if _, ok := entityOfSnap(w.Snapshot(), monsterID); !ok {
-		t.Fatalf("monster gone before the mutual-kill turn — setup issue")
+		t.Fatal("monster gone before the mutual-kill turn — setup issue")
 	}
 
 	// Now arrange the mutual kill: one hit each is lethal in both directions.

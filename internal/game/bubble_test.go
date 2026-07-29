@@ -74,11 +74,11 @@ func TestBubbleFormsOnOpposingProximity(t *testing.T) {
 	snap := step(t, w)
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Errorf("player InCombat = false, want true")
+		t.Error("player InCombat = false, want true")
 	}
 
 	if !inCombat(t, snap, monsterID) {
-		t.Errorf("monster InCombat = false, want true")
+		t.Error("monster InCombat = false, want true")
 	}
 
 	if got, want := len(snap.Bubbles), 1; got != want {
@@ -159,7 +159,7 @@ func TestBubbleKeepsIDAcrossRecomputes(t *testing.T) {
 
 	firstID := snap.Bubbles[0].ID
 	if firstID == 0 {
-		t.Fatalf("first bubble id = 0, want a real (non-world) id")
+		t.Fatal("first bubble id = 0, want a real (non-world) id")
 	}
 
 	// Same physical bubble across several more recomputes: id must not change.
@@ -209,7 +209,7 @@ func TestBubbleKeepsIDWhenAbsorbingFriendly(t *testing.T) {
 
 	beforeID := snap.Bubbles[0].ID
 	if beforeID == 0 {
-		t.Fatalf("bubble id = 0, want a real (non-world) id")
+		t.Fatal("bubble id = 0, want a real (non-world) id")
 	}
 
 	// Drop a second friendly one hex from the anchor: the next recompute folds it
@@ -253,11 +253,11 @@ func TestOutOfRangeStaysWorldDomain(t *testing.T) {
 	snap := step(t, w)
 
 	if inCombat(t, snap, me.EntityID) {
-		t.Errorf("player InCombat = true, want false")
+		t.Error("player InCombat = true, want false")
 	}
 
 	if inCombat(t, snap, monsterID) {
-		t.Errorf("monster InCombat = true, want false")
+		t.Error("monster InCombat = true, want false")
 	}
 
 	if got, want := len(snap.Bubbles), 0; got != want {
@@ -363,15 +363,15 @@ func TestMonstersDoNotExtendBubbleReach(t *testing.T) {
 	}
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Errorf("player InCombat = false, want true")
+		t.Error("player InCombat = false, want true")
 	}
 
 	if !inCombat(t, snap, m1ID) {
-		t.Errorf("bubble monster M1 InCombat = false, want true")
+		t.Error("bubble monster M1 InCombat = false, want true")
 	}
 
 	if inCombat(t, snap, m2ID) {
-		t.Errorf("far monster M2 InCombat = true, want false (monsters must not extend the bubble)")
+		t.Error("far monster M2 InCombat = true, want false (monsters must not extend the bubble)")
 	}
 
 	if got, want := len(snap.Bubbles), 1; got != want {
@@ -462,7 +462,7 @@ func TestBubbleEntryCancelsAutoWalk(t *testing.T) {
 	// in world time.
 	far := mustWalkable(t, w, protocol.Hex{Q: 0, R: 8})
 	if !submitOK(w, me, far) {
-		t.Fatalf("SubmitIntent for the auto-walk failed")
+		t.Fatal("SubmitIntent for the auto-walk failed")
 	}
 
 	if got := len(w.PathForTest(me.EntityID)); got == 0 {
@@ -476,11 +476,11 @@ func TestBubbleEntryCancelsAutoWalk(t *testing.T) {
 	snap := step(t, w)
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Fatalf("player InCombat = false, want true (bubble must form on the route)")
+		t.Fatal("player InCombat = false, want true (bubble must form on the route)")
 	}
 
 	if !inCombat(t, snap, monsterID) {
-		t.Fatalf("monster InCombat = false, want true")
+		t.Fatal("monster InCombat = false, want true")
 	}
 
 	if got := w.PathForTest(me.EntityID); got != nil {
@@ -518,7 +518,7 @@ func TestBubbleEntryCancelsFinalStep(t *testing.T) {
 	// A two-hex walk south. After the first step the player is at {0,1}.
 	goal := mustWalkable(t, w, protocol.Hex{Q: 0, R: 2})
 	if !submitOK(w, me, goal) {
-		t.Fatalf("SubmitIntent for the walk failed")
+		t.Fatal("SubmitIntent for the walk failed")
 	}
 
 	if got, want := len(w.PathForTest(me.EntityID)), 2; got != want {
@@ -537,11 +537,11 @@ func TestBubbleEntryCancelsFinalStep(t *testing.T) {
 	snap := step(t, w)
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Fatalf("player InCombat = false, want true (bubble must form after the first step)")
+		t.Fatal("player InCombat = false, want true (bubble must form after the first step)")
 	}
 
 	if !inCombat(t, snap, monsterID) {
-		t.Fatalf("monster InCombat = false, want true")
+		t.Fatal("monster InCombat = false, want true")
 	}
 
 	if got := w.PathForTest(me.EntityID); got != nil {
@@ -581,7 +581,7 @@ func TestBubbleDissolvesWhenMonsterDies(t *testing.T) {
 
 	// Precondition: the bubble exists before we remove the monster.
 	if snap := step(t, w); !inCombat(t, snap, me.EntityID) {
-		t.Fatalf("player InCombat = false before the kill, want true")
+		t.Fatal("player InCombat = false before the kill, want true")
 	}
 
 	// Drop the monster to 0 HP; the next turn's death phase removes it.
@@ -594,7 +594,7 @@ func TestBubbleDissolvesWhenMonsterDies(t *testing.T) {
 	}
 
 	if inCombat(t, snap, me.EntityID) {
-		t.Errorf("player InCombat = true after the monster died, want false")
+		t.Error("player InCombat = true after the monster died, want false")
 	}
 
 	if got, want := len(snap.Bubbles), 0; got != want {
@@ -628,14 +628,14 @@ func TestBubbleMemberEscapesWhenLeavingRange(t *testing.T) {
 	w.SetHPForTest(me.EntityID, 1000)
 
 	if snap := step(t, w); !inCombat(t, snap, friendID) {
-		t.Fatalf("friend InCombat = false before escaping, want true")
+		t.Fatal("friend InCombat = false before escaping, want true")
 	}
 
 	// Send the friend far west (dist 9 from spawn), well outside CombatRadius of
 	// the anchor pair near the origin.
 	far := mustWalkable(t, w, protocol.Hex{Q: -9, R: 0})
 	if !submitOK(w, protocol.JoinResponse{EntityID: friendID, Token: friendToken}, far) {
-		t.Fatalf("SubmitIntent for the friend's escape route failed")
+		t.Fatal("SubmitIntent for the friend's escape route failed")
 	}
 
 	var snap protocol.TurnEvent
@@ -652,14 +652,14 @@ func TestBubbleMemberEscapesWhenLeavingRange(t *testing.T) {
 	}
 
 	if !escaped {
-		t.Fatalf("friend never left the bubble after walking out of range")
+		t.Fatal("friend never left the bubble after walking out of range")
 	}
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Errorf("anchor player InCombat = false, want true (its bubble must persist)")
+		t.Error("anchor player InCombat = false, want true (its bubble must persist)")
 	}
 
 	if !inCombat(t, snap, monsterID) {
-		t.Errorf("monster InCombat = false, want true (its bubble must persist)")
+		t.Error("monster InCombat = false, want true (its bubble must persist)")
 	}
 }

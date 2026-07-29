@@ -33,7 +33,7 @@ type pendingItemAction struct {
 // intent's HTTP response); inside one it records the pending action and
 // clears any queued move/attack — you act on your inventory, you don't also
 // move or shoot this turn. Callers hold w.mu.
-func (w *World) commitItemActionLocked(e *entity, kind string, id int64, apply func() error) error {
+func (*World) commitItemActionLocked(e *entity, kind string, id int64, apply func() error) error {
 	// #271: an inventory action cancels a queued throw/recall either way — an
 	// immediate action outside a bubble must not leave a throw to resolve next
 	// world turn, and inside one the pending action is the turn's action.

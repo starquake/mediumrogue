@@ -92,7 +92,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 
 	beforeAlice, ok := entityOfSnap(w.Snapshot(), alice.EntityID)
 	if !ok {
-		t.Fatalf("alice missing from pre-marshal snapshot")
+		t.Fatal("alice missing from pre-marshal snapshot")
 	}
 
 	data, err := w.MarshalState()
@@ -103,7 +103,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	w2, _ := newSnapshotWorld(t)
 
 	if got, want := w2.WorldIDForTest(), w.WorldIDForTest(); got == want {
-		t.Fatalf("w2's freshly-minted worldID already equals w's before restoring — test fixture bug")
+		t.Fatal("w2's freshly-minted worldID already equals w's before restoring — test fixture bug")
 	}
 
 	if err := w2.RestoreState(data); err != nil {
@@ -332,7 +332,7 @@ func TestSnapshotRestoredPlayerGraceStartsAtLoad(t *testing.T) {
 
 	got, ok := w2.DisconnectedAtForTest(me.Token)
 	if !ok {
-		t.Fatalf("DisconnectedAtForTest: restored entity not found")
+		t.Fatal("DisconnectedAtForTest: restored entity not found")
 	}
 
 	if !got.Equal(loadTime) {
@@ -380,7 +380,7 @@ func TestSnapshotRestoreTurnMonotonic(t *testing.T) {
 
 	beforeTurn := w.Snapshot().Turn
 	if beforeTurn == 0 {
-		t.Fatalf("test setup: turn is still 0 after 5 resolutions")
+		t.Fatal("test setup: turn is still 0 after 5 resolutions")
 	}
 
 	data, err := w.MarshalState()
@@ -428,7 +428,7 @@ func TestSnapshotMismatchGates(t *testing.T) {
 
 		err = other.RestoreState(data)
 		if err == nil {
-			t.Fatalf("RestoreState with mismatched seed: got nil error, want a mismatch error")
+			t.Fatal("RestoreState with mismatched seed: got nil error, want a mismatch error")
 		}
 
 		if got, want := err.Error(), "does not match this world"; !strings.Contains(got, want) {
@@ -458,7 +458,7 @@ func TestSnapshotMismatchGates(t *testing.T) {
 
 		err = other.RestoreState(data)
 		if err == nil {
-			t.Fatalf("RestoreState with mismatched radius: got nil error, want a mismatch error")
+			t.Fatal("RestoreState with mismatched radius: got nil error, want a mismatch error")
 		}
 
 		if got, want := err.Error(), "does not match this world"; !strings.Contains(got, want) {
@@ -481,7 +481,7 @@ func TestSnapshotMismatchGates(t *testing.T) {
 
 		err := other.RestoreState([]byte("not json"))
 		if err == nil {
-			t.Fatalf("RestoreState with garbage data: got nil error, want a decode error")
+			t.Fatal("RestoreState with garbage data: got nil error, want a decode error")
 		}
 	})
 }

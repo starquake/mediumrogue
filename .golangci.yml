@@ -1,31 +1,156 @@
 # Adapted from topbanana's config: the same strict posture, minus the linters
-# tied to machinery this repo does not have (sqlc, templates). The version
-# pin lives in the Makefile (GOLANGCI_VERSION) and .github/workflows/ci.yml.
+# tied to machinery this repo does not have (sqlc, templates, protobuf,
+# tracing). The version pin lives in the Makefile (GOLANGCI_VERSION) and
+# .github/workflows/ci.yml.
+#
+# An EXPLICIT enable list, not `default: all` (#334): an upgrade then adds no
+# linter behind our backs, and a rejected linter stays commented in place with
+# its reason instead of vanishing from the file.
 version: "2"
 linters:
-  default: all
-  disable:
-    # Deliberate omissions:
-    - depguard        # no import restrictions yet
-    - exhaustruct     # zero values are idiomatic for our option structs
-    - ireturn         # http.Handler constructors return interfaces by design
-    - varnamelen      # short names are fine at hex-math altitude
-    - wsl             # deprecated in favor of wsl_v5
-    - noinlineerr     # inline `if err :=` is house style here
-    - funcorder       # constructor-after-use ordering is fine in small files
-    - gomodguard      # deprecated; gomodguard_v2 (enabled via default: all) replaces it
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - decorder
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
+    - embeddedstructfieldcheck
+    - err113
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - forcetypeassert
+    - funcorder
+    - gocheckcompilerdirectives
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocritic
+    - gocyclo
+    - godoclint
+    - godot
+    - godox
+    - goheader
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - grouper
+    - iface
+    - importas
+    - inamedparam
+    - ineffassign
+    # - interfacebloat # disabled — keep interfaces decent by judgement
+    - intrange
+    - iotamixing
+    # - ireturn      # Caching causes issues with this linter
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - modernize
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - nlreturn
+    - noctx
+    - nolintlint
+    # - nonamedreturns # disabled — named returns clarify some helpers (topbanana parity, #334)
+    - nosprintfhostport
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - predeclared
+    - reassign
+    - recvcheck
+    - revive
+    - staticcheck
+    - testableexamples
+    - testifylint
+    - testpackage
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - whitespace
+    - wrapcheck
   settings:
-    revive:
-      rules:
-        - name: exported
-          disabled: false
-    cyclop:
-      max-complexity: 15
     gocognit:
       min-complexity: 20
+    gocyclo:
+      min-complexity: 20
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
     lll:
       line-length: 120
+    revive:
+      # The FULL rule set, minus rules another linter already owns. A `rules:`
+      # list without enable-all-rules REPLACES the default set rather than
+      # adding to it — which is how this repo ran revive with exactly one rule
+      # for a while, silently dropping receiver-naming and var-naming that
+      # .claude/rules/go-style.md documents as house rules (#334).
+      enable-all-rules: true
+      rules:
+        - name: cognitive-complexity
+          disabled: true # Already covered by gocognit
+        - name: cyclomatic
+          disabled: true # Already covered by gocyclo
+        - name: line-length-limit
+          disabled: true # Already covered by lll, at 120
+        - name: max-public-structs
+          disabled: true # internal/protocol is definitionally many structs
+        - name: add-constant
+          exclude: ["**/*_test.go"]
+          arguments:
+            - maxLitCount: "3"
+              allow-strs: '"","%v: %w","err"'
+              allow-ints: "0,1,2"
+        - name: function-length
+          exclude: ["**/*_test.go"]
+        - name: confusing-naming
+          disabled: false
+          exclude:
+            - "**/export_test.go"
+        - name: dot-imports
+          exclude: ["**/*_test.go"]
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      # golangci-lint's incremental cache can intermittently miss the issue a
+      # nolint suppresses, making nolintlint flag a still-needed directive as
+      # "unused" and failing CI nondeterministically.
+      # Upstream bug: https://github.com/golangci/golangci-lint/issues/3228
+      allow-unused: true
+    godox:
+      keywords:
+        - TODO
+        - BUG
+        - FIXME
   exclusions:
+    paths:
+      # Claude Code agents run in git worktrees under .claude/worktrees/;
+      # without this golangci-lint scans those sibling checkouts and floods
+      # the run with phantom findings from the in-flight branch copies.
+      - .claude
     rules:
       # Test files may use long funcs, magic numbers, and unwrapped errors.
       # bodyclose: the shared get() helper closes bodies via t.Cleanup, which
@@ -39,8 +164,9 @@ linters:
           - wrapcheck
           - cyclop
           - gocognit
+          - gocyclo
           - bodyclose
+          - dupl
 formatters:
   enable:
     - gofmt
-    - goimports

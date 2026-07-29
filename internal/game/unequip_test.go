@@ -22,7 +22,7 @@ func TestUnequipOutsideBubbleTogglesOff(t *testing.T) {
 
 	closeInst, _ := w.EquippedSlotsForTest(me.EntityID)
 	if closeInst == 0 {
-		t.Fatalf("fighter join default left the close slot empty")
+		t.Fatal("fighter join default left the close slot empty")
 	}
 
 	// Equip the already-equipped item: toggles it OFF.
@@ -56,7 +56,7 @@ func TestUnequipInBubbleQueuesTurnConsumption(t *testing.T) {
 
 	closeInst, _ := w.EquippedSlotsForTest(idA)
 	if closeInst == 0 {
-		t.Fatalf("fighter join default left A's close slot empty")
+		t.Fatal("fighter join default left A's close slot empty")
 	}
 
 	if err := w.SubmitIntent(equipIntent(idA, tokA, closeInst)); err != nil {
@@ -103,7 +103,7 @@ func TestFistsFallbackDamageAfterUnequip(t *testing.T) {
 
 	closeInst, _ := w.EquippedSlotsForTest(playerID)
 	if closeInst == 0 {
-		t.Fatalf("fighter default left the close slot empty")
+		t.Fatal("fighter default left the close slot empty")
 	}
 
 	if err := w.SubmitIntent(equipIntent(playerID, token, closeInst)); err != nil {

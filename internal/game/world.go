@@ -1998,7 +1998,7 @@ func (w *World) quaffLocked(e *entity, health bool) error {
 // filtered to bubbleID == 0), but the check below stays explicit rather than
 // relying on that — cheap, and it fails safe if a future caller ever passes a
 // mixed set. Callers hold w.mu.
-func (w *World) regenPlayersLocked(members []*entity) {
+func (*World) regenPlayersLocked(members []*entity) {
 	for _, e := range members {
 		if e.kind != protocol.EntityPlayer || e.hp <= 0 {
 			continue
@@ -2477,7 +2477,7 @@ func (w *World) bubbleFloorElapsedLocked(b *bubble, now time.Time) bool {
 // movePhaseLocked's hasOpposing check blocks it (waits, path retained), and
 // player melee arrives as an entity-targeted attack intent instead
 // (resolveEntityTargetedLocked). Callers hold w.mu.
-func (w *World) collectMeleeAttacksLocked(
+func (*World) collectMeleeAttacksLocked(
 	byHex map[protocol.Hex][]*entity, members []*entity,
 ) ([]pendingAttack, map[int64]bool) {
 	var attacks []pendingAttack
@@ -3164,7 +3164,7 @@ func (w *World) resolveEntityTargetedLocked(
 // target, so a dual-wielded pair concentrates on one victim (mirroring
 // attackLocked's melee victim pick) instead of splitting a stack across
 // weapons via independent picks. Callers hold w.mu.
-func (w *World) stackVictimLocked(
+func (*World) stackVictimLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, attacker *entity, target protocol.Hex,
 ) *entity {
 	victims := opposingOccupants(byHex[target], attacker)

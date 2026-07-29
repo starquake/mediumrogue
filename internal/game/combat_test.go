@@ -350,7 +350,7 @@ func TestMeleeRandomVictimOnStackedHexIsReproducible(t *testing.T) {
 		b, bok := entityOfSnap(snap, idB)
 
 		if !aok || !bok {
-			t.Fatalf("both stacked players should survive a single hit")
+			t.Fatal("both stacked players should survive a single hit")
 		}
 
 		switch {

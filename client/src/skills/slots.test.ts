@@ -8,15 +8,15 @@ import { assign, defaultAssignment, EMPTY, reconcile, SLOT_COUNT, unslotted } fr
 // join no skill points, so no active is ever learnable in a browser and such a
 // spec could only ever skip.
 
-const FIVE = ["blink", "second-wind", "bulwark", "expose", "ember-nova"];
+const FIVE = ["evade", "second-wind", "bulwark", "expose", "ember-nova"];
 
 describe("defaultAssignment", () => {
   it("fills the bar with the first four learned actives", () => {
-    expect(defaultAssignment(FIVE)).toEqual(["blink", "second-wind", "bulwark", "expose"]);
+    expect(defaultAssignment(FIVE)).toEqual(["evade", "second-wind", "bulwark", "expose"]);
   });
 
   it("leaves the rest empty when you have learned fewer than four", () => {
-    expect(defaultAssignment(["blink"])).toEqual(["blink", EMPTY, EMPTY, EMPTY]);
+    expect(defaultAssignment(["evade"])).toEqual(["evade", EMPTY, EMPTY, EMPTY]);
   });
 
   it("is always exactly the bar's width", () => {
@@ -27,9 +27,9 @@ describe("defaultAssignment", () => {
 
 describe("reconcile", () => {
   it("keeps a stored assignment that is still valid", () => {
-    const stored = ["ember-nova", EMPTY, "blink", EMPTY];
+    const stored = ["ember-nova", EMPTY, "evade", EMPTY];
 
-    expect(reconcile(stored, FIVE).slice(0, 3)).toEqual(["ember-nova", "second-wind", "blink"]);
+    expect(reconcile(stored, FIVE).slice(0, 3)).toEqual(["ember-nova", "second-wind", "evade"]);
   });
 
   it("empties a slot naming a skill this character has not learned", () => {
@@ -38,16 +38,16 @@ describe("reconcile", () => {
     // reroll — not an edge one.
     const stored = ["ember-nova", EMPTY, EMPTY, EMPTY];
 
-    expect(reconcile(stored, ["blink"])).toEqual(["blink", EMPTY, EMPTY, EMPTY]);
+    expect(reconcile(stored, ["evade"])).toEqual(["evade", EMPTY, EMPTY, EMPTY]);
   });
 
   it("never displaces an assigned skill when a new one is learned", () => {
-    // Blink stays in slot 3. Silently pushing it out because you learned
+    // Evade stays in slot 3. Silently pushing it out because you learned
     // something else is what gets noticed mid-fight.
-    const stored = [EMPTY, EMPTY, "blink", EMPTY];
-    const got = reconcile(stored, ["blink", "bulwark"]);
+    const stored = [EMPTY, EMPTY, "evade", EMPTY];
+    const got = reconcile(stored, ["evade", "bulwark"]);
 
-    expect(got[2]).toBe("blink");
+    expect(got[2]).toBe("evade");
     expect(got[0]).toBe("bulwark");
   });
 
@@ -61,23 +61,23 @@ describe("reconcile", () => {
 
 describe("assign", () => {
   it("puts a skill in the chosen slot", () => {
-    expect(assign([EMPTY, EMPTY, EMPTY, EMPTY], 2, "blink")[2]).toBe("blink");
+    expect(assign([EMPTY, EMPTY, EMPTY, EMPTY], 2, "evade")[2]).toBe("evade");
   });
 
   it("never lets one skill occupy two slots", () => {
     // Otherwise assigning a skill that is already placed silently costs the
     // player a slot.
-    const got = assign(["blink", EMPTY, EMPTY, EMPTY], 3, "blink");
+    const got = assign(["evade", EMPTY, EMPTY, EMPTY], 3, "evade");
 
-    expect(got).toEqual([EMPTY, EMPTY, EMPTY, "blink"]);
+    expect(got).toEqual([EMPTY, EMPTY, EMPTY, "evade"]);
   });
 
   it("blanks a slot when given EMPTY", () => {
-    expect(assign(["blink", EMPTY, EMPTY, EMPTY], 0, EMPTY)[0]).toBe(EMPTY);
+    expect(assign(["evade", EMPTY, EMPTY, EMPTY], 0, EMPTY)[0]).toBe(EMPTY);
   });
 
   it("ignores a slot index outside the bar", () => {
-    const before = ["blink", EMPTY, EMPTY, EMPTY];
+    const before = ["evade", EMPTY, EMPTY, EMPTY];
 
     expect(assign(before, 9, "bulwark")).toEqual(before);
   });

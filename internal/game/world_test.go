@@ -300,7 +300,7 @@ func TestJoinArchivedRestoreNeverCrossesTokens(t *testing.T) {
 	}
 
 	if !w.ArchivedForTest(alice.Token) || !w.ArchivedForTest(bob.Token) {
-		t.Fatalf("both tokens must be archived after sweep")
+		t.Fatal("both tokens must be archived after sweep")
 	}
 
 	// Restore bob FIRST (opposite order from how they joined), then alice —

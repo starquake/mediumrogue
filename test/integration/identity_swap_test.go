@@ -90,7 +90,7 @@ func TestTwoClientsSweepBetweenNeverSwapIdentities(t *testing.T) {
 	}
 
 	if aliceRejoin.EntityID == bob.EntityID {
-		t.Fatalf("alice's restored entity id collided with bob's live entity id")
+		t.Fatal("alice's restored entity id collided with bob's live entity id")
 	}
 
 	waitForPresence(t, obs, aliceRejoin.EntityID, time.Now().Add(5*time.Second))

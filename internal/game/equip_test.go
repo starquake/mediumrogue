@@ -104,7 +104,7 @@ func twoPlayerBubble(t *testing.T, w *game.World) (int64, string, int64, string,
 	snap := step(t, w)
 
 	if !inCombat(t, snap, idA) || !inCombat(t, snap, idB) {
-		t.Fatalf("players did not form a shared bubble around the monster")
+		t.Fatal("players did not form a shared bubble around the monster")
 	}
 
 	return idA, tokA, idB, tokB, monsterID, snap
@@ -140,7 +140,7 @@ func TestEquipInBubbleQueuesClearsPathAppliesAfterTurn(t *testing.T) {
 	}
 
 	if closeInst, _ := w.EquippedSlotsForTest(idA); closeInst == instID {
-		t.Fatalf("close slot flipped before the bubble-turn resolved")
+		t.Fatal("close slot flipped before the bubble-turn resolved")
 	}
 
 	waiting := w.Snapshot().Bubbles[0].WaitingForIDs
@@ -455,11 +455,11 @@ func TestBubbleDissolveAppliesPendingEquip(t *testing.T) {
 	w.SetDisconnectGraceForTest(0)
 
 	if !w.SweepForTest(time.Now().Add(time.Minute)) {
-		t.Fatalf("sweep removed nobody; expected B to be swept")
+		t.Fatal("sweep removed nobody; expected B to be swept")
 	}
 
 	if inCombat(t, w.Snapshot(), idA) {
-		t.Fatalf("A still in combat after sweep; expected the bubble to dissolve")
+		t.Fatal("A still in combat after sweep; expected the bubble to dissolve")
 	}
 
 	// The queued swap applied at dissolve and is no longer pending. A's

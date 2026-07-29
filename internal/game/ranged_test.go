@@ -328,12 +328,12 @@ func TestRangedIntentIsLockIn(t *testing.T) {
 	clk.advance(time.Second)
 
 	if !w.PollTickForTest() {
-		t.Fatalf("world tick did not resolve on the forming poll")
+		t.Fatal("world tick did not resolve on the forming poll")
 	}
 
 	form := w.Snapshot()
 	if !inCombat(t, form, me.EntityID) {
-		t.Fatalf("player InCombat = false after forming poll, want true")
+		t.Fatal("player InCombat = false after forming poll, want true")
 	}
 
 	rogueHPBefore := entityHP(t, form, me.EntityID)
@@ -401,7 +401,7 @@ func TestRangedAndMeleeAccumulateSimultaneously(t *testing.T) {
 	snap := w.Snapshot()
 
 	if _, ok := entityOfSnap(snap, monsterID); ok {
-		t.Errorf("monster still alive, want removed (bow was lethal)")
+		t.Error("monster still alive, want removed (bow was lethal)")
 	}
 
 	// Re-derived for #91 (Rogue glance%): the victim here is a Rogue, and

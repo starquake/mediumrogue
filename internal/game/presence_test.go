@@ -30,7 +30,7 @@ func TestJoinStartsGraceClock(t *testing.T) {
 
 	got, ok := w.DisconnectedAtForTest(me.Token)
 	if !ok {
-		t.Fatalf("DisconnectedAtForTest: no entity for join token")
+		t.Fatal("DisconnectedAtForTest: no entity for join token")
 	}
 
 	if want := clk.now(); !got.Equal(want) {
@@ -66,7 +66,7 @@ func TestStreamOpenClose(t *testing.T) {
 
 	got, ok := w.DisconnectedAtForTest(me.Token)
 	if !ok {
-		t.Fatalf("DisconnectedAtForTest: no entity for token")
+		t.Fatal("DisconnectedAtForTest: no entity for token")
 	}
 
 	if want := clk.now(); !got.Equal(want) {
@@ -106,7 +106,7 @@ func TestSubmitIntentRefreshesGrace(t *testing.T) {
 
 	got, ok := w.DisconnectedAtForTest(me.Token)
 	if !ok {
-		t.Fatalf("DisconnectedAtForTest: no entity for token")
+		t.Fatal("DisconnectedAtForTest: no entity for token")
 	}
 
 	if want := clk.now(); !got.Equal(want) {
@@ -295,7 +295,7 @@ func TestSweepDissolvesBubble(t *testing.T) {
 	clk.advance(time.Second)
 
 	if !w.PollTickForTest() {
-		t.Fatalf("world tick did not resolve on the forming poll")
+		t.Fatal("world tick did not resolve on the forming poll")
 	}
 
 	snap := w.Snapshot()
@@ -304,7 +304,7 @@ func TestSweepDissolvesBubble(t *testing.T) {
 	}
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Fatalf("player InCombat = false after forming, want true")
+		t.Fatal("player InCombat = false after forming, want true")
 	}
 
 	// Player disconnects; advance past the grace and poll — the sweep removes the
@@ -313,7 +313,7 @@ func TestSweepDissolvesBubble(t *testing.T) {
 	clk.advance(presenceGrace + time.Second)
 
 	if !w.PollTickForTest() {
-		t.Fatalf("poll did not resolve on the sweeping pass")
+		t.Fatal("poll did not resolve on the sweeping pass")
 	}
 
 	snap = w.Snapshot()

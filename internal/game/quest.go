@@ -198,7 +198,7 @@ func (w *World) QuestAbandon(token string, questID int64) (string, error) {
 
 // holdsQuestLocked reports whether e currently holds q — personally, or
 // via their party.
-func (w *World) holdsQuestLocked(e *entity, q *quest) bool {
+func (*World) holdsQuestLocked(e *entity, q *quest) bool {
 	return q.holderEntity == e.id || (e.partyID != 0 && q.holderParty == e.partyID)
 }
 
@@ -257,7 +257,7 @@ func (w *World) questByIDLocked(id int64) *quest {
 }
 
 // resetQuestLocked puts a quest back on the board (abandon/dissolve/sweep).
-func (w *World) resetQuestLocked(q *quest) {
+func (*World) resetQuestLocked(q *quest) {
 	q.state = protocol.QuestAvailable
 	q.progress = 0
 	q.holderEntity = 0
