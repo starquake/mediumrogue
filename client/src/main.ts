@@ -74,6 +74,7 @@ import {
   EntityPlayer,
   HumanBonusSkillPoints,
   IntentAttack,
+  EvadeCooldownTurns,
   IntentMove,
   PlaybackSeconds,
   SkillAimHex,
