@@ -69,7 +69,7 @@ test("every tree renders real rows — the Survival tree is no longer empty", as
 // The filled-bar + trigger path needs a learned Evade, which requires skill
 // points a fresh join on the monster-free core server never has — covered by
 // the server SkillView test and window.game instead.
-test("the action bar is hidden with no learned actives", async ({ page }) => {
+test("the action bar is always visible, even with no learned actives", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("mediumrogue.identity", JSON.stringify({ entityId: 0, token: "", class: "fighter" }));
     localStorage.setItem("mediumrogue.seenControls", "1");
@@ -81,6 +81,10 @@ test("the action bar is hidden with no learned actives", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.game.me !== null && window.game.connected)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.game.skills.length)).toBeGreaterThan(0);
 
-  await expect(page.locator("#action-bar")).toBeHidden();
+  // Always visible since #322 slice 3: the globes and the evade ball flank it,
+  // so hiding it left them framing nothing and made the cluster jump when the
+  // first active was learned. Empty slots are also the affordance you
+  // right-click to fill.
+  await expect(page.locator("#action-bar")).toBeVisible();
   expect(await page.evaluate(() => window.game.armedSkill())).toBeNull();
 });

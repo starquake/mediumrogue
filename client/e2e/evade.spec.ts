@@ -36,10 +36,20 @@ test("Space arms evade, a click spends it, and the cooldown starts", async ({ pa
     throw new Error("no player hex");
   }
 
-  // Click a painted tile: that is what spends the arm.
-  const dest = await page.evaluate(() => window.game.skillTiles[0] ?? null);
+  // Click a painted tile that the CANVAS actually receives. The action bar,
+  // the globes and the chat panel sit over the map, so a tile behind one of
+  // them is painted but unclickable — hit-test rather than assuming.
+  const dest = await page.evaluate(() => {
+    for (const t of window.game.skillTiles) {
+      const at = window.game.hexToScreen?.(t.q, t.r);
+      if (at === undefined) continue;
+      const el = document.elementFromPoint(at.x, at.y);
+      if (el instanceof HTMLCanvasElement) return t;
+    }
+    return null;
+  });
   if (dest === null) {
-    throw new Error("evade armed but painted no tiles");
+    throw new Error("evade armed but painted no tile the canvas can receive");
   }
 
   expect(await page.evaluate(() => window.game.hexToScreen !== null)).toBe(true);

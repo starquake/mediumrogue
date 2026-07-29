@@ -1626,9 +1626,13 @@ async function start(): Promise<void> {
 
   function renderActionBar(): void {
     const filled = activeSlots();
-    // The bar appears once you have ANY active, even if some slots are empty —
-    // an empty slot is where you right-click to put something.
-    actionBarEl.classList.toggle("shown", learnedActives().length > 0);
+    // ALWAYS shown (#322 slice 3). It used to appear only once you had learned
+    // an active, which now leaves a fresh character with the globes and the
+    // evade ball flanking nothing, and makes the whole cluster jump the moment
+    // they learn their first skill. An empty slot is also where you
+    // right-click to assign one, so hiding the bar hides the affordance that
+    // fills it.
+    actionBarEl.classList.add("shown");
     window.game.actionSlots = [...assignment];
 
     actionSlotEls.forEach((el, i) => {

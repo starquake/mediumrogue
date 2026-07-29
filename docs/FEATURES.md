@@ -508,6 +508,11 @@ roll, so it is ARPG-legal on jewelry.
   - Refused while cooling with a **422** (`ErrPotionOnCooldown`). Persisted in
     the snapshot (**version 12**), because a restart handing back a free heal
     would be a real exploit.
+- **The action bar is always visible** (#322 slice 3): it used to appear only
+  once you had learned an active, which left a fresh character's globes and
+  evade ball framing nothing and made the whole cluster jump the moment the
+  first skill was learned. An empty slot is also the affordance you right-click
+  to fill, so hiding the bar hid the way to populate it.
 - **The globes** (#322): health left of the action bar, energy right, from the
   approved mockup (`docs/mockups/2026-07-28-health-evade-energy-globes.png`).
   Each shows `current/max` over its liquid, carries its draught's cooldown in
