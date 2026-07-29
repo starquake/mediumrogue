@@ -11,6 +11,10 @@
 // rests on; waiting is the deliberate, unhurried act and can afford a reach.
 const EVADE_KEY = "Space";
 const WAIT_KEY = "Period";
+// R heals, E restores energy (#322) — the two always-available draughts. Next
+// to the movement hand, since both are panic responses.
+const QUAFF_HEALTH_KEY = "KeyR";
+const QUAFF_ENERGY_KEY = "KeyE";
 const INVENTORY_KEY = "KeyI";
 // `c` is a second mnemonic for the character panel ("character" / "inventory"),
 // alongside `i`: #273 briefly repurposed it to camera-recenter, but #274's pure
@@ -37,6 +41,13 @@ export interface KeyCallbacks {
    * Escape. The handler owns all of that; this only reports the key.
    */
   onEvade: () => void;
+  /**
+   * `R` / `E`: drink the always-available health or energy draught (#322).
+   * No item and no target — the only gate is each draught's own cooldown, and
+   * the server owns that.
+   */
+  onQuaffHealth: () => void;
+  onQuaffEnergy: () => void;
   /**
    * `i` or `c` (two mnemonics, "inventory" / "character", same action): toggle
    * the character/inventory panel (inventory-slots milestone, gear keystone
@@ -108,6 +119,18 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
 
     if (ev.code === WAIT_KEY) {
       callbacks.onWait();
+
+      return;
+    }
+
+    if (ev.code === QUAFF_HEALTH_KEY) {
+      callbacks.onQuaffHealth();
+
+      return;
+    }
+
+    if (ev.code === QUAFF_ENERGY_KEY) {
+      callbacks.onQuaffEnergy();
 
       return;
     }

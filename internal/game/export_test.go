@@ -364,6 +364,15 @@ func (w *World) SetSpeciesForTest(id int64, species string) {
 	w.withEntityForTest(id, func(e *entity) { e.species = species })
 }
 
+// MaxEnergyForTest reads an entity's energy capacity (#322).
+func (w *World) MaxEnergyForTest(id int64) int {
+	var maxEnergy int
+
+	w.withEntityForTest(id, func(e *entity) { maxEnergy = e.maxEnergy })
+
+	return maxEnergy
+}
+
 // EnergyForTest reads an entity's current energy pool (#322).
 func (w *World) EnergyForTest(id int64) int {
 	var energy int

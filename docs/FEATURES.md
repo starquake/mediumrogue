@@ -495,6 +495,26 @@ roll, so it is ARPG-legal on jewelry.
   `SanctuaryRadius`, guarded against landing on/adjacent to a living
   monster — same `spawnHexLocked` tiers as a fresh join, Q9); the camera
   **follows** the player, so it re-centres on the respawn automatically.
+- **The health and energy draughts** (#322): always available, on `R` and `E`.
+  **No item, no stack, no inventory slot** — a cooldown is the entire price,
+  which is why the intent carries no item id. Each restores
+  `protocol.PotionRestorePercent` (40%) of that pool's **maximum** — a share
+  rather than a flat amount, so it keeps its value as pools grow — and cools
+  for `protocol.PotionCooldownTurns` (5) turns.
+  - **The two cooldowns are independent**: draining energy in a fight must not
+    also cost you the heal.
+  - **Legal inside a combat bubble, and immediate rather than queued as the
+    turn's action** — a panic response that costs your turn is not one.
+  - Refused while cooling with a **422** (`ErrPotionOnCooldown`). Persisted in
+    the snapshot (**version 12**), because a restart handing back a free heal
+    would be a real exploit.
+- **The globes** (#322): health left of the action bar, energy right, from the
+  approved mockup (`docs/mockups/2026-07-28-health-evade-energy-globes.png`).
+  Each shows `current/max` over its liquid, carries its draught's cooldown in
+  its **top inner corner** — so a cooling draught never hides the amount it is
+  refilling — and its key hint centred underneath, so the three readouts
+  separate by height. A tick rather than a number when ready, so the shape does
+  not jump.
 - **Energy** (#322): the action currency every active spends. The pool is the
   **inverse of the HP curve** — the squishy classes live on their skills, so
   they carry more: `FighterMaxEnergy` 60 / `RogueMaxEnergy` 80 /

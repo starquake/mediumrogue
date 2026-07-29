@@ -583,6 +583,28 @@ export async function submitThrow(
  * the shared sanctuary. No target hex (recall is self-targeted); the scroll is
  * consumed at resolution.
  */
+/**
+ * Drinks one of the two always-available draughts (#322). No item id and no
+ * target: there is nothing to own and nothing to aim at — the only gate is the
+ * draught's own cooldown, which the server holds. A refusal surfaces through
+ * the usual toast.
+ */
+export async function submitQuaff(
+  identity: Pick<Identity, "entityId" | "token">,
+  kind: string,
+): Promise<boolean> {
+  return postIntent({
+    entityId: identity.entityId,
+    token: identity.token,
+    target: { q: 0, r: 0 },
+    kind,
+    itemId: 0,
+    groundItemId: 0,
+    targetEntityId: 0,
+    skillId: "",
+  });
+}
+
 export async function submitRecall(
   identity: Pick<Identity, "entityId" | "token">,
   itemId: number,

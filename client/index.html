@@ -839,6 +839,85 @@
         font-variant-numeric: tabular-nums lining-nums;
       }
       #evade-ball.shown { display: flex; }
+      /* The health and energy globes (#322), flanking the action bar — the
+         ARPG layout from the approved mockup
+         (docs/mockups/2026-07-28-health-evade-energy-globes.png). Each carries
+         its own cooldown in its TOP INNER corner, so a cooling draught never
+         hides the amount it is refilling, and its key hint centred underneath
+         so all three readouts separate by height. */
+      .globe {
+        position: fixed;
+        bottom: 0.8rem;
+        z-index: 90;
+        width: 4.7rem;
+        height: 4.7rem;
+        border-radius: 50%;
+        border: 1px solid var(--dim);
+        box-shadow: inset 0 0 12px #00000080, 0 1px 3px #000;
+        display: none;
+        pointer-events: none;
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      .globe.shown { display: block; }
+      #globe-health { left: calc(50% - 11.6rem); --fill: #c2334e; }
+      #globe-energy { left: calc(50% + 6.9rem); --fill: #4a7fb5; }
+      /* The liquid is clipped, the rest of the globe is not — otherwise the
+         corner ball and the key badge get sliced by the rim. */
+      .globe .liquid {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        overflow: hidden;
+        background: #120c0f;
+      }
+      .globe .fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 0%;
+        background: var(--fill);
+      }
+      .globe .amount {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 0.8rem;
+        text-shadow: 0 1px 3px #000, 0 0 6px #000;
+      }
+      .globe .cd {
+        position: absolute;
+        z-index: 2;
+        top: -0.4rem;
+        width: 1.7rem;
+        height: 1.7rem;
+        border-radius: 50%;
+        border: 1px solid var(--dim);
+        background: rgba(10, 6, 8, 0.92);
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 0.7rem;
+        box-shadow: 0 1px 4px #000;
+      }
+      #globe-health .cd { right: -0.4rem; }
+      #globe-energy .cd { left: -0.4rem; }
+      .globe .key {
+        position: absolute;
+        bottom: -0.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 0 0.3rem;
+        border-radius: 3px;
+        background: #1b1114;
+        border: 1px solid var(--accent);
+        color: #fff;
+        font-size: 0.6rem;
+        line-height: 1rem;
+        font-weight: bold;
+      }
       /* The remaining turns, or a mark when it is ready. */
       #evade-ball .n {
         position: relative;
@@ -1533,7 +1612,15 @@
       <div class="aslot" data-slot="2"><span class="num">3</span><span class="face"></span></div>
       <div class="aslot" data-slot="3"><span class="num">4</span><span class="face"></span></div>
     </div>
-    <div id="evade-ball">
+    <div id="globe-health" class="globe">
+      <div class="liquid"><div class="fill"></div></div>
+      <div class="amount"></div><div class="cd">✓</div><div class="key">R</div>
+    </div>
+    <div id="globe-energy" class="globe">
+      <div class="liquid"><div class="fill"></div></div>
+      <div class="amount"></div><div class="cd">✓</div><div class="key">E</div>
+    </div>
+        <div id="evade-ball">
       <div class="sweep"></div><span class="n">✦</span><span class="hint">Space</span>
     </div>
     <div id="client-error" hidden></div>
@@ -1542,7 +1629,7 @@
     <div id="controls-overlay" hidden>
       <span class="close" id="controls-close">×</span>
       <h2>Controls</h2>
-      <div>Move click a tile · <kbd>Space</kbd> arm evade, then click a tile · <kbd>.</kbd> wait</div>
+      <div>Move click a tile · <kbd>Space</kbd> arm evade, then click a tile · <kbd>.</kbd> wait · <kbd>R</kbd>/<kbd>E</kbd> health/energy draught</div>
       <div>Camera follows you · scroll to zoom</div>
       <div>Panels <kbd>I</kbd>/<kbd>C</kbd> character · <kbd>K</kbd> skills · <kbd>Esc</kbd> close</div>
       <div style="margin-top:.5rem;color:var(--dim)">Chat: /help · /here · /quest &lt;id&gt;</div>

@@ -62,6 +62,9 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // the cooldown, and a wandering monster would only add a bubble that changes
   // what a click means.
   { name: "evade" },
+  // globes (#322): the two resource globes and the R/E draught keys.
+  // Monster-free — the subject is the HUD and the keys, not a fight.
+  { name: "globes" },
   // startclick (#317): the start screen's buttons must be bound before the
   // world loads. Asserted as an ordering rather than by racing a click — see
   // the spec's own comment for why racing it is not reproducible.

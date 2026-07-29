@@ -49,6 +49,7 @@ import {
   submitRecall,
   submitThrow,
   submitUnequip,
+  submitQuaff,
   submitUseSkill,
 } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
@@ -75,6 +76,8 @@ import {
   HumanBonusSkillPoints,
   IntentAttack,
   EvadeCooldownTurns,
+  IntentQuaffEnergy,
+  IntentQuaffHealth,
   EvadeRangeHex,
   IntentMove,
   PlaybackSeconds,
@@ -439,6 +442,36 @@ let curPlaybackMs = 0;
 const EVADE_SKILL_ID = "evade";
 
 /**
+ * Paints one resource globe (#322): the liquid at its fill level, the amount
+ * over it, and the draught's cooldown in the corner — a tick when it is ready,
+ * so the shape never changes as the number appears and vanishes.
+ */
+function renderGlobe(id: string, cur: number, max: number, readyIn: number): void {
+  const globe = document.getElementById(id);
+  if (globe === null) {
+    return;
+  }
+
+  globe.classList.add("shown");
+
+  const fill = globe.querySelector<HTMLElement>(".fill");
+  if (fill !== null) {
+    const pct = max > 0 ? Math.min(Math.max((cur / max) * 100, 0), 100) : 0;
+    fill.style.height = `${String(Math.round(pct))}%`;
+  }
+
+  const amount = globe.querySelector(".amount");
+  if (amount !== null) {
+    amount.textContent = `${String(cur)}/${String(max)}`;
+  }
+
+  const cd = globe.querySelector(".cd");
+  if (cd !== null) {
+    cd.textContent = readyIn > 0 ? String(readyIn) : "✓";
+  }
+}
+
+/**
  * Paints the evade ball (#322): a turn count while cooling, a mark when ready,
  * and a radial sweep that empties as the cooldown runs down — the same idiom
  * the action bar uses for its slots rather than a second one.
@@ -549,6 +582,8 @@ window.game = {
   slotMenuOpen: -1,
   energy: 0,
   maxEnergy: 0,
+  healthPotionReadyIn: 0,
+  energyPotionReadyIn: 0,
   evadeReadyIn: 0,
   died: false,
   pickupModal: { open: false, rows: [] },
@@ -2164,6 +2199,10 @@ async function start(): Promise<void> {
         window.game.skillPoints = mine.skillPoints ?? 0;
         window.game.energy = mine.energy ?? 0;
         window.game.maxEnergy = mine.maxEnergy ?? 0;
+        window.game.healthPotionReadyIn = mine.healthPotionReadyIn ?? 0;
+        window.game.energyPotionReadyIn = mine.energyPotionReadyIn ?? 0;
+        renderGlobe("globe-health", mine.hp, mine.maxHp, window.game.healthPotionReadyIn);
+        renderGlobe("globe-energy", window.game.energy, window.game.maxEnergy, window.game.energyPotionReadyIn);
         window.game.evadeReadyIn = mine.evadeReadyIn ?? 0;
         renderEvadeBall(window.game.evadeReadyIn);
         // The reachable set moves with the player and appears/disappears with
@@ -2443,7 +2482,19 @@ async function start(): Promise<void> {
     // Arming first is what makes the reach legible: the overlay appears with
     // the arm, so the limit is visible BEFORE committing rather than learned
     // from a refusal. Pressing it again cancels, as does Escape.
-    onEvade: (): void => {
+    // R / E: the two always-available draughts (#322). No item, no target,
+    // no arming — the cooldown is the only gate, and the server owns it.
+    onQuaffHealth: (): void => {
+      if (window.game.me !== null) {
+        void submitQuaff(identity, IntentQuaffHealth);
+      }
+    },
+    onQuaffEnergy: (): void => {
+      if (window.game.me !== null) {
+        void submitQuaff(identity, IntentQuaffEnergy);
+      }
+    },
+        onEvade: (): void => {
       if (window.game.me === null) {
         return;
       }
