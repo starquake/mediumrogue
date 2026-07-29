@@ -904,8 +904,13 @@
       }
       #globe-health .cd { right: -0.4rem; }
       #globe-energy .cd { left: -0.4rem; }
-      .globe .key {
+      /* The key cap every bottom-row control wears: the globes, the evade ball
+         and each action slot. One rule, so they stay the same size and sit on
+         the same line — the globes and the bar share bottom: 0.8rem, so an
+         identical -0.5rem puts all five caps at the same height. */
+      .keycap {
         position: absolute;
+        z-index: 3;
         bottom: -0.5rem;
         left: 50%;
         transform: translateX(-50%);
@@ -949,20 +954,8 @@
         fill: var(--fg);
       }
       #evade-ball .hud-glyph { width: 1.2rem; height: 1.2rem; fill: #fff; }
-            #evade-ball .hint {
-        position: absolute;
-        bottom: -0.55rem;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 0 0.25rem;
-        border-radius: 2px;
-        background: #1b1114;
-        border: 1px solid var(--accent);
-        color: #fff;
-        font-size: 0.55rem;
-        line-height: 0.9rem;
-      }
       #action-bar .aslot {
+        overflow: visible;
         width: 3rem;
         height: 3rem;
         border: 1px solid #3d222a;
@@ -975,7 +968,6 @@
         color: #3a222a;
         cursor: default;
       }
-      #action-bar .aslot .num { position: absolute; top: 0.1rem; left: 0.25rem; font-size: 0.55rem; color: var(--dim); z-index: 2; }
       /* The glyph is the slot's face (#304): "Second Wind" never fitted at
          0.6rem, and the name lives in the hover tooltip now. */
       #action-bar .aslot .glyph { width: 1.75rem; height: 1.75rem; }
@@ -1616,21 +1608,21 @@
       </div>
     </div>
     <div id="action-bar">
-      <div class="aslot" data-slot="0"><span class="num">1</span><span class="face"></span></div>
-      <div class="aslot" data-slot="1"><span class="num">2</span><span class="face"></span></div>
-      <div class="aslot" data-slot="2"><span class="num">3</span><span class="face"></span></div>
-      <div class="aslot" data-slot="3"><span class="num">4</span><span class="face"></span></div>
+      <div class="aslot" data-slot="0"><span class="num keycap">1</span><span class="face"></span></div>
+      <div class="aslot" data-slot="1"><span class="num keycap">2</span><span class="face"></span></div>
+      <div class="aslot" data-slot="2"><span class="num keycap">3</span><span class="face"></span></div>
+      <div class="aslot" data-slot="3"><span class="num keycap">4</span><span class="face"></span></div>
     </div>
     <div id="globe-health" class="globe">
       <div class="liquid"><div class="fill"></div></div>
-      <div class="amount"></div><div class="cd"></div><div class="key">R</div>
+      <div class="amount"></div><div class="cd"></div><div class="key keycap">R</div>
     </div>
     <div id="globe-energy" class="globe">
       <div class="liquid"><div class="fill"></div></div>
-      <div class="amount"></div><div class="cd"></div><div class="key">E</div>
+      <div class="amount"></div><div class="cd"></div><div class="key keycap">E</div>
     </div>
         <div id="evade-ball">
-      <div class="sweep"></div><span class="n"></span><span class="hint">Space</span>
+      <div class="sweep"></div><span class="n"></span><span class="hint keycap">Space</span>
     </div>
     <div id="client-error" hidden></div>
     <div id="toast" hidden></div>
