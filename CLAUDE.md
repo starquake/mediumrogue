@@ -151,6 +151,14 @@ drift between calls; use absolute paths or `cd` to the repo root before
 ## How work lands
 
 - **Everything lands via a pull request**, never a direct push to `main`.
+- **Every PR has an issue behind it**, linked from the PR body with
+  `Closes #NN`. Create the issue first if none exists — **including for chores
+  and docs PRs**, which are exactly the ones that get skipped. The board is
+  **issues-only**, so a PR with no ticket is invisible in the state machine:
+  it cannot be seen, filtered, or handed back and forth, and the board's
+  built-in **Linked pull requests** field — the only thing that shows "this
+  issue has a PR in flight" on a card — stays empty. (2026-07-28: four PRs
+  landed with no ticket and none of that work showed on the board.)
 - **Merges outrank builds.** In any pass that both merges and builds, land the
   merges first and branch the build off the freshly-merged `main` — work built
   on a stale base has to rebase. When two open PRs touch the same files, note
@@ -183,15 +191,43 @@ drift between calls; use absolute paths or `cd` to the repo root before
   user Project** (`https://github.com/users/starquake/projects/3`), not in
   labels, so the maintainer can drag a card from the board (web or mobile) and
   Claude can set the same value from the CLI. **Gate states**
-  (`Your input` / `Your sign-off`) stop the work and are the maintainer's;
-  **work states** (`Spec` / `Plan` / `Build`) mean proceed and are Claude's.
+  (`Your input` / `Your sign-off` / `Your review`) stop the work and are the
+  maintainer's; **work states** (`Spec` / `Plan` / `Build`) mean proceed and are Claude's.
   The test is the wording itself: **if the state says "your", it is a gate.**
-  `Backlog` is "filed, no baton yet"; `Done` is closed/merged.
+  `Backlog` is "filed, no baton yet"; `Done` is closed/merged. The flow:
+
+  ```
+  Backlog → Spec → Your input → Plan → Your sign-off → Build → Your review → Done
+  ```
+
+  **The two "your" gates around a build are different jobs, and conflating them
+  is what made the lane useless** (2026-07-28): `Your sign-off` comes **before**
+  the build — approve the spec, plan or mockup so work can start. `Your review`
+  comes **after** it — the work is done, its PR is open, and it is waiting for
+  `ready to merge`. Decide-the-design versus review-the-diff.
   **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
-  an issue state, and PRs are not board items.
+  an issue state, and **PRs are not board items**. The auto-add workflow must
+  filter `is:issue` or it drags every new PR onto the board unstatused (seen
+  with #323, #324 and #325 before the filter was corrected); a PR that slips
+  through is removed with `gh project item-delete`.
+  Two board **workflows** carry their weight and are configured in the project
+  UI, not the API — there is no create/update mutation, only read and delete:
+  **Item added → Backlog** (otherwise a newly filed issue lands in GitHub's
+  built-in **No Status** bucket, which is not one of our states and cannot be
+  deleted) and **Item closed → Done**.
+  Board access needs the `project` scope — `gh auth refresh -s project`; a
+  `repo`-only token reads issues fine and fails on every board call. A
+  user-level project also has to be **linked to the repository**
+  (`linkProjectV2ToRepository`) or it never appears under the repo at all,
+  which reads exactly like "there is no project".
   Read and write it through **`.claude/scripts/board.sh`**, which holds the
-  project/field/option node ids so they are in one place rather than pasted
-  into every skill:
+  project and field node ids in one place rather than pasted into every skill,
+  and resolves each **status option by NAME** at call time. That is deliberate:
+  reordering the board's columns REPLACES every option — new ids, and every
+  item's value silently cleared (learned the hard way, 2026-07-28). Names are
+  the stable handle; ids are not. If a reorder ever wipes the board, the values
+  have to be snapshotted first and restored after — the script cannot do it for
+  you:
 
   ```bash
   .claude/scripts/board.sh list "Build"        # issue numbers awaiting a build
@@ -219,6 +255,16 @@ drift between calls; use absolute paths or `cd` to the repo root before
   — never edit the previous in place**: the thread is the ticket's history, and
   appending keeps it readable in order. Nothing changed since the last one? Post
   nothing.
+- **One issue = one deliverable.** A ticket needing several PRs *in different
+  states* is several tickets: split it into **sub-issues** (the board carries
+  `Parent issue` and `Sub-issues progress`, and the auto-add-sub-issues workflow
+  is already on), each with one deliverable, one PR, one lane position. The
+  parent then reports progress instead of pretending to be in three states at
+  once. Do **not** split when one deliverable merely needs a follow-up PR —
+  there the issue's state names the next action on the whole issue, and per-PR
+  state lives on the PRs as labels and checks. `Your review` accordingly means
+  "everything this issue needs is in a PR awaiting merge"; if work remains after
+  that PR, the issue stays in `Build`.
 - **Milestone slices are designed before they're built**: the spec and the
   implementation plan live **in the GitHub issue** (the "Design slice" issue
   template, `.github/ISSUE_TEMPLATE/design-slice.md`) — write the spec,
@@ -250,10 +296,13 @@ drift between calls; use absolute paths or `cd` to the repo root before
   **github.com `/raw/` route**
   (`![mockup](https://github.com/starquake/mediumrogue/raw/<branch>/docs/mockups/<file>.png)`).
   GitHub has no upload API for issue attachments, so the repo is the image
-  host; and because the repo is private, the URL form matters — only
-  github.com routes carry the viewer's session, so a
-  `raw.githubusercontent.com` embed renders as a broken icon (verified
-  2026-07-16, PR #120).
+  host. **Keep the `/raw/` form.** It was originally required because the repo
+  was private — only github.com routes carry the viewer's session, so a
+  `raw.githubusercontent.com` embed rendered as a broken icon for everyone
+  (verified 2026-07-16, PR #120). The repo went **public on 2026-07-28**, so
+  that constraint has lifted and both forms now resolve; the rule stays anyway,
+  because one documented form means no per-embed decision, and churning image
+  URLs is how these embeds broke the last time.
 - **AI-authored GitHub content is marked as such**: any issue, pull request, or
   comment Claude creates on the maintainer's behalf (via `gh issue create`,
   `gh pr create`, `gh issue comment`/`gh pr comment --body-file`) opens with a

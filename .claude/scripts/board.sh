@@ -19,6 +19,7 @@ set -euo pipefail
 
 PROJECT_NUMBER=3
 PROJECT_OWNER=starquake
+PROJECT_REPO=mediumrogue
 PROJECT_ID="PVT_kwHOAA_wQM4BeuXF"
 STATUS_FIELD_ID="PVTSSF_lAHOAA_wQM4BeuXFzhZGbpQ"
 
@@ -46,13 +47,20 @@ option_id() {
 
 # Item id for an issue number, adding the issue to the project if it is missing
 # (a hand-filed issue may never have been added).
+#
+# Asks the ISSUE for its project items rather than listing the whole board.
+# `gh project item-list` pulls every item with its nested content on every call,
+# which is the single most expensive query here — enough of them exhausted the
+# 5000-point GraphQL budget in one afternoon (2026-07-28) while the REST budget
+# sat untouched at 4971/5000. This form costs a fraction of that.
 item_id() {
   local issue="$1" id
-  id=$(gh project item-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --limit 200 --format json \
-        --jq ".items[] | select(.content.number==$issue) | .id" 2>/dev/null | head -1)
+  id=$(gh api graphql -f query="{ repository(owner:\"$PROJECT_OWNER\", name:\"$PROJECT_REPO\"){
+        issue(number: $issue){ projectItems(first:10){ nodes{ id project{ number } } } } } }" \
+      --jq ".data.repository.issue.projectItems.nodes[] | select(.project.number==$PROJECT_NUMBER) | .id" 2>/dev/null | head -1)
   if [ -z "$id" ]; then
     id=$(gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" \
-          --url "https://github.com/$PROJECT_OWNER/mediumrogue/issues/$issue" \
+          --url "https://github.com/$PROJECT_OWNER/$PROJECT_REPO/issues/$issue" \
           --format json --jq .id)
   fi
   printf '%s' "$id"
@@ -69,8 +77,10 @@ case "${1:-}" in
     echo "#$issue -> $want"
     ;;
   get)
-    gh project item-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --limit 200 --format json \
-      --jq ".items[] | select(.content.number==$2) | .status // \"(unset)\""
+    gh api graphql -f query="{ repository(owner:\"$PROJECT_OWNER\", name:\"$PROJECT_REPO\"){
+        issue(number: $2){ projectItems(first:10){ nodes{ project{ number }
+          fieldValueByName(name:\"Status\"){ ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }" \
+      --jq ".data.repository.issue.projectItems.nodes[] | select(.project.number==$PROJECT_NUMBER) | .fieldValueByName.name // \"(unset)\""
     ;;
   list)
     gh project item-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --limit 200 --format json \
