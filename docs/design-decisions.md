@@ -1131,3 +1131,41 @@ The identity docs still say "chunky retro… old-school roguelike charm rather
 than modern polish", and a book serif leans against that. That tension was named
 in the ticket rather than resolved quietly, and the maintainer chose the book
 serif with it on the table.
+
+## Evade is a mechanic, not a skill *(built 2026-07-29, #322 slice 1)*
+
+Blink was a learnable active on the Survival tree: a 3-hex reposition on a
+3-turn cooldown, gated behind a prerequisite and a skill point. It is now
+**Evade**, which everyone has from the first turn, triggered by `Space`.
+
+**Why it stopped being a skill.** A get-out-of-trouble button that some builds
+own and others do not is a build decision about whether you get to play the
+dodge game at all. Making it universal moves it from the tree into the
+vocabulary — every player has the same escape, and the tree keeps deciding what
+you *become* rather than whether you can react.
+
+Three things fell out of that, each of which is the interesting part:
+
+- **"Universal" is registry data, not a branch in the combat path.** The active
+  gate asks whether the skill is in `e.learned`, which refuses a mechanic by
+  construction. A `universal` flag on the registry entry bypasses that gate and
+  also drops the row from the skill panel — a panel about what you can become
+  has nothing to say about something you already are.
+- **It needed its own wire field.** No `SkillView` means no cooldown on the
+  bundle, so the HUD ball had nothing to draw. `Entity.EvadeReadyIn` carries it,
+  own-only like `Skills`. The number itself moved to
+  `protocol.EvadeCooldownTurns` so the server gate and the ball's sweep cannot
+  drift apart.
+- **The keypress has no target, so the cursor is the aim.** Blink was
+  hex-aimed: you clicked a destination. `Space` supplies none, so the pointer
+  does — and with the cursor off-map it does nothing rather than guessing at a
+  direction. Wait moved to `.`, the roguelike convention: the panic button
+  should have the key a hand already rests on.
+
+**Walls still stop it; woods no longer do.** Ordinary sight spends a forest cost
+against the skill's own range, which meant a single intervening forest hex
+refused any evade of two hexes or more — in exactly the terrain an escape is
+most wanted (#313 found this). Evade now asks only whether a rock stands in the
+ray. Rock staying real cover is the decided inversion of the classic ARPG blink
+and keeps its test; the forest cost was never a decision, just a side effect of
+reusing the sight budget.
