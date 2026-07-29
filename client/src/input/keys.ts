@@ -31,9 +31,10 @@ export interface KeyCallbacks {
    */
   onWait: () => void;
   /**
-   * SPACE: evade (#322) — the universal reposition, aimed at the hex under
-   * the cursor. A keypress carries no target, so the pointer supplies one;
-   * with the cursor off-map there is nothing to aim at and this is a no-op.
+   * SPACE: ARM evade (#322) — the universal reposition. A keypress carries no
+   * destination, so this only arms: the reachable tiles light up and the next
+   * map click picks the hex and spends it. Pressing it again cancels, as does
+   * Escape. The handler owns all of that; this only reports the key.
    */
   onEvade: () => void;
   /**

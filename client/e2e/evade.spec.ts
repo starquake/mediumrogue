@@ -3,8 +3,8 @@ import { expect, test } from "@playwright/test";
 import { continueIfReturning } from "./helpers";
 
 // Evade (#322): the mechanic everyone has. This is e2e rather than a unit test
-// because the whole point is the KEY — a keypress that carries no destination,
-// aimed by wherever the pointer happens to be. Neither half exists below the
+// because the whole point is the INTERACTION — a key that arms, an overlay that
+// shows the reach, and a click that spends it. None of those exist below the
 // browser.
 //
 // Every wait is metered on game state (window.game fields flipping), never
