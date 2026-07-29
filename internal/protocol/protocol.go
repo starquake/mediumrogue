@@ -304,6 +304,16 @@ const (
 	MonsterMaxHP = 10
 )
 
+// EvadeCooldownTurns is how many turns must pass between evades (#322). Here
+// rather than in the skill registry because BOTH sides need it: the server
+// gates the intent on it, and the HUD ball's radial sweep is drawn from it.
+const EvadeCooldownTurns = 3
+
+// EvadeRangeHex is how far an evade may carry you (#322). Both sides need it:
+// the server gates the intent on it, and the client paints the reachable tiles
+// so the aim is never a guess.
+const EvadeRangeHex = 3
+
 // RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
 // resolution while out of combat (bubbleID == 0) and below max HP — the
 // passive recovery layer (plan §9). It kills the inverted incentive where
@@ -716,6 +726,13 @@ type Entity struct {
 	Skills []SkillView `json:"skills"`
 	// SkillPoints is the viewer's own unspent bank; zero on other entities.
 	SkillPoints int `json:"skillPoints"`
+	// EvadeReadyIn is how many turns until the viewer may evade again (#322);
+	// 0 means ready now. Own-only, like Skills.
+	//
+	// It needs its own field precisely BECAUSE evade is universal: a mechanic
+	// everyone has is not a learnable skill, so it carries no SkillView, and
+	// the HUD ball would otherwise have no cooldown to render.
+	EvadeReadyIn int `json:"evadeReadyIn"`
 	// MonsterKind is the monster-kind registry id ("wolf", "dragon", ...);
 	// empty for players. Drives per-kind client rendering (color/glyph).
 	MonsterKind string `json:"monsterKind"`

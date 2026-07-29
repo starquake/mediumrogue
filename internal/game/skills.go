@@ -377,7 +377,9 @@ var skillDefs = []*skillDef{
 		id: skillEvade, name: "Evade", tree: treeSurvival, universal: true,
 		prereqs: []string{skillSurvivalist},
 		flavor:  "Here, then not.",
-		active:  &activeDef{kind: activeReposition, cooldownTurns: 3, rangeHex: 3},
+		active: &activeDef{
+			kind: activeReposition, cooldownTurns: protocol.EvadeCooldownTurns, rangeHex: protocol.EvadeRangeHex,
+		},
 	},
 
 	{

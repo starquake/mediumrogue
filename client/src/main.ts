@@ -74,6 +74,8 @@ import {
   EntityPlayer,
   HumanBonusSkillPoints,
   IntentAttack,
+  EvadeCooldownTurns,
+  EvadeRangeHex,
   IntentMove,
   PlaybackSeconds,
   SkillAimHex,
@@ -432,6 +434,37 @@ let curPlaybackMs = 0;
 // dev. Zoom is a whole-scene container scale, eased frame-rate-independently
 // toward a wheel-driven target, applied around the followed player (Grim-Dawn-
 // style follow camera). There is NO pan — the camera always follows the player.
+// Evade's registry id (#322). Universal, so it never appears in the skill
+// list the bundle carries — the client names it directly.
+const EVADE_SKILL_ID = "evade";
+
+/**
+ * Paints the evade ball (#322): a turn count while cooling, a mark when ready,
+ * and a radial sweep that empties as the cooldown runs down — the same idiom
+ * the action bar uses for its slots rather than a second one.
+ */
+function renderEvadeBall(readyIn: number): void {
+  const ball = document.getElementById("evade-ball");
+  if (ball === null) {
+    return;
+  }
+
+  ball.classList.add("shown");
+  ball.classList.toggle("ready", readyIn <= 0);
+  ball.classList.toggle("arming", window.game.armedSkill() === EVADE_SKILL_ID);
+
+  const label = ball.querySelector(".n");
+  if (label !== null) {
+    label.textContent = readyIn > 0 ? String(readyIn) : "✦";
+  }
+
+  const sweep = ball.querySelector(".sweep");
+  if (sweep instanceof HTMLElement) {
+    const fraction = Math.min(Math.max(readyIn / EvadeCooldownTurns, 0), 1);
+    sweep.style.setProperty("--sweep", `${String(Math.round(fraction * 360))}deg`);
+  }
+}
+
 const ZOOM_MIN = 0.5; // most zoomed-OUT (survey the big world)
 const ZOOM_MAX = 2.5; // most zoomed-IN
 const ZOOM_EASE_RATE = 12; // 1/s — higher eases toward targetZoom faster (1 - e^(-rate·dt))
@@ -513,6 +546,7 @@ window.game = {
   skillTiles: [],
   actionSlots: [],
   slotMenuOpen: -1,
+  evadeReadyIn: 0,
   died: false,
   pickupModal: { open: false, rows: [] },
   rejectPickupRow: (groundItemId: number): void => {
@@ -1589,8 +1623,22 @@ async function start(): Promise<void> {
   const drawSkillRange = (): void => {
     const s = armedSkill === null ? undefined : activeSlots().find((x) => x?.id === armedSkill);
     const def = s === undefined ? undefined : window.game.skills.find((k) => k.id === s.id);
+
+    if (def !== undefined) {
+      window.game.skillTiles = tactics.skillTargetTiles(tacticsCtx(), def.aim, def.rangeHex);
+      skillRangeLayer.update(window.game.skillTiles);
+
+      return;
+    }
+
+    // Evade is armed but has no action-bar slot to look a def up from, so its
+    // reach comes from the protocol constants (#322). Painted only while
+    // armed — an always-on overlay is wallpaper, and the player stops seeing
+    // it long before they need it.
     window.game.skillTiles =
-      def === undefined ? [] : tactics.skillTargetTiles(tacticsCtx(), def.aim, def.rangeHex);
+      armedSkill === EVADE_SKILL_ID
+        ? tactics.skillTargetTiles(tacticsCtx(), SkillAimHex, EvadeRangeHex)
+        : [];
     skillRangeLayer.update(window.game.skillTiles);
   };
 
@@ -2096,6 +2144,11 @@ async function start(): Promise<void> {
         }));
         renderActionBar();
         window.game.skillPoints = mine.skillPoints ?? 0;
+        window.game.evadeReadyIn = mine.evadeReadyIn ?? 0;
+        renderEvadeBall(window.game.evadeReadyIn);
+        // The reachable set moves with the player and appears/disappears with
+        // the cooldown, so it is repainted with every bundle.
+        drawSkillRange();
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
           defId: it.defId,
@@ -2365,6 +2418,22 @@ async function start(): Promise<void> {
         return;
       }
       void clickTarget(me.hex);
+    },
+    // SPACE ARMS evade (#322); the next map click picks the hex and spends it.
+    // Arming first is what makes the reach legible: the overlay appears with
+    // the arm, so the limit is visible BEFORE committing rather than learned
+    // from a refusal. Pressing it again cancels, as does Escape.
+    onEvade: (): void => {
+      if (window.game.me === null) {
+        return;
+      }
+
+      armedSkill = armedSkill === EVADE_SKILL_ID ? null : EVADE_SKILL_ID;
+      armedThrow = null;
+      window.game.armedThrow = null;
+      renderActionBar();
+      renderEvadeBall(window.game.evadeReadyIn);
+      drawSkillRange();
     },
     // `i` or `c` toggles the character/inventory panel, Escape closes it —
     // shares the typing-focus guard (input/keys.ts) so typing "i"/"c"/Escape

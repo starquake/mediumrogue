@@ -495,6 +495,26 @@ roll, so it is ARPG-legal on jewelry.
   `SanctuaryRadius`, guarded against landing on/adjacent to a living
   monster — same `spawnHexLocked` tiers as a fresh join, Q9); the camera
   **follows** the player, so it re-centres on the respawn automatically.
+- **Evade** (#322): a **mechanic everyone has**, not a learnable skill — no
+  point to spend, no row in the skills panel. `Space` **arms** it and the next map click spends it, repositioning you up to
+  `protocol.EvadeRangeHex` hexes on a `protocol.EvadeCooldownTurns`-turn
+  cooldown. Pressing `Space` again cancels, as does Escape.
+  - **Walls still stop it, woods no longer do.** Ordinary line of sight spends
+    `ForestSightCost` against a skill's own range, which refused every evade of
+    2+ hexes in forest — the terrain an escape is most wanted in. Evade asks
+    only whether a **rock** stands in the ray, so cover stays real (the decided
+    inversion of the genre default) while woods stop refusing the escape.
+  - **Arming paints the reachable tiles** — everything within
+    `protocol.EvadeRangeHex`, on the same overlay an armed active uses. That is
+    the point of arming: the limit is visible **before** committing, rather
+    than learned from a refusal. Nothing is painted until it is armed, because
+    an always-on overlay is wallpaper.
+  - **Its cooldown rides its own wire field**, `Entity.EvadeReadyIn` (own-only,
+    like `Skills`): a universal mechanic carries no `SkillView`, so the HUD ball
+    would otherwise have nothing to render.
+  - **`.` waits** — the roguelike convention. It took over from `Space`, which
+    evade now owns: the panic button gets the key a hand already rests on.
+  - Formerly the **Blink** skill; renamed with its numbers unchanged.
 - **Passive regen**: +1 HP per world turn while out of combat (never in a
   bubble, never above max). Removes death-as-the-only-heal.
 - **HUD stats line** (item 9, playtest batch 2; XP portion reworked for the

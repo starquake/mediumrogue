@@ -57,6 +57,11 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // about a fresh character's own state, and a wandering monster would only
   // add a bubble that blocks learning.
   { name: "skills" },
+  // evade (#322): the universal mechanic — Space arms it, a click on a painted
+  // tile spends it. Monster-free: the spec is about the arm, the overlay and
+  // the cooldown, and a wandering monster would only add a bubble that changes
+  // what a click means.
+  { name: "evade" },
   // throwables (#271): the targeted-consumable client paths (arm-then-throw,
   // recall). Monster-free — the spec asserts the ARM→click→throw and recall
   // consumption, not combat damage. STARTER_CONSUMABLES hands a fresh join a

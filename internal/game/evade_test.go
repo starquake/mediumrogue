@@ -402,3 +402,55 @@ func TestEvadeWorksInForest(t *testing.T) {
 		}
 	}
 }
+
+// TestEvadeReadyInReachesTheOwnersBundle: evade is universal, so it has no
+// SkillView to carry its cooldown — the HUD ball reads this field instead, and
+// only the owner may see it.
+//
+//nolint:paralleltest // drives a shared world.
+func TestEvadeReadyInReachesTheOwnersBundle(t *testing.T) {
+	w := newWorld()
+
+	me, err := w.Join("", "evader", protocol.ClassRogue, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	other, err := w.Join("", "someone-else", protocol.ClassFighter, protocol.SpeciesDwarf)
+	if err != nil {
+		t.Fatalf("Join other: %v", err)
+	}
+
+	target := protocol.Hex{Q: me.Hex.Q + 1, R: me.Hex.R}
+	clearLine(w, me.Hex, target)
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentUseSkill,
+		SkillID: skillEvadeID, Target: target,
+	}); err != nil {
+		t.Fatalf("evade: %v", err)
+	}
+
+	w.ResolveTurnForTest()
+
+	find := func(snap protocol.TurnEvent, id int64) protocol.Entity {
+		for _, e := range snap.Entities {
+			if e.ID == id {
+				return e
+			}
+		}
+
+		t.Fatalf("entity %d missing from bundle", id)
+
+		return protocol.Entity{}
+	}
+
+	if got := find(w.SnapshotFor(me.Token), me.EntityID).EvadeReadyIn; got <= 0 {
+		t.Errorf("own EvadeReadyIn after evading = %d, want > 0", got)
+	}
+
+	// Own-only: the cooldown must not leak onto another player's row.
+	if got, want := find(w.SnapshotFor(other.Token), me.EntityID).EvadeReadyIn, 0; got != want {
+		t.Errorf("EvadeReadyIn on someone else's view of me = %d, want %d", got, want)
+	}
+}
