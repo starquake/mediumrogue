@@ -47,6 +47,11 @@ const ICONS = {
   bulwark: { file: "edged-shield.svg", author: "Lorc" },
   expose: { file: "targeting.svg", author: "Lorc" },
   "ember-nova": { file: "fire-ray.svg", author: "Lorc" },
+  // HUD glyphs for the #322 cluster. Not skill ids — these are the two
+  // always-available draughts, which have no registry entry at all, so the key
+  // is the intent's own vocabulary.
+  "quaff-health": { file: "health-potion.svg", author: "Delapouite" },
+  "quaff-energy": { file: "energise.svg", author: "Lorc" },
 };
 
 const svgDir = new URL("./svg/", import.meta.url);

@@ -940,7 +940,16 @@
         border-radius: 50%;
         background: conic-gradient(rgba(8, 5, 6, 0.85) var(--sweep, 0deg), transparent 0);
       }
-      #evade-ball .hint {
+      /* Vendored game-icons glyphs in the HUD (#322): drawn in the same ink as
+         the readouts they replace, and sized to their container. */
+      .hud-glyph {
+        width: 1.05rem;
+        height: 1.05rem;
+        display: block;
+        fill: var(--fg);
+      }
+      #evade-ball .hud-glyph { width: 1.2rem; height: 1.2rem; fill: #fff; }
+            #evade-ball .hint {
         position: absolute;
         bottom: -0.55rem;
         left: 50%;
@@ -1614,14 +1623,14 @@
     </div>
     <div id="globe-health" class="globe">
       <div class="liquid"><div class="fill"></div></div>
-      <div class="amount"></div><div class="cd">✓</div><div class="key">R</div>
+      <div class="amount"></div><div class="cd"></div><div class="key">R</div>
     </div>
     <div id="globe-energy" class="globe">
       <div class="liquid"><div class="fill"></div></div>
-      <div class="amount"></div><div class="cd">✓</div><div class="key">E</div>
+      <div class="amount"></div><div class="cd"></div><div class="key">E</div>
     </div>
         <div id="evade-ball">
-      <div class="sweep"></div><span class="n">✦</span><span class="hint">Space</span>
+      <div class="sweep"></div><span class="n"></span><span class="hint">Space</span>
     </div>
     <div id="client-error" hidden></div>
     <div id="toast" hidden></div>

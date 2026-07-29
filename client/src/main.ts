@@ -446,7 +446,19 @@ const EVADE_SKILL_ID = "evade";
  * over it, and the draught's cooldown in the corner — a tick when it is ready,
  * so the shape never changes as the number appears and vanishes.
  */
-function renderGlobe(id: string, cur: number, max: number, readyIn: number): void {
+// hudGlyph renders one vendored game-icons glyph at the size the HUD wants
+// (#322). Same source and licence as the action bar's icons — see
+// client/tools/glyph-icons — so a draught reads as itself rather than as a
+// tick mark.
+function hudGlyph(key: string): string {
+  const inner = GLYPH_ICON_SVG[key];
+
+  return inner === undefined
+    ? ""
+    : `<svg class="hud-glyph" viewBox="0 0 ${GLYPH_ICON_VIEWBOX} ${GLYPH_ICON_VIEWBOX}">${inner}</svg>`;
+}
+
+function renderGlobe(id: string, glyphKey: string, cur: number, max: number, readyIn: number): void {
   const globe = document.getElementById(id);
   if (globe === null) {
     return;
@@ -467,7 +479,11 @@ function renderGlobe(id: string, cur: number, max: number, readyIn: number): voi
 
   const cd = globe.querySelector(".cd");
   if (cd !== null) {
-    cd.textContent = readyIn > 0 ? String(readyIn) : "✓";
+    if (readyIn > 0) {
+      cd.textContent = String(readyIn);
+    } else {
+      cd.innerHTML = hudGlyph(glyphKey);
+    }
   }
 }
 
@@ -488,7 +504,11 @@ function renderEvadeBall(readyIn: number): void {
 
   const label = ball.querySelector(".n");
   if (label !== null) {
-    label.textContent = readyIn > 0 ? String(readyIn) : "✦";
+    if (readyIn > 0) {
+      label.textContent = String(readyIn);
+    } else {
+      label.innerHTML = hudGlyph(EVADE_SKILL_ID);
+    }
   }
 
   const sweep = ball.querySelector(".sweep");
@@ -2205,8 +2225,14 @@ async function start(): Promise<void> {
         window.game.maxEnergy = mine.maxEnergy ?? 0;
         window.game.healthPotionReadyIn = mine.healthPotionReadyIn ?? 0;
         window.game.energyPotionReadyIn = mine.energyPotionReadyIn ?? 0;
-        renderGlobe("globe-health", mine.hp, mine.maxHp, window.game.healthPotionReadyIn);
-        renderGlobe("globe-energy", window.game.energy, window.game.maxEnergy, window.game.energyPotionReadyIn);
+        renderGlobe("globe-health", IntentQuaffHealth, mine.hp, mine.maxHp, window.game.healthPotionReadyIn);
+        renderGlobe(
+          "globe-energy",
+          IntentQuaffEnergy,
+          window.game.energy,
+          window.game.maxEnergy,
+          window.game.energyPotionReadyIn,
+        );
         window.game.evadeReadyIn = mine.evadeReadyIn ?? 0;
         renderEvadeBall(window.game.evadeReadyIn);
         // The reachable set moves with the player and appears/disappears with
