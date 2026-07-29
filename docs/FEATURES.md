@@ -520,6 +520,13 @@ roll, so it is ARPG-legal on jewelry.
 - **HUD stats line** (item 9, playtest batch 2; XP portion reworked for the
   quadratic curve, fast-lane batch): `Lv L · (xp into this level)/(XP needed
   this level) XP · (q, r)` — my entity's hex, live per turn bundle.
+- **The start screen's buttons are bound the moment it is revealed** (#317):
+  its listeners attach when the screen is shown, not when the code later awaits
+  them — the awaits do not run until the engine and the whole map have loaded,
+  which used to leave the buttons painted, hover-responsive and **dead** for
+  that whole window, dropping any click that landed in it with no feedback.
+  `window.game.startBoundAtTiles` records how much map was on stage at bind
+  time (0 = bound first) so the ordering is testable without racing it.
 - **Client liveness on the HUD** (#170): the stats line ends with the last
   turn the client **received**, and — only when the client has fallen behind
   — a `⚠ stuck` marker. Two counters make that visible: `turnReceived` is

@@ -62,6 +62,10 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // the cooldown, and a wandering monster would only add a bubble that changes
   // what a click means.
   { name: "evade" },
+  // startclick (#317): the start screen's buttons must be bound before the
+  // world loads. Asserted as an ordering rather than by racing a click — see
+  // the spec's own comment for why racing it is not reproducible.
+  { name: "startclick" },
   // throwables (#271): the targeted-consumable client paths (arm-then-throw,
   // recall). Monster-free — the spec asserts the ARM→click→throw and recall
   // consumption, not combat damage. STARTER_CONSUMABLES hands a fresh join a

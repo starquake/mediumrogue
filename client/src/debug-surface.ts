@@ -117,6 +117,20 @@ export interface GameDebug {
   /** Whether the Start over confirmation is showing (#303). */
   startOverConfirmOpen: boolean;
   /**
+   * How many map tiles were on stage at the moment the start screen's buttons
+   * were BOUND (#317); -1 until they are.
+   *
+   * A number rather than a boolean because the interesting property is an
+   * ORDERING, and the ordering cannot be observed from outside: the listeners
+   * used to be attached only after the engine and the whole map had loaded,
+   * leaving the buttons painted and dead in between — but by the time a test
+   * can look, the map is built either way and both worlds appear identical.
+   * Recording the tile count AT BIND TIME makes the ordering a fact the client
+   * states rather than a race the test has to win: 0 means bound before the
+   * map, anything else means bound after it.
+   */
+  startBoundAtTiles: number;
+  /**
    * Tiles the currently armed active can be aimed at (#300); empty when
    * nothing is armed. A SUPERSET — it models neither line of sight nor
    * occupancy, matching what the overlay draws.

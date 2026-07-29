@@ -543,6 +543,7 @@ window.game = {
   armedThrow: null,
   startMode: "fresh",
   startOverConfirmOpen: false,
+  startBoundAtTiles: -1,
   skillTiles: [],
   actionSlots: [],
   slotMenuOpen: -1,
@@ -610,6 +611,21 @@ async function start(): Promise<void> {
   // the documented promise is that it joins straight through.
   const skipStart = cameFromCharacterLink();
   startScreenEl.hidden = skipStart;
+
+  // #317: bind the start screen's buttons the moment it is REVEALED, not at
+  // the moment the code gets round to awaiting them. These helpers attach
+  // their listeners synchronously when called, and the awaits below do not run
+  // until the engine and the ~43k-tile map have loaded — so calling them there
+  // left the buttons painted, hover-responsive and dead for that whole window,
+  // and a click landing in it was dropped with no feedback. Creating the
+  // promises here and awaiting them later is the whole fix.
+  //
+  // Both are bound even though only one half of the screen is visible: a
+  // hidden button cannot be clicked, and the #311 probe can swap the returning
+  // card for the creation form at any moment, as can Start over.
+  const enterPressed = skipStart ? null : waitForEnter();
+  const continueOrRestart = skipStart || isNewPlayer ? null : waitForContinueOrRestart();
+  window.game.startBoundAtTiles = window.game.tiles;
 
   // #311: a stored token proves nothing about the world currently running.
   // Ask before offering to continue — otherwise a world that was reset out
@@ -1004,12 +1020,12 @@ async function start(): Promise<void> {
   } else if (isNewPlayer || worldWasReset) {
     // worldWasReset: the probe above already replaced the card with the
     // creation form, so this player commits the same way a new one does.
-    await waitForEnter();
+    await enterPressed;
   } else {
     // A returning player commits with Continue. Start over clears the identity
     // and falls through to the creation form, so there is exactly one join
     // path either way.
-    const restart = await waitForContinueOrRestart();
+    const restart = await continueOrRestart;
     if (restart) {
       clearIdentity();
       activeIdentity = null; // the join below must not reclaim the old token
@@ -1017,7 +1033,7 @@ async function start(): Promise<void> {
       mustGet("creation").hidden = false;
       mustGet("start-hint").hidden = false;
       window.game.startMode = "fresh";
-      await waitForEnter();
+      await enterPressed;
     }
   }
   startScreenEl.hidden = true;
