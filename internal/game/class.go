@@ -19,6 +19,28 @@ func baseMaxHP(class string) int {
 	}
 }
 
+// baseMaxEnergy returns a class's level-1 energy pool (#322). Unknown classes
+// fall back to the rogue's middle value for the same reason baseMaxHP does:
+// only non-player entities and fixtures can reach it.
+func baseMaxEnergy(class string) int {
+	switch class {
+	case protocol.ClassFighter:
+		return protocol.FighterMaxEnergy
+	case protocol.ClassRogue:
+		return protocol.RogueMaxEnergy
+	case protocol.ClassMage:
+		return protocol.MageMaxEnergy
+	default:
+		return protocol.RogueMaxEnergy
+	}
+}
+
+// maxEnergyFor is the single source of truth for a class's energy pool at a
+// given level: the class base plus a flat per-level gain.
+func maxEnergyFor(class string, level int) int {
+	return baseMaxEnergy(class) + protocol.EnergyPerLevel*(level-1)
+}
+
 // maxHPFor is the single source of truth for a class's max HP at a given
 // level: the class base plus the front-loaded curve bonus (levelHPBonus).
 // Used for spawn/respawn HP, level-up scaling, and the wire.

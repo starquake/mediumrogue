@@ -107,6 +107,8 @@ var (
 
 	// ErrSkillOnCooldown is a use-skill intent fired before its ready turn.
 	ErrSkillOnCooldown = errors.New("skill is on cooldown")
+	// ErrNotEnoughEnergy: the active costs more than the caster has (#322).
+	ErrNotEnoughEnergy = errors.New("not enough energy")
 
 	// ErrNoLineOfSight is an active-skill target the caster cannot see: an
 	// active does not pass through walls (#161).
@@ -241,6 +243,11 @@ type entity struct {
 	species string
 	hp      int
 	maxHP   int
+	// energy is the action currency actives spend (#322); players only.
+	// maxEnergy follows class and level (maxEnergyFor), the same way maxHP
+	// does, and syncMaxEnergyLocked keeps it honest across a level-up.
+	energy    int
+	maxEnergy int
 	// xp is the entity's cumulative experience (players only; monsters stay 0).
 	// Level is derived from it via levelFor; on death it falls to the current
 	// level's floor (levelFloorXP).
@@ -892,11 +899,13 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	}
 
 	maxHP := maxHPFor(class, 1)
+	maxEnergy := maxEnergyFor(class, 1)
 
 	w.nextID++
 	e := &entity{
 		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
 		kind: protocol.EntityPlayer, name: name, class: class, species: species, hp: maxHP, maxHP: maxHP,
+		energy: maxEnergy, maxEnergy: maxEnergy,
 		// streams starts 0, disconnectedAt at join time: the removal-grace clock
 		// runs from the join so a client that joins but never opens a stream is
 		// eventually swept. The client opens its stream within ms (StreamOpened).
@@ -955,12 +964,15 @@ func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protoc
 
 	level := levelFor(rec.xp)
 	maxHP := maxHPFor(rec.class, level)
+	maxEnergy := maxEnergyFor(rec.class, level)
 
 	w.nextID++
 	e := &entity{
 		id: w.nextID, hex: spawn, token: token,
 		kind: protocol.EntityPlayer, name: rec.name, class: rec.class, species: rec.species,
 		xp: rec.xp, hp: maxHP, maxHP: maxHP,
+		// A restored character comes back rested, same as its HP (#322).
+		energy: maxEnergy, maxEnergy: maxEnergy,
 		equipped: rec.equipped, backpack: rec.backpack,
 		learned: rec.learned, skillPoints: rec.skillPoints,
 		pointsGrantedLevel: rec.pointsGrantedLevel, activeReadyTurn: rec.activeReadyTurn,
@@ -1938,7 +1950,8 @@ func (w *World) advanceTurnLocked() {
 	})
 }
 
-// regenPlayersLocked heals every out-of-combat player protocol.RegenPerTurn HP
+// regenPlayersLocked tops up both player pools once per turn (#322): HP by
+// protocol.RegenPerTurn and energy by protocol.EnergyRegenPerTurn
 // on a WORLD-domain turn resolution — the passive recovery layer (plan §9):
 // staying alive and out of a fight is now itself a way to top up HP, instead
 // of death (a full-HP respawn) being the only heal. It never fires for a
@@ -1951,11 +1964,21 @@ func (w *World) advanceTurnLocked() {
 // mixed set. Callers hold w.mu.
 func (w *World) regenPlayersLocked(members []*entity) {
 	for _, e := range members {
-		if e.kind != protocol.EntityPlayer || e.bubbleID != 0 {
+		if e.kind != protocol.EntityPlayer || e.hp <= 0 {
 			continue
 		}
 
-		if e.hp <= 0 || e.hp >= e.maxHP {
+		// BOTH pools come back in a bubble as well as out of one (#322
+		// decision 11). This is a real change to fight arithmetic, not a UI
+		// detail: bubbles previously had no healing at all, deliberately, and
+		// monsters still get none — only the Hydra heals, via its bite card.
+		// The asymmetry is chosen, and RegenPerTurn stays at 1 so the trickle
+		// cannot outpace a monster hitting for 3-9.
+		if e.energy < e.maxEnergy {
+			e.energy = min(e.energy+protocol.EnergyRegenPerTurn, e.maxEnergy)
+		}
+
+		if e.hp >= e.maxHP {
 			continue
 		}
 
@@ -1969,6 +1992,11 @@ func (w *World) regenPlayersLocked(members []*entity) {
 // for the next turn. Like resolveWorldTurnLocked it does NOT recompute — see that
 // method. Callers hold w.mu.
 func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.Time) {
+	// #322 decision 11: both pools regenerate inside a bubble too. Before the
+	// damage, mirroring the world domain's order — otherwise the same tick
+	// would heal differently depending on which domain you were resolved in.
+	w.regenPlayersLocked(members)
+
 	slain, diedThisTurn := w.resolveCombatLocked(members, playersOf(members), false)
 
 	// Kill XP belongs to the fight: every player who survived this bubble-turn
@@ -3347,6 +3375,16 @@ func syncMaxHPLocked(e *entity) {
 	}
 }
 
+// syncMaxEnergyLocked is syncMaxHPLocked's sibling for the energy pool (#322):
+// a level-up widens it, and the current value is clamped rather than topped up
+// — levelling is not a refill. Callers hold w.mu.
+func syncMaxEnergyLocked(e *entity) {
+	e.maxEnergy = maxEnergyFor(e.class, levelFor(e.xp))
+	if e.energy > e.maxEnergy {
+		e.energy = e.maxEnergy
+	}
+}
+
 // levelFloorXP returns the XP at the start of xp's current level (the
 // death floor: dying costs progress inside the level, never the level).
 func levelFloorXP(xp int) int { return xpFloorFor(levelFor(xp)) }
@@ -3459,6 +3497,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 		// Recompute maxHP from the class and post-floor level so a leveled player
 		// respawns with its full, level-scaled bar (via the same maxHPFor source).
 		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
+		e.maxEnergy = maxEnergyFor(e.class, levelFor(e.xp))
 		e.hp = e.maxHP
 		e.path = nil
 		e.pending = pendingItemAction{}
