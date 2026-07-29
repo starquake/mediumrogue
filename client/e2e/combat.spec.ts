@@ -219,7 +219,7 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   expect(await page.evaluate(() => window.game.me?.hex ?? null)).toEqual(hexAtFreeze);
   expect(await page.evaluate(() => window.game.inCombat)).toBe(true);
 
-  // SPACE = wait (item 11): the same own-hex move a click already
+  // `.` = wait (item 11; SPACE became evade in #322): the same own-hex move a click already
   // waits/cancels with. Pressing it must not move this entity, and — item
   // 6 — window.game.committedAction reports the wait glyph's shape
   // immediately. Dispatched as a synthetic keydown AND read back inside one
@@ -233,7 +233,7 @@ test("entering a combat bubble freezes locally while window.game.turn keeps adva
   // turn bundle" rule, working as designed) — a flake this atomic dispatch
   // avoids without changing that production behavior.
   const committed = await page.evaluate(() => {
-    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", bubbles: true, cancelable: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Period", bubbles: true, cancelable: true }));
 
     return window.game.committedAction;
   });
