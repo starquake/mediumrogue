@@ -68,9 +68,13 @@ test("Space arms evade, a click spends it, and the cooldown starts", async ({ pa
   expect(to, "evade should have moved the player off their hex").not.toEqual(from);
 
   // The ball is the only place the cooldown is visible, since a universal
-  // mechanic has no action-bar slot.
+  // mechanic has no action-bar slot. Ready draws a glyph and no text, cooling
+  // swaps in the count — so a number IS the "not ready" assertion. Matching on
+  // a digit rather than on "not the ready state" keeps it a real check: the
+  // ready state is an <svg> with empty textContent, which any typo also
+  // satisfies.
   await expect(page.locator("#evade-ball")).toBeVisible();
-  await expect.poll(() => page.locator("#evade-ball .n").textContent()).not.toBe("✦");
+  await expect.poll(() => page.locator("#evade-ball .n").textContent()).toMatch(/^\d+$/);
 
   // Cooling: the overlay clears, because tiles you cannot reach are a lie.
   await expect.poll(() => page.evaluate(() => window.game.skillTiles.length)).toBe(0);
