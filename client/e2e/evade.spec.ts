@@ -21,6 +21,11 @@ test("Space evades to the hex under the cursor and starts its cooldown", async (
   const ids = await page.evaluate(() => window.game.skills.map((s) => s.id));
   expect(ids, "evade is universal — it has no panel row to learn").not.toContain("evade");
 
+  // The reachable set is painted while evade is ready, so the aim is never a
+  // guess: everything within EvadeRangeHex of the player, minus their own hex.
+  const tilesReady = await page.evaluate(() => window.game.skillTiles.length);
+  expect(tilesReady, "evade's reachable tiles should be painted while it is ready").toBeGreaterThan(0);
+
   const from = await page.evaluate(() => window.game.me?.hex ?? null);
 
   // The pointer is the aim. Hover a few tiles to the right of centre, which is
@@ -47,6 +52,9 @@ test("Space evades to the hex under the cursor and starts its cooldown", async (
   // mechanic has no action-bar slot.
   await expect(page.locator("#evade-ball")).toBeVisible();
   await expect.poll(() => page.locator("#evade-ball .n").textContent()).not.toBe("✦");
+
+  // Cooling: the overlay clears, because tiles you cannot reach are a lie.
+  await expect.poll(() => page.evaluate(() => window.game.skillTiles.length)).toBe(0);
 });
 
 test("evade with the cursor off the map does nothing", async ({ page }) => {

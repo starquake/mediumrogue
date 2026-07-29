@@ -506,6 +506,10 @@ roll, so it is ARPG-legal on jewelry.
     2+ hexes in forest — the terrain an escape is most wanted in. Evade asks
     only whether a **rock** stands in the ray, so cover stays real (the decided
     inversion of the genre default) while woods stop refusing the escape.
+  - **The reachable tiles are painted while it is ready** — everything within
+    `protocol.EvadeRangeHex`, on the same overlay an armed active uses (an
+    armed skill still wins). Without it the reach is invisible and the aim is a
+    guess. Cleared while cooling, since tiles you cannot reach are a lie.
   - **Its cooldown rides its own wire field**, `Entity.EvadeReadyIn` (own-only,
     like `Skills`): a universal mechanic carries no `SkillView`, so the HUD ball
     would otherwise have nothing to render.
