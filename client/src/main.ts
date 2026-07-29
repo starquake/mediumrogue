@@ -1492,7 +1492,7 @@ async function start(): Promise<void> {
   // in learn order (assignment is automatic first-free-slot with no manual
   // reordering, so the layout is fully derived from the learned set — no
   // server slot state or snapshot bump needed). Keys 1–4 or a click arm the
-  // skill; the next map click sends it at that hex. Blink is the only active
+  // skill; the next map click sends it at that hex. Evade is the only active
   // today, so a player who has learned it sees slot 1 filled, 2–4 empty.
   const actionBarEl = mustGet("action-bar");
   const actionSlotEls = Array.from(actionBarEl.querySelectorAll<HTMLElement>(".aslot"));

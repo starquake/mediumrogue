@@ -9,7 +9,7 @@ import (
 
 // selfcast_test.go (#300): the self-effect active kind, end to end.
 //
-// Blink proved a targeted active works. These prove the OTHER half of the
+// Evade proved a targeted active works. These prove the OTHER half of the
 // descriptor: a kind with no target at all, whose whole behaviour is a call
 // into the timed-effect machinery the potions already use.
 

@@ -268,11 +268,11 @@ export const IntentUseSkill = "use-skill";
 export const IntentThrow = "throw";
 /**
  * IntentRecall consumes an owned recall consumable (IntentRequest.ItemID) to
- * teleport the user to a safe hex in the shared sanctuary — #271, "blink to
- * home". It reuses the teleport resolution the active-skill Blink introduced
+ * teleport the user to a safe hex in the shared sanctuary — #271, "evade to
+ * home". It reuses the teleport resolution the active-skill Evade introduced
  * (#161): the destination is a guarded safe hex (respecting occupancy /
  * StackCap), not a client-chosen target, so IntentRequest.Target is unused.
- * Resolved in the move phase like Blink; the scroll is consumed on a
+ * Resolved in the move phase like Evade; the scroll is consumed on a
  * successful recall.
  */
 export const IntentRecall = "recall";

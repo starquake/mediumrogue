@@ -400,7 +400,7 @@ func statViewsFor(def *itemDef) []protocol.StatView {
 // The same problem buff potions had (consumableEffectStatLines, above): an
 // active carries no rule cards — its behaviour is its trigger — so without this
 // its panel entry shows a flavor line and nothing else. A player reading "Here,
-// then not." learns neither that Blink moves them three hexes nor that it costs
+// then not." learns neither that Evade moves them three hexes nor that it costs
 // a cooldown.
 //
 // Derived, never authored, for the reason the whole file exists: an authored

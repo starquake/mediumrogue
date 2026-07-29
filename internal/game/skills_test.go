@@ -525,15 +525,18 @@ func TestSkillViewsAreNearSighted(t *testing.T) {
 }
 
 // TestActiveSkillViewCarriesState (#185): a learned active's SkillView carries
-// its cooldown, range, and live turns-until-ready so the action bar can render
-// it; a passive carries none of that.
+// its cooldown and live turns-until-ready so the action bar can render it; a
+// passive carries none of that.
+//
+// Uses Second Wind rather than Evade since #322: evade is universal, so it has
+// no panel row at all — see TestEvadeIsNotInTheSkillPanel.
 func TestActiveSkillViewCarriesState(t *testing.T) {
 	t.Parallel()
 
 	e := &entity{
 		kind: protocol.EntityPlayer, class: protocol.ClassFighter,
-		learned:         []string{skillSurvivalist, skillBlink},
-		activeReadyTurn: map[string]int64{skillBlink: 10},
+		learned:         []string{skillSurvivalist, skillSecondWind},
+		activeReadyTurn: map[string]int64{skillSecondWind: 10},
 	}
 
 	byID := map[string]protocol.SkillView{}
@@ -541,22 +544,18 @@ func TestActiveSkillViewCarriesState(t *testing.T) {
 		byID[v.ID] = v
 	}
 
-	blink := byID[skillBlink]
-	if !blink.Active {
-		t.Fatal("blink SkillView not marked active")
+	secondWind := byID[skillSecondWind]
+	if !secondWind.Active {
+		t.Fatal("second wind SkillView not marked active")
 	}
 
-	if got, want := blink.RangeHex, 3; got != want {
-		t.Errorf("blink range = %d, want %d", got, want)
-	}
-
-	if got, want := blink.CooldownTurns, 3; got != want {
-		t.Errorf("blink cooldown = %d, want %d", got, want)
+	if got, want := secondWind.CooldownTurns, 6; got != want {
+		t.Errorf("second wind cooldown = %d, want %d", got, want)
 	}
 
 	// ready turn 10, current turn 7 → 3 turns until ready.
-	if got, want := blink.TurnsUntilReady, 3; got != want {
-		t.Errorf("blink turnsUntilReady = %d, want %d", got, want)
+	if got, want := secondWind.TurnsUntilReady, 3; got != want {
+		t.Errorf("second wind turnsUntilReady = %d, want %d", got, want)
 	}
 
 	if survivalist := byID[skillSurvivalist]; survivalist.Active {

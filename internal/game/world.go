@@ -111,11 +111,11 @@ var (
 	// ErrNoLineOfSight is an active-skill target the caster cannot see: an
 	// active does not pass through walls (#161).
 	ErrNoLineOfSight = errors.New("no line of sight to target")
-	// ErrHexOccupied rejects an active-skill (blink) whose destination is held
+	// ErrHexOccupied rejects an active-skill (evade) whose destination is held
 	// by an opposing entity or already at StackCap — a teleport respects the
 	// same occupancy rule blockedFor applies to every ordinary mover (#196).
-	// Without it a blink onto a monster's hex was a permanent safe spot and a
-	// blink onto a full stack breached protocol.StackCap.
+	// Without it a evade onto a monster's hex was a permanent safe spot and a
+	// evade onto a full stack breached protocol.StackCap.
 	ErrHexOccupied = errors.New("target hex is occupied")
 	// ErrOutOfRange rejects an attack intent whose target is farther than the
 	// entity's ranged-weapon reach.
@@ -280,7 +280,7 @@ type entity struct {
 	// recallItem is this turn's queued recall (#271): the owned recall
 	// consumable's instance id, or 0 for none. Resolved in the move phase
 	// (resolveRecallsLocked) as a teleport to a safe sanctuary hex, reusing the
-	// Blink teleport path. Transient; never snapshotted, cleared on death.
+	// Evade teleport path. Transient; never snapshotted, cleared on death.
 	recallItem int64
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
@@ -2458,12 +2458,12 @@ func (w *World) collectMeleeAttacksLocked(
 func (w *World) movePhaseLocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool,
 ) {
-	// Actives resolve BEFORE ordinary movement (#161): a blink is the turn's
+	// Actives resolve BEFORE ordinary movement (#161): a evade is the turn's
 	// action, so its caster is not also a mover, and landing first means the
 	// destination is judged against the same pre-move board every other
 	// intent is judged against (#104).
 	w.resolveActivesLocked(byHex, members, attacked)
-	// Recall (#271) is a teleport like Blink — resolved here alongside actives,
+	// Recall (#271) is a teleport like Evade — resolved here alongside actives,
 	// before ordinary movement, reusing the same teleport mechanism.
 	w.resolveRecallsLocked(byHex, members, attacked)
 
@@ -2494,11 +2494,11 @@ func (w *World) movePhaseLocked(
 }
 
 // resolveActivesLocked applies every queued active-skill trigger (#161) and
-// starts its cooldown. Ordered by entity id so two blinks in one turn resolve
+// starts its cooldown. Ordered by entity id so two evades in one turn resolve
 // deterministically. Callers hold w.mu.
 //
 // A trigger is DROPPED, not deferred, if its caster attacked or died this
-// turn: the queue is one action per turn, and a stale blink firing a turn late
+// turn: the queue is one action per turn, and a stale evade firing a turn late
 // would teleport someone who has since chosen something else.
 // activeCasters picks the members with an active queued this turn, in id order
 // so resolution is reproducible regardless of map iteration.
@@ -2573,7 +2573,7 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 			continue
 		}
 
-		// #196: the board evolves as actives resolve — an earlier blink this
+		// #196: the board evolves as actives resolve — an earlier evade this
 		// same turn may have taken the destination's last slot. Re-check against
 		// the live board and DROP (no move, no cooldown) rather than teleport
 		// onto an opposing/over-cap hex; useSkillLocked already refused the
@@ -2582,7 +2582,7 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 
 		switch def.active.kind {
 		case activeReposition:
-			// #196: the board evolves as actives resolve — an earlier blink
+			// #196: the board evolves as actives resolve — an earlier evade
 			// this same turn may have taken the destination's last slot.
 			if blockedFor(e, byHex, target) {
 				continue
@@ -2601,7 +2601,7 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 		case activeTargetEffect:
 			// The victim may have died to this turn's attack phase, which
 			// resolves first. Debuffing a corpse is a wasted cooldown for no
-			// reason, so drop it the way a blocked blink drops.
+			// reason, so drop it the way a blocked evade drops.
 			victim, alive := w.entities[victimID]
 			if !alive || victim.hp <= 0 {
 				continue
@@ -2618,14 +2618,14 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 
 		// "to" is the caster's hex AFTER resolution, not the submitted target:
 		// they agree for a reposition, and for a self-cast the submitted target
-		// is the zero hex, which would read as a blink to the world origin.
+		// is the zero hex, which would read as a evade to the world origin.
 		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id, "from", from, "to", e.hex)
 	}
 }
 
 // startActiveCooldownLocked marks id ready again N turns from the turn being
 // resolved. Counts TURNS, whichever clock is ticking (activeDef). Shared by
-// both resolution phases so a blast's cooldown can never drift from a blink's.
+// both resolution phases so a blast's cooldown can never drift from a evade's.
 // Callers hold w.mu.
 func (w *World) startActiveCooldownLocked(e *entity, id string, a *activeDef) {
 	if e.activeReadyTurn == nil {

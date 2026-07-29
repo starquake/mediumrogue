@@ -747,7 +747,7 @@ var itemDefs = []*itemDef{
 	},
 	{
 		// A scroll of recall: read it and you are gone, whisked to a safe hex in
-		// the shared sanctuary. Reuses the Blink teleport (#161); the destination
+		// the shared sanctuary. Reuses the Evade teleport (#161); the destination
 		// is the sanctuary until per-player beds land. An escape tool, not an
 		// attack — no aim, no damage.
 		id: idScrollOfRecall, name: "Scroll of Recall", itemType: protocol.ItemTypeConsumable,

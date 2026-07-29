@@ -44,9 +44,9 @@ const (
 	skillTwinFangs   = "twin-fangs"
 	skillWandChorus  = "wand-chorus"
 
-	// Actives (#161). Blink is the first — the category exists so the second
+	// Actives (#161). Evade is the first — the category exists so the second
 	// one is content rather than another special case.
-	skillBlink = "blink"
+	skillEvade = "evade"
 
 	// Actives 2 (#300). Both are self-casts over rows the potions already
 	// use, which is the proof the descriptor was worth having: neither
@@ -100,7 +100,7 @@ type activeDef struct {
 // mechanism — see #300's wildfire-gate note: these pass only BECAUSE the
 // behaviour already exists for potions and thrown flasks.
 const (
-	// activeReposition moves the caster to the target hex (Blink, #161).
+	// activeReposition moves the caster to the target hex (Evade, #161).
 	activeReposition = "reposition"
 	// activeSelfEffect applies the def's timed effect to the CASTER (#300) —
 	// the same call a potion makes, with a cooldown instead of an inventory
@@ -129,7 +129,7 @@ const (
 	// aimSelf is a self-cast: no target at all. Validating it against a hex it
 	// never supplies would reject every cast.
 	aimSelf activeAim = protocol.SkillAimSelf
-	// aimHex is pointed at a hex — a Blink destination or a nova's ground
+	// aimHex is pointed at a hex — a Evade destination or a nova's ground
 	// zero.
 	aimHex activeAim = protocol.SkillAimHex
 	// aimEntity is pointed at another entity (Expose) — range, hostility and
@@ -197,6 +197,13 @@ type skillDef struct {
 	// active is non-nil for a triggerable skill (#161). Mutually exclusive
 	// with rules.
 	active *activeDef
+	// universal marks a skill EVERYONE has, always, without learning it
+	// (#322): it bypasses the learned gate in useSkillLocked and never
+	// appears in the skill panel, because there is nothing to learn and no
+	// point to spend. Its tree is inert — kept only so the registry shape
+	// stays uniform. Evade is the first; the mechanic is triggered by its own
+	// key rather than an action-bar slot.
+	universal bool
 	// flavor is the skill's authored lore line, and the only authored text on
 	// a skillDef since #171 — its mechanical line is rendered from the cards
 	// (statlines.go). Carries no numbers (validateFlavorHasNoStats).
@@ -365,9 +372,9 @@ var skillDefs = []*skillDef{
 		// cooldown — maintainer's defaults.
 		//
 		// Destination needs line of sight as well as range: it does NOT pass
-		// through walls, deliberately unlike the classic ARPG blink, so cover
+		// through walls, deliberately unlike the classic ARPG evade, so cover
 		// stays real.
-		id: skillBlink, name: "Blink", tree: treeSurvival,
+		id: skillEvade, name: "Evade", tree: treeSurvival, universal: true,
 		prereqs: []string{skillSurvivalist},
 		flavor:  "Here, then not.",
 		active:  &activeDef{kind: activeReposition, cooldownTurns: 3, rangeHex: 3},
@@ -380,7 +387,7 @@ var skillDefs = []*skillDef{
 		// make the consumable dead content, and the point of the slice is that
 		// actives cost no new vocabulary.
 		//
-		// Longer cooldown than Blink: a heal that returns every third turn is
+		// Longer cooldown than Evade: a heal that returns every third turn is
 		// attrition removed rather than managed.
 		id: skillSecondWind, name: "Second Wind", tree: treeSurvival,
 		prereqs: []string{skillSurvivalist},
@@ -392,7 +399,7 @@ var skillDefs = []*skillDef{
 	},
 	{
 		// Bulwark (#300): the Warding Tonic's row. Sits behind Hardy rather
-		// than beside Blink so the Survival tree has actual depth — this is
+		// than beside Evade so the Survival tree has actual depth — this is
 		// the tree's strongest defensive button and should cost the walk.
 		id: skillBulwark, name: "Bulwark", tree: treeSurvival,
 		prereqs: []string{skillHardy},
@@ -723,7 +730,9 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 		return ErrSkillNotActive
 	}
 
-	if !slices.Contains(e.learned, id) {
+	// A universal mechanic is not learned and cannot be — asking whether it is
+	// in e.learned would refuse every use (#322).
+	if !def.universal && !slices.Contains(e.learned, id) {
 		return ErrSkillNotLearned
 	}
 
@@ -750,24 +759,37 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 	// Aiming one at an occupied hex is the normal case — it is where the
 	// monsters are.
 	if def.active.kind == activeReposition {
-		if err := w.checkBlinkDestinationLocked(e, target); err != nil {
+		if err := w.checkEvadeDestinationLocked(e, target); err != nil {
 			return err
 		}
 	}
 
-	if w.sightBlockedLocked(e.hex, target, def.active.rangeHex) {
+	if w.activeSightBlockedLocked(def, e.hex, target) {
 		return ErrNoLineOfSight
 	}
 
 	return w.commitActiveLocked(e, id, &target, 0)
 }
 
-// checkBlinkDestinationLocked reports whether e may land on target: it must be
+// activeSightBlockedLocked answers the line-of-sight half of an active's
+// validation. Evade asks only whether a WALL is in the way (#322 decision 4):
+// the ordinary rule spends a forest cost against the skill's own range, which
+// refused any 2+ hex escape in woods — the terrain it was most needed in
+// (#313). Everything else keeps the ordinary rule. Callers hold w.mu.
+func (w *World) activeSightBlockedLocked(def *skillDef, from, to protocol.Hex) bool {
+	if def.universal && def.active.kind == activeReposition {
+		return w.hardSightBlockedLocked(from, to)
+	}
+
+	return w.sightBlockedLocked(from, to, def.active.rangeHex)
+}
+
+// checkEvadeDestinationLocked reports whether e may land on target: it must be
 // walkable, and it must have room under the occupancy rules an ordinary mover
 // obeys (#196 — occupancy is not negotiable). resolveActivesLocked re-checks
 // against the evolving board for the rare hex that fills between this window
 // and resolution. Callers hold w.mu.
-func (w *World) checkBlinkDestinationLocked(e *entity, target protocol.Hex) error {
+func (w *World) checkEvadeDestinationLocked(e *entity, target protocol.Hex) error {
 	if !w.walkableLocked(target) {
 		return ErrNotWalkable
 	}
@@ -876,6 +898,12 @@ func skillViewsLocked(e *entity, turn int64) []protocol.SkillView {
 	views := make([]protocol.SkillView, 0, len(skillDefs))
 
 	for _, def := range skillDefs {
+		// Universal mechanics are innate: nothing to learn, no point to spend,
+		// so they have no row in a panel about becoming something (#322).
+		if def.universal {
+			continue
+		}
+
 		learned := slices.Contains(e.learned, def.id)
 		if !learned && !learnableFor(e, def) {
 			continue

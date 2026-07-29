@@ -231,7 +231,7 @@ export function combatReach(ctx: TacticsCtx): { moves: Hex[]; melees: Hex[] } {
 
 /**
  * skillTargetTiles returns the tiles an ARMED active can be aimed at (#300),
- * so a player pressing Blink sees where it reaches instead of guessing and
+ * so a player pressing Evade sees where it reaches instead of guessing and
  * eating a 422.
  *
  * - **hex** — every walkable tile in range. Rock and water are excluded (never
@@ -242,7 +242,7 @@ export function combatReach(ctx: TacticsCtx): { moves: Hex[]; melees: Hex[] } {
  *   there is nothing to preview.
  *
  * PREVIEW ONLY, like every function in this file, and deliberately a SUPERSET.
- * It models neither line of sight nor occupancy, so a Blink onto a
+ * It models neither line of sight nor occupancy, so a Evade onto a
  * monster-held hex still appears selectable and is refused on submit with a
  * surfaced reason. That is the same fidelity the ranged attack wash already
  * has, and it is why the wire carries `aim` but not the behaviour kind: the

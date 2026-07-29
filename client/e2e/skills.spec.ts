@@ -66,7 +66,7 @@ test("every tree renders real rows — the Survival tree is no longer empty", as
 });
 
 // #185: the action bar stays hidden for a fresh player (no learned actives).
-// The filled-bar + trigger path needs a learned Blink, which requires skill
+// The filled-bar + trigger path needs a learned Evade, which requires skill
 // points a fresh join on the monster-free core server never has — covered by
 // the server SkillView test and window.game instead.
 test("the action bar is hidden with no learned actives", async ({ page }) => {

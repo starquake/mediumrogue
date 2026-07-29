@@ -256,7 +256,7 @@ func TestActiveStatLinesDescribeEveryActive(t *testing.T) {
 		id   string
 		want []string
 	}{
-		{skillBlink, []string{"Teleport Range 3", "Cooldown 3 turns"}},
+		{skillEvade, []string{"Teleport Range 3", "Cooldown 3 turns"}},
 		{skillSecondWind, []string{"+3 HP per turn for 3 turns, on yourself", "Cooldown 6 turns"}},
 		{skillBulwark, []string{"+25% Damage Resistance for 4 turns, on yourself", "Cooldown 6 turns"}},
 		{skillExpose, []string{"Range 4", "−20% Damage Resistance for 3 turns, on the target", "Cooldown 5 turns"}},

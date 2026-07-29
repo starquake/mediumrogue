@@ -14,10 +14,10 @@ import (
 // self-teleport to safety.
 //
 // Design: neither uses the free-outside/turn-inside inventory rule
-// (commitItemActionLocked). Like an attack or a Blink, they are combat actions
+// (commitItemActionLocked). Like an attack or a Evade, they are combat actions
 // resolved IN the turn pipeline against the evolving board, never applied
 // instantly — a throw needs the shared damage map and the turn rng, a recall
-// reuses Blink's teleport. They are the entity's whole turn (they clear any
+// reuses Evade's teleport. They are the entity's whole turn (they clear any
 // queued move/attack), and the flask/scroll is consumed at RESOLUTION, not at
 // submit, so a later intent in the same window cancels the throw and keeps the
 // item (latest intent wins). ARPG, not TTRPG (docs/game-identity.md): a throw's
@@ -183,12 +183,12 @@ func (w *World) resolveThrowsLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 // resolveRecallsLocked resolves every queued recall this pass, teleporting each
 // user to a safe hex in the shared sanctuary (spawnHexLocked — the same guarded
 // placement a join/respawn uses, so the destination is walkable, has room, and
-// is not on or beside a monster). It runs in the move phase alongside the Blink
+// is not on or beside a monster). It runs in the move phase alongside the Evade
 // teleport (resolveActivesLocked), reusing that mechanism: remove the user from
 // its old hex on the evolving board, place it on the destination, clear its
 // route.
 //
-// Recall is "blink to home" (#271): the destination is server-chosen (the
+// Recall is "evade to home" (#271): the destination is server-chosen (the
 // sanctuary is every player's shared home until per-player beds land), NOT a
 // client target, so there is no range/LOS check — a recall is meant to break
 // contact from anywhere. Occupancy is still respected (#196): spawnHexLocked
