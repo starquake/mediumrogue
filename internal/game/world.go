@@ -2661,6 +2661,12 @@ func (w *World) startActiveCooldownLocked(e *entity, id string, a *activeDef) {
 	}
 
 	e.activeReadyTurn[id] = w.turn + 1 + int64(a.cooldownTurns)
+
+	// The cost is spent HERE rather than at intent time (#322): both resolution
+	// phases funnel through this, so a charge can never drift from the cooldown
+	// it pairs with, and an active whose caster died before it resolved is
+	// never billed for.
+	e.energy = max(e.energy-a.energyCost, 0)
 }
 
 // resolveActiveBlastsLocked fires every queued area-damage active (#300) into

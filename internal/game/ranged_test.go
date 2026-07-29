@@ -363,8 +363,10 @@ func TestRangedIntentIsLockIn(t *testing.T) {
 	// resolved-turn melee attack too (confirmed via combat log: wolf base 3, dealt=1),
 	// so the expected loss is the halved hit, not the full one.
 	wantRogueLoss := game.MonsterDamageForTest("wolf") * protocol.GlanceDamagePercent / 100
-	if got, want := entityHP(t, snap, me.EntityID), rogueHPBefore-wantRogueLoss; got != want {
-		t.Errorf("rogue HP = %d, want %d (monster strikes back on the resolved turn, glanced)", got, want)
+	wantRogueHP := rogueHPBefore - wantRogueLoss + protocol.RegenPerTurn
+
+	if got, want := entityHP(t, snap, me.EntityID), wantRogueHP; got != want {
+		t.Errorf("rogue HP = %d, want %d (monster strikes back; the turn also regenerates)", got, want)
 	}
 }
 

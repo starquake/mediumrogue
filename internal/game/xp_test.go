@@ -275,7 +275,11 @@ func TestDeathFloorsXPKeepsLevel(t *testing.T) {
 
 	// The monster strikes the player dead; the player has no intent, so no
 	// monster dies this turn (pure death-floor, no kill award).
-	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf")) // exactly lethal
+	// Exactly lethal AFTER the turn's regen: since #322 decision 11 a bubble
+	// turn tops both pools up before the damage lands, so setting HP to the
+	// monster's damage alone leaves the player alive at 1 and this test's
+	// premise — a same-turn death — silently stops happening.
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf")-protocol.RegenPerTurn) // exactly lethal
 	w.SetPathForTest(monsterID, []protocol.Hex{me.Hex})
 	w.ResolveCombatOnlyForTest()
 
@@ -333,7 +337,11 @@ func TestPlayerDyingSameTurnAsMonsterGetsNoKillXP(t *testing.T) {
 
 	// Now arrange the mutual kill: one hit each is lethal in both directions.
 	w.SetHPForTest(monsterID, game.ItemDamageForTest("iron-sword"))
-	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf"))
+	// Exactly lethal AFTER the turn's regen: since #322 decision 11 a bubble
+	// turn tops both pools up before the damage lands, so setting HP to the
+	// monster's damage alone leaves the player alive at 1 and this test's
+	// premise — a same-turn death — silently stops happening.
+	w.SetHPForTest(me.EntityID, game.MonsterDamageForTest("wolf")-protocol.RegenPerTurn)
 	w.SetXPForTest(me.EntityID, 190)
 
 	if err := w.SubmitIntent(entityAttackIntent(me.EntityID, me.Token, monsterID)); err != nil {

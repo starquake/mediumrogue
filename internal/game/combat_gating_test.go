@@ -165,8 +165,12 @@ func TestBubbleAdvancesOnLockIn(t *testing.T) {
 		t.Errorf("monster HP = %d, want %d (lock-in must run the combat turn)", got, want)
 	}
 
-	if got, want := entityHP(t, snap, me.EntityID), meHP-game.MonsterDamageForTest("wolf"); got != want {
-		t.Errorf("player HP = %d, want %d (monster strikes back on the resolved turn)", got, want)
+	// +RegenPerTurn: since #322 decision 11 a bubble turn regenerates as well
+	// as damages. The term is spelled out rather than folded into a number, so
+	// a future change to either rule fails here loudly.
+	if got, want := entityHP(t, snap, me.EntityID),
+		meHP-game.MonsterDamageForTest("wolf")+protocol.RegenPerTurn; got != want {
+		t.Errorf("player HP = %d, want %d (monster strikes back, and the turn regenerates)", got, want)
 	}
 
 	// Lock-in cleared: the player is waiting again for the next bubble-turn.
@@ -207,8 +211,10 @@ func TestBubbleTimesOutWithUnreadyPlayer(t *testing.T) {
 
 	snap := w.Snapshot()
 
-	if got, want := entityHP(t, snap, me.EntityID), meHP-game.MonsterDamageForTest("wolf"); got != want {
-		t.Errorf("player HP after timeout = %d, want %d (monster still attacks)", got, want)
+	wantHP := meHP - game.MonsterDamageForTest("wolf") + protocol.RegenPerTurn
+	if got, want := entityHP(t, snap, me.EntityID), wantHP; got != want {
+		t.Errorf("player HP after timeout = %d, want %d (monster still attacks; the turn regenerates)",
+			got, want)
 	}
 
 	if got, want := entityHP(t, snap, monsterID), monsterHP; got != want {

@@ -96,9 +96,14 @@ func (w *World) PlaceEntityForTest(hex protocol.Hex) (int64, string) {
 	w.nextID++
 	token := fmt.Sprintf("test-token-%d", w.nextID)
 	maxHP := maxHPFor(protocol.ClassFighter, 1)
+	// Full energy, like a real join (#322) — a fixture that starts dry cannot
+	// trigger any active, which would turn every active-skill test into an
+	// energy test by accident.
+	maxEnergy := maxEnergyFor(protocol.ClassFighter, 1)
 	e := &entity{
 		id: w.nextID, hex: hex, token: token,
 		kind: protocol.EntityPlayer, class: protocol.ClassFighter, hp: maxHP, maxHP: maxHP,
+		energy: maxEnergy, maxEnergy: maxEnergy,
 		// A placed player stands in for a live, connected one: give it an open
 		// stream so the disconnect sweep never removes it out from under a test.
 		streams: 1, disconnectedAt: w.now(),
@@ -357,6 +362,32 @@ func (w *World) SetClassForTest(id int64, class string) {
 // board without going through Join.
 func (w *World) SetSpeciesForTest(id int64, species string) {
 	w.withEntityForTest(id, func(e *entity) { e.species = species })
+}
+
+// EnergyForTest reads an entity's current energy pool (#322).
+func (w *World) EnergyForTest(id int64) int {
+	var energy int
+
+	w.withEntityForTest(id, func(e *entity) { energy = e.energy })
+
+	return energy
+}
+
+// SetEnergyForTest overwrites an entity's energy pool, so a test can put a
+// caster in the state it is about (dry, half, full) without playing out the
+// turns that would get it there (#322).
+func (w *World) SetEnergyForTest(id int64, energy int) {
+	w.withEntityForTest(id, func(e *entity) { e.energy = energy })
+}
+
+// SetActiveReadyForTest clears an active's cooldown so a test can cast twice
+// without waiting (#322).
+func (w *World) SetActiveReadyForTest(id int64, skillID string) {
+	w.withEntityForTest(id, func(e *entity) {
+		if e.activeReadyTurn != nil {
+			delete(e.activeReadyTurn, skillID)
+		}
+	})
 }
 
 // PathForTest returns an entity's queued path (nil if idle), so a

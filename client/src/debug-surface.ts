@@ -145,6 +145,12 @@ export interface GameDebug {
    * tooltip's "HP cur/max" (item 13, playtest batch 2).
    */
   maxHp: Record<number, number>;
+  /**
+   * This client's own energy pool (#322): the action currency every active
+   * spends. Own-only on the wire, so it is 0 for anyone else's entity.
+   */
+  energy: number;
+  maxEnergy: number;
   /** This client's entity's XP, from the latest bundle. 0 until joined. */
   xp: number;
   /** This client's entity's level, from the latest bundle. 1 until joined. */
