@@ -656,8 +656,11 @@ func TestDrinkInBubbleConsumesTurn(t *testing.T) {
 
 	wolfDamage := game.MonsterDamageForTest(w.MonsterKindForTest(monsterID))
 
-	if got, want := entityHP(t, w.Snapshot(), idA), maxHP-10+5-wolfDamage; got != want {
-		t.Errorf("HP after bubble resolution = %d, want %d (heal, then this turn's melee attack)", got, want)
+	// +RegenPerTurn since #322 decision 11: a bubble turn tops the pools up as
+	// well as resolving the fight.
+	want := maxHP - 10 + 5 - wolfDamage + protocol.RegenPerTurn
+	if got := entityHP(t, w.Snapshot(), idA); got != want {
+		t.Errorf("HP after bubble resolution = %d, want %d (heal, attack, then the turn's regen)", got, want)
 	}
 
 	pack := w.BackpackForTest(idA)

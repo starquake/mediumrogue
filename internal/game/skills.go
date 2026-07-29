@@ -65,6 +65,11 @@ const (
 // in wall-clock than world turns, and that dilation is the bubble's point, so
 // a turn-denominated cooldown rides it instead of fighting it (#161).
 type activeDef struct {
+	// energyCost is what triggering this active spends (#322). Registry data,
+	// like every other number here — priced off the cooldown and the blast.
+	// Zero means free: evade is the panic button, and an escape you cannot
+	// afford is not one.
+	energyCost int
 	// kind names WHAT this active does. Without it every new active would be
 	// another hardcoded branch at resolution, and the category would become a
 	// switch statement pretending to be a system (#300). Each kind routes to
@@ -244,7 +249,7 @@ var skillDefs = []*skillDef{
 		prereqs: []string{skillWeakSpot},
 		flavor:  "You point. Everyone else understands.",
 		active: &activeDef{
-			kind: activeTargetEffect, cooldownTurns: 5, rangeHex: 4,
+			kind: activeTargetEffect, cooldownTurns: 5, rangeHex: 4, energyCost: 20,
 			effect: &appliedEffect{effectID: idEffectVulnerable, magnitude: percentBase + 20, turns: 3},
 		},
 	},
@@ -312,7 +317,7 @@ var skillDefs = []*skillDef{
 		prereqs: []string{skillKindler},
 		flavor:  "The air remembers being lit.",
 		active: &activeDef{
-			kind: activeAreaDamage, cooldownTurns: 5, rangeHex: 4,
+			kind: activeAreaDamage, cooldownTurns: 5, rangeHex: 4, energyCost: 30,
 			aoeRadius: 1, damage: 5, damageType: protocol.DamageTypeFire,
 			effect: &appliedEffect{effectID: idEffectBurning, magnitude: -2, turns: 2},
 		},
@@ -395,7 +400,7 @@ var skillDefs = []*skillDef{
 		prereqs: []string{skillSurvivalist},
 		flavor:  "You find the breath you had put down somewhere.",
 		active: &activeDef{
-			kind: activeSelfEffect, cooldownTurns: 6,
+			kind: activeSelfEffect, cooldownTurns: 6, energyCost: 25,
 			effect: &appliedEffect{effectID: idEffectRegen, magnitude: 3, turns: 3},
 		},
 	},
@@ -407,7 +412,7 @@ var skillDefs = []*skillDef{
 		prereqs: []string{skillHardy},
 		flavor:  "Set, and stay set.",
 		active: &activeDef{
-			kind: activeSelfEffect, cooldownTurns: 6,
+			kind: activeSelfEffect, cooldownTurns: 6, energyCost: 25,
 			effect: &appliedEffect{effectID: idEffectWard, magnitude: percentBase - 25, turns: 4},
 		},
 	},
@@ -740,6 +745,10 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 
 	if w.turn < e.activeReadyTurn[id] {
 		return ErrSkillOnCooldown
+	}
+
+	if e.energy < def.active.energyCost {
+		return ErrNotEnoughEnergy
 	}
 
 	switch aimFor(def.active.kind) {

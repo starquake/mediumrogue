@@ -55,6 +55,9 @@ var intentSentinelStatus = map[error]int{
 	game.ErrSkillNotActive:  http.StatusUnprocessableEntity,
 	game.ErrSkillNotLearned: http.StatusUnprocessableEntity,
 	game.ErrSkillOnCooldown: http.StatusUnprocessableEntity,
+	// #322: an active you cannot afford. A well-formed request the world says
+	// no to, like the cooldown it sits beside.
+	game.ErrNotEnoughEnergy: http.StatusUnprocessableEntity,
 	game.ErrNoLineOfSight:   http.StatusUnprocessableEntity,
 	game.ErrHexOccupied:     http.StatusUnprocessableEntity,
 }

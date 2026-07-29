@@ -495,6 +495,29 @@ roll, so it is ARPG-legal on jewelry.
   `SanctuaryRadius`, guarded against landing on/adjacent to a living
   monster — same `spawnHexLocked` tiers as a fresh join, Q9); the camera
   **follows** the player, so it re-centres on the respawn automatically.
+- **Energy** (#322): the action currency every active spends. The pool is the
+  **inverse of the HP curve** — the squishy classes live on their skills, so
+  they carry more: `FighterMaxEnergy` 60 / `RogueMaxEnergy` 80 /
+  `MageMaxEnergy` 100 at level 1, `+EnergyPerLevel` (5) a level, clamped rather
+  than refilled on level-up.
+  - **Costs are registry data** on each `activeDef`, priced off its cooldown and
+    blast: Ember Nova 30, Expose 20, Second Wind 25, Bulwark 25. **Evade costs
+    nothing** — an escape you cannot afford is not an escape.
+  - **Spent where the cooldown is stamped**, so a charge can never drift from
+    the cooldown it pairs with, and an active whose caster died before it
+    resolved is never billed. Too little energy is a **422**
+    (`ErrNotEnoughEnergy`), like any other well-formed request the world
+    refuses.
+  - **`EnergyRegenPerTurn` (5) comes back every turn, in a bubble as well as
+    out of one** — and since #322 decision 11 **HP now does too**, which is a
+    real change to fight arithmetic: bubbles previously had no healing at all.
+    Monsters get none of it (only the Hydra heals, via its bite card), so the
+    asymmetry favours players deliberately; `RegenPerTurn` stays at 1 so the
+    trickle cannot outpace a monster hitting for 3–9.
+  - **Own-only on the wire** (`Entity.Energy`/`MaxEnergy`): another player's
+    remaining energy is build information and nothing on screen needs it.
+    Persisted in the snapshot (**version 11**); `MaxEnergy` is derived from
+    class and level on load, the way `MaxHP` is.
 - **Evade** (#322): a **mechanic everyone has**, not a learnable skill — no
   point to spend, no row in the skills panel. `Space` **arms** it and the next map click spends it, repositioning you up to
   `protocol.EvadeRangeHex` hexes on a `protocol.EvadeCooldownTurns`-turn

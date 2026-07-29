@@ -310,6 +310,15 @@ func TestBubbleMonsterIgnoresLeashAndResumesReturnAfter(t *testing.T) {
 		return e.HP
 	}
 
+	maxHPOf := func() int {
+		e, ok := entityOfSnap(w.Snapshot(), me.EntityID)
+		if !ok {
+			t.Fatalf("player %d not in snapshot", me.EntityID)
+		}
+
+		return e.MaxHP
+	}
+
 	hp0 := hpOf()
 
 	// Turn 1: the adjacent rat attacks (world-domain melee conversion) and
@@ -324,6 +333,13 @@ func TestBubbleMonsterIgnoresLeashAndResumesReturnAfter(t *testing.T) {
 	// keep fighting anyway.
 	home := walkableHexAtDistance(t, w, ratHex, ratLeash()+3, ratLeash()+4)
 	w.SetMonsterHomeForTest(ratID, home)
+
+	// Top the player up first: since #322 decision 11 a bubble turn also
+	// regenerates, and the rat hits for exactly RegenPerTurn — so from below
+	// max the two cancel and the attack becomes invisible in HP terms. At full
+	// HP the regen is a no-op and the hit is observable again, which is what
+	// this test is actually about.
+	w.SetHPForTest(me.EntityID, maxHPOf())
 
 	hp1 := hpOf()
 

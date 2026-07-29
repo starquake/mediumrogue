@@ -499,6 +499,36 @@ export const PlayerMaxHP = 20;
  */
 export const MonsterMaxHP = 10;
 /**
+ * Energy is the action currency every active spends (#322). Maxima are the
+ * INVERSE of the HP curve: the squishy classes are the ones that live on their
+ * skills, so they carry more of it.
+ */
+export const FighterMaxEnergy = 60;
+/**
+ * Energy is the action currency every active spends (#322). Maxima are the
+ * INVERSE of the HP curve: the squishy classes are the ones that live on their
+ * skills, so they carry more of it.
+ */
+export const RogueMaxEnergy = 80;
+/**
+ * Energy is the action currency every active spends (#322). Maxima are the
+ * INVERSE of the HP curve: the squishy classes are the ones that live on their
+ * skills, so they carry more of it.
+ */
+export const MageMaxEnergy = 100;
+/**
+ * EnergyPerLevel is the flat gain per level above 1. Flat rather than
+ * mirroring HP's front-loaded curve — energy wants to feel steady, and one
+ * curve to reason about is enough.
+ */
+export const EnergyPerLevel = 5;
+/**
+ * EnergyRegenPerTurn is recovered every turn, IN combat as well as out
+ * (#322) — unlike RegenPerTurn, which a bubble suspends. A long fight
+ * therefore yields roughly one extra cast rather than draining to nothing.
+ */
+export const EnergyRegenPerTurn = 5;
+/**
  * EvadeCooldownTurns is how many turns must pass between evades (#322). Here
  * rather than in the skill registry because BOTH sides need it: the server
  * gates the intent on it, and the HUD ball's radial sweep is drawn from it.
@@ -1026,6 +1056,14 @@ export interface Entity {
    * SkillPoints is the viewer's own unspent bank; zero on other entities.
    */
   skillPoints: number /* int */;
+  /**
+   * Energy / MaxEnergy are the viewer's OWN action-currency pool (#322);
+   * zero on every other entity. Own-only rather than public like HP: another
+   * player's remaining energy is build information, and nothing on screen
+   * needs it.
+   */
+  energy: number /* int */;
+  maxEnergy: number /* int */;
   /**
    * EvadeReadyIn is how many turns until the viewer may evade again (#322);
    * 0 means ready now. Own-only, like Skills.

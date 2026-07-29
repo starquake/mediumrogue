@@ -547,6 +547,8 @@ window.game = {
   skillTiles: [],
   actionSlots: [],
   slotMenuOpen: -1,
+  energy: 0,
+  maxEnergy: 0,
   evadeReadyIn: 0,
   died: false,
   pickupModal: { open: false, rows: [] },
@@ -2160,6 +2162,8 @@ async function start(): Promise<void> {
         }));
         renderActionBar();
         window.game.skillPoints = mine.skillPoints ?? 0;
+        window.game.energy = mine.energy ?? 0;
+        window.game.maxEnergy = mine.maxEnergy ?? 0;
         window.game.evadeReadyIn = mine.evadeReadyIn ?? 0;
         renderEvadeBall(window.game.evadeReadyIn);
         // The reachable set moves with the player and appears/disappears with
