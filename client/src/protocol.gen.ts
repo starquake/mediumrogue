@@ -505,6 +505,12 @@ export const MonsterMaxHP = 10;
  */
 export const EvadeCooldownTurns = 3;
 /**
+ * EvadeRangeHex is how far an evade may carry you (#322). Both sides need it:
+ * the server gates the intent on it, and the client paints the reachable tiles
+ * so the aim is never a guess.
+ */
+export const EvadeRangeHex = 3;
+/**
  * RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
  * resolution while out of combat (bubbleID == 0) and below max HP — the
  * passive recovery layer (plan §9). It kills the inverted incentive where

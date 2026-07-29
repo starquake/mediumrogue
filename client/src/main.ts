@@ -75,6 +75,7 @@ import {
   HumanBonusSkillPoints,
   IntentAttack,
   EvadeCooldownTurns,
+  EvadeRangeHex,
   IntentMove,
   PlaybackSeconds,
   SkillAimHex,
@@ -1621,8 +1622,23 @@ async function start(): Promise<void> {
   const drawSkillRange = (): void => {
     const s = armedSkill === null ? undefined : activeSlots().find((x) => x?.id === armedSkill);
     const def = s === undefined ? undefined : window.game.skills.find((k) => k.id === s.id);
+
+    if (def !== undefined) {
+      window.game.skillTiles = tactics.skillTargetTiles(tacticsCtx(), def.aim, def.rangeHex);
+      skillRangeLayer.update(window.game.skillTiles);
+
+      return;
+    }
+
+    // Nothing armed: show where EVADE could put you, whenever it is ready
+    // (#322). Space aims at whatever the cursor is over, so without this the
+    // reach is invisible and the aim is a guess — and a hop refused for being
+    // one tile too greedy is the worst moment to learn where the edge was.
+    // Cleared while it is cooling, because tiles you cannot reach are a lie.
     window.game.skillTiles =
-      def === undefined ? [] : tactics.skillTargetTiles(tacticsCtx(), def.aim, def.rangeHex);
+      window.game.evadeReadyIn > 0
+        ? []
+        : tactics.skillTargetTiles(tacticsCtx(), SkillAimHex, EvadeRangeHex);
     skillRangeLayer.update(window.game.skillTiles);
   };
 
@@ -2130,6 +2146,9 @@ async function start(): Promise<void> {
         window.game.skillPoints = mine.skillPoints ?? 0;
         window.game.evadeReadyIn = mine.evadeReadyIn ?? 0;
         renderEvadeBall(window.game.evadeReadyIn);
+        // The reachable set moves with the player and appears/disappears with
+        // the cooldown, so it is repainted with every bundle.
+        drawSkillRange();
         window.game.inventory = mine.items.map((it: ItemView) => ({
           id: it.id,
           defId: it.defId,
