@@ -80,6 +80,7 @@ type PartySimReport struct {
 // RunPartySim runs the full size grid.
 func RunPartySim(cfg PartySimConfig) PartySimReport {
 	if len(cfg.Sizes) == 0 {
+		//nolint:revive // add-constant: an authored default party-size grid.
 		cfg.Sizes = []int{1, 2, 3, 5, 10, 15}
 	}
 

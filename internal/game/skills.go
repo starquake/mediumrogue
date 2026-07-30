@@ -222,7 +222,7 @@ type skillDef struct {
 // added for this batch (weaponTagged, shieldEquipped, task 1); nothing else
 // is new, which is the point — a skill is content, not machinery.
 //
-//nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init.
+//nolint:gochecknoglobals // fixed content registry, effectively const; validated at init.
 var skillDefs = []*skillDef{
 	// --- Class tree -------------------------------------------------------
 	{

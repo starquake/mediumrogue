@@ -13,6 +13,10 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// errParseFmt is the shared wrap for every "this env var did not parse" error,
+// so the five parse helpers report identically.
+const errParseFmt = "parse %s: %w"
+
 // errNonPositiveDuration rejects zero and negative duration overrides — a
 // zero turn interval would spin the clock, a negative one panics the ticker.
 var errNonPositiveDuration = errors.New("duration must be positive")
@@ -235,7 +239,7 @@ func overrideDuration(dst *time.Duration, key string) error {
 
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return fmt.Errorf("parse %s: %w", key, err)
+		return fmt.Errorf(errParseFmt, key, err)
 	}
 
 	if d <= 0 {
@@ -323,7 +327,7 @@ func overrideNonNegativeDuration(dst *time.Duration, key string) error {
 
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return fmt.Errorf("parse %s: %w", key, err)
+		return fmt.Errorf(errParseFmt, key, err)
 	}
 
 	if d < 0 {
@@ -344,7 +348,7 @@ func overrideUint64(dst *uint64, key string) error {
 	// base 0 → accept decimal and 0x… hex seeds.
 	n, err := strconv.ParseUint(v, 0, 64)
 	if err != nil {
-		return fmt.Errorf("parse %s: %w", key, err)
+		return fmt.Errorf(errParseFmt, key, err)
 	}
 
 	*dst = n
@@ -362,7 +366,7 @@ func overrideBool(dst *bool, key string) error {
 
 	b, err := strconv.ParseBool(v)
 	if err != nil {
-		return fmt.Errorf("parse %s: %w", key, err)
+		return fmt.Errorf(errParseFmt, key, err)
 	}
 
 	*dst = b
@@ -378,7 +382,7 @@ func overrideInt(dst *int, key string) error {
 
 	n, err := strconv.Atoi(v)
 	if err != nil {
-		return fmt.Errorf("parse %s: %w", key, err)
+		return fmt.Errorf(errParseFmt, key, err)
 	}
 
 	if n < 0 {

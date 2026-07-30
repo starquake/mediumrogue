@@ -31,6 +31,12 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// Defaults for the balance harness when a config leaves them unset.
+const (
+	defaultBalanceMaxTurns = 60
+	defaultDuelCount       = 200
+)
+
 // duelWorldRadius is deliberately tiny: a duel needs two adjacent walkable
 // hexes, not a world. Worldgen cost is per-duel, so small keeps the matrix
 // fast.
@@ -241,7 +247,7 @@ func RunDuel(cfg DuelConfig) DuelResult {
 	}
 
 	if cfg.MaxTurns <= 0 {
-		cfg.MaxTurns = 60
+		cfg.MaxTurns = defaultBalanceMaxTurns
 	}
 
 	kind, ok := monsterDefByID[cfg.MonsterKind]
@@ -410,7 +416,7 @@ type MatrixReport struct {
 // RunDuelMatrix runs the class x kind x level grid.
 func RunDuelMatrix(cfg MatrixConfig) MatrixReport {
 	if cfg.Duels <= 0 {
-		cfg.Duels = 200
+		cfg.Duels = defaultDuelCount
 	}
 
 	if len(cfg.Levels) == 0 {

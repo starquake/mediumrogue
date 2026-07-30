@@ -68,10 +68,10 @@ func cubeRound(q, r float64) protocol.Hex {
 
 func round(f float64) int {
 	if f < 0 {
-		return -int(-f + 0.5) //nolint:mnd // the 0.5 is rounding itself.
+		return -int(-f + 0.5) // The 0.5 is rounding itself.
 	}
 
-	return int(f + 0.5) //nolint:mnd // the 0.5 is rounding itself.
+	return int(f + 0.5) // The 0.5 is rounding itself.
 }
 
 func absF(f float64) float64 {
@@ -125,7 +125,8 @@ func rayObstacles(a, b protocol.Hex, terrainAt func(protocol.Hex) protocol.Terra
 	forestCost := 0
 
 	line := HexLine(a, b)
-	if len(line) <= 2 { //nolint:mnd // a line of at most two hexes is the two endpoints: nothing in between.
+	// A line of at most two hexes is the two endpoints: nothing in between.
+	if len(line) <= 2 {
 		return false, 0 // adjacent or same hex: nothing strictly between them
 	}
 

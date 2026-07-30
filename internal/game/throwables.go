@@ -154,13 +154,13 @@ func (w *World) resolveThrowsLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 
 		inst, ok := e.itemByID(itemID)
 		if !ok || !itemDefByID[inst.defID].isThrowable() {
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "throw_item_gone", "id", e.id)
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "throw_item_gone", logKeyID, e.id)
 
 			continue
 		}
 
 		if !w.consumeBackpackUnitLocked(e, itemID) {
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "throw_item_gone", "id", e.id)
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "throw_item_gone", logKeyID, e.id)
 
 			continue
 		}
@@ -173,7 +173,7 @@ func (w *World) resolveThrowsLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		// it is buffered and first bites next turn.
 		wpn := &itemDef{id: def.id, name: def.name, damageType: t.damageType, onHit: t.onLand}
 
-		w.logger.Info(combatLogMsg, "event", combatEventThrow, "id", e.id, "item", def.id,
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventThrow, logKeyID, e.id, logKeyItem, def.id,
 			"target", target, "radius", t.aoeRadius)
 
 		w.resolveAoELocked(rng, byHex, e, wpn, target, t.aoeRadius, t.damage, damage)
@@ -225,7 +225,7 @@ func (w *World) resolveRecallsLocked(byHex map[protocol.Hex][]*entity, members [
 		if err != nil || blockedFor(e, byHex, dest) {
 			// No safe hex, or the chosen one filled this pass: fizzle, keep the
 			// scroll. spawnHexLocked failing at all is a saturated-world edge.
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "recall_no_dest", "id", e.id)
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "recall_no_dest", logKeyID, e.id)
 
 			continue
 		}
@@ -240,7 +240,7 @@ func (w *World) resolveRecallsLocked(byHex map[protocol.Hex][]*entity, members [
 		e.hex = dest
 		e.path = nil
 
-		w.logger.Info(combatLogMsg, "event", combatEventRecall, "id", e.id, "item", inst.defID,
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventRecall, logKeyID, e.id, logKeyItem, inst.defID,
 			"from", from, "to", dest)
 	}
 }

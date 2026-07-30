@@ -88,8 +88,8 @@ func (w *World) applyPendingItemLocked(e *entity) {
 	}
 
 	if err != nil {
-		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "pending_item_action",
-			"kind", p.kind, "id", e.id, "item", p.id, "err", err.Error())
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "pending_item_action",
+			"kind", p.kind, logKeyID, e.id, logKeyItem, p.id, "err", err.Error())
 	}
 }
 
@@ -211,7 +211,7 @@ func (w *World) groundItemsAddLocked(hex protocol.Hex, gs groundStack) {
 
 // logDropLocked emits the drop combat-log event. Callers hold w.mu.
 func (w *World) logDropLocked(e *entity, inst itemInstance, count int) {
-	w.logger.Info(combatLogMsg, "event", combatEventDrop, "id", e.id, "item", inst.defID, "count", count, "at", e.hex)
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventDrop, logKeyID, e.id, logKeyItem, inst.defID, "count", count, "at", e.hex)
 }
 
 // findGroundStackLocked returns the ground stack with the given representative
@@ -270,7 +270,7 @@ func (w *World) pickupGroundLocked(e *entity, groundItemID int64) error {
 	}
 
 	w.announce("system", pickupAnnounce(e.name, itemDefByID[gs.inst.defID].name, taken))
-	w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", gs.inst.defID, "count", taken)
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventPickup, logKeyID, e.id, logKeyItem, gs.inst.defID, "count", taken)
 
 	return nil
 }
@@ -355,7 +355,7 @@ func (w *World) drinkItemLocked(e *entity, itemID int64) error {
 		e.backpack[idx] = backpackEntry{}
 	}
 
-	w.logger.Info(combatLogMsg, "event", combatEventDrink, "id", e.id, "item", inst.defID,
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventDrink, logKeyID, e.id, logKeyItem, inst.defID,
 		"hp", e.hp, "cleared", cleared, "buffs", len(def.appliesEffect))
 
 	return nil

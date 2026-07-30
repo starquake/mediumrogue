@@ -61,6 +61,31 @@ const (
 	identityEventSnapshotRestore = "snapshot-restore"
 )
 
+// logKey* names the slog attribute keys the combat and identity streams share.
+// The messages and the "event" vocabulary were already constants; the keys were
+// not, so a typo ("attacker" vs "attackerID") produced a silently unfilterable
+// line. Being constants, the compiler now catches that.
+const (
+	logKeyEvent    = "event"
+	logKeyID       = "id"
+	logKeyName     = "name"
+	logKeyReason   = "reason"
+	logKeyAttacker = "attacker"
+	logKeyVictim   = "victim"
+	logKeyBase     = "base"
+	logKeyWeapon   = "weapon"
+	logKeyDealt    = "dealt"
+	logKeyItem     = "item"
+
+	// tokenPrefix() supplies the value; see tokenPrefixLen below for why it is a
+	// prefix and never the whole secret.
+	logKeyTokenPrefix = "token_prefix"
+)
+
+// typicalPartySize is a slice-capacity hint, not a cap — a party is a handful,
+// and the slice grows if it is not.
+const typicalPartySize = 4
+
 // tokenPrefixLen is how many leading characters of a bearer token identity
 // log lines carry — enough to correlate a client across joins/sweeps in the
 // logs, never the full secret (a full token in a log file would be a
@@ -868,8 +893,8 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 		// StreamOpened.
 		e.disconnectedAt = w.now()
 
-		w.logger.Info(identityLogMsg, "event", identityEventJoinReclaim,
-			"id", e.id, "name", e.name, "token_prefix", tokenPrefix(token))
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinReclaim,
+			logKeyID, e.id, logKeyName, e.name, logKeyTokenPrefix, tokenPrefix(token))
 
 		return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 	}
@@ -886,16 +911,16 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	// Player cap (#199): a brand-new join is refused once the roster is full.
 	// A reclaim/restore above is exempt — a returning player is not a new seat.
 	if w.playerCountLocked() >= protocol.MaxPlayers {
-		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
-			"reason", "at_capacity", "name", name, "token_prefix", tokenPrefix(token))
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "at_capacity", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
 
 		return protocol.JoinResponse{}, ErrWorldAtCapacity
 	}
 
 	spawn, err := w.spawnHexLocked()
 	if err != nil {
-		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
-			"reason", "no_spawn_hex", "name", name, "token_prefix", tokenPrefix(token))
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "no_spawn_hex", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
 
 		return protocol.JoinResponse{}, err
 	}
@@ -922,8 +947,8 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	w.byToken[e.token] = e
 	w.grantDefaultsLocked(e)
 
-	w.logger.Info(identityLogMsg, "event", identityEventJoinNew,
-		"id", e.id, "name", e.name, "class", e.class, "token_prefix", tokenPrefix(e.token))
+	w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinNew,
+		logKeyID, e.id, logKeyName, e.name, "class", e.class, logKeyTokenPrefix, tokenPrefix(e.token))
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
@@ -934,22 +959,22 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 // Callers hold w.mu.
 func (w *World) validateNewJoinLocked(token, name, class, species string) error {
 	if !validName(name) {
-		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
-			"reason", "invalid_name", "token_prefix", tokenPrefix(token))
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "invalid_name", logKeyTokenPrefix, tokenPrefix(token))
 
 		return ErrInvalidName
 	}
 
 	if !validClass(class) {
-		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
-			"reason", "invalid_class", "name", name, "token_prefix", tokenPrefix(token))
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "invalid_class", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
 
 		return ErrInvalidClass
 	}
 
 	if !validSpecies(species) {
-		w.logger.Info(identityLogMsg, "event", identityEventJoinRejected,
-			"reason", "invalid_species", "name", name, "token_prefix", tokenPrefix(token))
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "invalid_species", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
 
 		return ErrInvalidSpecies
 	}
@@ -993,8 +1018,8 @@ func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protoc
 	w.byToken[e.token] = e
 	delete(w.archive, token)
 
-	w.logger.Info(identityLogMsg, "event", identityEventJoinRestore,
-		"id", e.id, "name", e.name, "token_prefix", tokenPrefix(token))
+	w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRestore,
+		logKeyID, e.id, logKeyName, e.name, logKeyTokenPrefix, tokenPrefix(token))
 
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
@@ -1118,8 +1143,8 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 
 		w.archive[e.token] = archiveLocked(e)
 
-		w.logger.Info(identityLogMsg, "event", identityEventSweepArchive,
-			"id", e.id, "name", e.name, "token_prefix", tokenPrefix(e.token))
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventSweepArchive,
+			logKeyID, e.id, logKeyName, e.name, logKeyTokenPrefix, tokenPrefix(e.token))
 
 		w.leavePartyLocked(e)
 		w.abandonPersonalQuestLocked(e)
@@ -1627,7 +1652,7 @@ func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 // culled like anything else, so a party that spread out would appear to lose
 // members. Identity data, so id and name only.
 func (w *World) partyViewsLocked(viewerToken string) []protocol.PartyMemberView {
-	members := make([]protocol.PartyMemberView, 0, 4) //nolint:mnd // a party is a handful; the slice grows if not.
+	members := make([]protocol.PartyMemberView, 0, typicalPartySize)
 
 	viewer, ok := w.byToken[viewerToken]
 	if !ok || viewer == nil || viewer.partyID == 0 {
@@ -2055,7 +2080,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 				g, lvl, up := grantSkillPointsLocked(e)
 				w.announceLevelUpLocked(e, g, lvl, up)
 
-				w.logger.Info(combatLogMsg, "event", combatEventXP, "id", e.id, "base", totalXP, "awarded", award)
+				w.logger.Info(combatLogMsg, logKeyEvent, combatEventXP, logKeyID, e.id, logKeyBase, totalXP, "awarded", award)
 			}
 		}
 
@@ -2553,7 +2578,7 @@ func (w *World) movePhaseLocked(
 		byHex[next] = append(byHex[next], m)
 		m.hex = next
 		m.path = m.path[1:]
-		w.logger.Info(combatLogMsg, "event", combatEventMove, "id", m.id, "kind", m.kind, "from", from, "to", next)
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventMove, logKeyID, m.id, "kind", m.kind, "from", from, "to", next)
 	}
 }
 
@@ -2683,7 +2708,7 @@ func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members [
 		// "to" is the caster's hex AFTER resolution, not the submitted target:
 		// they agree for a reposition, and for a self-cast the submitted target
 		// is the zero hex, which would read as a evade to the world origin.
-		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id, "from", from, "to", e.hex)
+		w.logger.Info(combatLogMsg, logKeyEvent, "active", "skill", id, logKeyID, e.id, "from", from, "to", e.hex)
 	}
 }
 
@@ -2760,7 +2785,7 @@ func (w *World) resolveActiveBlastsLocked(
 
 		wpn := &itemDef{id: def.id, name: def.name, damageType: a.damageType, onHit: onHit}
 
-		w.logger.Info(combatLogMsg, "event", "active", "skill", id, "id", e.id,
+		w.logger.Info(combatLogMsg, logKeyEvent, "active", "skill", id, logKeyID, e.id,
 			"target", target, "radius", a.aoeRadius)
 
 		w.resolveAoELocked(rng, byHex, e, wpn, target, a.aoeRadius, a.damage, damage)
@@ -2855,8 +2880,8 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 			dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
 			damage[victim.id] += dealt
 
-			w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", a.attacker.id, "victim", victim.id,
-				"weapon", weapon.id, "base", base, "dealt", dealt)
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, a.attacker.id, logKeyVictim, victim.id,
+				logKeyWeapon, weapon.id, logKeyBase, base, logKeyDealt, dealt)
 		}
 	}
 
@@ -2978,7 +3003,7 @@ func (w *World) resolveRangedLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*e
 		// unequipped fizzle still applies here.
 		if rangedDefFor(e) == nil {
 			// unequipped mid-turn (equip intent, Task 4) → fizzle
-			w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "unequipped", "attacker", e.id)
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "unequipped", logKeyAttacker, e.id)
 
 			continue
 		}
@@ -3012,7 +3037,7 @@ func (w *World) resolveGroundTargetedLocked(
 		// Defensive only (#104): nothing moves between submit validation and
 		// attack resolution, so this hex-only path is out of range only via
 		// the SetAttackTargetForTest bridge or a mid-turn unequip.
-		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range", "attacker", e.id,
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "out_of_range", logKeyAttacker, e.id,
 			"target_hex", target)
 
 		return
@@ -3090,7 +3115,7 @@ func (w *World) resolveEntityTargetedLocked(
 ) {
 	victim, ok := w.entities[targetEntityID]
 	if !ok || victim.hp <= 0 {
-		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "target_gone", "attacker", attacker.id)
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "target_gone", logKeyAttacker, attacker.id)
 
 		return
 	}
@@ -3107,8 +3132,8 @@ func (w *World) resolveEntityTargetedLocked(
 	// half the reach invariant used to guarantee. Positions are pre-move (#104),
 	// so victim.hex matches the key byHex was built under.
 	if !slices.Contains(byHex[victim.hex], victim) {
-		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_domain",
-			"attacker", attacker.id, "victim", victim.id)
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "out_of_domain",
+			logKeyAttacker, attacker.id, logKeyVictim, victim.id)
 
 		return
 	}
@@ -3124,8 +3149,8 @@ func (w *World) resolveEntityTargetedLocked(
 			dealt := w.rollDamageLocked(rng, attacker, victim, weapon, base)
 			damage[victim.id] += dealt
 
-			w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
-				"weapon", weapon.id, "base", base, "dealt", dealt)
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, victim.id,
+				logKeyWeapon, weapon.id, logKeyBase, base, logKeyDealt, dealt)
 		}
 
 		return
@@ -3133,8 +3158,8 @@ func (w *World) resolveEntityTargetedLocked(
 
 	defs := rangedDefsFor(attacker, HexDistance(attacker.hex, victim.hex))
 	if len(defs) == 0 {
-		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "out_of_range",
-			"attacker", attacker.id, "victim", victim.id)
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "out_of_range",
+			logKeyAttacker, attacker.id, logKeyVictim, victim.id)
 
 		return
 	}
@@ -3146,8 +3171,8 @@ func (w *World) resolveEntityTargetedLocked(
 			dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
 			damage[victim.id] += dealt
 
-			w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
-				"weapon", weapon.id, "base", dmg, "dealt", dealt)
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, victim.id,
+				logKeyWeapon, weapon.id, logKeyBase, dmg, logKeyDealt, dealt)
 
 			continue
 		}
@@ -3190,8 +3215,8 @@ func (w *World) resolveBowLocked(
 	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
 	damage[victim.id] += dealt
 
-	w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", victim.id,
-		"weapon", weapon.id, "base", dmg, "dealt", dealt)
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, victim.id,
+		logKeyWeapon, weapon.id, logKeyBase, dmg, logKeyDealt, dealt)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
@@ -3223,8 +3248,8 @@ func (w *World) resolveAoELocked(
 		dealt := w.rollDamageLocked(rng, attacker, o, weapon, dmg)
 		damage[o.id] += dealt
 
-		w.logger.Info(combatLogMsg, "event", combatEventAttack, "attacker", attacker.id, "victim", o.id,
-			"weapon", weapon.id, "base", dmg, "dealt", dealt)
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, o.id,
+			logKeyWeapon, weapon.id, logKeyBase, dmg, logKeyDealt, dealt)
 	}
 }
 
@@ -3304,7 +3329,7 @@ func killPhrase(slain []*monsterDef) string {
 		}
 	}
 
-	//nolint:mnd // list-grammar arities (one phrase, a pair, three-or-more), not tuning knobs.
+	// List-grammar arities (one phrase, a pair, three-or-more), not tuning knobs.
 	switch len(phrases) {
 	case 1:
 		return phrases[0]
@@ -3510,7 +3535,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 
 	for _, e := range dead {
 		if e.kind == protocol.EntityMonster {
-			w.logger.Info(combatLogMsg, "event", combatEventDeath, "id", e.id, "kind", e.kind,
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventDeath, logKeyID, e.id, "kind", e.kind,
 				"monster_kind", e.monsterKind, "at", e.hex)
 
 			w.dropLootLocked(rng, kindOf(e), e.hex)
@@ -3519,7 +3544,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 			continue
 		}
 
-		w.logger.Info(combatLogMsg, "event", combatEventDeath, "id", e.id, "kind", e.kind, "at", e.hex)
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventDeath, logKeyID, e.id, "kind", e.kind, "at", e.hex)
 
 		// Player: fall back to the start of the XP level you were in — keep the
 		// level, lose the within-level progress — then respawn in place of a
@@ -4043,7 +4068,7 @@ func (w *World) thinkReturnHomeLocked(m *entity) bool {
 		}
 
 		m.returningHome = true
-		w.logger.Info(combatLogMsg, "event", combatEventLeash, "id", m.id,
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventLeash, logKeyID, m.id,
 			"monster_kind", m.monsterKind, "from", m.hex, "home", m.homeHex)
 	}
 

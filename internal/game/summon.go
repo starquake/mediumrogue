@@ -150,7 +150,7 @@ func (w *World) raiseMinionsLocked(rng *mrand.Rand, summoner *entity, spec *summ
 		// authority and leave the id out of the bubble's own member map.
 		w.entities[w.nextID] = m
 
-		w.logger.Info(combatLogMsg, "event", combatEventSummon,
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventSummon,
 			"summoner", summoner.id, "minion", m.id, "kind", minionDef.id, "at", m.hex)
 	}
 }

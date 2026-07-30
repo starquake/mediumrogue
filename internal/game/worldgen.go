@@ -78,7 +78,7 @@ func terrainAt(seed uint64, radius int, h protocol.Hex) protocol.Terrain {
 // fbm sums two octaves of value noise weighted 2:1 (the "2" and "3" below)
 // into [0,1) — enough for organic regions without the cost of more octaves.
 //
-//nolint:mnd // octave-weighting constants, explained above.
+//nolint:revive // add-constant: octave-weighting constants, explained above.
 func fbm(seed uint64, x, y float64) float64 {
 	return (noise2D(seed, x, y)*2 + noise2D(seed+1, x*2, y*2)) / 3
 }
@@ -101,20 +101,34 @@ func noise2D(seed uint64, x, y float64) float64 {
 	return top + fy*(bot-top)
 }
 
-func smoothstep(t float64) float64 { return t * t * (3 - 2*t) } //nolint:mnd // Hermite 3t²−2t³.
+//nolint:revive // add-constant: the coefficients ARE the Hermite polynomial 3t²−2t³.
+func smoothstep(t float64) float64 { return t * t * (3 - 2*t) }
+
+// The SplitMix64 finalizer's published multipliers. goldenRatio64 is the
+// odd 64-bit approximation of the golden ratio that also salts the quest
+// stream (quest.go); the other two are the finalizer's own constants.
+const (
+	goldenRatio64 = 0x9E3779B97F4A7C15
+	latticeSaltY  = 0xC2B2AE3D27D4EB4F
+	splitMixMulA  = 0xBF58476D1CE4E5B9
+	splitMixMulB  = 0x94D049BB133111EB
+)
 
 // latticeValue hashes an integer lattice point + seed to a value in [0,1).
 // SplitMix64-style mixing; the magic constants and truncations are the point.
 //
-//nolint:mnd,gosec // integer-hash mixing constants; wraparound conversions intentional.
+// The shift amounts are positions inside the published finalizer rather than
+// tunable quantities, so naming them would describe nothing.
+//
+//nolint:revive,gosec // add-constant: finalizer shifts; wraparound conversions intentional.
 func latticeValue(seed uint64, gx, gy int) float64 {
 	h := seed
-	h ^= uint64(uint32(gx)) * 0x9E3779B97F4A7C15
-	h ^= uint64(uint32(gy)) * 0xC2B2AE3D27D4EB4F
+	h ^= uint64(uint32(gx)) * goldenRatio64
+	h ^= uint64(uint32(gy)) * latticeSaltY
 	h ^= h >> 30
-	h *= 0xBF58476D1CE4E5B9
+	h *= splitMixMulA
 	h ^= h >> 27
-	h *= 0x94D049BB133111EB
+	h *= splitMixMulB
 	h ^= h >> 31
 
 	return float64(h>>11) / float64(uint64(1)<<53)
@@ -158,6 +172,8 @@ func reachableWalkable(m protocol.MapResponse) map[protocol.Hex]bool {
 
 // tileCount is the number of hexes in a hexagon of the given radius:
 // 3r(r+1)+1 (centered hexagonal number).
+//
+//nolint:revive // add-constant: the 3 is the centered-hexagonal formula itself.
 func tileCount(radius int) int {
 	return 3*radius*(radius+1) + 1
 }
