@@ -277,6 +277,21 @@ export const IntentThrow = "throw";
  */
 export const IntentRecall = "recall";
 /**
+ * IntentQuaffHealth / IntentQuaffEnergy are the two ALWAYS-AVAILABLE
+ * draughts (#322): no item, no inventory slot, no scarcity — a cooldown is
+ * the whole cost. Separate kinds rather than one with a "which pool" field,
+ * so the wire says what it means and the client's E/R keys map one-to-one.
+ */
+export const IntentQuaffHealth = "quaff-health";
+/**
+ * Intent kinds: the type of an IntentRequest. Kind is required — it must be
+ * one of the constants below. Every inventory action (equip, unequip, drop,
+ * pickup, drink) follows one shared rule: outside a combat bubble it applies
+ * immediately and costs nothing; inside a bubble it is the player's
+ * committed action for that turn.
+ */
+export const IntentQuaffEnergy = "quaff-energy";
+/**
  * The item taxonomy (gear keystone, #55/#56): one weapon type carrying
  * tags, plus armor/jewelry types that each map 1:1 to an equip slot.
  */
@@ -528,6 +543,18 @@ export const EnergyPerLevel = 5;
  * therefore yields roughly one extra cast rather than draining to nothing.
  */
 export const EnergyRegenPerTurn = 5;
+/**
+ * PotionCooldownTurns is the wait between draughts of the same kind (#322).
+ * Health and energy cool independently, so emptying one does not lock the
+ * other.
+ */
+export const PotionCooldownTurns = 5;
+/**
+ * PotionRestorePercent is how much of the pool's MAXIMUM a draught returns
+ * (#322) — a percentage rather than a flat amount, so it keeps its value as
+ * pools grow with level.
+ */
+export const PotionRestorePercent = 40;
 /**
  * EvadeCooldownTurns is how many turns must pass between evades (#322). Here
  * rather than in the skill registry because BOTH sides need it: the server
@@ -1064,6 +1091,14 @@ export interface Entity {
    */
   energy: number /* int */;
   maxEnergy: number /* int */;
+  /**
+   * HealthPotionReadyIn / EnergyPotionReadyIn are the turns until each
+   * always-available draught can be drunk again (#322); 0 means ready. The
+   * globes render these, and they are own-only for the same reason the pools
+   * are.
+   */
+  healthPotionReadyIn: number /* int */;
+  energyPotionReadyIn: number /* int */;
   /**
    * EvadeReadyIn is how many turns until the viewer may evade again (#322);
    * 0 means ready now. Own-only, like Skills.

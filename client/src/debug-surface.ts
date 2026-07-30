@@ -151,6 +151,13 @@ export interface GameDebug {
    */
   energy: number;
   maxEnergy: number;
+  /**
+   * Turns until each always-available draught can be drunk again (#322); 0 =
+   * ready. What the globes' corner balls render, and what an e2e asserts a
+   * quaff against.
+   */
+  healthPotionReadyIn: number;
+  energyPotionReadyIn: number;
   /** This client's entity's XP, from the latest bundle. 0 until joined. */
   xp: number;
   /** This client's entity's level, from the latest bundle. 1 until joined. */

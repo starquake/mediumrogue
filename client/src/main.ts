@@ -49,6 +49,7 @@ import {
   submitRecall,
   submitThrow,
   submitUnequip,
+  submitQuaff,
   submitUseSkill,
 } from "./net/session";
 import { mountRoster } from "./party/RosterPanel";
@@ -75,6 +76,8 @@ import {
   HumanBonusSkillPoints,
   IntentAttack,
   EvadeCooldownTurns,
+  IntentQuaffEnergy,
+  IntentQuaffHealth,
   EvadeRangeHex,
   IntentMove,
   PlaybackSeconds,
@@ -439,6 +442,52 @@ let curPlaybackMs = 0;
 const EVADE_SKILL_ID = "evade";
 
 /**
+ * Paints one resource globe (#322): the liquid at its fill level, the amount
+ * over it, and the draught's cooldown in the corner — a tick when it is ready,
+ * so the shape never changes as the number appears and vanishes.
+ */
+// hudGlyph renders one vendored game-icons glyph at the size the HUD wants
+// (#322). Same source and licence as the action bar's icons — see
+// client/tools/glyph-icons — so a draught reads as itself rather than as a
+// tick mark.
+function hudGlyph(key: string): string {
+  const inner = GLYPH_ICON_SVG[key];
+
+  return inner === undefined
+    ? ""
+    : `<svg class="hud-glyph" viewBox="0 0 ${GLYPH_ICON_VIEWBOX} ${GLYPH_ICON_VIEWBOX}">${inner}</svg>`;
+}
+
+function renderGlobe(id: string, glyphKey: string, cur: number, max: number, readyIn: number): void {
+  const globe = document.getElementById(id);
+  if (globe === null) {
+    return;
+  }
+
+  globe.classList.add("shown");
+
+  const fill = globe.querySelector<HTMLElement>(".fill");
+  if (fill !== null) {
+    const pct = max > 0 ? Math.min(Math.max((cur / max) * 100, 0), 100) : 0;
+    fill.style.height = `${String(Math.round(pct))}%`;
+  }
+
+  const amount = globe.querySelector(".amount");
+  if (amount !== null) {
+    amount.textContent = `${String(cur)}/${String(max)}`;
+  }
+
+  const cd = globe.querySelector(".cd");
+  if (cd !== null) {
+    if (readyIn > 0) {
+      cd.textContent = String(readyIn);
+    } else {
+      cd.innerHTML = hudGlyph(glyphKey);
+    }
+  }
+}
+
+/**
  * Paints the evade ball (#322): a turn count while cooling, a mark when ready,
  * and a radial sweep that empties as the cooldown runs down — the same idiom
  * the action bar uses for its slots rather than a second one.
@@ -455,7 +504,11 @@ function renderEvadeBall(readyIn: number): void {
 
   const label = ball.querySelector(".n");
   if (label !== null) {
-    label.textContent = readyIn > 0 ? String(readyIn) : "✦";
+    if (readyIn > 0) {
+      label.textContent = String(readyIn);
+    } else {
+      label.innerHTML = hudGlyph(EVADE_SKILL_ID);
+    }
   }
 
   const sweep = ball.querySelector(".sweep");
@@ -549,6 +602,8 @@ window.game = {
   slotMenuOpen: -1,
   energy: 0,
   maxEnergy: 0,
+  healthPotionReadyIn: 0,
+  energyPotionReadyIn: 0,
   evadeReadyIn: 0,
   died: false,
   pickupModal: { open: false, rows: [] },
@@ -1591,9 +1646,13 @@ async function start(): Promise<void> {
 
   function renderActionBar(): void {
     const filled = activeSlots();
-    // The bar appears once you have ANY active, even if some slots are empty —
-    // an empty slot is where you right-click to put something.
-    actionBarEl.classList.toggle("shown", learnedActives().length > 0);
+    // ALWAYS shown (#322 slice 3). It used to appear only once you had learned
+    // an active, which now leaves a fresh character with the globes and the
+    // evade ball flanking nothing, and makes the whole cluster jump the moment
+    // they learn their first skill. An empty slot is also where you
+    // right-click to assign one, so hiding the bar hides the affordance that
+    // fills it.
+    actionBarEl.classList.add("shown");
     window.game.actionSlots = [...assignment];
 
     actionSlotEls.forEach((el, i) => {
@@ -2164,6 +2223,16 @@ async function start(): Promise<void> {
         window.game.skillPoints = mine.skillPoints ?? 0;
         window.game.energy = mine.energy ?? 0;
         window.game.maxEnergy = mine.maxEnergy ?? 0;
+        window.game.healthPotionReadyIn = mine.healthPotionReadyIn ?? 0;
+        window.game.energyPotionReadyIn = mine.energyPotionReadyIn ?? 0;
+        renderGlobe("globe-health", IntentQuaffHealth, mine.hp, mine.maxHp, window.game.healthPotionReadyIn);
+        renderGlobe(
+          "globe-energy",
+          IntentQuaffEnergy,
+          window.game.energy,
+          window.game.maxEnergy,
+          window.game.energyPotionReadyIn,
+        );
         window.game.evadeReadyIn = mine.evadeReadyIn ?? 0;
         renderEvadeBall(window.game.evadeReadyIn);
         // The reachable set moves with the player and appears/disappears with
@@ -2443,7 +2512,19 @@ async function start(): Promise<void> {
     // Arming first is what makes the reach legible: the overlay appears with
     // the arm, so the limit is visible BEFORE committing rather than learned
     // from a refusal. Pressing it again cancels, as does Escape.
-    onEvade: (): void => {
+    // R / E: the two always-available draughts (#322). No item, no target,
+    // no arming — the cooldown is the only gate, and the server owns it.
+    onQuaffHealth: (): void => {
+      if (window.game.me !== null) {
+        void submitQuaff(identity, IntentQuaffHealth);
+      }
+    },
+    onQuaffEnergy: (): void => {
+      if (window.game.me !== null) {
+        void submitQuaff(identity, IntentQuaffEnergy);
+      }
+    },
+        onEvade: (): void => {
       if (window.game.me === null) {
         return;
       }
