@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -85,6 +86,13 @@ func (w *World) applyPendingItemLocked(e *entity) {
 		err = w.pickupGroundLocked(e, p.id)
 	case protocol.IntentDrink:
 		err = w.drinkItemLocked(e, p.id)
+	default:
+		// A pending action nothing handles used to leave err nil and report
+		// success, losing the intent silently. TestEveryIntentSentinelIsMapped
+		// guards the mapping; this makes the failure visible if it ever slips.
+		// Logged, never returned to a caller, so this needs no sentinel — and
+		// adding one would drag in the api.go/api_test.go status mapping.
+		err = errors.New("unhandled pending item action " + p.kind)
 	}
 
 	if err != nil {

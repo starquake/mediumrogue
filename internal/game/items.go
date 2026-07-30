@@ -513,6 +513,8 @@ func (e *entity) equipWeaponLocked(inst itemInstance, def *itemDef) error {
 		if main := e.equippedDefIn(protocol.SlotMainHand); main != nil && main.twoHanded {
 			evictSlot = protocol.SlotMainHand
 		}
+	default:
+		// Neither hand conflicts: nothing to evict.
 	}
 
 	if evictSlot != "" {
@@ -1117,6 +1119,8 @@ func validateItemNature(def *itemDef) {
 				panic("game: " + def.itemType + " item " + def.id +
 					" carries a take-damage card — defensive cards belong on worn kit (#171)")
 			}
+		default:
+			// Every other event is valid on any item type.
 		}
 	}
 }

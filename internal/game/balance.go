@@ -114,6 +114,8 @@ func (d *deathLog) Handle(_ context.Context, r slog.Record) error {
 			kind = a.Value.String()
 		case "id":
 			id = a.Value.Int64()
+		default:
+			// Every other attribute on the line is irrelevant to this scan.
 		}
 
 		return true

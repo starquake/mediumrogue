@@ -253,6 +253,8 @@ func subjectText(c ruleCard) string {
 		// poison or burning DoT (−3) as a damage REDUCTION — the fire flask's
 		// tooltip has said "−3 Damage for 3 turns" for a rider that drains HP.
 		noun = "HP per turn"
+	default:
+		// Events without a noun contribute no stat line.
 	}
 
 	for _, cond := range c.when {
@@ -267,6 +269,8 @@ func subjectText(c ruleCard) string {
 			}
 		case condWeaponTagged:
 			noun = titleWord(cond.s) + " " + noun
+		default:
+			// Conditions that do not qualify the noun leave it as-is.
 		}
 	}
 
@@ -436,6 +440,8 @@ func activeStatLines(a *activeDef) []statLine {
 		if a.effect != nil {
 			out = append(out, activeEffectLine(a.effect, "on each victim"))
 		}
+	default:
+		// An active whose kind describes no stat line contributes none.
 	}
 
 	return append(out, statLine{text: "Cooldown " + strconv.Itoa(a.cooldownTurns) + " " + turnPlural(a.cooldownTurns)})

@@ -173,6 +173,8 @@ func hasOpposingPair(comp []*entity) bool {
 			hasPlayer = true
 		case protocol.EntityMonster:
 			hasMonster = true
+		default:
+			// Any other entity kind neither forms nor blocks a bubble.
 		}
 	}
 

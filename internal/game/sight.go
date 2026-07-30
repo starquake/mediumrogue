@@ -61,6 +61,8 @@ func cubeRound(q, r float64) protocol.Hex {
 		rq = -rr - rs
 	case dr > ds:
 		rr = -rq - rs
+	default:
+		// ds is the largest component: rs is recomputed, and is already set.
 	}
 
 	return protocol.Hex{Q: rq, R: rr}
@@ -138,6 +140,10 @@ func rayObstacles(a, b protocol.Hex, terrainAt func(protocol.Hex) protocol.Terra
 			forestCost += protocol.ForestSightCost
 		case protocol.TerrainGrass, protocol.TerrainWater:
 			// Grass is open; water is unwalkable but transparent.
+		default:
+			// Unreachable: every protocol terrain is listed above, and the
+			// exhaustive linter fails the build if a new one is not.
+			panic("game: sight has no rule for terrain " + terrainAt(h))
 		}
 	}
 

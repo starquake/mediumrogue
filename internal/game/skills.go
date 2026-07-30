@@ -661,6 +661,8 @@ func validateNoSkillPrereqCycle(defs []*skillDef) {
 			panic("game: skill prerequisite cycle through " + id)
 		case done:
 			return
+		default:
+			// Zero value: not yet visited, so walk it below.
 		}
 
 		state[id] = onStack
@@ -759,6 +761,9 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 	case aimEntity:
 		return w.useEntityAimedSkillLocked(e, def, targetEntityID)
 	case aimHex:
+		// Falls through to the hex-aimed validation below.
+	default:
+		panic("game: skill " + id + " has unknown aim " + aimFor(def.active.kind))
 	}
 
 	if HexDistance(e.hex, target) > def.active.rangeHex {

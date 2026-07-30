@@ -294,6 +294,8 @@ func TestReachQuestCompletesWithXPOverHTTP(t *testing.T) {
 			if q.State == protocol.QuestCompleted {
 				sawComplete = true
 			}
+		default:
+			// Other event types are not what this test reads.
 		}
 	}
 

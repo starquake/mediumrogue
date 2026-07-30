@@ -384,6 +384,12 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 			// for rollDamageLocked to heal the attacker with, and touch neither
 			// add nor muls. Sums so multiple lifesteal cards stack additively.
 			trace.lifestealPct += c.then.n
+		default:
+			// Unreachable: validateRuleCards (items.go) panics at init on an
+			// unknown effect kind, so the vocabulary is closed by the time a
+			// fold runs. Reaching here means that switch and this one
+			// disagree — the four-places hazard in CLAUDE.md.
+			panic("game: rule card effect " + c.then.kind + " is validated but not applied")
 		}
 	}
 
@@ -419,6 +425,9 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 		if v < 0 {
 			v = 0
 		}
+	default:
+		// Only the events above have a floor; the rest fold to whatever their
+		// cards produce.
 	}
 
 	return v, trace

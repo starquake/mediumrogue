@@ -2626,6 +2626,9 @@ func activeCasters(members []*entity) []*entity {
 				continue
 			}
 		case aimSelf:
+		default:
+			// Unreachable: aimFor returns one of the three aims above.
+			panic("game: skill " + def.id + " has unknown aim")
 		}
 
 		casters = append(casters, e)
@@ -3523,6 +3526,8 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 				}
 			case protocol.EntityPlayer:
 				diedPlayers[e.id] = true
+			default:
+				// Other entity kinds are neither slain monsters nor dead players.
 			}
 		}
 	}
