@@ -105,14 +105,10 @@ func questIDArg(w http.ResponseWriter, deps Deps, rest, verb string) (int64, boo
 // name. On failure it writes the error response itself and returns ok=false.
 func routeChatCommand(
 	w http.ResponseWriter, deps Deps, token string, name string, senderHex protocol.Hex, text string,
-) (string, string, bool) {
+) (sender, out string, ok bool) {
 	verb, rest := cutVerb(text)
 
-	var (
-		sender string
-		out    string
-		err    error
-	)
+	var err error
 
 	switch verb {
 	case "invite":
@@ -170,7 +166,7 @@ func routeChatCommand(
 
 // cutVerb splits a "/verb rest…" chat command into a lower-cased verb and the
 // trimmed remainder (the remainder may contain spaces, e.g. a multi-word name).
-func cutVerb(text string) (string, string) {
+func cutVerb(text string) (verb, rest string) {
 	body := strings.TrimSpace(strings.TrimPrefix(text, "/"))
 	if i := strings.IndexAny(body, " \t"); i >= 0 {
 		return strings.ToLower(body[:i]), strings.TrimSpace(body[i+1:])

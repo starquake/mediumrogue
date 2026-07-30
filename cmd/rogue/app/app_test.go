@@ -127,7 +127,7 @@ func TestLoadSnapshotPreservesRejectedFile(t *testing.T) {
 		t.Fatalf("loadSnapshot(mismatched snapshot) = %v, want %v", got, want)
 	}
 
-	if _, err := os.Stat(path); err == nil {
+	if _, statErr := os.Stat(path); statErr == nil {
 		t.Errorf("rejected snapshot still at the live path %s, want moved aside", path)
 	}
 

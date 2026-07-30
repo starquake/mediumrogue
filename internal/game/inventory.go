@@ -7,6 +7,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
+// errUnhandledPendingAction is deliberately unexported: it is logged, never
+// returned to an HTTP caller, so it stays out of api.go's status mapping (and
+// out of the guard test that keeps that mapping honest).
+var errUnhandledPendingAction = errors.New("unhandled pending item action")
+
 // inventory.go: the five inventory ACTIONS (equip, unequip, drop, pickup,
 // drink) — task 2 of the inventory-slots milestone (spec:
 // docs/superpowers/specs/2026-07-11-inventory-slots-design.md). Every action
@@ -90,9 +95,7 @@ func (w *World) applyPendingItemLocked(e *entity) {
 		// A pending action nothing handles used to leave err nil and report
 		// success, losing the intent silently. TestEveryIntentSentinelIsMapped
 		// guards the mapping; this makes the failure visible if it ever slips.
-		// Logged, never returned to a caller, so this needs no sentinel — and
-		// adding one would drag in the api.go/api_test.go status mapping.
-		err = errors.New("unhandled pending item action " + p.kind)
+		err = fmt.Errorf("%w: %s", errUnhandledPendingAction, p.kind)
 	}
 
 	if err != nil {

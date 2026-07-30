@@ -196,13 +196,13 @@ func TestRespawnScalesMaxHPToLevel(t *testing.T) {
 		t.Fatalf("player %d should respawn, not vanish", me.EntityID)
 	}
 
-	want := game.MaxHPForTest(protocol.ClassFighter, 2)
+	wantHP := game.MaxHPForTest(protocol.ClassFighter, 2)
 
-	if got, want := e.MaxHP, want; got != want {
+	if got, want := e.MaxHP, wantHP; got != want {
 		t.Errorf("respawned level-2 fighter MaxHP = %d, want %d", got, want)
 	}
 
-	if got, want := e.HP, want; got != want {
+	if got, want := e.HP, wantHP; got != want {
 		t.Errorf("respawned fighter HP = %d, want %d (full bar)", got, want)
 	}
 

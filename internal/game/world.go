@@ -2089,17 +2089,11 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 		for _, e := range members {
 			// hp>0 is not enough: a player who died this turn was respawned to
 			// full HP inside resolveCombatLocked, so exclude the died set (#194).
-			if e.kind == protocol.EntityPlayer && e.hp > 0 && !diedThisTurn[e.id] {
-				award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
-				e.xp += award
-				syncMaxHPLocked(e)
-				g, lvl, up := grantSkillPointsLocked(e)
-				if up {
-					w.announceLevelUpLocked(e, g, lvl)
-				}
-
-				w.logger.Info(combatLogMsg, logKeyEvent, combatEventXP, logKeyID, e.id, logKeyBase, totalXP, "awarded", award)
+			if e.kind != protocol.EntityPlayer || e.hp <= 0 || diedThisTurn[e.id] {
+				continue
 			}
+
+			w.awardKillXPLocked(e, totalXP)
 		}
 
 		// The chat stream doubles as the combat log: one kill summary per
@@ -3430,12 +3424,12 @@ func isqrt(n int) int {
 // grant and reports a genuine level-UP for the announce (#202): granted points,
 // the new level, and leveledUp — true only when a level was gained ABOVE the
 // first-ever 0->1 grant, so the initial grant on join stays silent.
-func grantSkillPointsLocked(e *entity) (int, int, bool) {
+func grantSkillPointsLocked(e *entity) (granted, level int, leveledUp bool) {
 	if e.kind != protocol.EntityPlayer {
 		return 0, 0, false
 	}
 
-	level := levelFor(e.xp)
+	level = levelFor(e.xp)
 
 	prev := e.pointsGrantedLevel
 	if level <= prev {
@@ -3447,11 +3441,28 @@ func grantSkillPointsLocked(e *entity) (int, int, bool) {
 		per += protocol.HumanBonusSkillPoints
 	}
 
-	granted := (level - prev) * per
+	granted = (level - prev) * per
 	e.skillPoints += granted
 	e.pointsGrantedLevel = level
 
 	return granted, level, prev >= 1
+}
+
+// awardKillXPLocked folds one surviving player's kill XP, applies the level
+// gain it may trigger, and logs the award. Split out of the bubble's XP pass so
+// that loop stays flat.
+func (w *World) awardKillXPLocked(e *entity, totalXP int) {
+	award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
+	e.xp += award
+	syncMaxHPLocked(e)
+
+	granted, level, leveledUp := grantSkillPointsLocked(e)
+	if leveledUp {
+		w.announceLevelUpLocked(e, granted, level)
+	}
+
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventXP,
+		logKeyID, e.id, logKeyBase, totalXP, "awarded", award)
 }
 
 // announceLevelUpLocked posts the party-visible level-up line (#202) when a

@@ -411,7 +411,7 @@ func TestDeathClearsPendingEquip(t *testing.T) {
 // walkable m at exactly CombatRadius from b but beyond CombatRadius of a. A
 // bubble over {a, b, m} then depends on the player at b (players anchor
 // edges; a↔m is out of range), so removing b dissolves it around a.
-func chainBubbleHexes(t *testing.T, w *game.World) (protocol.Hex, protocol.Hex, protocol.Hex) {
+func chainBubbleHexes(t *testing.T, w *game.World) (a, b, c protocol.Hex) {
 	t.Helper()
 
 	tiles := w.Map().Tiles

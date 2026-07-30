@@ -263,23 +263,18 @@ func (w *World) ApplyEffectForTest(id int64, defID string, magnitude, turns int)
 // EffectForTest reports an entity's active timed effect of the given def:
 // its magnitude, remaining turns, and whether it is present at all — so a test
 // can assert application, refresh, and expiry.
-func (w *World) EffectForTest(id int64, defID string) (int, int, bool) {
-	var (
-		magnitude, turnsRemaining int
-		ok                        bool
-	)
-
+func (w *World) EffectForTest(id int64, defID string) (magnitude, turnsRemaining int, found bool) {
 	w.withEntityForTest(id, func(e *entity) {
 		for _, te := range e.effects {
 			if te.defID == defID {
-				magnitude, turnsRemaining, ok = te.magnitude, te.turnsRemaining, true
+				magnitude, turnsRemaining, found = te.magnitude, te.turnsRemaining, true
 
 				return
 			}
 		}
 	})
 
-	return magnitude, turnsRemaining, ok
+	return magnitude, turnsRemaining, found
 }
 
 // EffectCountForTest returns how many active timed effects an entity carries,
@@ -704,7 +699,7 @@ func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
 // still holds the melee-ish item and off the ranged-ish one (fighter's
 // off-hand is simply empty), so pre-keystone equip tests keep their
 // close/ranged assertions unchanged across the storage model change.
-func (w *World) EquippedSlotsForTest(id int64) (int64, int64) {
+func (w *World) EquippedSlotsForTest(id int64) (mainHand, offHand int64) {
 	var main, off int64
 
 	w.withEntityForTest(id, func(e *entity) {
@@ -953,13 +948,7 @@ func (w *World) ActiveReadyTurnForTest(id int64, skill string) int64 {
 }
 
 // SkillStateForTest reads back what SetSkillStateForTest wrote.
-func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
-	var (
-		learned      []string
-		points       int
-		grantedLevel int
-	)
-
+func (w *World) SkillStateForTest(id int64) (learned []string, points, grantedLevel int) {
 	w.withEntityForTest(id, func(e *entity) {
 		learned, points, grantedLevel = e.learned, e.skillPoints, e.pointsGrantedLevel
 	})

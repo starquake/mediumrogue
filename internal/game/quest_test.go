@@ -728,7 +728,7 @@ func TestSweepReturnsAllPersonalQuests(t *testing.T) {
 // quests", matching nthAvailableQuest's shape.
 //
 //nolint:unparam // n is always 2 today; kept for the self-documenting call shape.
-func firstAvailableQuests(t *testing.T, w *game.World, n int) (int64, int64) {
+func firstAvailableQuests(t *testing.T, w *game.World, n int) (first, second int64) {
 	t.Helper()
 
 	if n != 2 {

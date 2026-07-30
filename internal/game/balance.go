@@ -150,7 +150,7 @@ func deriveSeed(base uint64, parts ...string) uint64 {
 // duelSite returns a deterministic pair of adjacent walkable hexes: the
 // map-derived spawnable set is SORTED before scanning (the standing
 // determinism rule), and the first adjacent pair wins.
-func duelSite(w *World) (protocol.Hex, protocol.Hex) {
+func duelSite(w *World) (site, adjacent protocol.Hex) {
 	hexes := make([]protocol.Hex, 0, len(w.spawnable))
 	for h := range w.spawnable {
 		hexes = append(hexes, h)

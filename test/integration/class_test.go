@@ -21,7 +21,7 @@ import (
 // without mirroring internal/game/content.go's shortbow/ember-focus numbers
 // as local literals — the wire is now the single source of truth, also
 // pinned directly against the registry by internal/game's items_test.go.
-func equippedRangedStats(bundle protocol.TurnEvent, id int64) (int, int, bool) {
+func equippedRangedStats(bundle protocol.TurnEvent, id int64) (damage, rangeHex int, found bool) {
 	e, found := entityOf(bundle, id)
 	if !found {
 		return 0, 0, false

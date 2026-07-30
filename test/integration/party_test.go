@@ -92,7 +92,7 @@ func readSystemChat(t *testing.T, r *bufio.Reader) protocol.ChatMessage {
 // over bob's stream, and has bob accept — returning both join responses once
 // the "joined" system announcement has landed. Shared setup for the leave and
 // invite/accept tests below.
-func formParty(t *testing.T, ts *httptest.Server) (protocol.JoinResponse, protocol.JoinResponse) {
+func formParty(t *testing.T, ts *httptest.Server) (leader, member protocol.JoinResponse) {
 	t.Helper()
 
 	alice := joinNamed(t, ts, "alice")

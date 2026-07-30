@@ -66,8 +66,8 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	groundHex := protocol.Hex{Q: 1, R: 1}
 	groundInst := w.GroundItemForTest(groundHex, "dagger")
 
-	if _, err := w.QuestTake(alice.Token, 1); err != nil {
-		t.Fatalf("QuestTake: %v", err)
+	if _, takeErr := w.QuestTake(alice.Token, 1); takeErr != nil {
+		t.Fatalf("QuestTake: %v", takeErr)
 	}
 
 	// Archive a second character (bob) via the sweep, so the archive map
@@ -506,10 +506,10 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 	w.StreamOpened(me.Token)
 
 	armorID := w.GrantItemForTest(me.EntityID, "leather-armor")
-	if err := w.SubmitIntent(protocol.IntentRequest{
+	if submitErr := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentEquip, ItemID: armorID,
-	}); err != nil {
-		t.Fatalf("equip armor: %v", err)
+	}); submitErr != nil {
+		t.Fatalf("equip armor: %v", submitErr)
 	}
 
 	stackID := w.GrantItemForTest(me.EntityID, "healing-potion")
@@ -537,8 +537,8 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 	}
 
 	w2, _ := newSnapshotWorld(t)
-	if err := w2.RestoreState(data); err != nil {
-		t.Fatalf("RestoreState: %v", err)
+	if restoreErr := w2.RestoreState(data); restoreErr != nil {
+		t.Fatalf("RestoreState: %v", restoreErr)
 	}
 
 	// The live player's equipped map: same instance ids in the same slots.
@@ -622,8 +622,8 @@ func TestRestoreRecomputesDerivedHP(t *testing.T) {
 	// written by an older curve) directly in the JSON, since no ForTest
 	// helper sets maxHP independent of the sync path.
 	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal snapshot for craft: %v", err)
+	if unmarshalErr := json.Unmarshal(data, &raw); unmarshalErr != nil {
+		t.Fatalf("unmarshal snapshot for craft: %v", unmarshalErr)
 	}
 
 	entities, ok := raw["entities"].([]any)
@@ -634,13 +634,13 @@ func TestRestoreRecomputesDerivedHP(t *testing.T) {
 	found := false
 
 	for _, ent := range entities {
-		m, ok := ent.(map[string]any)
-		if !ok {
+		m, isObj := ent.(map[string]any)
+		if !isObj {
 			continue
 		}
 
-		id, ok := m["id"].(float64)
-		if !ok {
+		id, hasID := m["id"].(float64)
+		if !hasID {
 			t.Fatalf("entity in snapshot has no numeric id: %v", m)
 		}
 
