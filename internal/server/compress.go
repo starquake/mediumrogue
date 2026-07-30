@@ -97,7 +97,13 @@ func (w *gzipResponseWriter) WriteHeader(status int) {
 		// chunked instead. Leaving it would truncate the body at the client.
 		h.Del("Content-Length")
 
-		gz, _ := gzipPool.Get().(*gzip.Writer)
+		// A pool holding anything else would nil-deref on the next line, which
+		// is a worse failure than simply making a writer.
+		gz, ok := gzipPool.Get().(*gzip.Writer)
+		if !ok {
+			gz = gzip.NewWriter(w.ResponseWriter)
+		}
+
 		gz.Reset(w.ResponseWriter)
 		w.gz = gz
 	}

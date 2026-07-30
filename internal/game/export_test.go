@@ -493,7 +493,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 	// #271: mirror resolveCombatLocked's in-combat summon hook (worldDomain
 	// false — this bridge resolves a combat/bubble turn). A no-op for a set
 	// with no summoner, so existing callers are unaffected.
-	w.tickSummonsLocked(rng, members, false)
+	w.tickSummonsLocked(rng, members)
 
 	w.advanceTurnLocked()
 }
@@ -646,15 +646,22 @@ func ItemAoERadiusForTest(id string) int { return itemDefByID[id].aoeRadius }
 // the class has one at all (false for Fighter and any classless entity,
 // whose class defaults are melee-tagged only). Levels do not scale damage
 // (#60, roadmap XP3).
-func RangedWeaponForTest(class string) (int, int, int, bool) {
+// RangedWeaponStats describes a class's default ranged weapon for tests.
+type RangedWeaponStats struct {
+	Damage    int
+	RangeHex  int
+	AoERadius int
+}
+
+func RangedWeaponForTest(class string) (RangedWeaponStats, bool) {
 	for _, id := range classDefaultIDs(class) {
 		def := itemDefByID[id]
 		if def.hasTag(protocol.WeaponTagRanged) || def.hasTag(protocol.WeaponTagMagic) {
-			return itemDamage(def), def.rangeHex, def.aoeRadius, true
+			return RangedWeaponStats{Damage: itemDamage(def), RangeHex: def.rangeHex, AoERadius: def.aoeRadius}, true
 		}
 	}
 
-	return 0, 0, 0, false
+	return RangedWeaponStats{}, false
 }
 
 // GrantItemForTest mints and grants (but does not equip) an item instance of
@@ -966,6 +973,8 @@ func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
 func (w *World) GrantSkillPointsForTest(id int64) {
 	w.withEntityForTest(id, func(e *entity) {
 		g, level, up := grantSkillPointsLocked(e)
-		w.announceLevelUpLocked(e, g, level, up)
+		if up {
+			w.announceLevelUpLocked(e, g, level)
+		}
 	})
 }

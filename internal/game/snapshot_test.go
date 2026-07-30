@@ -639,7 +639,12 @@ func TestRestoreRecomputesDerivedHP(t *testing.T) {
 			continue
 		}
 
-		if id, _ := m["id"].(float64); int64(id) == me.EntityID {
+		id, ok := m["id"].(float64)
+		if !ok {
+			t.Fatalf("entity in snapshot has no numeric id: %v", m)
+		}
+
+		if int64(id) == me.EntityID {
 			m["hp"] = 66
 			m["maxHp"] = 66
 			found = true

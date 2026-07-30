@@ -893,23 +893,17 @@ func TestSetLoggerIsMutexGuarded(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for range 300 {
 			w.SetLogger(slog.New(slog.DiscardHandler))
 		}
-	}()
+	})
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for range 300 {
 			w.ResolveTurnForTest()
 		}
-	}()
+	})
 
 	wg.Wait()
 }

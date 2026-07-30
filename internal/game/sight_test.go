@@ -185,18 +185,27 @@ func TestSightSymmetricOffOrigin(t *testing.T) {
 						continue
 					}
 
-					for rq := -window; rq <= window; rq++ {
-						for rr := -window; rr <= window; rr++ {
-							terrain := flatTerrain(protocol.TerrainRock, protocol.Hex{Q: rq, R: rr})
-
-							ab := sightBlocked(a, b, protocol.CombatRadius, terrain)
-							if ba := sightBlocked(b, a, protocol.CombatRadius, terrain); ab != ba {
-								t.Fatalf("sightBlocked(%v,%v)=%v but reversed=%v (rock at {%d %d}) — must be symmetric",
-									a, b, ab, ba, rq, rr)
-							}
-						}
-					}
+					assertSightSymmetric(t, a, b, window)
 				}
+			}
+		}
+	}
+}
+
+// assertSightSymmetric checks that a single rock anywhere in the window blocks
+// sight the same way in both directions. Extracted so the caller's hex sweep
+// stays readable — the two loops here are the rock's position, not the pair's.
+func assertSightSymmetric(t *testing.T, a, b protocol.Hex, window int) {
+	t.Helper()
+
+	for rq := -window; rq <= window; rq++ {
+		for rr := -window; rr <= window; rr++ {
+			terrain := flatTerrain(protocol.TerrainRock, protocol.Hex{Q: rq, R: rr})
+
+			ab := sightBlocked(a, b, protocol.CombatRadius, terrain)
+			if ba := sightBlocked(b, a, protocol.CombatRadius, terrain); ab != ba {
+				t.Fatalf("sightBlocked(%v,%v)=%v but reversed=%v (rock at {%d %d}) — must be symmetric",
+					a, b, ab, ba, rq, rr)
 			}
 		}
 	}

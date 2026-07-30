@@ -22,7 +22,8 @@ func attackIntent(id int64, token string, target protocol.Hex) protocol.IntentRe
 func rangedDamage(t *testing.T, class string) int {
 	t.Helper()
 
-	dmg, _, _, ok := game.RangedWeaponForTest(class)
+	stats, ok := game.RangedWeaponForTest(class)
+	dmg := stats.Damage
 	if !ok {
 		t.Fatalf("class %q has no ranged weapon", class)
 	}

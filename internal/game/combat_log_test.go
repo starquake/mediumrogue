@@ -52,7 +52,10 @@ func TestMonsterKillAnnouncedInChatNamesNobodyForTwoPlayers(t *testing.T) {
 	// second player (idB/tokB) and turn bundle (form) exist only to seed the
 	// two-player bubble itself — kept and explicitly discarded rather than
 	// blanked to stay within dogsled's 2-blank-identifier limit.
-	idA, tokA, idB, tokB, monsterID, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	monsterID := fx.monsterID
+	form := fx.form
 	_, _ = idB, tokB
 	_ = form
 

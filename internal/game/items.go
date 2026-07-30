@@ -1285,8 +1285,10 @@ func validateRuleCards(owner string, cards []ruleCard) {
 // threshold.
 func validateRuleCondition(owner, event string, cond condition) {
 	switch cond.kind {
+	// No parameter to validate: these read the entity or the roll, not cond.s.
 	case condChance, condTargetHPBelowPct, condTargetHPBelowFlat,
-		condTargetHPFull, condAllyInBubble, condTargetAdjacent:
+		condTargetHPFull, condAllyInBubble, condTargetAdjacent,
+		condShieldEquipped, condDualWielding:
 	case condAttackerSpecies:
 		// A species gate on a species that can't exist would silently
 		// never hold — a content typo, caught at load.
@@ -1299,8 +1301,6 @@ func validateRuleCondition(owner, event string, cond condition) {
 		if !validDamageType(cond.s) {
 			panic("game: " + owner + " damageType rule card names unknown damage type " + cond.s)
 		}
-	case condShieldEquipped, condDualWielding:
-		// No parameter to validate: it reads the entity's own off-hand.
 	case condWeaponTagged:
 		// A tag gate on a tag that can't exist would silently never hold —
 		// a content typo, caught at load (#124).

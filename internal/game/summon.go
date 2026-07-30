@@ -84,11 +84,7 @@ func validateMonsterSummon(def *monsterDef) {
 // unconditionally while a world-domain one obeys aggro range. members arrives
 // id-sorted (bubbleMembersLocked), so multiple summoners process — and consume
 // rng — in a deterministic order. Callers hold w.mu.
-func (w *World) tickSummonsLocked(rng *mrand.Rand, members []*entity, worldDomain bool) {
-	if worldDomain {
-		return
-	}
-
+func (w *World) tickSummonsLocked(rng *mrand.Rand, members []*entity) {
 	for _, e := range members {
 		k := kindOf(e)
 		if k == nil || k.summon == nil || e.hp <= 0 {

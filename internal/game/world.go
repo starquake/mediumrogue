@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/hex"
+	hexenc "encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -85,6 +85,16 @@ const (
 // typicalPartySize is a slice-capacity hint, not a cap — a party is a handful,
 // and the slice grows if it is not.
 const typicalPartySize = 4
+
+// simDomain names which of the two resolution scopes a pass is running in: the
+// shared world clock, or one combat bubble. It replaces a bool that read as a
+// bare `true` at every call site.
+type simDomain int
+
+const (
+	domainWorld simDomain = iota
+	domainBubble
+)
 
 // tokenPrefixLen is how many leading characters of a bearer token identity
 // log lines carry — enough to correlate a client across joins/sweeps in the
@@ -236,7 +246,7 @@ func newWorldID() string {
 	buf := make([]byte, worldIDBytes)
 	_, _ = rand.Read(buf)
 
-	return hex.EncodeToString(buf)
+	return hexenc.EncodeToString(buf)
 }
 
 // entity is the server-side entity record. The wire shape is
@@ -935,7 +945,7 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 
 	w.nextID++
 	e := &entity{
-		id: w.nextID, hex: spawn, token: hex.EncodeToString(buf),
+		id: w.nextID, hex: spawn, token: hexenc.EncodeToString(buf),
 		kind: protocol.EntityPlayer, name: name, class: class, species: species, hp: maxHP, maxHP: maxHP,
 		energy: maxEnergy, maxEnergy: maxEnergy,
 		// streams starts 0, disconnectedAt at join time: the removal-grace clock
@@ -1257,9 +1267,9 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 	case protocol.IntentDrink:
 		return w.queueDrinkLocked(e, req.ItemID)
 	case protocol.IntentQuaffHealth:
-		return w.quaffLocked(e, true)
+		return w.quaffHealthLocked(e)
 	case protocol.IntentQuaffEnergy:
-		return w.quaffLocked(e, false)
+		return w.quaffEnergyLocked(e)
 	case protocol.IntentLearnSkill:
 		return w.learnSkillLocked(e, req.SkillID)
 	case protocol.IntentUseSkill:
@@ -1970,7 +1980,7 @@ type pendingAttack struct {
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.regenPlayersLocked(members)
-	w.resolveCombatLocked(members, w.allPlayersLocked(), true)
+	w.resolveCombatLocked(members, w.allPlayersLocked(), domainWorld)
 	w.checkReachQuestsLocked()
 	w.advanceTurnLocked()
 }
@@ -1995,12 +2005,18 @@ func (w *World) advanceTurnLocked() {
 // takes a bool rather than an item id.
 //
 // Callers hold w.mu.
-func (w *World) quaffLocked(e *entity, health bool) error {
-	ready, pool, poolMax := &e.energyPotionReadyTurn, &e.energy, e.maxEnergy
-	if health {
-		ready, pool, poolMax = &e.healthPotionReadyTurn, &e.hp, e.maxHP
-	}
+func (w *World) quaffHealthLocked(e *entity) error {
+	return w.quaffPoolLocked(&e.healthPotionReadyTurn, &e.hp, e.maxHP)
+}
 
+// quaffEnergyLocked drinks the energy draught. See quaffPoolLocked.
+func (w *World) quaffEnergyLocked(e *entity) error {
+	return w.quaffPoolLocked(&e.energyPotionReadyTurn, &e.energy, e.maxEnergy)
+}
+
+// quaffPoolLocked is the shared body: the two draughts differ only in which
+// cooldown stamp and which pool they touch.
+func (w *World) quaffPoolLocked(ready *int64, pool *int, poolMax int) error {
 	if w.turn < *ready {
 		return ErrPotionOnCooldown
 	}
@@ -2058,7 +2074,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 	// would heal differently depending on which domain you were resolved in.
 	w.regenPlayersLocked(members)
 
-	slain, diedThisTurn := w.resolveCombatLocked(members, playersOf(members), false)
+	slain, diedThisTurn := w.resolveCombatLocked(members, playersOf(members), domainBubble)
 
 	// Kill XP belongs to the fight: every player who survived this bubble-turn
 	// earns the FULL sum of the slain kinds' xp — no last-hit competition,
@@ -2078,7 +2094,9 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 				e.xp += award
 				syncMaxHPLocked(e)
 				g, lvl, up := grantSkillPointsLocked(e)
-				w.announceLevelUpLocked(e, g, lvl, up)
+				if up {
+					w.announceLevelUpLocked(e, g, lvl)
+				}
 
 				w.logger.Info(combatLogMsg, logKeyEvent, combatEventXP, logKeyID, e.id, logKeyBase, totalXP, "awarded", award)
 			}
@@ -2124,7 +2142,7 @@ func (w *World) resolveBubbleTurnLocked(b *bubble, members []*entity, now time.T
 // monster, not deduplicated), which the bubble path turns into the shared
 // kill-XP award and the kill-summary announce. Callers hold w.mu.
 func (w *World) resolveCombatLocked(
-	members, monsterTargets []*entity, worldDomain bool,
+	members, monsterTargets []*entity, domain simDomain,
 ) ([]*monsterDef, map[int64]bool) {
 	// Built before thinkMonstersLocked (unlike pre-6.4, when the rng was built
 	// after) so a future aggro-range rule card using a condChance condition has
@@ -2133,7 +2151,7 @@ func (w *World) resolveCombatLocked(
 	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; reproducibility is required.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
 
-	w.thinkMonstersLocked(rng, members, monsterTargets, worldDomain)
+	w.thinkMonstersLocked(rng, members, monsterTargets, domain)
 
 	// Pending inventory actions are this turn's action for any member that
 	// queued one (commitItemActionLocked, inside a bubble): apply them before
@@ -2191,7 +2209,11 @@ func (w *World) resolveCombatLocked(
 	// draw comes AFTER every existing consumer (think/attack/move/drops), which
 	// is why adding it moves no pinned seed: a world with no summoner content
 	// draws nothing here.
-	w.tickSummonsLocked(rng, members, worldDomain)
+	// Summons tick inside a bubble only: the world domain has no combat to
+	// summon into. The caller decides rather than the callee returning early.
+	if domain == domainBubble {
+		w.tickSummonsLocked(rng, members)
+	}
 
 	return slain, died
 }
@@ -2280,6 +2302,19 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 
 	taken, takeTrace := applyRulesTraced(evTakeDamage, dealt, victimCards, ctx)
 
+	w.recordHitOutcomeLocked(attacker, victim, weapon, taken, dealTrace, takeTrace)
+
+	return taken
+}
+
+// recordHitOutcomeLocked handles the three things that happen AFTER a hit's
+// damage is known, none of which change it: the bundle's Hits view, the
+// weapon's on-hit riders, and lifesteal. Split out of rollDamageLocked so the
+// contractual fold order above stays in one piece. Consumes no rng, so it
+// cannot move a pinned seed.
+func (w *World) recordHitOutcomeLocked(
+	attacker, victim *entity, weapon *itemDef, taken int, dealTrace, takeTrace ruleTrace,
+) {
 	// #114: record the hit for the turn bundle's Hits view. Crit is the
 	// ATTACKER-side moment (a chance-conditioned boost fired in the
 	// deal-damage fold: elf passive, Misericorde, Duelist's Saber); glance
@@ -2317,8 +2352,6 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 			w.pendingLifesteal[attacker.id] += heal
 		}
 	}
-
-	return taken
 }
 
 // victimGearCards returns the rule cards an entity contributes to
@@ -3424,8 +3457,8 @@ func grantSkillPointsLocked(e *entity) (int, int, bool) {
 // announceLevelUpLocked posts the party-visible level-up line (#202) when a
 // grant was a genuine level gain. The self-only banner is a client concern
 // (off the level delta). Skips a nameless test-bridge player, like death.
-func (w *World) announceLevelUpLocked(e *entity, granted, level int, leveledUp bool) {
-	if !leveledUp || e.name == "" {
+func (w *World) announceLevelUpLocked(e *entity, granted, level int) {
+	if e.name == "" {
 		return
 	}
 
@@ -3910,13 +3943,13 @@ func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
 //
 // When adjacent, path[0] is the player's own hex, so the move phase converts
 // this into a melee attack (6.3).
-func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, worldDomain bool) {
+func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, domain simDomain) {
 	for _, m := range members {
 		if m.kind != protocol.EntityMonster {
 			continue
 		}
 
-		if worldDomain && w.thinkReturnHomeLocked(m) {
+		if domain == domainWorld && w.thinkReturnHomeLocked(m) {
 			continue // beyond leash or already returning: this turn is a step home
 		}
 
@@ -3925,7 +3958,7 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 		}
 
 		var target *entity
-		if worldDomain {
+		if domain == domainWorld {
 			target = w.nearestAggroedPlayerLocked(rng, m, targets)
 			if target == nil {
 				m.path = nil // nobody within their own aggro range: stand still

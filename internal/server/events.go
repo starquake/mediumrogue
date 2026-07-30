@@ -48,6 +48,33 @@ const sseRetryAfterSeconds = "5"
 // identically (retry later), and one status keeps the SSE reject surface
 // uniform; the semantics ("stream cap full, come back") are the same, just
 // scoped per IP.
+// openSSEStream writes the event-stream headers, gets them onto the wire, and
+// sends the first turn — returning the watermark the stream loop continues
+// from. Split out of handleEvents to keep that function inside the length
+// limit; the ordering inside here is load-bearing and commented as such.
+func openSSEStream(
+	w http.ResponseWriter, r *http.Request, deps Deps, flusher http.Flusher, token string,
+) int64 {
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	// Establish the stream on the wire immediately. Without this, Go's
+	// server buffers the header block until the first body write, so a
+	// reconnecting client whose Last-Event-ID already matches the current
+	// turn (writeTurn below sends nothing) would see its connection hang
+	// with no bytes at all until the next turn or heartbeat.
+	flusher.Flush()
+
+	// Seed the watermark from Last-Event-ID so a reconnecting client is not
+	// re-sent a turn it already has. A fresh client (no header) or a
+	// malformed value defaults to -1 → current snapshot sent immediately.
+	lastSent := parseLastEventID(r)
+
+	return writeTurn(w, deps, flusher, lastSent, token)
+}
+
 func handleEvents(deps Deps) http.Handler {
 	gate := newStreamGate(deps.SSEMaxStreams)
 
@@ -116,23 +143,7 @@ func handleEvents(deps Deps) http.Handler {
 		chatCh, unsubscribeChat := deps.Chat.Subscribe()
 		defer unsubscribeChat()
 
-		h := w.Header()
-		h.Set("Content-Type", "text/event-stream")
-		h.Set("Cache-Control", "no-cache")
-		w.WriteHeader(http.StatusOK)
-
-		// Establish the stream on the wire immediately. Without this, Go's
-		// server buffers the header block until the first body write, so a
-		// reconnecting client whose Last-Event-ID already matches the current
-		// turn (writeTurn below sends nothing) would see its connection hang
-		// with no bytes at all until the next turn or heartbeat.
-		flusher.Flush()
-
-		// Seed the watermark from Last-Event-ID so a reconnecting client is not
-		// re-sent a turn it already has. A fresh client (no header) or a
-		// malformed value defaults to -1 → current snapshot sent immediately.
-		lastSent := parseLastEventID(r)
-		lastSent = writeTurn(w, deps, flusher, lastSent, token)
+		lastSent := openSSEStream(w, r, deps, flusher, token)
 
 		streamEvents(r.Context(), w, deps, flusher, token, lastSent, ticks, chatCh)
 	})

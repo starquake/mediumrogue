@@ -410,14 +410,10 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 	}
 
 	switch event {
-	case evTakeDamage:
-		if v < 1 {
-			v = 1
-		}
-	case evAggroRange:
-		// A noticeability radius stays ≥1 (#88): shipped cards are
-		// multiplicative and cannot go negative, but a future negative-`add`
-		// card could fold it to 0 — a monster that never notices anyone.
+	// Both floor at 1. Damage below 1 is a no-op hit; a noticeability radius
+	// below 1 is a monster that never notices anyone (#88) — shipped cards are
+	// multiplicative and cannot go negative, but a future negative-`add` could.
+	case evTakeDamage, evAggroRange:
 		if v < 1 {
 			v = 1
 		}

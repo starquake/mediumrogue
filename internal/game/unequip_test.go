@@ -52,7 +52,8 @@ func TestUnequipInBubbleQueuesTurnConsumption(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, _, _ := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
 
 	closeInst, _ := w.EquippedSlotsForTest(idA)
 	if closeInst == 0 {

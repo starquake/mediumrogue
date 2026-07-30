@@ -223,7 +223,8 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("rogue bow", func(t *testing.T) {
 		t.Parallel()
 
-		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassRogue)
+		w, ok := game.RangedWeaponForTest(protocol.ClassRogue)
+		dmg, rangeHex, aoe := w.Damage, w.RangeHex, w.AoERadius
 		if !ok {
 			t.Fatal("rogue should have a ranged weapon")
 		}
@@ -244,7 +245,8 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("mage magic", func(t *testing.T) {
 		t.Parallel()
 
-		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassMage)
+		w, ok := game.RangedWeaponForTest(protocol.ClassMage)
+		dmg, rangeHex, aoe := w.Damage, w.RangeHex, w.AoERadius
 		if !ok {
 			t.Fatal("mage should have a ranged weapon")
 		}
@@ -265,7 +267,7 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("fighter has no ranged", func(t *testing.T) {
 		t.Parallel()
 
-		if _, _, _, ok := game.RangedWeaponForTest(protocol.ClassFighter); ok {
+		if _, ok := game.RangedWeaponForTest(protocol.ClassFighter); ok {
 			t.Error("fighter should have no ranged weapon")
 		}
 	})

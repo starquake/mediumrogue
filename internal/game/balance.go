@@ -19,11 +19,12 @@ package game
 // so absence from w.entities is the win signal.
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
-	"sort"
+	"slices"
 	"strconv"
 	"time"
 
@@ -155,12 +156,12 @@ func duelSite(w *World) (protocol.Hex, protocol.Hex) {
 		hexes = append(hexes, h)
 	}
 
-	sort.Slice(hexes, func(i, j int) bool {
-		if hexes[i].Q != hexes[j].Q {
-			return hexes[i].Q < hexes[j].Q
+	slices.SortFunc(hexes, func(a, b protocol.Hex) int {
+		if a.Q != b.Q {
+			return cmp.Compare(a.Q, b.Q)
 		}
 
-		return hexes[i].R < hexes[j].R
+		return cmp.Compare(a.R, b.R)
 	})
 
 	set := make(map[protocol.Hex]bool, len(hexes))
@@ -221,7 +222,7 @@ func (w *World) placeDuelPlayer(hex protocol.Hex, cfg DuelConfig) *entity {
 
 	e.learned = append(e.learned, cfg.Passives...)
 
-	sort.Strings(e.learned) // the entity invariant: learned stays sorted
+	slices.Sort(e.learned) // the entity invariant: learned stays sorted
 
 	return e
 }
