@@ -27,6 +27,35 @@ if got, want := err.Error(), "failed to delete options"; !strings.Contains(got, 
 
 Never do `if err.Error() == "..."` or `if result != expected { t.Errorf(..., result, expected) }` inline — always use `got, want` declared in the `if` statement.
 
+### The `got, want` pattern vs `govet`'s shadow check
+
+`shadow` is enabled (#334), and the assertion pattern above deliberately
+shadows: `if got, want := e.MaxHP, want` redeclares `want` inside the `if`.
+When the surrounding function already has a `want`, rename the **outer** one —
+never the inner pair, which would break the pattern:
+
+```go
+// BAD — shadow fires on the inner `want`
+want := game.MaxHPForTest(protocol.ClassFighter, 2)
+if got, want := e.MaxHP, want; got != want {
+
+// GOOD — the outer value is renamed, the pattern is intact
+wantHP := game.MaxHPForTest(protocol.ClassFighter, 2)
+if got, want := e.MaxHP, wantHP; got != want {
+```
+
+The same applies to a shadowed `err` or `ok`: name the inner one for the call it
+came from (`writeErr`, `restoreErr`, `hasID`) rather than reaching for a
+suppression. Doing this once surfaced a `t.Fatalf` that had been printing the
+outer, nil `err` — the shadow was hiding a broken failure message.
+
+### Named results
+
+`nonamedreturns` is **disabled** and revive's `confusing-results` is on (#334):
+a function returning two or more results of the *same type* must name them, so
+`(mainHand, offHand int64)` rather than `(int64, int64)`. Keep returns explicit
+anyway — `nakedret` still fires on a bare `return`.
+
 ## Common linter pitfalls
 
 ### `nilnil` — pointer + nil error return

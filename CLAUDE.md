@@ -322,9 +322,27 @@ drift between calls; use absolute paths or `cd` to the repo root before
 
 ## Maintenance reminders
 
-- **Periodically audit all `//nolint` suppressions**
-  (`grep -rn '//nolint' cmd internal test`): re-justify or remove each. Every
-  suppression must carry a reason comment; if the reason no longer holds (or
-  a disabled linter in `.golangci.yml` starts fitting the codebase), fix the
-  code instead. Also revisit the `disable:` list and test-file exclusions in
-  `.golangci.yml` — they were calibrated at milestone 1–2 scale.
+- **`//nolint` hygiene is now the linter's job, not a periodic sweep** (#334).
+  `nolintlint` runs with `require-explanation` and `require-specific`, so a
+  suppression without a reason, or one that says just `//nolint`, fails the
+  build. What it cannot check is whether a reason is still *true* — so when you
+  touch code near a suppression, read it: a stale justification passes lint
+  forever. `allow-unused: true` is set deliberately (a golangci-lint cache bug
+  reports still-needed directives as unused), which means a directive that has
+  genuinely stopped suppressing anything will sit there silently. Deleting one
+  and re-running the linter is the only way to know.
+- **`nolint` targets a LINTER, never a single revive rule.** With revive running
+  its full rule set, `//nolint:revive` silences *all* of it on that line —
+  including the `receiver-naming`/`var-naming` house rules in
+  `.claude/rules/go-style.md`. Prefer revive's per-rule `exclude:` globs in
+  `.golangci.yml`, or a rule-level config argument, and keep `//nolint:revive`
+  for the few spots where the collateral is genuinely empty (a three-line pure
+  maths function). Always name the rule in the reason, since the directive
+  cannot: `//nolint:revive // add-constant: the 3 is the formula itself`.
+- **`.golangci.yml` tracks `starquake/topbanana`** (#334) — an explicit enable
+  list, `revive: enable-all-rules: true`, and rejected linters left commented in
+  place carrying their reason. Two deliberate divergences: `mnd` is disabled
+  (revive's `add-constant` owns magic numbers here, where topbanana runs both),
+  and `add-constant` needs `ignore-funcs`/`allow-floats` spelled out because
+  `mnd` shipped those standard-library exemptions and revive does not. Before
+  adding a linter, check how topbanana configures it.
