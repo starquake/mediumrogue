@@ -762,123 +762,6 @@ func (w *World) Run(ctx context.Context) {
 	}
 }
 
-// pollTick runs one control-loop pass under w.mu: a world resolution if the
-// interval has elapsed since lastWorldTick, plus every ready-or-expired bubble.
-//
-// It decides what resolves, and captures each resolution's member set, from the
-// state at the START of the pass — before any resolution mutates positions or
-// membership. That ordering is load-bearing: a world resolution can walk an
-// entity into an existing bubble, and a bubble resolution can let one flee into
-// the world; capturing member sets up front (and recomputing bubbles only once,
-// at the end) guarantees every entity acts exactly once, never twice and never
-// zero times, regardless of how the pass reshuffles domains. Bubbles resolve in
-// sorted-id order for reproducibility.
-//
-// Its first step is the disconnect sweep (before any member set is captured), so
-// a player gone past the grace never lands in a resolution this pass. Returns
-// whether anything changed — a resolution or a swept removal — so a removal-only
-// pass still republishes.
-func (w *World) pollTick(now time.Time) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	// Sweep first, before capturing any member set: a swept entity is then never
-	// part of this pass's resolution, and the recompute inside the sweep leaves
-	// readyBubbleTurnsLocked reading up-to-date bubbles. A removal alone (no other
-	// resolution) still publishes so clients despawn the gone entity.
-	swept := w.sweepDisconnectedLocked(now)
-
-	doWorld := now.Sub(w.lastWorldTick) >= w.interval
-
-	turns := w.readyBubbleTurnsLocked(now)
-
-	if !doWorld && len(turns) == 0 {
-		return swept
-	}
-
-	if doWorld {
-		w.resolveWorldTurnLocked(w.domainMembersLocked())
-		w.lastWorldTick = now
-	}
-
-	for _, bt := range turns {
-		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
-	}
-
-	// Final recompute after this pass's resolutions moved entities. (A sweep
-	// above may have already recomputed once — keep this one anyway: positions
-	// changed since. recompute is idempotent, so the extra call is harmless.)
-	w.recomputeBubblesLocked(now)
-
-	return true
-}
-
-// bubbleTurn is one bubble's scheduled resolution: the bubble and the member
-// snapshot to resolve it over, both captured before the pass mutates anything.
-type bubbleTurn struct {
-	bubble  *bubble
-	members []*entity
-}
-
-// stepOnce drives one full turn synchronously — the world domain, then every
-// combat bubble that existed BEFORE that world resolution, ungated by patience
-// or lock-in, then one recompute. Capturing the pre-existing bubbles first
-// means a bubble formed during this same world resolution does not also act
-// this step, so a single step is exactly one action for every entity. Shared
-// by ResolveTurnForTest (the test clock bridge) and the balance harness
-// (balance.go, #283) — the two synchronous drivers must step identically or
-// their measurements diverge from what tests pin.
-func (w *World) stepOnce() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	now := w.now()
-
-	ids := make([]int64, 0, len(w.bubbles))
-	for id := range w.bubbles {
-		ids = append(ids, id)
-	}
-
-	slices.Sort(ids)
-
-	pre := make([]bubbleTurn, 0, len(ids))
-	for _, id := range ids {
-		b := w.bubbles[id]
-		pre = append(pre, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
-	}
-
-	w.resolveWorldTurnLocked(w.domainMembersLocked())
-
-	for _, bt := range pre {
-		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
-	}
-
-	w.recomputeBubblesLocked(now)
-}
-
-// readyBubbleTurnsLocked collects, in sorted-id order, the bubbles that should
-// resolve this pass (all players locked in, or patience expired) together with a
-// snapshot of each one's members. Callers hold w.mu.
-func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
-	ids := make([]int64, 0, len(w.bubbles))
-	for id := range w.bubbles {
-		ids = append(ids, id)
-	}
-
-	slices.Sort(ids)
-
-	var turns []bubbleTurn
-
-	for _, id := range ids {
-		b := w.bubbles[id]
-		if w.bubbleReadyOrExpiredLocked(b, now) {
-			turns = append(turns, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
-		}
-	}
-
-	return turns
-}
-
 // Join returns the entity for token in three orders of preference: (1) a
 // LIVE token reclaims its existing entity; (2) an ARCHIVED token (swept for
 // disconnection, or loaded from a snapshot and never re-claimed) restores a
@@ -963,94 +846,6 @@ func (w *World) Join(token, name, class, species string) (protocol.JoinResponse,
 	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
 }
 
-// validateNewJoinLocked checks a NEW player's name/class/species (name
-// already trimmed by the caller), logging a "join-rejected" identity audit
-// event with the failing reason before returning the matching sentinel.
-// Callers hold w.mu.
-func (w *World) validateNewJoinLocked(token, name, class, species string) error {
-	if !validName(name) {
-		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
-			logKeyReason, "invalid_name", logKeyTokenPrefix, tokenPrefix(token))
-
-		return ErrInvalidName
-	}
-
-	if !validClass(class) {
-		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
-			logKeyReason, "invalid_class", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
-
-		return ErrInvalidClass
-	}
-
-	if !validSpecies(species) {
-		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
-			logKeyReason, "invalid_species", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
-
-		return ErrInvalidSpecies
-	}
-
-	return nil
-}
-
-// restoreArchivedLocked implements Join's archived-token branch: a fresh
-// entity built from rec (identity/XP/gear as archived), spawned at a new
-// guarded random hex with full level-scaled HP, keeping the same token —
-// this IS the character coming back, not a new one. Consumes (deletes) the
-// archive entry, since a character lives in exactly one place at a time.
-// Callers hold w.mu.
-func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protocol.JoinResponse, error) {
-	spawn, err := w.spawnHexLocked()
-	if err != nil {
-		return protocol.JoinResponse{}, err
-	}
-
-	level := levelFor(rec.xp)
-	maxHP := maxHPFor(rec.class, level)
-	maxEnergy := maxEnergyFor(rec.class, level)
-
-	w.nextID++
-	e := &entity{
-		id: w.nextID, hex: spawn, token: token,
-		kind: protocol.EntityPlayer, name: rec.name, class: rec.class, species: rec.species,
-		xp: rec.xp, hp: maxHP, maxHP: maxHP,
-		// A restored character comes back rested, same as its HP (#322).
-		energy: maxEnergy, maxEnergy: maxEnergy,
-		equipped: rec.equipped, backpack: rec.backpack,
-		learned: rec.learned, skillPoints: rec.skillPoints,
-		pointsGrantedLevel: rec.pointsGrantedLevel, activeReadyTurn: rec.activeReadyTurn,
-
-		// Restored as if freshly joined: the removal-grace clock starts now,
-		// not at the (long-gone) pre-sweep disconnect time — the spec's pinned
-		// risk (see archive_test.go).
-		disconnectedAt: w.now(),
-	}
-	w.entities[e.id] = e
-	w.byToken[e.token] = e
-	delete(w.archive, token)
-
-	w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRestore,
-		logKeyID, e.id, logKeyName, e.name, logKeyTokenPrefix, tokenPrefix(token))
-
-	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
-}
-
-// validName accepts a trimmed, non-empty name of at most
-// protocol.MaxNameLen runes.
-func validName(name string) bool {
-	n := utf8.RuneCountInString(name)
-	if n == 0 || n > protocol.MaxNameLen {
-		return false
-	}
-
-	// The system-announcement label is reserved: a player taking it could
-	// impersonate server messages, which the client styles specially (#198).
-	if strings.EqualFold(strings.TrimSpace(name), protocol.SystemSender) {
-		return false
-	}
-
-	return true
-}
-
 // SenderFor resolves a chat sender from their token: their display name and
 // current authoritative position. ok is false for an unknown or empty token
 // (not joined). Used by POST /api/chat so /here can't be spoofed.
@@ -1114,65 +909,6 @@ func (w *World) StreamClosed(token string) {
 			e.disconnectedAt = w.now()
 		}
 	}
-}
-
-// sweepDisconnectedLocked removes every player whose event stream has been gone
-// longer than the disconnect grace: a player entity (kind player AND a token)
-// with streams == 0 and now-disconnectedAt > disconnectGrace. Monsters (no
-// token) are never candidates. It collects candidate ids first (sorted) and
-// deletes after, so the entity map is never mutated mid-range and removals are
-// deterministic. Before deleting each entity it archives its character
-// (identity, XP, gear — see characterRecord/World.archive) so a later Join
-// with the same token restores it instead of minting a fresh one; party and
-// personal-quest state are NOT archived — they dissolve/return to the board
-// exactly as before (session-scoped social state, not progression). If it
-// removed anyone it recomputes bubbles — a swept entity may have been
-// mid-fight — and returns true, so the caller republishes and clients despawn
-// the entity. Callers hold w.mu.
-func (w *World) sweepDisconnectedLocked(now time.Time) bool {
-	var gone []int64
-
-	for id, e := range w.entities {
-		if e.kind != protocol.EntityPlayer || e.token == "" {
-			continue
-		}
-
-		if e.streams == 0 && now.Sub(e.disconnectedAt) > w.disconnectGrace {
-			gone = append(gone, id)
-		}
-	}
-
-	if len(gone) == 0 {
-		return false
-	}
-
-	slices.Sort(gone)
-
-	for _, id := range gone {
-		e := w.entities[id]
-
-		w.archive[e.token] = archiveLocked(e)
-
-		w.logger.Info(identityLogMsg, logKeyEvent, identityEventSweepArchive,
-			logKeyID, e.id, logKeyName, e.name, logKeyTokenPrefix, tokenPrefix(e.token))
-
-		w.leavePartyLocked(e)
-		w.abandonPersonalQuestLocked(e)
-		delete(w.pendingInvites, id)
-
-		for invitee, inviter := range w.pendingInvites {
-			if inviter == id {
-				delete(w.pendingInvites, invitee)
-			}
-		}
-
-		delete(w.entities, id)
-		delete(w.byToken, e.token)
-	}
-
-	w.recomputeBubblesLocked(now)
-
-	return true
 }
 
 // SubmitIntent applies one player intent for the next turn. Kind is required:
@@ -1245,6 +981,407 @@ func (w *World) SubmitIntent(req protocol.IntentRequest) error {
 	}
 
 	return nil
+}
+
+// Snapshot is the current turn bundle: turn number plus every entity,
+// sorted by ID for a deterministic wire shape.
+// Snapshot renders the turn bundle with NO viewer: own-only fields (skills,
+// the point bank — #124) are omitted for every entity. Used by tests and any
+// caller that isn't a player's own stream; the SSE handler calls SnapshotFor.
+func (w *World) Snapshot() protocol.TurnEvent {
+	return w.SnapshotFor("")
+}
+
+// Turn returns the current world turn number. Cheap (just the counter under the
+// lock) so an SSE writer can skip the full per-viewer SnapshotFor build on a
+// coalesced no-op wake whose turn it already sent (#209). The turn counter only
+// ever increases, so a value that differs from a client's last-sent watermark
+// always means a genuinely newer bundle is due.
+func (w *World) Turn() int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.turn
+}
+
+// SnapshotFor renders the turn bundle as the holder of viewerToken sees it.
+// Skills and the unspent point bank are OWN-ONLY (#124 Q9): they are filled
+// in on the viewer's own entity and left zero on everyone else's, so another
+// player's build never reaches this client at all.
+//
+// It is also culled to protocol.InterestRadius around the viewer (#289) —
+// entities, ground items, bubbles and hits alike — so the world beyond is
+// known ground with nothing moving on it.
+//
+// Cost: one bundle per open stream per turn rather than one shared bundle —
+// ~15 at this game's scale, which is why own-only was affordable. The hub's
+// coalescing contract is untouched: this is still "fetch the latest state",
+// just rendered per viewer, and culling keeps each bundle a COMPLETE snapshot
+// of what is relevant to that viewer rather than a delta.
+func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	centre, viewerID := w.interestCentreLocked(viewerToken)
+
+	entities := w.entityViewsLocked()
+	w.fillOwnOnlyLocked(entities, viewerToken)
+
+	entities, visible := cullEntities(entities, centre, viewerID)
+
+	return protocol.TurnEvent{
+		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities,
+		Bubbles: w.bubbleViewsLocked(w.now(), visible), Quests: w.questViewsLocked(),
+		GroundItems: w.groundItemViewsLocked(centre), WorldID: w.worldID,
+		Hits: w.hitViewsLocked(visible), Party: w.partyViewsLocked(viewerToken),
+	}
+}
+
+// SpawnMonsters adds n monster entities at random walkable hexes, chosen
+// with the world seed so a given seed is reproducible: placement is
+// distributed across the map's difficulty rings (ringOf, worldgen.go)
+// weighted by each ring's candidate-hex count (a proxy for its area that is
+// naturally terrain-aware — water/rock reduce a ring's usable area too),
+// and each placement picks a kind uniformly among the kinds registered for
+// that ring (content.go's monsterDefs' own rings field), capping dragon at
+// protocol.DragonCount for the whole call. Skips hexes already at
+// StackCap and, when at least one candidate allows it, hexes on/within
+// CombatRadius of a living player (tooCloseToPlayerLocked — #36) or within
+// protocol.SanctuaryRadius of the origin (tooCloseToSanctuaryLocked — 6c);
+// if EVERY walkable hex fails one of those guards, both are dropped
+// entirely for this call rather than placing nothing (the pre-#36
+// behavior, so a tiny or crowded map never silently spawns fewer monsters
+// than requested for lack of a "safe" hex). Intended for **startup, before
+// any player joins** (server startup via MONSTER_COUNT, or tests), where
+// the player guard is inert today — it exists for a future
+// continuous/respawn spawner called mid-run.
+func (w *World) SpawnMonsters(n int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
+
+	byRing, ringWeights := w.spawnCandidatesByRingLocked(rng)
+	kindsByRing := kindsPerRing()
+
+	// The dragon cap is per WORLD, not per call: start from the dragons
+	// already alive (a previous SpawnMonsters call, or a SpawnMonsterKindAt-
+	// seeded one), so the future continuous/density spawner calling this
+	// again mid-run can never stack a second dragon past DragonCount.
+	dragonsPlaced := w.livingDragonsLocked()
+	placed := 0
+
+	for placed < n {
+		h, r, ok := nextSpawnHexLocked(rng, byRing, ringWeights)
+		if !ok {
+			break // every ring is out of both weight and candidates
+		}
+
+		if w.occupancyLocked(h) >= protocol.StackCap {
+			continue
+		}
+
+		kindID, ok := pickSpawnKind(rng, kindsByRing[r], dragonsPlaced)
+		if !ok {
+			continue // ring exhausted of spawnable kinds (dragon-only ring, cap reached)
+		}
+
+		if kindID == idKindDragon {
+			dragonsPlaced++
+		}
+
+		k := monsterDefByID[kindID]
+
+		w.nextID++
+		w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
+		placed++
+	}
+}
+
+// SpawnMonsterAt spawns a single monster at h, returning whether it spawned. It
+// refuses a non-walkable hex or one already at StackCap. Unlike SpawnMonsters
+// (random, world-seeded placement) it puts a monster at a caller-chosen hex, so
+// a caller can seed a known-position monster — e.g. an integration test that
+// needs a monster a couple hexes from where a player is (or will be), for a
+// short, deterministic chase or an immediate fight. It mirrors SpawnMonsters'
+// entity shape (kind monster, MonsterMaxHP). Like SpawnMonsters it is a
+// startup primitive meant to run before Run: it does not recompute bubbles
+// (Run does that each tick) and does not avoid opposing occupants.
+//
+// Unlike SpawnMonsters/spawnHexLocked it does NOT apply the #36
+// too-close-to-a-player guard: this API names exactly one caller-chosen hex
+// with no alternative candidate to fall back to, and both of those guarded
+// callers fall back to placing anyway when nothing else qualifies — applying
+// the same guard here would only ever produce that same fallback, silently.
+// A caller that needs a guaranteed-clear hex should choose one itself
+// (tooCloseToPlayerLocked is unexported, but SpawnMonsters' random search
+// already does this). Holds w.mu.
+func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
+	return w.SpawnMonsterKindAt(h, defaultMonsterKindID)
+}
+
+// SpawnMonsterKindAt is SpawnMonsterAt for a caller-chosen monster kind
+// (content.go's monsterDefs id) — lets a test or a future ring-aware spawner
+// seed a specific kind at a specific hex. Panics if kind is not registered
+// (a content bug, not a runtime condition a caller should need to handle).
+func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	k, ok := monsterDefByID[kind]
+	if !ok {
+		panic("game: SpawnMonsterKindAt unknown monster kind " + kind)
+	}
+
+	if !w.walkableLocked(h) || w.occupancyLocked(h) >= protocol.StackCap {
+		return false
+	}
+
+	w.nextID++
+	w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
+
+	return true
+}
+
+// pollTick runs one control-loop pass under w.mu: a world resolution if the
+// interval has elapsed since lastWorldTick, plus every ready-or-expired bubble.
+//
+// It decides what resolves, and captures each resolution's member set, from the
+// state at the START of the pass — before any resolution mutates positions or
+// membership. That ordering is load-bearing: a world resolution can walk an
+// entity into an existing bubble, and a bubble resolution can let one flee into
+// the world; capturing member sets up front (and recomputing bubbles only once,
+// at the end) guarantees every entity acts exactly once, never twice and never
+// zero times, regardless of how the pass reshuffles domains. Bubbles resolve in
+// sorted-id order for reproducibility.
+//
+// Its first step is the disconnect sweep (before any member set is captured), so
+// a player gone past the grace never lands in a resolution this pass. Returns
+// whether anything changed — a resolution or a swept removal — so a removal-only
+// pass still republishes.
+func (w *World) pollTick(now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Sweep first, before capturing any member set: a swept entity is then never
+	// part of this pass's resolution, and the recompute inside the sweep leaves
+	// readyBubbleTurnsLocked reading up-to-date bubbles. A removal alone (no other
+	// resolution) still publishes so clients despawn the gone entity.
+	swept := w.sweepDisconnectedLocked(now)
+
+	doWorld := now.Sub(w.lastWorldTick) >= w.interval
+
+	turns := w.readyBubbleTurnsLocked(now)
+
+	if !doWorld && len(turns) == 0 {
+		return swept
+	}
+
+	if doWorld {
+		w.resolveWorldTurnLocked(w.domainMembersLocked())
+		w.lastWorldTick = now
+	}
+
+	for _, bt := range turns {
+		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
+	}
+
+	// Final recompute after this pass's resolutions moved entities. (A sweep
+	// above may have already recomputed once — keep this one anyway: positions
+	// changed since. recompute is idempotent, so the extra call is harmless.)
+	w.recomputeBubblesLocked(now)
+
+	return true
+}
+
+// stepOnce drives one full turn synchronously — the world domain, then every
+// combat bubble that existed BEFORE that world resolution, ungated by patience
+// or lock-in, then one recompute. Capturing the pre-existing bubbles first
+// means a bubble formed during this same world resolution does not also act
+// this step, so a single step is exactly one action for every entity. Shared
+// by ResolveTurnForTest (the test clock bridge) and the balance harness
+// (balance.go, #283) — the two synchronous drivers must step identically or
+// their measurements diverge from what tests pin.
+func (w *World) stepOnce() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	now := w.now()
+
+	ids := make([]int64, 0, len(w.bubbles))
+	for id := range w.bubbles {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	pre := make([]bubbleTurn, 0, len(ids))
+	for _, id := range ids {
+		b := w.bubbles[id]
+		pre = append(pre, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
+	}
+
+	w.resolveWorldTurnLocked(w.domainMembersLocked())
+
+	for _, bt := range pre {
+		w.resolveBubbleTurnLocked(bt.bubble, bt.members, now)
+	}
+
+	w.recomputeBubblesLocked(now)
+}
+
+// readyBubbleTurnsLocked collects, in sorted-id order, the bubbles that should
+// resolve this pass (all players locked in, or patience expired) together with a
+// snapshot of each one's members. Callers hold w.mu.
+func (w *World) readyBubbleTurnsLocked(now time.Time) []bubbleTurn {
+	ids := make([]int64, 0, len(w.bubbles))
+	for id := range w.bubbles {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	var turns []bubbleTurn
+
+	for _, id := range ids {
+		b := w.bubbles[id]
+		if w.bubbleReadyOrExpiredLocked(b, now) {
+			turns = append(turns, bubbleTurn{bubble: b, members: w.bubbleMembersLocked(b)})
+		}
+	}
+
+	return turns
+}
+
+// validateNewJoinLocked checks a NEW player's name/class/species (name
+// already trimmed by the caller), logging a "join-rejected" identity audit
+// event with the failing reason before returning the matching sentinel.
+// Callers hold w.mu.
+func (w *World) validateNewJoinLocked(token, name, class, species string) error {
+	if !validName(name) {
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "invalid_name", logKeyTokenPrefix, tokenPrefix(token))
+
+		return ErrInvalidName
+	}
+
+	if !validClass(class) {
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "invalid_class", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
+
+		return ErrInvalidClass
+	}
+
+	if !validSpecies(species) {
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRejected,
+			logKeyReason, "invalid_species", logKeyName, name, logKeyTokenPrefix, tokenPrefix(token))
+
+		return ErrInvalidSpecies
+	}
+
+	return nil
+}
+
+// restoreArchivedLocked implements Join's archived-token branch: a fresh
+// entity built from rec (identity/XP/gear as archived), spawned at a new
+// guarded random hex with full level-scaled HP, keeping the same token —
+// this IS the character coming back, not a new one. Consumes (deletes) the
+// archive entry, since a character lives in exactly one place at a time.
+// Callers hold w.mu.
+func (w *World) restoreArchivedLocked(token string, rec characterRecord) (protocol.JoinResponse, error) {
+	spawn, err := w.spawnHexLocked()
+	if err != nil {
+		return protocol.JoinResponse{}, err
+	}
+
+	level := levelFor(rec.xp)
+	maxHP := maxHPFor(rec.class, level)
+	maxEnergy := maxEnergyFor(rec.class, level)
+
+	w.nextID++
+	e := &entity{
+		id: w.nextID, hex: spawn, token: token,
+		kind: protocol.EntityPlayer, name: rec.name, class: rec.class, species: rec.species,
+		xp: rec.xp, hp: maxHP, maxHP: maxHP,
+		// A restored character comes back rested, same as its HP (#322).
+		energy: maxEnergy, maxEnergy: maxEnergy,
+		equipped: rec.equipped, backpack: rec.backpack,
+		learned: rec.learned, skillPoints: rec.skillPoints,
+		pointsGrantedLevel: rec.pointsGrantedLevel, activeReadyTurn: rec.activeReadyTurn,
+
+		// Restored as if freshly joined: the removal-grace clock starts now,
+		// not at the (long-gone) pre-sweep disconnect time — the spec's pinned
+		// risk (see archive_test.go).
+		disconnectedAt: w.now(),
+	}
+	w.entities[e.id] = e
+	w.byToken[e.token] = e
+	delete(w.archive, token)
+
+	w.logger.Info(identityLogMsg, logKeyEvent, identityEventJoinRestore,
+		logKeyID, e.id, logKeyName, e.name, logKeyTokenPrefix, tokenPrefix(token))
+
+	return protocol.JoinResponse{EntityID: e.id, Token: e.token, Hex: e.hex}, nil
+}
+
+// sweepDisconnectedLocked removes every player whose event stream has been gone
+// longer than the disconnect grace: a player entity (kind player AND a token)
+// with streams == 0 and now-disconnectedAt > disconnectGrace. Monsters (no
+// token) are never candidates. It collects candidate ids first (sorted) and
+// deletes after, so the entity map is never mutated mid-range and removals are
+// deterministic. Before deleting each entity it archives its character
+// (identity, XP, gear — see characterRecord/World.archive) so a later Join
+// with the same token restores it instead of minting a fresh one; party and
+// personal-quest state are NOT archived — they dissolve/return to the board
+// exactly as before (session-scoped social state, not progression). If it
+// removed anyone it recomputes bubbles — a swept entity may have been
+// mid-fight — and returns true, so the caller republishes and clients despawn
+// the entity. Callers hold w.mu.
+func (w *World) sweepDisconnectedLocked(now time.Time) bool {
+	var gone []int64
+
+	for id, e := range w.entities {
+		if e.kind != protocol.EntityPlayer || e.token == "" {
+			continue
+		}
+
+		if e.streams == 0 && now.Sub(e.disconnectedAt) > w.disconnectGrace {
+			gone = append(gone, id)
+		}
+	}
+
+	if len(gone) == 0 {
+		return false
+	}
+
+	slices.Sort(gone)
+
+	for _, id := range gone {
+		e := w.entities[id]
+
+		w.archive[e.token] = archiveLocked(e)
+
+		w.logger.Info(identityLogMsg, logKeyEvent, identityEventSweepArchive,
+			logKeyID, e.id, logKeyName, e.name, logKeyTokenPrefix, tokenPrefix(e.token))
+
+		w.leavePartyLocked(e)
+		w.abandonPersonalQuestLocked(e)
+		delete(w.pendingInvites, id)
+
+		for invitee, inviter := range w.pendingInvites {
+			if inviter == id {
+				delete(w.pendingInvites, invitee)
+			}
+		}
+
+		delete(w.entities, id)
+		delete(w.byToken, e.token)
+	}
+
+	w.recomputeBubblesLocked(now)
+
+	return true
 }
 
 // dispatchIntentLocked routes one validated intent to its queue function by
@@ -1534,46 +1671,6 @@ func (w *World) queueDrinkLocked(e *entity, itemID int64) error {
 	})
 }
 
-// entityNameLocked is the wire Name for e: a player's chosen display name,
-// or a monster's kind's display name ("Wolf", "Dragon", ...) — monsters'
-// Name was always empty until 6c (no field collision: a player's name and
-// a monster's kind name occupy the same wire field, but nothing produces
-// both for the same entity). kindOf(e) nil (a malformed monster fixture)
-// falls back to empty, matching the pre-6c wire shape rather than panicking
-// on a Snapshot call. Callers hold w.mu.
-func entityNameLocked(e *entity) string {
-	if e.kind != protocol.EntityMonster {
-		return e.name
-	}
-
-	if k := kindOf(e); k != nil {
-		return k.name
-	}
-
-	return ""
-}
-
-// Snapshot is the current turn bundle: turn number plus every entity,
-// sorted by ID for a deterministic wire shape.
-// Snapshot renders the turn bundle with NO viewer: own-only fields (skills,
-// the point bank — #124) are omitted for every entity. Used by tests and any
-// caller that isn't a player's own stream; the SSE handler calls SnapshotFor.
-func (w *World) Snapshot() protocol.TurnEvent {
-	return w.SnapshotFor("")
-}
-
-// Turn returns the current world turn number. Cheap (just the counter under the
-// lock) so an SSE writer can skip the full per-viewer SnapshotFor build on a
-// coalesced no-op wake whose turn it already sent (#209). The turn counter only
-// ever increases, so a value that differs from a client's last-sent watermark
-// always means a genuinely newer bundle is due.
-func (w *World) Turn() int64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	return w.turn
-}
-
 // interestCentreLocked returns the hex a bundle for viewerToken is culled
 // around (#289) and the viewer's entity id, or the origin and 0 when there is
 // no viewer to centre on.
@@ -1596,63 +1693,6 @@ func (w *World) interestCentreLocked(viewerToken string) (protocol.Hex, int64) {
 	}
 
 	return viewer.hex, viewer.id
-}
-
-// withinInterest reports whether hex is near enough to centre to ride a bundle
-// culled around it. Inclusive at the radius itself.
-//
-// Deliberately straight hex distance, NOT line of sight: sight.go's raycast is
-// what gates aggro and bubble formation, and running it per entity per viewer
-// per turn would be far more expensive than the bundle it saves. The terrain
-// is already fully known to the client from /api/map, so this hides what is
-// MOVING, not the ground. Seeing a monster across a ridge you could not spot
-// it through is the accepted consequence.
-func withinInterest(centre, hex protocol.Hex) bool {
-	return HexDistance(centre, hex) <= protocol.InterestRadius
-}
-
-// anyVisible reports whether any of ids survived the interest cull.
-func anyVisible(ids []int64, visible map[int64]bool) bool {
-	for _, id := range ids {
-		if visible[id] {
-			return true
-		}
-	}
-
-	return false
-}
-
-// SnapshotFor renders the turn bundle as the holder of viewerToken sees it.
-// Skills and the unspent point bank are OWN-ONLY (#124 Q9): they are filled
-// in on the viewer's own entity and left zero on everyone else's, so another
-// player's build never reaches this client at all.
-//
-// It is also culled to protocol.InterestRadius around the viewer (#289) —
-// entities, ground items, bubbles and hits alike — so the world beyond is
-// known ground with nothing moving on it.
-//
-// Cost: one bundle per open stream per turn rather than one shared bundle —
-// ~15 at this game's scale, which is why own-only was affordable. The hub's
-// coalescing contract is untouched: this is still "fetch the latest state",
-// just rendered per viewer, and culling keeps each bundle a COMPLETE snapshot
-// of what is relevant to that viewer rather than a delta.
-func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	centre, viewerID := w.interestCentreLocked(viewerToken)
-
-	entities := w.entityViewsLocked()
-	w.fillOwnOnlyLocked(entities, viewerToken)
-
-	entities, visible := cullEntities(entities, centre, viewerID)
-
-	return protocol.TurnEvent{
-		Turn: w.turn, IntervalMs: w.interval.Milliseconds(), Entities: entities,
-		Bubbles: w.bubbleViewsLocked(w.now(), visible), Quests: w.questViewsLocked(),
-		GroundItems: w.groundItemViewsLocked(centre), WorldID: w.worldID,
-		Hits: w.hitViewsLocked(visible), Party: w.partyViewsLocked(viewerToken),
-	}
 }
 
 // partyViewsLocked renders the viewer's own party roster, COMPLETE regardless
@@ -1682,31 +1722,6 @@ func (w *World) partyViewsLocked(viewerToken string) []protocol.PartyMemberView 
 	slices.SortFunc(members, func(a, b protocol.PartyMemberView) int { return int(a.ID - b.ID) })
 
 	return members
-}
-
-// cullEntities drops every entity outside the interest radius (#289) and
-// returns what survived plus the set of ids it contains. `visible` gates the
-// rest of the bundle, so a client can never receive a reference — a bubble
-// member, a hit participant — to an entity it was not also sent and therefore
-// cannot resolve. The viewer's own row is unconditional: the client cannot
-// render anything without it.
-func cullEntities(entities []protocol.Entity, centre protocol.Hex, viewerID int64,
-) ([]protocol.Entity, map[int64]bool) {
-	visible := make(map[int64]bool, len(entities))
-	kept := entities[:0]
-
-	for _, e := range entities {
-		if e.ID != viewerID && !withinInterest(centre, e.Hex) {
-			continue
-		}
-
-		visible[e.ID] = true
-		kept = append(kept, e)
-	}
-
-	slices.SortFunc(kept, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
-
-	return kept, visible
 }
 
 // bubbleViewsLocked renders the bubbles this viewer can resolve: one with no
@@ -1787,136 +1802,6 @@ func (w *World) hitViewsLocked(visible map[int64]bool) []protocol.HitView {
 	return hits
 }
 
-// itemViewsLocked builds the wire item list for one entity: an ItemView per
-// owned item instance — equipped gear first, in canonicalSlotOrder (so the
-// list order is deterministic despite e.equipped being a map), then backpack
-// entries in index order. Tags/TwoHanded carry a weapon's tag set and
-// two-handedness (see protocol.ItemView's doc comments). Always a non-nil
-// slice — empty (not null) for a monster (which owns nothing) or a player who
-// owns nothing, so the wire shape matches the generated TS type's
-// non-optional ItemView[]. Callers hold w.mu.
-func itemViewsLocked(e *entity) []protocol.ItemView {
-	views := make([]protocol.ItemView, 0, len(e.equipped)+len(e.backpack))
-
-	for _, slot := range canonicalSlotOrder {
-		inst, ok := e.equipped[slot]
-		if !ok || inst.id == 0 {
-			continue
-		}
-
-		views = append(views, itemViewOf(inst, slot, 1))
-	}
-
-	for _, be := range e.backpack {
-		if be.empty() {
-			continue
-		}
-
-		views = append(views, itemViewOf(be.inst, "", be.count))
-	}
-
-	return views
-}
-
-// wireTags renders a def's weapon tags for the wire, never nil. A nil Go
-// slice marshals to JSON `null`, but the generated TS type is a
-// NON-OPTIONAL `tags: string[]` — so sending null was the server lying to
-// the client about its own contract, and the client (reasonably) called
-// .includes() on it. Every non-weapon has nil tags, so equipping ANY armor
-// froze the client's turn handler: the exception escaped onTurn, rendering
-// stopped, and SSE stayed connected — "connected but nothing moves".
-//
-// Same "always non-nil" rule the hits slice already follows (see
-// SnapshotFor), applied to the one place that had slipped through.
-func wireTags(def *itemDef) []string {
-	if def.tags == nil {
-		return []string{}
-	}
-
-	return def.tags
-}
-
-// itemViewOf renders one owned item instance for the wire. slot is the equip
-// slot this instance currently occupies, or "" for a backpack entry. count is
-// the stack size (1 for gear and equipped items). Type carries slot for an
-// equipped item — for armor/jewelry that equals def.itemType already (a slot
-// name IS the type), but for a weapon it is the occupied hand (SlotMainHand/
-// SlotOffHand) rather than the generic "weapon" taxonomy string, so the wire
-// (and the client's slot-keyed equipped map) can tell the two hands apart —
-// the gear keystone's dual-wield model (protocol.ItemView's doc comment).
-// An unequipped weapon (backpack) has no hand yet (weaponTargetSlot decides
-// one at equip time), so it falls back to def.itemType like every other
-// backpack entry.
-func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
-	def := itemDefByID[inst.defID]
-	equipped := slot != ""
-	viewType := def.itemType
-
-	if equipped {
-		viewType = slot
-	}
-
-	return protocol.ItemView{
-		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
-		Tags: wireTags(def), DamageType: def.damageType, TwoHanded: def.twoHanded,
-		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius,
-		Stats:    statViewsFor(def),
-		Flavor:   def.flavor,
-		Equipped: equipped, Count: count,
-		Throwable: def.isThrowable(), Recall: def.recall,
-	}
-}
-
-// groundItemViewOf projects a ground stack onto the wire. It reuses
-// itemViewOf's detail projection (the #139 Tags/DamageType/…/Flavor block) so
-// the owned-item view and the ground-item view read a def identically and
-// can't drift — the only fields unique to a ground stack are its Hex and the
-// unequipped/unowned framing (slot "" → Type is the def's itemType,
-// Equipped false).
-func groundItemViewOf(inst itemInstance, hex protocol.Hex, count int) protocol.GroundItemView {
-	iv := itemViewOf(inst, "", count)
-
-	return protocol.GroundItemView{
-		ID: iv.ID, Hex: hex, DefID: iv.DefID, Name: iv.Name, Type: iv.Type, Count: iv.Count,
-		Tags: iv.Tags, DamageType: iv.DamageType, TwoHanded: iv.TwoHanded,
-		Damage: iv.Damage, RangeHex: iv.RangeHex, AoERadius: iv.AoERadius, Stats: iv.Stats, Flavor: iv.Flavor,
-	}
-}
-
-// byEntityID orders entities by ascending id — the deterministic tiebreak the
-// simulation applies to every map-derived entity slice before drawing from an
-// rng (map iteration order is unspecified; the determinism rule requires a
-// sort first). Passed to slices.SortFunc wherever entities are ordered.
-func byEntityID(a, b *entity) int { return int(a.id - b.id) }
-
-// opposing reports whether a and b are of different factions (player vs
-// monster). Same-faction entities stack; opposing ones can't share a hex.
-func opposing(a, b *entity) bool { return a.kind != b.kind }
-
-func hasOpposing(occs []*entity, m *entity) bool {
-	for _, o := range occs {
-		if opposing(o, m) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// blockedFor reports whether hex h is closed to m on the evolving board (byHex):
-// held by an opposing entity, or already full at StackCap. Terrain is not its
-// business — w.terrain never mutates, so a step that was walkable when the route
-// was queued still is; only occupancy can turn a queued step away.
-//
-// This is the single definition of "blocked": movePhaseLocked's wait rule and
-// the #96 re-path predicate both read it, and they must agree — a re-route built
-// on a looser rule would hand back a first step the move phase then refuses.
-func blockedFor(m *entity, byHex map[protocol.Hex][]*entity, h protocol.Hex) bool {
-	occs := byHex[h]
-
-	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
-}
-
 // occupiedForLocked applies blockedFor's opposing/StackCap rule to hex h against
 // the world's live entity positions rather than a resolution-phase byHex board,
 // so a submit-time validation (useSkillLocked, #196) can judge the same
@@ -1932,39 +1817,6 @@ func (w *World) occupiedForLocked(m *entity, h protocol.Hex) bool {
 	}
 
 	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
-}
-
-func opposingOccupants(occs []*entity, m *entity) []*entity {
-	var out []*entity
-
-	for _, o := range occs {
-		if opposing(o, m) {
-			out = append(out, o)
-		}
-	}
-
-	return out
-}
-
-// removeEntity drops m from an occupant slice (by identity).
-func removeEntity(occs []*entity, m *entity) []*entity {
-	for i, o := range occs {
-		if o == m {
-			return append(occs[:i], occs[i+1:]...)
-		}
-	}
-
-	return occs
-}
-
-// pendingAttack is a melee attack committed in the attack phase (#104,
-// attacks-before-moves): a move intent whose next step was opposing-held on
-// the PRE-MOVE board. The attacker stays put (path retained — a standing
-// intent keeps attacking); target is the victim hex as it stood before any
-// move this turn.
-type pendingAttack struct {
-	attacker *entity
-	target   protocol.Hex
 }
 
 // resolveWorldTurnLocked advances the world domain one turn: the phased combat
@@ -2348,86 +2200,6 @@ func (w *World) recordHitOutcomeLocked(
 	}
 }
 
-// victimGearCards returns the rule cards an entity contributes to
-// pipeline folds over its whole person (take-damage, aggro-range): a
-// monster's kind claws rules (monsterDef's rules seam — a monster never
-// equips), or every equipped item's rules for a player (equippedRuleCards,
-// canonicalSlotOrder — deterministic).
-func victimGearCards(e *entity) []ruleCard {
-	if e.kind == protocol.EntityMonster {
-		// The KIND's own cards, not its weapon's (#179). Before kinds named
-		// a shared registry weapon, monsterDef.rules did double duty — the
-		// claws' cards AND the monster's whole-person cards — because the
-		// synthesised claws def was the only vehicle. Sharing the weapon
-		// forces the split: a troll's fire vulnerability is a property of
-		// the troll, and would otherwise ride on a maul that other kinds
-		// (and, one bad drop row away, players) could hold.
-		return kindCards(e)
-	}
-
-	return equippedRuleCards(e)
-}
-
-// attackerGearCards returns the attacker's equipped-jewelry deal-damage cards
-// (#271) — the offensive affixes only jewelry may carry (a +crit% ring,
-// validateItemNature). It is the attacker-side counterpart of victimGearCards:
-// where the take-damage fold folds the whole worn kit, the deal-damage fold
-// historically folded only the ACTING weapon (weapon.rules), because armor
-// carried no offensive cards. Crit-jewelry breaks that assumption, so this
-// gathers the deal-damage cards from every equipped slot EXCEPT the hands (each
-// held weapon folds its own rules per-hit already) — which, since only jewelry
-// may carry a deal-damage card, is exactly the ring and amulet. Folded in
-// canonicalSlotOrder for determinism; nil for a monster (never equips) or an
-// attacker wearing no offensive jewelry, so the common case appends nothing and
-// no seeded pin can move.
-func attackerGearCards(e *entity) []ruleCard {
-	if e.kind == protocol.EntityMonster {
-		return nil
-	}
-
-	var cards []ruleCard
-
-	for _, slot := range canonicalSlotOrder {
-		if slot == protocol.SlotMainHand || slot == protocol.SlotOffHand {
-			continue // held weapons fold their own rules per-hit (weapon.rules)
-		}
-
-		def := e.equippedDefIn(slot)
-		if def == nil {
-			continue
-		}
-
-		for _, c := range def.rules {
-			if c.event == evDealDamage {
-				cards = append(cards, c)
-			}
-		}
-	}
-
-	return cards
-}
-
-// kindCards returns monster e's KIND's own rule cards — its identity
-// (vulnerabilities, resistances, passives), separate from whatever its
-// natural weapon carries. Empty for a player or a malformed fixture.
-func kindCards(e *entity) []ruleCard {
-	k := kindOf(e)
-	if k == nil {
-		return nil
-	}
-
-	return k.rules
-}
-
-// earnXPCards returns the cards folded over an XP award for player e:
-// species passives plus every equipped item's rules (canonicalSlotOrder —
-// deterministic), so gear like the Headband of Learning modifies XP the same
-// way species passives do. Shared by the kill award
-// (resolveBubbleTurnLocked) and quest completion payouts (quest.go).
-func earnXPCards(e *entity) []ruleCard {
-	return slices.Concat(speciesCards(e.species), equippedRuleCards(e), skillCards(e))
-}
-
 // domainMembersLocked returns every world-domain entity (bubbleID == 0), sorted
 // by id for deterministic resolution. Callers hold w.mu.
 func (w *World) domainMembersLocked() []*entity {
@@ -2607,63 +2379,6 @@ func (w *World) movePhaseLocked(
 		m.path = m.path[1:]
 		w.logger.Info(combatLogMsg, logKeyEvent, combatEventMove, logKeyID, m.id, "kind", m.kind, "from", from, "to", next)
 	}
-}
-
-// resolveActivesLocked applies every queued active-skill trigger (#161) and
-// starts its cooldown. Ordered by entity id so two evades in one turn resolve
-// deterministically. Callers hold w.mu.
-//
-// A trigger is DROPPED, not deferred, if its caster attacked or died this
-// turn: the queue is one action per turn, and a stale evade firing a turn late
-// would teleport someone who has since chosen something else.
-// activeCasters picks the members with an active queued this turn, in id order
-// so resolution is reproducible regardless of map iteration.
-//
-// A SELF-CAST carries no target, so the presence of the skill is the whole
-// signal; an aimed kind still needs whatever it points at before it can
-// resolve — which is different per aim, so the check follows aimFor rather
-// than assuming a hex.
-func activeCasters(members []*entity) []*entity {
-	casters := make([]*entity, 0, len(members))
-
-	for _, e := range members {
-		if e.activeSkill == "" {
-			continue
-		}
-
-		def, ok := skillDefByID[e.activeSkill]
-		if !ok || def.active == nil {
-			continue
-		}
-
-		// A blast already resolved and cleared itself in the attack phase, so
-		// this is unreachable today — but it is the guard that keeps the two
-		// phases from ever both claiming one trigger if that ordering changes.
-		if activeResolvesInAttackPhase(def.active.kind) {
-			continue
-		}
-
-		switch aimFor(def.active.kind) {
-		case aimHex:
-			if e.activeTarget == nil {
-				continue
-			}
-		case aimEntity:
-			if e.activeTargetEntity == 0 {
-				continue
-			}
-		case aimSelf:
-		default:
-			// Unreachable: aimFor returns one of the three aims above.
-			panic("game: skill " + def.id + " has unknown aim")
-		}
-
-		casters = append(casters, e)
-	}
-
-	slices.SortFunc(casters, byEntityID)
-
-	return casters
 }
 
 func (w *World) resolveActivesLocked(byHex map[protocol.Hex][]*entity, members []*entity, attacked map[int64]bool) {
@@ -3283,6 +2998,1108 @@ func (w *World) resolveAoELocked(
 	}
 }
 
+// awardKillXPLocked folds one surviving player's kill XP, applies the level
+// gain it may trigger, and logs the award. Split out of the bubble's XP pass so
+// that loop stays flat.
+func (w *World) awardKillXPLocked(e *entity, totalXP int) {
+	award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
+	e.xp += award
+	syncMaxHPLocked(e)
+
+	granted, level, leveledUp := grantSkillPointsLocked(e)
+	if leveledUp {
+		w.announceLevelUpLocked(e, granted, level)
+	}
+
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventXP,
+		logKeyID, e.id, logKeyBase, totalXP, "awarded", award)
+}
+
+// announceLevelUpLocked posts the party-visible level-up line (#202) when a
+// grant was a genuine level gain. The self-only banner is a client concern
+// (off the level delta). Skips a nameless test-bridge player, like death.
+func (w *World) announceLevelUpLocked(e *entity, granted, level int) {
+	if e.name == "" {
+		return
+	}
+
+	w.announce(protocol.SystemSender,
+		fmt.Sprintf("%s reached level %d — +%d skill points (K to spend)", e.name, level, granted))
+}
+
+// resolveDeathsLocked floors a dying player's XP to its level start, removes dead
+// monsters (rolling each one's ground-loot drop first — dropLootLocked), and
+// respawns dead players (full HP, fresh spawn hex, same id + token — the
+// client stays joined) among the given member set. It returns the kind of
+// every monster that died, one entry per dead monster in members' id-sorted
+// order (not deduplicated) — the kill-XP award and kill-summary announce
+// live in the bubble-resolution path (resolveBubbleTurnLocked), so a kill
+// only pays inside a real fight. The death-floor here still applies to ANY
+// player death, world or bubble. rng is the resolution's shared turn RNG
+// (resolveCombatLocked/ResolveCombatOnlyForTest) — one drop roll per dead
+// monster, consumed in the same id-sorted order as the rest of this pass, so
+// a full turn stays reproducible from the seed alone. Callers hold w.mu.
+// markFatalHitsLocked stamps HitView.Fatal (#298) on the blow that killed each
+// entity in dead: the LAST hit it took this turn.
+//
+// Last, not "the one that crossed zero", because damage is applied as a summed
+// map — three hits in one resolution kill together and no single one owns it.
+// The last is the one a listener perceives as the kill, and it is the only
+// choice that stays stable if the damage map's fold order ever changes.
+//
+// Only THIS turn's hits are considered: w.recentHits retains several turns for
+// coalescing SSE clients (hitRetentionTurns), and a hit from two turns ago
+// belongs to a fight the victim survived. Callers hold w.mu.
+func (w *World) markFatalHitsLocked(dead []*entity) {
+	if len(dead) == 0 {
+		return
+	}
+
+	dying := make(map[int64]bool, len(dead))
+	for _, e := range dead {
+		dying[e.id] = true
+	}
+
+	// Walk backwards so the first match per victim IS its last hit.
+	seen := make(map[int64]bool, len(dead))
+
+	for i, h := range slices.Backward(w.recentHits) {
+		if h.turn != w.turn+1 || !dying[h.victim] || seen[h.victim] {
+			continue
+		}
+
+		w.recentHits[i].fatal = true
+		seen[h.victim] = true
+	}
+}
+
+func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*monsterDef, map[int64]bool) {
+	var dead []*entity
+
+	var slain []*monsterDef
+
+	// Players who died THIS turn. They are respawned to full HP below, so an
+	// hp>0 check after this can no longer tell them apart from the unhurt —
+	// the kill-XP award loop needs this set to exclude them (#194).
+	diedPlayers := make(map[int64]bool)
+
+	for _, e := range members {
+		if e.hp <= 0 {
+			dead = append(dead, e)
+
+			switch e.kind {
+			case protocol.EntityMonster:
+				if k := kindOf(e); k != nil {
+					slain = append(slain, k)
+				}
+			case protocol.EntityPlayer:
+				diedPlayers[e.id] = true
+			default:
+				// Other entity kinds are neither slain monsters nor dead players.
+			}
+		}
+	}
+
+	// Sort by id so simultaneous respawns claim spawn hexes in a deterministic
+	// order (the map range above is unordered) — keeps a full turn reproducible.
+	slices.SortFunc(dead, byEntityID)
+
+	w.markFatalHitsLocked(dead)
+
+	for _, e := range dead {
+		if e.kind == protocol.EntityMonster {
+			w.logger.Info(combatLogMsg, logKeyEvent, combatEventDeath, logKeyID, e.id, "kind", e.kind,
+				"monster_kind", e.monsterKind, "at", e.hex)
+
+			w.dropLootLocked(rng, kindOf(e), e.hex)
+			delete(w.entities, e.id)
+
+			continue
+		}
+
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventDeath, logKeyID, e.id, "kind", e.kind, "at", e.hex)
+
+		// Player: fall back to the start of the XP level you were in — keep the
+		// level, lose the within-level progress — then respawn in place of a
+		// re-join. The death is announced to the chat/combat log — previously
+		// the only combat event with zero textual feedback. Test-bridge
+		// players have no name; skip the announce rather than print " died".
+		if e.name != "" {
+			w.announce("system", e.name+" died")
+		}
+
+		e.xp = levelFloorXP(e.xp)
+
+		if spawn, err := w.spawnHexLocked(); err == nil {
+			e.hex = spawn
+		}
+
+		// Recompute maxHP from the class and post-floor level so a leveled player
+		// respawns with its full, level-scaled bar (via the same maxHPFor source).
+		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
+		e.maxEnergy = maxEnergyFor(e.class, levelFor(e.xp))
+		e.hp = e.maxHP
+		e.path = nil
+		e.pending = pendingItemAction{}
+		e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271: no queued throw/recall on a fresh body.
+		// A respawn is a fresh body: lingering poison/buff effects (#271) do
+		// not carry over the death that reset the HP bar.
+		e.effects = nil
+	}
+
+	return slain, diedPlayers
+}
+
+// dropLootLocked rolls a slain monster's ground-loot drop: k's own
+// dropChance (out of percentBase) chance of anything at all, and if it
+// hits, one weight-weighted def from k's own drops table (pickDropFrom)
+// lands on at — the monster's death hex — as a fresh item instance (id
+// minted from the shared nextID sequence, same as entities and owned
+// items). A miss, or an empty drops table, drops nothing. k nil (a
+// malformed monster entity — never produced by a real spawn path) is a
+// defensive no-op. Callers hold w.mu.
+func (w *World) dropLootLocked(rng *mrand.Rand, k *monsterDef, at protocol.Hex) {
+	if k == nil {
+		return
+	}
+
+	if rng.IntN(percentBase) >= k.dropChance {
+		return
+	}
+
+	defID := pickDropFrom(rng, k.drops)
+	if defID == "" {
+		return
+	}
+
+	w.nextID++
+
+	// A monster loot drop is a single item (count 1) — even a potion, which
+	// stacks only once it is in a backpack.
+	w.groundItems[at] = append(w.groundItems[at], groundStack{inst: itemInstance{id: w.nextID, defID: defID}, count: 1})
+}
+
+// tooCloseToMonsterLocked reports whether h is occupied by, or within
+// CombatRadius of, any living monster — spawning a player there would either
+// land them ON a monster or form an instant, faction-blind combat bubble the
+// moment they appear (both observed live, #36). Callers hold w.mu.
+func (w *World) tooCloseToMonsterLocked(h protocol.Hex) bool {
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster && e.hp > 0 && HexDistance(h, e.hex) <= protocol.CombatRadius {
+			return true
+		}
+	}
+
+	return false
+}
+
+// occupiedByMonsterLocked reports whether h is directly on a living
+// monster's hex — the distance-0 case tooCloseToMonsterLocked also covers,
+// split out because spawnHexLocked's fallback ladder relaxes the "within
+// CombatRadius" preference (a crowded clearing may leave no hex outside it)
+// before it EVER relaxes "not literally on top of one": a monster co-located
+// with its own target pathfinds itself-to-itself (empty path) and never
+// attacks (thinkMonstersLocked's co-location dormancy), so landing a spawn
+// there doesn't just risk an instant bubble — it can silently stall combat
+// forever. Callers hold w.mu.
+func (w *World) occupiedByMonsterLocked(h protocol.Hex) bool {
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster && e.hp > 0 && e.hex == h {
+			return true
+		}
+	}
+
+	return false
+}
+
+// tooCloseToPlayerLocked mirrors tooCloseToMonsterLocked for monster
+// placement: h must not be occupied by, or within CombatRadius of, any living
+// player, so a spawned monster can't stall a run by landing on top of (or
+// instantly bubbling with) someone (#36, the task-6 testing mid-run stall).
+// Callers hold w.mu.
+func (w *World) tooCloseToPlayerLocked(h protocol.Hex) bool {
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer && e.hp > 0 && HexDistance(h, e.hex) <= protocol.CombatRadius {
+			return true
+		}
+	}
+
+	return false
+}
+
+// tooCloseToSanctuaryLocked reports whether h is within protocol.SanctuaryRadius
+// of the origin — the permanent monster-free zone (milestone 6c, the seed of
+// a future trade hub), distinct from tooCloseToPlayerLocked's spawn-moment
+// player-proximity guard. Reads no entity state; named -Locked and given a
+// receiver for symmetry with the other spawn guards it's always applied
+// alongside. Callers hold w.mu.
+func (*World) tooCloseToSanctuaryLocked(h protocol.Hex) bool {
+	return HexDistance(protocol.Hex{Q: 0, R: 0}, h) <= protocol.SanctuaryRadius
+}
+
+// livingDragonsLocked counts the living dragon-kind monsters currently in
+// the world — SpawnMonsters' starting point for the per-WORLD dragon cap
+// (protocol.DragonCount), so repeated spawn calls (or a test/future-spawner
+// mix of SpawnMonsterKindAt and SpawnMonsters) never accumulate dragons
+// past the cap. Callers hold w.mu.
+func (w *World) livingDragonsLocked() int {
+	n := 0
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster && e.hp > 0 && e.monsterKind == idKindDragon {
+			n++
+		}
+	}
+
+	return n
+}
+
+// spawnCandidatesByRingLocked gathers every walkable candidate hex (the
+// safe/unguarded-fallback tiers SpawnMonsters' doc comment describes),
+// shuffles each ring's bucket with rng, and returns the per-ring hex
+// buckets alongside their initial weights (candidate count — the area
+// proxy). Callers hold w.mu.
+func (w *World) spawnCandidatesByRingLocked(rng *mrand.Rand) ([][]protocol.Hex, []int) {
+	var safe, unguarded []protocol.Hex
+
+	for _, t := range w.worldMap.Tiles {
+		if !w.walkableLocked(t.Hex) {
+			continue
+		}
+
+		unguarded = append(unguarded, t.Hex)
+
+		if !w.tooCloseToPlayerLocked(t.Hex) && !w.tooCloseToSanctuaryLocked(t.Hex) {
+			safe = append(safe, t.Hex)
+		}
+	}
+
+	walkable := safe
+	if len(walkable) == 0 {
+		walkable = unguarded
+	}
+
+	slices.SortFunc(walkable, compareHexQR)
+
+	byRing := make([][]protocol.Hex, protocol.RingCount)
+
+	for _, h := range walkable {
+		r := ringOf(h, w.radius)
+		byRing[r] = append(byRing[r], h)
+	}
+
+	ringWeights := make([]int, protocol.RingCount)
+
+	for r, hexes := range byRing {
+		rng.Shuffle(len(hexes), func(i, j int) { hexes[i], hexes[j] = hexes[j], hexes[i] })
+		ringWeights[r] = len(hexes)
+	}
+
+	return byRing, ringWeights
+}
+
+// thinkMonstersLocked sets each monster in the member set to a single step
+// toward its nearest player among `targets`. Recomputed every turn (players
+// move). The two domains scope targets differently: a bubble's monsters chase
+// only that bubble's players (a frozen fight stays self-contained), while
+// WORLD monsters chase the nearest player anywhere — including one frozen in
+// a bubble — so the world keeps running (§5) and an approaching monster is
+// absorbed by the bubble recompute the moment it closes within CombatRadius
+// of a bubbled player (walk-in reinforcement).
+//
+// worldDomain gates that WORLD chase behind aggro range (#36): a WORLD-domain
+// monster only picks a target among players within THEIR OWN effective aggro
+// radius (aggroRadiusForLocked — nearestAggroedPlayerLocked does the
+// filtering); if nobody qualifies it stands still (no wander this slice) —
+// see rng's doc comment on why it's threaded in even though no content uses
+// evAggroRange yet. A bubble's monsters (worldDomain false) keep chasing
+// unconditionally — a fight is a fight, aggro range does not apply once
+// you're already in one. Callers hold w.mu.
+//
+// The leash (#102) also only binds WORLD-domain monsters: one that has
+// strayed beyond leashRadiusFor of its home hex stops chasing and paths back
+// home, ignoring players until it arrives (thinkReturnHomeLocked) — checked
+// before the no-targets return below so a returning monster keeps walking
+// home even in a playerless world.
+//
+// When adjacent, path[0] is the player's own hex, so the move phase converts
+// this into a melee attack (6.3).
+func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, domain simDomain) {
+	for _, m := range members {
+		if m.kind != protocol.EntityMonster {
+			continue
+		}
+
+		if domain == domainWorld && w.thinkReturnHomeLocked(m) {
+			continue // beyond leash or already returning: this turn is a step home
+		}
+
+		if len(targets) == 0 {
+			continue // no players anywhere: paths stay untouched (pre-#102 behavior)
+		}
+
+		var target *entity
+		if domain == domainWorld {
+			target = w.nearestAggroedPlayerLocked(rng, m, targets)
+			if target == nil {
+				m.path = nil // nobody within their own aggro range: stand still
+
+				continue
+			}
+		} else {
+			target = nearestPlayer(m.hex, targets)
+		}
+
+		// A monster whose natural weapon has reach SHOOTS instead of closing
+		// (#179) — the behaviour the old copied-fields shorthand could not
+		// express, since it carried no rangeHex at all.
+		//
+		// It shoots at point-blank too, deliberately (maintainer's call): a
+		// monster that backed off would be uncatchable, because everything
+		// moves exactly one hex per turn, so the gap could never close. That
+		// is a softlock, not a difficulty knob — revisit only if #98 lands.
+		if w.thinkRangedAttackLocked(m, target) {
+			continue
+		}
+
+		path := Pathfind(m.hex, target.hex, w.walkableLocked)
+		// Step toward the target; when adjacent, path[0] is the player's own
+		// hex, so the move phase converts this into a melee attack (6.3).
+		if len(path) >= 1 {
+			m.path = []protocol.Hex{path[0]}
+		} else {
+			m.path = nil
+		}
+	}
+}
+
+// thinkRangedAttackLocked queues a shot at target if m's natural weapon has
+// the reach for it and terrain allows the shot, and reports whether it did.
+// Standing still to fire is the whole point: a monster that closed anyway
+// would never use its range.
+//
+// Sight is checked over the weapon's own range, mirroring the aggro raycast —
+// a monster does not shoot through a rock. Callers hold w.mu.
+func (w *World) thinkRangedAttackLocked(m, target *entity) bool {
+	dist := HexDistance(m.hex, target.hex)
+
+	if len(rangedDefsFor(m, dist)) == 0 {
+		return false
+	}
+
+	if w.sightBlockedLocked(m.hex, target.hex, dist) {
+		return false
+	}
+
+	m.path = nil
+	m.attackTargetEntity = target.id
+
+	return true
+}
+
+// nearestAggroedPlayerLocked returns the player nearest monster m among
+// `players`, considering only players within THEIR OWN effective aggro
+// radius of m (aggroRadiusForLocked, based on m's kind's own aggroRadius —
+// gear/species can further make one player more or less noticeable than
+// another), ties broken by lowest id like nearestPlayer. Returns nil if no
+// player qualifies — the monster notices nobody. Callers hold w.mu.
+func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, m *entity, players []*entity) *entity {
+	base := baseAggroRadiusFor(m)
+
+	var best *entity
+
+	bestDist := 0
+
+	for _, p := range players {
+		// Folded ONCE per player: aggroRadiusForLocked consumes rng if a card
+		// ever carries a chance condition, so calling it twice per player
+		// would silently double-consume the turn stream.
+		reach := aggroRadiusForLocked(rng, base, p)
+
+		d := HexDistance(m.hex, p.hex)
+		if d > reach {
+			continue
+		}
+
+		// Sight and noticeability are INDEPENDENT gates (#95 Q2, #88): the
+		// fold above decides how far this monster could notice this player,
+		// and the raycast decides whether terrain lets it — over that same
+		// reach, not CombatRadius, since a kind can notice far past bubble
+		// range. A booted player behind a rock is hidden twice over, and the
+		// two are never folded into one number. A monster no longer charges
+		// through a rock wall and snaps into a bubble as it rounds the corner.
+		if w.sightBlockedLocked(m.hex, p.hex, reach) {
+			continue
+		}
+
+		if best == nil || d < bestDist || (d == bestDist && p.id < best.id) {
+			best, bestDist = p, d
+		}
+	}
+
+	return best
+}
+
+// thinkReturnHomeLocked is the WORLD-domain leash check (#102), run for
+// monster m before any aggro targeting. It reports whether m's think for
+// this turn was fully handled as a leash return — in which case the caller
+// (thinkMonstersLocked) must not run the normal chase logic for m.
+//
+//   - Not returning and within leashRadiusFor of homeHex: no-op, false.
+//   - Beyond the leash: flip returningHome (logged as a "leash" combat
+//     event) and fall into the returning case below.
+//   - Returning and arrived (arrivedHomeLocked): clear the flag and return
+//     false — this same think pass runs the normal aggro check, so a player
+//     camping just outside the home hex is noticed immediately, not one turn
+//     late.
+//   - Returning, not arrived: path one step toward homeHex, ignoring players
+//     entirely (no re-aggro mid-return, even once back within leash range).
+//
+// A returning monster can still be pulled into a combat bubble by walking
+// within CombatRadius of a player — bubble membership is positional
+// (recomputeBubblesLocked) and overrides world-domain thinking entirely; the
+// flag survives the fight so the return resumes if the bubble dissolves.
+// Consumes no rng. Callers hold w.mu.
+func (w *World) thinkReturnHomeLocked(m *entity) bool {
+	if !m.returningHome {
+		if HexDistance(m.hex, m.homeHex) <= leashRadiusFor(m) {
+			return false
+		}
+
+		m.returningHome = true
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventLeash, logKeyID, m.id,
+			"monster_kind", m.monsterKind, "from", m.hex, "home", m.homeHex)
+	}
+
+	if w.arrivedHomeLocked(m) {
+		m.returningHome = false
+
+		return false
+	}
+
+	path := Pathfind(m.hex, m.homeHex, w.walkableLocked)
+	if len(path) >= 1 {
+		m.path = []protocol.Hex{path[0]}
+	} else {
+		m.path = nil // home unreachable (cannot happen on static terrain): stand still
+	}
+
+	return true
+}
+
+// arrivedHomeLocked reports whether returning monster m counts as home
+// (#102): standing on its home hex, or adjacent to it while the home hex has
+// no room this turn (StackCap — e.g. a monster pile-up on the spawn hex).
+// Without the adjacent-and-full case, a returning monster whose home stays
+// full would wait one hex away with its flag stuck, passive forever. An
+// opposing-held home needs no case of its own: a player on or near the home
+// hex would have pulled the monster into a combat bubble (CombatRadius,
+// recomputeBubblesLocked) before this world-domain check could run. Callers
+// hold w.mu.
+func (w *World) arrivedHomeLocked(m *entity) bool {
+	if m.hex == m.homeHex {
+		return true
+	}
+
+	return HexDistance(m.hex, m.homeHex) == 1 && w.occupancyLocked(m.homeHex) >= protocol.StackCap
+}
+
+// playerCountLocked counts live player entities — the roster the player cap
+// (protocol.MaxPlayers) bounds (#199). Callers hold w.mu.
+func (w *World) playerCountLocked() int {
+	n := 0
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer {
+			n++
+		}
+	}
+
+	return n
+}
+
+func (w *World) entityViewsLocked() []protocol.Entity {
+	entities := make([]protocol.Entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		entities = append(entities, protocol.Entity{
+			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
+			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, Reach: monsterReachLocked(e),
+			XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
+			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
+			// Empty, never nil (wire_nil_test.go): own-only fields are
+			// stamped later by fillOwnOnlyLocked and stay at their zero value
+			// for every OTHER entity — which is exactly where a nil slice
+			// hides, since the viewer's own row always looks fine in testing.
+			Skills: []protocol.SkillView{},
+		})
+	}
+
+	return entities
+}
+
+// fillOwnOnlyLocked stamps the viewer's OWN skills and point bank onto their
+// row and nobody else's (#124 task 7, Q9). Split out of SnapshotFor to keep
+// that function under the length limit; the viewer is resolved once per
+// bundle rather than once per entity. Callers hold w.mu.
+func (w *World) fillOwnOnlyLocked(entities []protocol.Entity, viewerToken string) {
+	if viewerToken == "" {
+		return
+	}
+
+	viewer, ok := w.byToken[viewerToken]
+	if !ok || viewer == nil {
+		return
+	}
+
+	for i := range entities {
+		if entities[i].ID == viewer.id {
+			entities[i].Skills = skillViewsLocked(viewer, w.turn)
+			entities[i].SkillPoints = viewer.skillPoints
+			entities[i].EvadeReadyIn = max(int(viewer.activeReadyTurn[skillEvade]-w.turn), 0)
+			entities[i].HealthPotionReadyIn = max(int(viewer.healthPotionReadyTurn-w.turn), 0)
+			entities[i].EnergyPotionReadyIn = max(int(viewer.energyPotionReadyTurn-w.turn), 0)
+			entities[i].Energy = viewer.energy
+			entities[i].MaxEnergy = viewer.maxEnergy
+
+			return
+		}
+	}
+}
+
+// allPlayersLocked returns every player in the world regardless of domain,
+// sorted by id (the deterministic nearest-player tie-break). Callers hold w.mu.
+func (w *World) allPlayersLocked() []*entity {
+	players := make([]*entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityPlayer {
+			players = append(players, e)
+		}
+	}
+
+	slices.SortFunc(players, byEntityID)
+
+	return players
+}
+
+// spawnHexLocked picks a hex for a player join or respawn: a random
+// walkable, capacity-available hex anywhere in the sanctuary
+// (protocol.SanctuaryRadius of the origin) that is not occupied by, or
+// within CombatRadius of, a living monster (tooCloseToMonsterLocked) — so a
+// spawn can never land a player ON a monster or form an instant combat
+// bubble the moment they appear (both observed live, #36). Random, not the
+// old spiral-nearest-to-origin search: players (and respawns) no longer pile
+// deterministically onto the same hex. Per Q9, the sanctuary is every join's
+// and respawn's shared "home" until beds land as a per-player anchor —
+// scattering across the whole sanctuary rather than just the small origin
+// clearing is intentional.
+//
+// Four tiers, each engaged only if the one above yields nothing, so a small
+// or crowded map never fails a join outright — but "not literally on top of a
+// monster" is relaxed dead last, since that specific case can silently stall
+// combat forever (occupiedByMonsterLocked's doc comment), not just risk an
+// instant bubble:
+//  1. sanctuary hexes clear of monsters entirely (the common case)
+//  2. sanctuary hexes not occupied by one, ignoring the CombatRadius
+//     preference (a monster-dense sanctuary may leave nothing outside it)
+//  3. sanctuary hexes at all, ignoring both monster checks (the sanctuary
+//     itself is saturated — every hex in it has a monster standing on it)
+//  4. spawnHexSpiralLocked over the WHOLE reachable region, ignoring every
+//     guard — the pre-#36 search, kept verbatim as the last resort so "a
+//     crowded tiny test map must not break joins" still holds
+//
+// Callers hold w.mu.
+func (w *World) spawnHexLocked() (protocol.Hex, error) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	var sanctuarySafe, sanctuaryUnoccupied, sanctuaryAny []protocol.Hex
+
+	for h := range w.spawnable {
+		if HexDistance(origin, h) > protocol.SanctuaryRadius || w.occupancyLocked(h) >= protocol.StackCap {
+			continue
+		}
+
+		sanctuaryAny = append(sanctuaryAny, h)
+
+		if w.occupiedByMonsterLocked(h) {
+			continue
+		}
+
+		sanctuaryUnoccupied = append(sanctuaryUnoccupied, h)
+
+		if !w.tooCloseToMonsterLocked(h) {
+			sanctuarySafe = append(sanctuarySafe, h)
+		}
+	}
+
+	candidates := sanctuarySafe
+	if len(candidates) == 0 {
+		candidates = sanctuaryUnoccupied
+	}
+
+	if len(candidates) == 0 {
+		candidates = sanctuaryAny
+	}
+
+	if len(candidates) == 0 {
+		return w.spawnHexSpiralLocked()
+	}
+
+	slices.SortFunc(candidates, compareHexQR)
+
+	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnPointStream+uint64(w.nextID)))
+
+	return candidates[rng.IntN(len(candidates))], nil
+}
+
+// spawnHexSpiralLocked is the pre-#36 search: the free walkable hex nearest
+// the origin, spiraling outward, ignoring the monster guard entirely — the
+// tier-4 fallback spawnHexLocked reaches for only when none of the three
+// sanctuary tiers above yields a single candidate (an extremely crowded or
+// tiny map), so a join never hard-fails just because the sanctuary is
+// exhausted.
+// Callers hold w.mu.
+//
+// Faction-blind by design in this fallback path: it can land a player on a
+// monster-occupied hex (opposing co-occupancy, a §5 MUST in the rare case it
+// is ever reached). It is inert only because a co-located monster's think
+// step gets Pathfind(from==to)==∅ and holds (never attacks).
+func (w *World) spawnHexSpiralLocked() (protocol.Hex, error) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	for radius := 0; radius <= w.radius; radius++ {
+		for q := -radius; q <= radius; q++ {
+			for r := -radius; r <= radius; r++ {
+				h := protocol.Hex{Q: q, R: r}
+				if HexDistance(origin, h) != radius {
+					continue
+				}
+
+				// w.spawnable[h] already implies walkable; using it (rather than
+				// walkableLocked) keeps spawns off any walkable pocket the origin
+				// can't reach.
+				if w.spawnable[h] && w.occupancyLocked(h) < protocol.StackCap {
+					return h, nil
+				}
+			}
+		}
+	}
+
+	return protocol.Hex{}, ErrWorldFull
+}
+
+func (w *World) walkableLocked(h protocol.Hex) bool {
+	t, ok := w.terrain[h]
+
+	return ok && (t == protocol.TerrainGrass || t == protocol.TerrainForest)
+}
+
+func (w *World) occupancyLocked(h protocol.Hex) int {
+	n := 0
+
+	for _, e := range w.entities {
+		if e.hex == h {
+			n++
+		}
+	}
+
+	return n
+}
+
+// bubbleTurn is one bubble's scheduled resolution: the bubble and the member
+// snapshot to resolve it over, both captured before the pass mutates anything.
+type bubbleTurn struct {
+	bubble  *bubble
+	members []*entity
+}
+
+// validName accepts a trimmed, non-empty name of at most
+// protocol.MaxNameLen runes.
+func validName(name string) bool {
+	n := utf8.RuneCountInString(name)
+	if n == 0 || n > protocol.MaxNameLen {
+		return false
+	}
+
+	// The system-announcement label is reserved: a player taking it could
+	// impersonate server messages, which the client styles specially (#198).
+	if strings.EqualFold(strings.TrimSpace(name), protocol.SystemSender) {
+		return false
+	}
+
+	return true
+}
+
+// entityNameLocked is the wire Name for e: a player's chosen display name,
+// or a monster's kind's display name ("Wolf", "Dragon", ...) — monsters'
+// Name was always empty until 6c (no field collision: a player's name and
+// a monster's kind name occupy the same wire field, but nothing produces
+// both for the same entity). kindOf(e) nil (a malformed monster fixture)
+// falls back to empty, matching the pre-6c wire shape rather than panicking
+// on a Snapshot call. Callers hold w.mu.
+func entityNameLocked(e *entity) string {
+	if e.kind != protocol.EntityMonster {
+		return e.name
+	}
+
+	if k := kindOf(e); k != nil {
+		return k.name
+	}
+
+	return ""
+}
+
+// withinInterest reports whether hex is near enough to centre to ride a bundle
+// culled around it. Inclusive at the radius itself.
+//
+// Deliberately straight hex distance, NOT line of sight: sight.go's raycast is
+// what gates aggro and bubble formation, and running it per entity per viewer
+// per turn would be far more expensive than the bundle it saves. The terrain
+// is already fully known to the client from /api/map, so this hides what is
+// MOVING, not the ground. Seeing a monster across a ridge you could not spot
+// it through is the accepted consequence.
+func withinInterest(centre, hex protocol.Hex) bool {
+	return HexDistance(centre, hex) <= protocol.InterestRadius
+}
+
+// anyVisible reports whether any of ids survived the interest cull.
+func anyVisible(ids []int64, visible map[int64]bool) bool {
+	for _, id := range ids {
+		if visible[id] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// cullEntities drops every entity outside the interest radius (#289) and
+// returns what survived plus the set of ids it contains. `visible` gates the
+// rest of the bundle, so a client can never receive a reference — a bubble
+// member, a hit participant — to an entity it was not also sent and therefore
+// cannot resolve. The viewer's own row is unconditional: the client cannot
+// render anything without it.
+func cullEntities(entities []protocol.Entity, centre protocol.Hex, viewerID int64,
+) ([]protocol.Entity, map[int64]bool) {
+	visible := make(map[int64]bool, len(entities))
+	kept := entities[:0]
+
+	for _, e := range entities {
+		if e.ID != viewerID && !withinInterest(centre, e.Hex) {
+			continue
+		}
+
+		visible[e.ID] = true
+		kept = append(kept, e)
+	}
+
+	slices.SortFunc(kept, func(a, b protocol.Entity) int { return int(a.ID - b.ID) })
+
+	return kept, visible
+}
+
+// itemViewsLocked builds the wire item list for one entity: an ItemView per
+// owned item instance — equipped gear first, in canonicalSlotOrder (so the
+// list order is deterministic despite e.equipped being a map), then backpack
+// entries in index order. Tags/TwoHanded carry a weapon's tag set and
+// two-handedness (see protocol.ItemView's doc comments). Always a non-nil
+// slice — empty (not null) for a monster (which owns nothing) or a player who
+// owns nothing, so the wire shape matches the generated TS type's
+// non-optional ItemView[]. Callers hold w.mu.
+func itemViewsLocked(e *entity) []protocol.ItemView {
+	views := make([]protocol.ItemView, 0, len(e.equipped)+len(e.backpack))
+
+	for _, slot := range canonicalSlotOrder {
+		inst, ok := e.equipped[slot]
+		if !ok || inst.id == 0 {
+			continue
+		}
+
+		views = append(views, itemViewOf(inst, slot, 1))
+	}
+
+	for _, be := range e.backpack {
+		if be.empty() {
+			continue
+		}
+
+		views = append(views, itemViewOf(be.inst, "", be.count))
+	}
+
+	return views
+}
+
+// wireTags renders a def's weapon tags for the wire, never nil. A nil Go
+// slice marshals to JSON `null`, but the generated TS type is a
+// NON-OPTIONAL `tags: string[]` — so sending null was the server lying to
+// the client about its own contract, and the client (reasonably) called
+// .includes() on it. Every non-weapon has nil tags, so equipping ANY armor
+// froze the client's turn handler: the exception escaped onTurn, rendering
+// stopped, and SSE stayed connected — "connected but nothing moves".
+//
+// Same "always non-nil" rule the hits slice already follows (see
+// SnapshotFor), applied to the one place that had slipped through.
+func wireTags(def *itemDef) []string {
+	if def.tags == nil {
+		return []string{}
+	}
+
+	return def.tags
+}
+
+// itemViewOf renders one owned item instance for the wire. slot is the equip
+// slot this instance currently occupies, or "" for a backpack entry. count is
+// the stack size (1 for gear and equipped items). Type carries slot for an
+// equipped item — for armor/jewelry that equals def.itemType already (a slot
+// name IS the type), but for a weapon it is the occupied hand (SlotMainHand/
+// SlotOffHand) rather than the generic "weapon" taxonomy string, so the wire
+// (and the client's slot-keyed equipped map) can tell the two hands apart —
+// the gear keystone's dual-wield model (protocol.ItemView's doc comment).
+// An unequipped weapon (backpack) has no hand yet (weaponTargetSlot decides
+// one at equip time), so it falls back to def.itemType like every other
+// backpack entry.
+func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
+	def := itemDefByID[inst.defID]
+	equipped := slot != ""
+	viewType := def.itemType
+
+	if equipped {
+		viewType = slot
+	}
+
+	return protocol.ItemView{
+		ID: inst.id, DefID: inst.defID, Name: def.name, Type: viewType,
+		Tags: wireTags(def), DamageType: def.damageType, TwoHanded: def.twoHanded,
+		Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius,
+		Stats:    statViewsFor(def),
+		Flavor:   def.flavor,
+		Equipped: equipped, Count: count,
+		Throwable: def.isThrowable(), Recall: def.recall,
+	}
+}
+
+// groundItemViewOf projects a ground stack onto the wire. It reuses
+// itemViewOf's detail projection (the #139 Tags/DamageType/…/Flavor block) so
+// the owned-item view and the ground-item view read a def identically and
+// can't drift — the only fields unique to a ground stack are its Hex and the
+// unequipped/unowned framing (slot "" → Type is the def's itemType,
+// Equipped false).
+func groundItemViewOf(inst itemInstance, hex protocol.Hex, count int) protocol.GroundItemView {
+	iv := itemViewOf(inst, "", count)
+
+	return protocol.GroundItemView{
+		ID: iv.ID, Hex: hex, DefID: iv.DefID, Name: iv.Name, Type: iv.Type, Count: iv.Count,
+		Tags: iv.Tags, DamageType: iv.DamageType, TwoHanded: iv.TwoHanded,
+		Damage: iv.Damage, RangeHex: iv.RangeHex, AoERadius: iv.AoERadius, Stats: iv.Stats, Flavor: iv.Flavor,
+	}
+}
+
+// byEntityID orders entities by ascending id — the deterministic tiebreak the
+// simulation applies to every map-derived entity slice before drawing from an
+// rng (map iteration order is unspecified; the determinism rule requires a
+// sort first). Passed to slices.SortFunc wherever entities are ordered.
+func byEntityID(a, b *entity) int { return int(a.id - b.id) }
+
+// opposing reports whether a and b are of different factions (player vs
+// monster). Same-faction entities stack; opposing ones can't share a hex.
+func opposing(a, b *entity) bool { return a.kind != b.kind }
+
+func hasOpposing(occs []*entity, m *entity) bool {
+	for _, o := range occs {
+		if opposing(o, m) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// blockedFor reports whether hex h is closed to m on the evolving board (byHex):
+// held by an opposing entity, or already full at StackCap. Terrain is not its
+// business — w.terrain never mutates, so a step that was walkable when the route
+// was queued still is; only occupancy can turn a queued step away.
+//
+// This is the single definition of "blocked": movePhaseLocked's wait rule and
+// the #96 re-path predicate both read it, and they must agree — a re-route built
+// on a looser rule would hand back a first step the move phase then refuses.
+func blockedFor(m *entity, byHex map[protocol.Hex][]*entity, h protocol.Hex) bool {
+	occs := byHex[h]
+
+	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
+}
+
+func opposingOccupants(occs []*entity, m *entity) []*entity {
+	var out []*entity
+
+	for _, o := range occs {
+		if opposing(o, m) {
+			out = append(out, o)
+		}
+	}
+
+	return out
+}
+
+// removeEntity drops m from an occupant slice (by identity).
+func removeEntity(occs []*entity, m *entity) []*entity {
+	for i, o := range occs {
+		if o == m {
+			return append(occs[:i], occs[i+1:]...)
+		}
+	}
+
+	return occs
+}
+
+// pendingAttack is a melee attack committed in the attack phase (#104,
+// attacks-before-moves): a move intent whose next step was opposing-held on
+// the PRE-MOVE board. The attacker stays put (path retained — a standing
+// intent keeps attacking); target is the victim hex as it stood before any
+// move this turn.
+type pendingAttack struct {
+	attacker *entity
+	target   protocol.Hex
+}
+
+// victimGearCards returns the rule cards an entity contributes to
+// pipeline folds over its whole person (take-damage, aggro-range): a
+// monster's kind claws rules (monsterDef's rules seam — a monster never
+// equips), or every equipped item's rules for a player (equippedRuleCards,
+// canonicalSlotOrder — deterministic).
+func victimGearCards(e *entity) []ruleCard {
+	if e.kind == protocol.EntityMonster {
+		// The KIND's own cards, not its weapon's (#179). Before kinds named
+		// a shared registry weapon, monsterDef.rules did double duty — the
+		// claws' cards AND the monster's whole-person cards — because the
+		// synthesised claws def was the only vehicle. Sharing the weapon
+		// forces the split: a troll's fire vulnerability is a property of
+		// the troll, and would otherwise ride on a maul that other kinds
+		// (and, one bad drop row away, players) could hold.
+		return kindCards(e)
+	}
+
+	return equippedRuleCards(e)
+}
+
+// attackerGearCards returns the attacker's equipped-jewelry deal-damage cards
+// (#271) — the offensive affixes only jewelry may carry (a +crit% ring,
+// validateItemNature). It is the attacker-side counterpart of victimGearCards:
+// where the take-damage fold folds the whole worn kit, the deal-damage fold
+// historically folded only the ACTING weapon (weapon.rules), because armor
+// carried no offensive cards. Crit-jewelry breaks that assumption, so this
+// gathers the deal-damage cards from every equipped slot EXCEPT the hands (each
+// held weapon folds its own rules per-hit already) — which, since only jewelry
+// may carry a deal-damage card, is exactly the ring and amulet. Folded in
+// canonicalSlotOrder for determinism; nil for a monster (never equips) or an
+// attacker wearing no offensive jewelry, so the common case appends nothing and
+// no seeded pin can move.
+func attackerGearCards(e *entity) []ruleCard {
+	if e.kind == protocol.EntityMonster {
+		return nil
+	}
+
+	var cards []ruleCard
+
+	for _, slot := range canonicalSlotOrder {
+		if slot == protocol.SlotMainHand || slot == protocol.SlotOffHand {
+			continue // held weapons fold their own rules per-hit (weapon.rules)
+		}
+
+		def := e.equippedDefIn(slot)
+		if def == nil {
+			continue
+		}
+
+		for _, c := range def.rules {
+			if c.event == evDealDamage {
+				cards = append(cards, c)
+			}
+		}
+	}
+
+	return cards
+}
+
+// kindCards returns monster e's KIND's own rule cards — its identity
+// (vulnerabilities, resistances, passives), separate from whatever its
+// natural weapon carries. Empty for a player or a malformed fixture.
+func kindCards(e *entity) []ruleCard {
+	k := kindOf(e)
+	if k == nil {
+		return nil
+	}
+
+	return k.rules
+}
+
+// earnXPCards returns the cards folded over an XP award for player e:
+// species passives plus every equipped item's rules (canonicalSlotOrder —
+// deterministic), so gear like the Headband of Learning modifies XP the same
+// way species passives do. Shared by the kill award
+// (resolveBubbleTurnLocked) and quest completion payouts (quest.go).
+func earnXPCards(e *entity) []ruleCard {
+	return slices.Concat(speciesCards(e.species), equippedRuleCards(e), skillCards(e))
+}
+
+// resolveActivesLocked applies every queued active-skill trigger (#161) and
+// starts its cooldown. Ordered by entity id so two evades in one turn resolve
+// deterministically. Callers hold w.mu.
+//
+// A trigger is DROPPED, not deferred, if its caster attacked or died this
+// turn: the queue is one action per turn, and a stale evade firing a turn late
+// would teleport someone who has since chosen something else.
+// activeCasters picks the members with an active queued this turn, in id order
+// so resolution is reproducible regardless of map iteration.
+//
+// A SELF-CAST carries no target, so the presence of the skill is the whole
+// signal; an aimed kind still needs whatever it points at before it can
+// resolve — which is different per aim, so the check follows aimFor rather
+// than assuming a hex.
+func activeCasters(members []*entity) []*entity {
+	casters := make([]*entity, 0, len(members))
+
+	for _, e := range members {
+		if e.activeSkill == "" {
+			continue
+		}
+
+		def, ok := skillDefByID[e.activeSkill]
+		if !ok || def.active == nil {
+			continue
+		}
+
+		// A blast already resolved and cleared itself in the attack phase, so
+		// this is unreachable today — but it is the guard that keeps the two
+		// phases from ever both claiming one trigger if that ordering changes.
+		if activeResolvesInAttackPhase(def.active.kind) {
+			continue
+		}
+
+		switch aimFor(def.active.kind) {
+		case aimHex:
+			if e.activeTarget == nil {
+				continue
+			}
+		case aimEntity:
+			if e.activeTargetEntity == 0 {
+				continue
+			}
+		case aimSelf:
+		default:
+			// Unreachable: aimFor returns one of the three aims above.
+			panic("game: skill " + def.id + " has unknown aim")
+		}
+
+		casters = append(casters, e)
+	}
+
+	slices.SortFunc(casters, byEntityID)
+
+	return casters
+}
+
 // killSummary renders one bubble turn's monster deaths for the chat/combat
 // log, naming the slain kinds and quoting their summed base XP (see the call
 // site's comment on why base and why nameless). slain arrives in the order
@@ -3448,35 +4265,6 @@ func grantSkillPointsLocked(e *entity) (granted, level int, leveledUp bool) {
 	return granted, level, prev >= 1
 }
 
-// awardKillXPLocked folds one surviving player's kill XP, applies the level
-// gain it may trigger, and logs the award. Split out of the bubble's XP pass so
-// that loop stays flat.
-func (w *World) awardKillXPLocked(e *entity, totalXP int) {
-	award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
-	e.xp += award
-	syncMaxHPLocked(e)
-
-	granted, level, leveledUp := grantSkillPointsLocked(e)
-	if leveledUp {
-		w.announceLevelUpLocked(e, granted, level)
-	}
-
-	w.logger.Info(combatLogMsg, logKeyEvent, combatEventXP,
-		logKeyID, e.id, logKeyBase, totalXP, "awarded", award)
-}
-
-// announceLevelUpLocked posts the party-visible level-up line (#202) when a
-// grant was a genuine level gain. The self-only banner is a client concern
-// (off the level delta). Skips a nameless test-bridge player, like death.
-func (w *World) announceLevelUpLocked(e *entity, granted, level int) {
-	if e.name == "" {
-		return
-	}
-
-	w.announce(protocol.SystemSender,
-		fmt.Sprintf("%s reached level %d — +%d skill points (K to spend)", e.name, level, granted))
-}
-
 // syncMaxHPLocked recalibrates a player's maxHP to its class and current level
 // (via maxHPFor) after an XP change, clamping current HP to the new max. It does
 // not heal: a level-up raises the ceiling but keeps current HP (respawn resets
@@ -3503,342 +4291,9 @@ func syncMaxEnergyLocked(e *entity) {
 // death floor: dying costs progress inside the level, never the level).
 func levelFloorXP(xp int) int { return xpFloorFor(levelFor(xp)) }
 
-// resolveDeathsLocked floors a dying player's XP to its level start, removes dead
-// monsters (rolling each one's ground-loot drop first — dropLootLocked), and
-// respawns dead players (full HP, fresh spawn hex, same id + token — the
-// client stays joined) among the given member set. It returns the kind of
-// every monster that died, one entry per dead monster in members' id-sorted
-// order (not deduplicated) — the kill-XP award and kill-summary announce
-// live in the bubble-resolution path (resolveBubbleTurnLocked), so a kill
-// only pays inside a real fight. The death-floor here still applies to ANY
-// player death, world or bubble. rng is the resolution's shared turn RNG
-// (resolveCombatLocked/ResolveCombatOnlyForTest) — one drop roll per dead
-// monster, consumed in the same id-sorted order as the rest of this pass, so
-// a full turn stays reproducible from the seed alone. Callers hold w.mu.
-// markFatalHitsLocked stamps HitView.Fatal (#298) on the blow that killed each
-// entity in dead: the LAST hit it took this turn.
-//
-// Last, not "the one that crossed zero", because damage is applied as a summed
-// map — three hits in one resolution kill together and no single one owns it.
-// The last is the one a listener perceives as the kill, and it is the only
-// choice that stays stable if the damage map's fold order ever changes.
-//
-// Only THIS turn's hits are considered: w.recentHits retains several turns for
-// coalescing SSE clients (hitRetentionTurns), and a hit from two turns ago
-// belongs to a fight the victim survived. Callers hold w.mu.
-func (w *World) markFatalHitsLocked(dead []*entity) {
-	if len(dead) == 0 {
-		return
-	}
-
-	dying := make(map[int64]bool, len(dead))
-	for _, e := range dead {
-		dying[e.id] = true
-	}
-
-	// Walk backwards so the first match per victim IS its last hit.
-	seen := make(map[int64]bool, len(dead))
-
-	for i, h := range slices.Backward(w.recentHits) {
-		if h.turn != w.turn+1 || !dying[h.victim] || seen[h.victim] {
-			continue
-		}
-
-		w.recentHits[i].fatal = true
-		seen[h.victim] = true
-	}
-}
-
-func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*monsterDef, map[int64]bool) {
-	var dead []*entity
-
-	var slain []*monsterDef
-
-	// Players who died THIS turn. They are respawned to full HP below, so an
-	// hp>0 check after this can no longer tell them apart from the unhurt —
-	// the kill-XP award loop needs this set to exclude them (#194).
-	diedPlayers := make(map[int64]bool)
-
-	for _, e := range members {
-		if e.hp <= 0 {
-			dead = append(dead, e)
-
-			switch e.kind {
-			case protocol.EntityMonster:
-				if k := kindOf(e); k != nil {
-					slain = append(slain, k)
-				}
-			case protocol.EntityPlayer:
-				diedPlayers[e.id] = true
-			default:
-				// Other entity kinds are neither slain monsters nor dead players.
-			}
-		}
-	}
-
-	// Sort by id so simultaneous respawns claim spawn hexes in a deterministic
-	// order (the map range above is unordered) — keeps a full turn reproducible.
-	slices.SortFunc(dead, byEntityID)
-
-	w.markFatalHitsLocked(dead)
-
-	for _, e := range dead {
-		if e.kind == protocol.EntityMonster {
-			w.logger.Info(combatLogMsg, logKeyEvent, combatEventDeath, logKeyID, e.id, "kind", e.kind,
-				"monster_kind", e.monsterKind, "at", e.hex)
-
-			w.dropLootLocked(rng, kindOf(e), e.hex)
-			delete(w.entities, e.id)
-
-			continue
-		}
-
-		w.logger.Info(combatLogMsg, logKeyEvent, combatEventDeath, logKeyID, e.id, "kind", e.kind, "at", e.hex)
-
-		// Player: fall back to the start of the XP level you were in — keep the
-		// level, lose the within-level progress — then respawn in place of a
-		// re-join. The death is announced to the chat/combat log — previously
-		// the only combat event with zero textual feedback. Test-bridge
-		// players have no name; skip the announce rather than print " died".
-		if e.name != "" {
-			w.announce("system", e.name+" died")
-		}
-
-		e.xp = levelFloorXP(e.xp)
-
-		if spawn, err := w.spawnHexLocked(); err == nil {
-			e.hex = spawn
-		}
-
-		// Recompute maxHP from the class and post-floor level so a leveled player
-		// respawns with its full, level-scaled bar (via the same maxHPFor source).
-		e.maxHP = maxHPFor(e.class, levelFor(e.xp))
-		e.maxEnergy = maxEnergyFor(e.class, levelFor(e.xp))
-		e.hp = e.maxHP
-		e.path = nil
-		e.pending = pendingItemAction{}
-		e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271: no queued throw/recall on a fresh body.
-		// A respawn is a fresh body: lingering poison/buff effects (#271) do
-		// not carry over the death that reset the HP bar.
-		e.effects = nil
-	}
-
-	return slain, diedPlayers
-}
-
-// dropLootLocked rolls a slain monster's ground-loot drop: k's own
-// dropChance (out of percentBase) chance of anything at all, and if it
-// hits, one weight-weighted def from k's own drops table (pickDropFrom)
-// lands on at — the monster's death hex — as a fresh item instance (id
-// minted from the shared nextID sequence, same as entities and owned
-// items). A miss, or an empty drops table, drops nothing. k nil (a
-// malformed monster entity — never produced by a real spawn path) is a
-// defensive no-op. Callers hold w.mu.
-func (w *World) dropLootLocked(rng *mrand.Rand, k *monsterDef, at protocol.Hex) {
-	if k == nil {
-		return
-	}
-
-	if rng.IntN(percentBase) >= k.dropChance {
-		return
-	}
-
-	defID := pickDropFrom(rng, k.drops)
-	if defID == "" {
-		return
-	}
-
-	w.nextID++
-
-	// A monster loot drop is a single item (count 1) — even a potion, which
-	// stacks only once it is in a backpack.
-	w.groundItems[at] = append(w.groundItems[at], groundStack{inst: itemInstance{id: w.nextID, defID: defID}, count: 1})
-}
-
 // spawnStream is a fixed PCG stream for monster placement, distinct from the
 // per-turn move-shuffle stream (which uses the turn number).
 const spawnStream uint64 = 0x5EED
-
-// tooCloseToMonsterLocked reports whether h is occupied by, or within
-// CombatRadius of, any living monster — spawning a player there would either
-// land them ON a monster or form an instant, faction-blind combat bubble the
-// moment they appear (both observed live, #36). Callers hold w.mu.
-func (w *World) tooCloseToMonsterLocked(h protocol.Hex) bool {
-	for _, e := range w.entities {
-		if e.kind == protocol.EntityMonster && e.hp > 0 && HexDistance(h, e.hex) <= protocol.CombatRadius {
-			return true
-		}
-	}
-
-	return false
-}
-
-// occupiedByMonsterLocked reports whether h is directly on a living
-// monster's hex — the distance-0 case tooCloseToMonsterLocked also covers,
-// split out because spawnHexLocked's fallback ladder relaxes the "within
-// CombatRadius" preference (a crowded clearing may leave no hex outside it)
-// before it EVER relaxes "not literally on top of one": a monster co-located
-// with its own target pathfinds itself-to-itself (empty path) and never
-// attacks (thinkMonstersLocked's co-location dormancy), so landing a spawn
-// there doesn't just risk an instant bubble — it can silently stall combat
-// forever. Callers hold w.mu.
-func (w *World) occupiedByMonsterLocked(h protocol.Hex) bool {
-	for _, e := range w.entities {
-		if e.kind == protocol.EntityMonster && e.hp > 0 && e.hex == h {
-			return true
-		}
-	}
-
-	return false
-}
-
-// tooCloseToPlayerLocked mirrors tooCloseToMonsterLocked for monster
-// placement: h must not be occupied by, or within CombatRadius of, any living
-// player, so a spawned monster can't stall a run by landing on top of (or
-// instantly bubbling with) someone (#36, the task-6 testing mid-run stall).
-// Callers hold w.mu.
-func (w *World) tooCloseToPlayerLocked(h protocol.Hex) bool {
-	for _, e := range w.entities {
-		if e.kind == protocol.EntityPlayer && e.hp > 0 && HexDistance(h, e.hex) <= protocol.CombatRadius {
-			return true
-		}
-	}
-
-	return false
-}
-
-// tooCloseToSanctuaryLocked reports whether h is within protocol.SanctuaryRadius
-// of the origin — the permanent monster-free zone (milestone 6c, the seed of
-// a future trade hub), distinct from tooCloseToPlayerLocked's spawn-moment
-// player-proximity guard. Reads no entity state; named -Locked and given a
-// receiver for symmetry with the other spawn guards it's always applied
-// alongside. Callers hold w.mu.
-func (*World) tooCloseToSanctuaryLocked(h protocol.Hex) bool {
-	return HexDistance(protocol.Hex{Q: 0, R: 0}, h) <= protocol.SanctuaryRadius
-}
-
-// SpawnMonsters adds n monster entities at random walkable hexes, chosen
-// with the world seed so a given seed is reproducible: placement is
-// distributed across the map's difficulty rings (ringOf, worldgen.go)
-// weighted by each ring's candidate-hex count (a proxy for its area that is
-// naturally terrain-aware — water/rock reduce a ring's usable area too),
-// and each placement picks a kind uniformly among the kinds registered for
-// that ring (content.go's monsterDefs' own rings field), capping dragon at
-// protocol.DragonCount for the whole call. Skips hexes already at
-// StackCap and, when at least one candidate allows it, hexes on/within
-// CombatRadius of a living player (tooCloseToPlayerLocked — #36) or within
-// protocol.SanctuaryRadius of the origin (tooCloseToSanctuaryLocked — 6c);
-// if EVERY walkable hex fails one of those guards, both are dropped
-// entirely for this call rather than placing nothing (the pre-#36
-// behavior, so a tiny or crowded map never silently spawns fewer monsters
-// than requested for lack of a "safe" hex). Intended for **startup, before
-// any player joins** (server startup via MONSTER_COUNT, or tests), where
-// the player guard is inert today — it exists for a future
-// continuous/respawn spawner called mid-run.
-func (w *World) SpawnMonsters(n int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	//nolint:gosec // deterministic seeded placement, not security-sensitive.
-	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
-
-	byRing, ringWeights := w.spawnCandidatesByRingLocked(rng)
-	kindsByRing := kindsPerRing()
-
-	// The dragon cap is per WORLD, not per call: start from the dragons
-	// already alive (a previous SpawnMonsters call, or a SpawnMonsterKindAt-
-	// seeded one), so the future continuous/density spawner calling this
-	// again mid-run can never stack a second dragon past DragonCount.
-	dragonsPlaced := w.livingDragonsLocked()
-	placed := 0
-
-	for placed < n {
-		h, r, ok := nextSpawnHexLocked(rng, byRing, ringWeights)
-		if !ok {
-			break // every ring is out of both weight and candidates
-		}
-
-		if w.occupancyLocked(h) >= protocol.StackCap {
-			continue
-		}
-
-		kindID, ok := pickSpawnKind(rng, kindsByRing[r], dragonsPlaced)
-		if !ok {
-			continue // ring exhausted of spawnable kinds (dragon-only ring, cap reached)
-		}
-
-		if kindID == idKindDragon {
-			dragonsPlaced++
-		}
-
-		k := monsterDefByID[kindID]
-
-		w.nextID++
-		w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
-		placed++
-	}
-}
-
-// livingDragonsLocked counts the living dragon-kind monsters currently in
-// the world — SpawnMonsters' starting point for the per-WORLD dragon cap
-// (protocol.DragonCount), so repeated spawn calls (or a test/future-spawner
-// mix of SpawnMonsterKindAt and SpawnMonsters) never accumulate dragons
-// past the cap. Callers hold w.mu.
-func (w *World) livingDragonsLocked() int {
-	n := 0
-
-	for _, e := range w.entities {
-		if e.kind == protocol.EntityMonster && e.hp > 0 && e.monsterKind == idKindDragon {
-			n++
-		}
-	}
-
-	return n
-}
-
-// spawnCandidatesByRingLocked gathers every walkable candidate hex (the
-// safe/unguarded-fallback tiers SpawnMonsters' doc comment describes),
-// shuffles each ring's bucket with rng, and returns the per-ring hex
-// buckets alongside their initial weights (candidate count — the area
-// proxy). Callers hold w.mu.
-func (w *World) spawnCandidatesByRingLocked(rng *mrand.Rand) ([][]protocol.Hex, []int) {
-	var safe, unguarded []protocol.Hex
-
-	for _, t := range w.worldMap.Tiles {
-		if !w.walkableLocked(t.Hex) {
-			continue
-		}
-
-		unguarded = append(unguarded, t.Hex)
-
-		if !w.tooCloseToPlayerLocked(t.Hex) && !w.tooCloseToSanctuaryLocked(t.Hex) {
-			safe = append(safe, t.Hex)
-		}
-	}
-
-	walkable := safe
-	if len(walkable) == 0 {
-		walkable = unguarded
-	}
-
-	slices.SortFunc(walkable, compareHexQR)
-
-	byRing := make([][]protocol.Hex, protocol.RingCount)
-
-	for _, h := range walkable {
-		r := ringOf(h, w.radius)
-		byRing[r] = append(byRing[r], h)
-	}
-
-	ringWeights := make([]int, protocol.RingCount)
-
-	for r, hexes := range byRing {
-		rng.Shuffle(len(hexes), func(i, j int) { hexes[i], hexes[j] = hexes[j], hexes[i] })
-		ringWeights[r] = len(hexes)
-	}
-
-	return byRing, ringWeights
-}
 
 // nextSpawnHexLocked draws one ring-weighted hex from byRing, popping it
 // off that ring's bucket and zeroing the ring's weight once its bucket
@@ -3883,193 +4338,6 @@ func pickSpawnKind(rng *mrand.Rand, ringKinds []string, dragonsPlaced int) (stri
 	return kinds[rng.IntN(len(kinds))], true
 }
 
-// SpawnMonsterAt spawns a single monster at h, returning whether it spawned. It
-// refuses a non-walkable hex or one already at StackCap. Unlike SpawnMonsters
-// (random, world-seeded placement) it puts a monster at a caller-chosen hex, so
-// a caller can seed a known-position monster — e.g. an integration test that
-// needs a monster a couple hexes from where a player is (or will be), for a
-// short, deterministic chase or an immediate fight. It mirrors SpawnMonsters'
-// entity shape (kind monster, MonsterMaxHP). Like SpawnMonsters it is a
-// startup primitive meant to run before Run: it does not recompute bubbles
-// (Run does that each tick) and does not avoid opposing occupants.
-//
-// Unlike SpawnMonsters/spawnHexLocked it does NOT apply the #36
-// too-close-to-a-player guard: this API names exactly one caller-chosen hex
-// with no alternative candidate to fall back to, and both of those guarded
-// callers fall back to placing anyway when nothing else qualifies — applying
-// the same guard here would only ever produce that same fallback, silently.
-// A caller that needs a guaranteed-clear hex should choose one itself
-// (tooCloseToPlayerLocked is unexported, but SpawnMonsters' random search
-// already does this). Holds w.mu.
-func (w *World) SpawnMonsterAt(h protocol.Hex) bool {
-	return w.SpawnMonsterKindAt(h, defaultMonsterKindID)
-}
-
-// SpawnMonsterKindAt is SpawnMonsterAt for a caller-chosen monster kind
-// (content.go's monsterDefs id) — lets a test or a future ring-aware spawner
-// seed a specific kind at a specific hex. Panics if kind is not registered
-// (a content bug, not a runtime condition a caller should need to handle).
-func (w *World) SpawnMonsterKindAt(h protocol.Hex, kind string) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	k, ok := monsterDefByID[kind]
-	if !ok {
-		panic("game: SpawnMonsterKindAt unknown monster kind " + kind)
-	}
-
-	if !w.walkableLocked(h) || w.occupancyLocked(h) >= protocol.StackCap {
-		return false
-	}
-
-	w.nextID++
-	w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
-
-	return true
-}
-
-// thinkMonstersLocked sets each monster in the member set to a single step
-// toward its nearest player among `targets`. Recomputed every turn (players
-// move). The two domains scope targets differently: a bubble's monsters chase
-// only that bubble's players (a frozen fight stays self-contained), while
-// WORLD monsters chase the nearest player anywhere — including one frozen in
-// a bubble — so the world keeps running (§5) and an approaching monster is
-// absorbed by the bubble recompute the moment it closes within CombatRadius
-// of a bubbled player (walk-in reinforcement).
-//
-// worldDomain gates that WORLD chase behind aggro range (#36): a WORLD-domain
-// monster only picks a target among players within THEIR OWN effective aggro
-// radius (aggroRadiusForLocked — nearestAggroedPlayerLocked does the
-// filtering); if nobody qualifies it stands still (no wander this slice) —
-// see rng's doc comment on why it's threaded in even though no content uses
-// evAggroRange yet. A bubble's monsters (worldDomain false) keep chasing
-// unconditionally — a fight is a fight, aggro range does not apply once
-// you're already in one. Callers hold w.mu.
-//
-// The leash (#102) also only binds WORLD-domain monsters: one that has
-// strayed beyond leashRadiusFor of its home hex stops chasing and paths back
-// home, ignoring players until it arrives (thinkReturnHomeLocked) — checked
-// before the no-targets return below so a returning monster keeps walking
-// home even in a playerless world.
-//
-// When adjacent, path[0] is the player's own hex, so the move phase converts
-// this into a melee attack (6.3).
-func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, domain simDomain) {
-	for _, m := range members {
-		if m.kind != protocol.EntityMonster {
-			continue
-		}
-
-		if domain == domainWorld && w.thinkReturnHomeLocked(m) {
-			continue // beyond leash or already returning: this turn is a step home
-		}
-
-		if len(targets) == 0 {
-			continue // no players anywhere: paths stay untouched (pre-#102 behavior)
-		}
-
-		var target *entity
-		if domain == domainWorld {
-			target = w.nearestAggroedPlayerLocked(rng, m, targets)
-			if target == nil {
-				m.path = nil // nobody within their own aggro range: stand still
-
-				continue
-			}
-		} else {
-			target = nearestPlayer(m.hex, targets)
-		}
-
-		// A monster whose natural weapon has reach SHOOTS instead of closing
-		// (#179) — the behaviour the old copied-fields shorthand could not
-		// express, since it carried no rangeHex at all.
-		//
-		// It shoots at point-blank too, deliberately (maintainer's call): a
-		// monster that backed off would be uncatchable, because everything
-		// moves exactly one hex per turn, so the gap could never close. That
-		// is a softlock, not a difficulty knob — revisit only if #98 lands.
-		if w.thinkRangedAttackLocked(m, target) {
-			continue
-		}
-
-		path := Pathfind(m.hex, target.hex, w.walkableLocked)
-		// Step toward the target; when adjacent, path[0] is the player's own
-		// hex, so the move phase converts this into a melee attack (6.3).
-		if len(path) >= 1 {
-			m.path = []protocol.Hex{path[0]}
-		} else {
-			m.path = nil
-		}
-	}
-}
-
-// thinkRangedAttackLocked queues a shot at target if m's natural weapon has
-// the reach for it and terrain allows the shot, and reports whether it did.
-// Standing still to fire is the whole point: a monster that closed anyway
-// would never use its range.
-//
-// Sight is checked over the weapon's own range, mirroring the aggro raycast —
-// a monster does not shoot through a rock. Callers hold w.mu.
-func (w *World) thinkRangedAttackLocked(m, target *entity) bool {
-	dist := HexDistance(m.hex, target.hex)
-
-	if len(rangedDefsFor(m, dist)) == 0 {
-		return false
-	}
-
-	if w.sightBlockedLocked(m.hex, target.hex, dist) {
-		return false
-	}
-
-	m.path = nil
-	m.attackTargetEntity = target.id
-
-	return true
-}
-
-// nearestAggroedPlayerLocked returns the player nearest monster m among
-// `players`, considering only players within THEIR OWN effective aggro
-// radius of m (aggroRadiusForLocked, based on m's kind's own aggroRadius —
-// gear/species can further make one player more or less noticeable than
-// another), ties broken by lowest id like nearestPlayer. Returns nil if no
-// player qualifies — the monster notices nobody. Callers hold w.mu.
-func (w *World) nearestAggroedPlayerLocked(rng *mrand.Rand, m *entity, players []*entity) *entity {
-	base := baseAggroRadiusFor(m)
-
-	var best *entity
-
-	bestDist := 0
-
-	for _, p := range players {
-		// Folded ONCE per player: aggroRadiusForLocked consumes rng if a card
-		// ever carries a chance condition, so calling it twice per player
-		// would silently double-consume the turn stream.
-		reach := aggroRadiusForLocked(rng, base, p)
-
-		d := HexDistance(m.hex, p.hex)
-		if d > reach {
-			continue
-		}
-
-		// Sight and noticeability are INDEPENDENT gates (#95 Q2, #88): the
-		// fold above decides how far this monster could notice this player,
-		// and the raycast decides whether terrain lets it — over that same
-		// reach, not CombatRadius, since a kind can notice far past bubble
-		// range. A booted player behind a rock is hidden twice over, and the
-		// two are never folded into one number. A monster no longer charges
-		// through a rock wall and snaps into a bubble as it rounds the corner.
-		if w.sightBlockedLocked(m.hex, p.hex, reach) {
-			continue
-		}
-
-		if best == nil || d < bestDist || (d == bestDist && p.id < best.id) {
-			best, bestDist = p, d
-		}
-	}
-
-	return best
-}
-
 // baseAggroRadiusFor returns monster m's own base aggro radius before any
 // player-side noticeability fold: its kind's effective aggro radius
 // (defAggroRadius — the kind's override, else protocol.MonsterAggroRadius).
@@ -4088,70 +4356,6 @@ func baseAggroRadiusFor(m *entity) int {
 // deliberately does not apply here.
 func leashRadiusFor(m *entity) int {
 	return defLeashRadius(kindOf(m))
-}
-
-// thinkReturnHomeLocked is the WORLD-domain leash check (#102), run for
-// monster m before any aggro targeting. It reports whether m's think for
-// this turn was fully handled as a leash return — in which case the caller
-// (thinkMonstersLocked) must not run the normal chase logic for m.
-//
-//   - Not returning and within leashRadiusFor of homeHex: no-op, false.
-//   - Beyond the leash: flip returningHome (logged as a "leash" combat
-//     event) and fall into the returning case below.
-//   - Returning and arrived (arrivedHomeLocked): clear the flag and return
-//     false — this same think pass runs the normal aggro check, so a player
-//     camping just outside the home hex is noticed immediately, not one turn
-//     late.
-//   - Returning, not arrived: path one step toward homeHex, ignoring players
-//     entirely (no re-aggro mid-return, even once back within leash range).
-//
-// A returning monster can still be pulled into a combat bubble by walking
-// within CombatRadius of a player — bubble membership is positional
-// (recomputeBubblesLocked) and overrides world-domain thinking entirely; the
-// flag survives the fight so the return resumes if the bubble dissolves.
-// Consumes no rng. Callers hold w.mu.
-func (w *World) thinkReturnHomeLocked(m *entity) bool {
-	if !m.returningHome {
-		if HexDistance(m.hex, m.homeHex) <= leashRadiusFor(m) {
-			return false
-		}
-
-		m.returningHome = true
-		w.logger.Info(combatLogMsg, logKeyEvent, combatEventLeash, logKeyID, m.id,
-			"monster_kind", m.monsterKind, "from", m.hex, "home", m.homeHex)
-	}
-
-	if w.arrivedHomeLocked(m) {
-		m.returningHome = false
-
-		return false
-	}
-
-	path := Pathfind(m.hex, m.homeHex, w.walkableLocked)
-	if len(path) >= 1 {
-		m.path = []protocol.Hex{path[0]}
-	} else {
-		m.path = nil // home unreachable (cannot happen on static terrain): stand still
-	}
-
-	return true
-}
-
-// arrivedHomeLocked reports whether returning monster m counts as home
-// (#102): standing on its home hex, or adjacent to it while the home hex has
-// no room this turn (StackCap — e.g. a monster pile-up on the spawn hex).
-// Without the adjacent-and-full case, a returning monster whose home stays
-// full would wait one hex away with its flag stuck, passive forever. An
-// opposing-held home needs no case of its own: a player on or near the home
-// hex would have pulled the monster into a combat bubble (CombatRadius,
-// recomputeBubblesLocked) before this world-domain check could run. Callers
-// hold w.mu.
-func (w *World) arrivedHomeLocked(m *entity) bool {
-	if m.hex == m.homeHex {
-		return true
-	}
-
-	return HexDistance(m.hex, m.homeHex) == 1 && w.occupancyLocked(m.homeHex) >= protocol.StackCap
 }
 
 // aggroRadiusForLocked returns the hex radius at which a WORLD-domain
@@ -4189,69 +4393,6 @@ func monsterReachLocked(e *entity) int {
 	return k.weaponDef.rangeHex
 }
 
-// playerCountLocked counts live player entities — the roster the player cap
-// (protocol.MaxPlayers) bounds (#199). Callers hold w.mu.
-func (w *World) playerCountLocked() int {
-	n := 0
-
-	for _, e := range w.entities {
-		if e.kind == protocol.EntityPlayer {
-			n++
-		}
-	}
-
-	return n
-}
-
-func (w *World) entityViewsLocked() []protocol.Entity {
-	entities := make([]protocol.Entity, 0, len(w.entities))
-
-	for _, e := range w.entities {
-		entities = append(entities, protocol.Entity{
-			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
-			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, Reach: monsterReachLocked(e),
-			XP: e.xp, Level: levelFor(e.xp), PartyID: e.partyID,
-			Items: itemViewsLocked(e), MonsterKind: e.monsterKind,
-			// Empty, never nil (wire_nil_test.go): own-only fields are
-			// stamped later by fillOwnOnlyLocked and stay at their zero value
-			// for every OTHER entity — which is exactly where a nil slice
-			// hides, since the viewer's own row always looks fine in testing.
-			Skills: []protocol.SkillView{},
-		})
-	}
-
-	return entities
-}
-
-// fillOwnOnlyLocked stamps the viewer's OWN skills and point bank onto their
-// row and nobody else's (#124 task 7, Q9). Split out of SnapshotFor to keep
-// that function under the length limit; the viewer is resolved once per
-// bundle rather than once per entity. Callers hold w.mu.
-func (w *World) fillOwnOnlyLocked(entities []protocol.Entity, viewerToken string) {
-	if viewerToken == "" {
-		return
-	}
-
-	viewer, ok := w.byToken[viewerToken]
-	if !ok || viewer == nil {
-		return
-	}
-
-	for i := range entities {
-		if entities[i].ID == viewer.id {
-			entities[i].Skills = skillViewsLocked(viewer, w.turn)
-			entities[i].SkillPoints = viewer.skillPoints
-			entities[i].EvadeReadyIn = max(int(viewer.activeReadyTurn[skillEvade]-w.turn), 0)
-			entities[i].HealthPotionReadyIn = max(int(viewer.healthPotionReadyTurn-w.turn), 0)
-			entities[i].EnergyPotionReadyIn = max(int(viewer.energyPotionReadyTurn-w.turn), 0)
-			entities[i].Energy = viewer.energy
-			entities[i].MaxEnergy = viewer.maxEnergy
-
-			return
-		}
-	}
-}
-
 // playersOf filters the player entities out of a member set, preserving order.
 func playersOf(members []*entity) []*entity {
 	players := make([]*entity, 0, len(members))
@@ -4261,22 +4402,6 @@ func playersOf(members []*entity) []*entity {
 			players = append(players, e)
 		}
 	}
-
-	return players
-}
-
-// allPlayersLocked returns every player in the world regardless of domain,
-// sorted by id (the deterministic nearest-player tie-break). Callers hold w.mu.
-func (w *World) allPlayersLocked() []*entity {
-	players := make([]*entity, 0, len(w.entities))
-
-	for _, e := range w.entities {
-		if e.kind == protocol.EntityPlayer {
-			players = append(players, e)
-		}
-	}
-
-	slices.SortFunc(players, byEntityID)
 
 	return players
 }
@@ -4304,128 +4429,3 @@ func nearestPlayer(from protocol.Hex, players []*entity) *entity {
 // a fixed world seed and call sequence (#36 — random spawn points instead of
 // every join/respawn racing to pile onto the exact same tile).
 const spawnPointStream uint64 = 0x50A5
-
-// spawnHexLocked picks a hex for a player join or respawn: a random
-// walkable, capacity-available hex anywhere in the sanctuary
-// (protocol.SanctuaryRadius of the origin) that is not occupied by, or
-// within CombatRadius of, a living monster (tooCloseToMonsterLocked) — so a
-// spawn can never land a player ON a monster or form an instant combat
-// bubble the moment they appear (both observed live, #36). Random, not the
-// old spiral-nearest-to-origin search: players (and respawns) no longer pile
-// deterministically onto the same hex. Per Q9, the sanctuary is every join's
-// and respawn's shared "home" until beds land as a per-player anchor —
-// scattering across the whole sanctuary rather than just the small origin
-// clearing is intentional.
-//
-// Four tiers, each engaged only if the one above yields nothing, so a small
-// or crowded map never fails a join outright — but "not literally on top of a
-// monster" is relaxed dead last, since that specific case can silently stall
-// combat forever (occupiedByMonsterLocked's doc comment), not just risk an
-// instant bubble:
-//  1. sanctuary hexes clear of monsters entirely (the common case)
-//  2. sanctuary hexes not occupied by one, ignoring the CombatRadius
-//     preference (a monster-dense sanctuary may leave nothing outside it)
-//  3. sanctuary hexes at all, ignoring both monster checks (the sanctuary
-//     itself is saturated — every hex in it has a monster standing on it)
-//  4. spawnHexSpiralLocked over the WHOLE reachable region, ignoring every
-//     guard — the pre-#36 search, kept verbatim as the last resort so "a
-//     crowded tiny test map must not break joins" still holds
-//
-// Callers hold w.mu.
-func (w *World) spawnHexLocked() (protocol.Hex, error) {
-	origin := protocol.Hex{Q: 0, R: 0}
-
-	var sanctuarySafe, sanctuaryUnoccupied, sanctuaryAny []protocol.Hex
-
-	for h := range w.spawnable {
-		if HexDistance(origin, h) > protocol.SanctuaryRadius || w.occupancyLocked(h) >= protocol.StackCap {
-			continue
-		}
-
-		sanctuaryAny = append(sanctuaryAny, h)
-
-		if w.occupiedByMonsterLocked(h) {
-			continue
-		}
-
-		sanctuaryUnoccupied = append(sanctuaryUnoccupied, h)
-
-		if !w.tooCloseToMonsterLocked(h) {
-			sanctuarySafe = append(sanctuarySafe, h)
-		}
-	}
-
-	candidates := sanctuarySafe
-	if len(candidates) == 0 {
-		candidates = sanctuaryUnoccupied
-	}
-
-	if len(candidates) == 0 {
-		candidates = sanctuaryAny
-	}
-
-	if len(candidates) == 0 {
-		return w.spawnHexSpiralLocked()
-	}
-
-	slices.SortFunc(candidates, compareHexQR)
-
-	//nolint:gosec // deterministic seeded placement, not security-sensitive.
-	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnPointStream+uint64(w.nextID)))
-
-	return candidates[rng.IntN(len(candidates))], nil
-}
-
-// spawnHexSpiralLocked is the pre-#36 search: the free walkable hex nearest
-// the origin, spiraling outward, ignoring the monster guard entirely — the
-// tier-4 fallback spawnHexLocked reaches for only when none of the three
-// sanctuary tiers above yields a single candidate (an extremely crowded or
-// tiny map), so a join never hard-fails just because the sanctuary is
-// exhausted.
-// Callers hold w.mu.
-//
-// Faction-blind by design in this fallback path: it can land a player on a
-// monster-occupied hex (opposing co-occupancy, a §5 MUST in the rare case it
-// is ever reached). It is inert only because a co-located monster's think
-// step gets Pathfind(from==to)==∅ and holds (never attacks).
-func (w *World) spawnHexSpiralLocked() (protocol.Hex, error) {
-	origin := protocol.Hex{Q: 0, R: 0}
-
-	for radius := 0; radius <= w.radius; radius++ {
-		for q := -radius; q <= radius; q++ {
-			for r := -radius; r <= radius; r++ {
-				h := protocol.Hex{Q: q, R: r}
-				if HexDistance(origin, h) != radius {
-					continue
-				}
-
-				// w.spawnable[h] already implies walkable; using it (rather than
-				// walkableLocked) keeps spawns off any walkable pocket the origin
-				// can't reach.
-				if w.spawnable[h] && w.occupancyLocked(h) < protocol.StackCap {
-					return h, nil
-				}
-			}
-		}
-	}
-
-	return protocol.Hex{}, ErrWorldFull
-}
-
-func (w *World) walkableLocked(h protocol.Hex) bool {
-	t, ok := w.terrain[h]
-
-	return ok && (t == protocol.TerrainGrass || t == protocol.TerrainForest)
-}
-
-func (w *World) occupancyLocked(h protocol.Hex) int {
-	n := 0
-
-	for _, e := range w.entities {
-		if e.hex == h {
-			n++
-		}
-	}
-
-	return n
-}
