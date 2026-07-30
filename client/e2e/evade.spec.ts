@@ -39,8 +39,32 @@ test("Space arms evade, a click spends it, and the cooldown starts", async ({ pa
   // Click a painted tile that the CANVAS actually receives. The action bar,
   // the globes and the chat panel sit over the map, so a tile behind one of
   // them is painted but unclickable — hit-test rather than assuming.
+  //
+  // NEAREST FIRST, and that is load-bearing. skillTargetTiles is documented as
+  // "PREVIEW ONLY ... deliberately a SUPERSET" (client/src/tactics.ts): it
+  // models neither line of sight nor occupancy, so a painted tile behind a rock
+  // is painted AND refused on submit with 422 "no line of sight". That is
+  // intended — the overlay shows reach, the server owns legality.
+  //
+  // So a test may not click an arbitrary painted tile: it must pick one the
+  // server will accept. The NEAREST tile is adjacent, has nothing in between,
+  // and therefore can never be sight-blocked. Taking overlay order instead made
+  // this spec a coin flip on where the player spawned, which is how it failed
+  // on main at e6665db after passing three times on its own branch.
   const dest = await page.evaluate(() => {
-    for (const t of window.game.skillTiles) {
+    const me = window.game.me;
+    if (me === null) {
+      return null;
+    }
+
+    const dist = (t: { q: number; r: number }): number => {
+      const dq = t.q - me.hex.q;
+      const dr = t.r - me.hex.r;
+
+      return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(-dq - dr));
+    };
+
+    for (const t of [...window.game.skillTiles].sort((a, b) => dist(a) - dist(b))) {
       const at = window.game.hexToScreen?.(t.q, t.r);
       if (at === undefined) continue;
       const el = document.elementFromPoint(at.x, at.y);
@@ -54,8 +78,21 @@ test("Space arms evade, a click spends it, and the cooldown starts", async ({ pa
 
   expect(await page.evaluate(() => window.game.hexToScreen !== null)).toBe(true);
 
+  // Watch the intent's own response, so a refusal reports WHY instead of
+  // surfacing 10s later as an unexplained "cooldown never started".
+  const intent = page.waitForResponse((r) => r.url().includes("/api/intent"));
+
   const at = await page.evaluate((d) => window.game.hexToScreen!(d.q, d.r), dest);
   await page.mouse.click(at.x, at.y);
+
+  const res = await intent;
+  if (res.status() >= 300) {
+    // Read the body ONLY here: a 2xx on this route has no retrievable body, so
+    // reading it unconditionally would fail the passing case.
+    const why = await res.text().catch(() => "<body unavailable>");
+
+    throw new Error(`the server refused the evade with ${res.status()}: ${why} — the overlay is a preview superset`);
+  }
 
   // The cooldown starting is the server's acknowledgement — it is stamped by
   // the same commit that moves the player, so polling it avoids racing the
