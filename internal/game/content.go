@@ -134,7 +134,7 @@ func classCards(class string) []ruleCard {
 // constants because those percentages ARE tuning knobs shared with other
 // content.
 //
-//nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init (mustValidateContent).
+//nolint:gochecknoglobals // fixed content registry, effectively const; validated at init (mustValidateContent).
 var itemDefs = []*itemDef{
 	// Class defaults.
 	{
@@ -611,7 +611,7 @@ var itemDefs = []*itemDef{
 		damageType: protocol.DamageTypeSharp,
 		damage:     4,
 		flavor:     "The longer the fight, the better it likes you.",
-		//nolint:mnd // authored content: +15% deal-damage buff for 2 turns, refreshed on hit.
+		// Authored content: +15% deal-damage buff for 2 turns, refreshed on hit.
 		onHit: []appliedEffect{
 			{effectID: idEffectFrenzy, magnitude: percentBase + 15, turns: 2, toSelf: true},
 		},
@@ -625,7 +625,7 @@ var itemDefs = []*itemDef{
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeSharp,
 		damage:     2, monsterOnly: true,
-		//nolint:mnd // authored content: -2 HP/turn (a negative effAdd) for 3 turns, refreshed on hit.
+		// Authored content: -2 HP/turn (a negative effAdd) for 3 turns, refreshed on hit.
 		onHit: []appliedEffect{
 			{effectID: idEffectPoison, magnitude: -2, turns: 3},
 		},
@@ -645,7 +645,7 @@ var itemDefs = []*itemDef{
 		tags:       []string{protocol.WeaponTagMelee},
 		damageType: protocol.DamageTypeSharp,
 		damage:     4, monsterOnly: true,
-		//nolint:mnd // authored content: +3 HP/turn (a positive effAdd) for 3 turns, refreshed on hit.
+		// Authored content: +3 HP/turn (a positive effAdd) for 3 turns, refreshed on hit.
 		onHit: []appliedEffect{
 			{effectID: idEffectRegen, magnitude: 3, turns: 3, toSelf: true},
 		},
@@ -662,7 +662,7 @@ var itemDefs = []*itemDef{
 		// applies — the potion is a second, drink-triggered source of it.
 		id: idDraughtOfFury, name: "Draught of Fury", itemType: protocol.ItemTypeConsumable,
 		flavor: "Bottled aggression. It does not ask what you intend to hit.",
-		//nolint:mnd // authored content: +25% deal-damage (frenzy) for 4 turns on drink.
+		// Authored content: +25% deal-damage (frenzy) for 4 turns on drink.
 		appliesEffect: []appliedEffect{
 			{effectID: idEffectFrenzy, magnitude: percentBase + 25, turns: 4},
 		},
@@ -674,7 +674,7 @@ var itemDefs = []*itemDef{
 		// drunk — a real defensive tempo play (drinking is the whole turn).
 		id: idWardingTonic, name: "Warding Tonic", itemType: protocol.ItemTypeConsumable,
 		flavor: "A skin of bitter draught that turns the next blow aside.",
-		//nolint:mnd // authored content: +25% damage resistance (ward) for 4 turns on drink.
+		// Authored content: +25% damage resistance (ward) for 4 turns on drink.
 		appliesEffect: []appliedEffect{
 			{effectID: idEffectWard, magnitude: percentBase - 25, turns: 4},
 		},
@@ -739,7 +739,7 @@ var itemDefs = []*itemDef{
 		// Reach 4+1 = 5 ≤ CombatRadius (validateMaxReach).
 		id: idFlaskOfFire, name: "Flask of Alchemist's Fire", itemType: protocol.ItemTypeConsumable,
 		flavor: "Do not shake. Do not drop. Do, by all means, throw.",
-		//nolint:mnd // authored content: 6 fire in a 1-hex blast at range 4, plus −3/turn burning for 3 turns.
+		// Authored content: 6 fire in a 1-hex blast at range 4, plus −3/turn burning for 3 turns.
 		throw: &throwPayload{
 			rangeHex: 4, aoeRadius: 1, damage: 6, damageType: protocol.DamageTypeFire,
 			onLand: []appliedEffect{{effectID: idEffectBurning, magnitude: -3, turns: 3}},
@@ -773,7 +773,7 @@ var itemDefByID map[string]*itemDef
 // against wolf and the player stats table in the spec. Order is registry
 // order.
 //
-//nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init (mustValidateContent).
+//nolint:gochecknoglobals // fixed content registry, effectively const; validated at init (mustValidateContent).
 var monsterDefs = []*monsterDef{
 	{
 		id: idKindRat, name: "Rat",

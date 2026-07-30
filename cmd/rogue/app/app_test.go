@@ -127,7 +127,7 @@ func TestLoadSnapshotPreservesRejectedFile(t *testing.T) {
 		t.Fatalf("loadSnapshot(mismatched snapshot) = %v, want %v", got, want)
 	}
 
-	if _, err := os.Stat(path); err == nil {
+	if _, statErr := os.Stat(path); statErr == nil {
 		t.Errorf("rejected snapshot still at the live path %s, want moved aside", path)
 	}
 
@@ -146,7 +146,7 @@ func TestLoadSnapshotPreservesRejectedFile(t *testing.T) {
 	}
 
 	if got, want := string(preserved), string(original); got != want {
-		t.Errorf("preserved rejected snapshot bytes differ from the original")
+		t.Error("preserved rejected snapshot bytes differ from the original")
 	}
 
 	// The live path is free again: a fresh save lands there without touching

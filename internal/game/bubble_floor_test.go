@@ -51,7 +51,7 @@ func TestBubbleTurnFloorGatesSoloSpam(t *testing.T) {
 	clk.advance(time.Second)
 
 	if !w.PollTickForTest() {
-		t.Fatalf("poll did not resolve once the turn floor elapsed")
+		t.Fatal("poll did not resolve once the turn floor elapsed")
 	}
 
 	if got := w.Snapshot().Turn; got == turnAfterFirst {
@@ -82,7 +82,7 @@ func TestBubbleTurnFloorMultiPlayerUnaffectedBeyondFloor(t *testing.T) {
 	clk.advance(time.Second)
 
 	if !w.PollTickForTest() {
-		t.Fatalf("world tick did not resolve on the forming poll")
+		t.Fatal("world tick did not resolve on the forming poll")
 	}
 
 	snap := w.Snapshot()
@@ -131,7 +131,7 @@ func TestBubbleTurnFloorMultiPlayerUnaffectedBeyondFloor(t *testing.T) {
 	clk.advance(time.Second)
 
 	if !w.PollTickForTest() {
-		t.Fatalf("poll did not resolve once the turn floor elapsed")
+		t.Fatal("poll did not resolve once the turn floor elapsed")
 	}
 
 	if got := w.Snapshot().Turn; got == turnAfterFirst {

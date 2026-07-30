@@ -66,8 +66,8 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	groundHex := protocol.Hex{Q: 1, R: 1}
 	groundInst := w.GroundItemForTest(groundHex, "dagger")
 
-	if _, err := w.QuestTake(alice.Token, 1); err != nil {
-		t.Fatalf("QuestTake: %v", err)
+	if _, takeErr := w.QuestTake(alice.Token, 1); takeErr != nil {
+		t.Fatalf("QuestTake: %v", takeErr)
 	}
 
 	// Archive a second character (bob) via the sweep, so the archive map
@@ -92,7 +92,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 
 	beforeAlice, ok := entityOfSnap(w.Snapshot(), alice.EntityID)
 	if !ok {
-		t.Fatalf("alice missing from pre-marshal snapshot")
+		t.Fatal("alice missing from pre-marshal snapshot")
 	}
 
 	data, err := w.MarshalState()
@@ -103,7 +103,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	w2, _ := newSnapshotWorld(t)
 
 	if got, want := w2.WorldIDForTest(), w.WorldIDForTest(); got == want {
-		t.Fatalf("w2's freshly-minted worldID already equals w's before restoring — test fixture bug")
+		t.Fatal("w2's freshly-minted worldID already equals w's before restoring — test fixture bug")
 	}
 
 	if err := w2.RestoreState(data); err != nil {
@@ -332,7 +332,7 @@ func TestSnapshotRestoredPlayerGraceStartsAtLoad(t *testing.T) {
 
 	got, ok := w2.DisconnectedAtForTest(me.Token)
 	if !ok {
-		t.Fatalf("DisconnectedAtForTest: restored entity not found")
+		t.Fatal("DisconnectedAtForTest: restored entity not found")
 	}
 
 	if !got.Equal(loadTime) {
@@ -380,7 +380,7 @@ func TestSnapshotRestoreTurnMonotonic(t *testing.T) {
 
 	beforeTurn := w.Snapshot().Turn
 	if beforeTurn == 0 {
-		t.Fatalf("test setup: turn is still 0 after 5 resolutions")
+		t.Fatal("test setup: turn is still 0 after 5 resolutions")
 	}
 
 	data, err := w.MarshalState()
@@ -428,7 +428,7 @@ func TestSnapshotMismatchGates(t *testing.T) {
 
 		err = other.RestoreState(data)
 		if err == nil {
-			t.Fatalf("RestoreState with mismatched seed: got nil error, want a mismatch error")
+			t.Fatal("RestoreState with mismatched seed: got nil error, want a mismatch error")
 		}
 
 		if got, want := err.Error(), "does not match this world"; !strings.Contains(got, want) {
@@ -458,7 +458,7 @@ func TestSnapshotMismatchGates(t *testing.T) {
 
 		err = other.RestoreState(data)
 		if err == nil {
-			t.Fatalf("RestoreState with mismatched radius: got nil error, want a mismatch error")
+			t.Fatal("RestoreState with mismatched radius: got nil error, want a mismatch error")
 		}
 
 		if got, want := err.Error(), "does not match this world"; !strings.Contains(got, want) {
@@ -481,7 +481,7 @@ func TestSnapshotMismatchGates(t *testing.T) {
 
 		err := other.RestoreState([]byte("not json"))
 		if err == nil {
-			t.Fatalf("RestoreState with garbage data: got nil error, want a decode error")
+			t.Fatal("RestoreState with garbage data: got nil error, want a decode error")
 		}
 	})
 }
@@ -506,10 +506,10 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 	w.StreamOpened(me.Token)
 
 	armorID := w.GrantItemForTest(me.EntityID, "leather-armor")
-	if err := w.SubmitIntent(protocol.IntentRequest{
+	if submitErr := w.SubmitIntent(protocol.IntentRequest{
 		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentEquip, ItemID: armorID,
-	}); err != nil {
-		t.Fatalf("equip armor: %v", err)
+	}); submitErr != nil {
+		t.Fatalf("equip armor: %v", submitErr)
 	}
 
 	stackID := w.GrantItemForTest(me.EntityID, "healing-potion")
@@ -537,8 +537,8 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 	}
 
 	w2, _ := newSnapshotWorld(t)
-	if err := w2.RestoreState(data); err != nil {
-		t.Fatalf("RestoreState: %v", err)
+	if restoreErr := w2.RestoreState(data); restoreErr != nil {
+		t.Fatalf("RestoreState: %v", restoreErr)
 	}
 
 	// The live player's equipped map: same instance ids in the same slots.
@@ -622,8 +622,8 @@ func TestRestoreRecomputesDerivedHP(t *testing.T) {
 	// written by an older curve) directly in the JSON, since no ForTest
 	// helper sets maxHP independent of the sync path.
 	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal snapshot for craft: %v", err)
+	if unmarshalErr := json.Unmarshal(data, &raw); unmarshalErr != nil {
+		t.Fatalf("unmarshal snapshot for craft: %v", unmarshalErr)
 	}
 
 	entities, ok := raw["entities"].([]any)
@@ -634,12 +634,17 @@ func TestRestoreRecomputesDerivedHP(t *testing.T) {
 	found := false
 
 	for _, ent := range entities {
-		m, ok := ent.(map[string]any)
-		if !ok {
+		m, isObj := ent.(map[string]any)
+		if !isObj {
 			continue
 		}
 
-		if id, _ := m["id"].(float64); int64(id) == me.EntityID {
+		id, hasID := m["id"].(float64)
+		if !hasID {
+			t.Fatalf("entity in snapshot has no numeric id: %v", m)
+		}
+
+		if int64(id) == me.EntityID {
 			m["hp"] = 66
 			m["maxHp"] = 66
 			found = true

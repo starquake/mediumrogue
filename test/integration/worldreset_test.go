@@ -62,8 +62,8 @@ func TestRestoreKeepsSameWorldID(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "snapshot.json")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatalf("write snapshot file: %v", err)
+	if writeErr := os.WriteFile(path, data, 0o600); writeErr != nil {
+		t.Fatalf("write snapshot file: %v", writeErr)
 	}
 
 	//nolint:gosec // path is a t.TempDir() file this test wrote itself, not user input.

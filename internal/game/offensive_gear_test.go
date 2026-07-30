@@ -203,7 +203,7 @@ func TestRingOfPrecisionCritReachesDealDamage(t *testing.T) {
 
 	plain, plainLoss := ringScenario(t, ringMissSeed)
 	if plain.Crit {
-		t.Errorf("miss-seed hit flagged crit, want a plain hit")
+		t.Error("miss-seed hit flagged crit, want a plain hit")
 	}
 
 	if got, want := plainLoss, 4; got != want {
@@ -212,7 +212,7 @@ func TestRingOfPrecisionCritReachesDealDamage(t *testing.T) {
 
 	crit, critLoss := ringScenario(t, ringCritSeed)
 	if !crit.Crit {
-		t.Errorf("crit-seed hit not flagged crit, want a crit (the ring's card fired)")
+		t.Error("crit-seed hit not flagged crit, want a crit (the ring's card fired)")
 	}
 
 	if got, want := critLoss, plainLoss*2; got != want {

@@ -16,7 +16,9 @@ func TestOwnHexMoveIsWaitAndLocksInBubble(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, _, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	form := fx.form
 
 	hexA0 := hexOfSnap(form, idA)
 	hexB0 := hexOfSnap(form, idB)

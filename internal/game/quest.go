@@ -62,10 +62,14 @@ var (
 // Draws only from a PCG seeded by the world seed; reach goals come from a
 // SORTED slice of reachable hexes (map iteration order would break
 // determinism) and sit at least questReachMinDist from the origin.
+// systemSender is the chat sender name the world itself speaks under, as
+// opposed to a player.
+const systemSender = "system"
+
 func generateQuests(seed uint64, m protocol.MapResponse) []*quest {
-	// 0x9E3779B97F4A7C15 is a domain-separation salt for the quest stream.
-	//nolint:gosec,mnd // deterministic seeded generation, not security-sensitive.
-	rng := mrand.New(mrand.NewPCG(seed, 0x9E3779B97F4A7C15))
+	// Domain-separates the quest stream from every other consumer of the seed.
+	//nolint:gosec // deterministic seeded generation, not security-sensitive.
+	rng := mrand.New(mrand.NewPCG(seed, goldenRatio64))
 
 	// Candidate goals: reachable, walkable, far enough out — sorted for determinism.
 	origin := protocol.Hex{Q: 0, R: 0}
@@ -198,7 +202,7 @@ func (w *World) QuestAbandon(token string, questID int64) (string, error) {
 
 // holdsQuestLocked reports whether e currently holds q — personally, or
 // via their party.
-func (w *World) holdsQuestLocked(e *entity, q *quest) bool {
+func (*World) holdsQuestLocked(e *entity, q *quest) bool {
 	return q.holderEntity == e.id || (e.partyID != 0 && q.holderParty == e.partyID)
 }
 
@@ -257,7 +261,7 @@ func (w *World) questByIDLocked(id int64) *quest {
 }
 
 // resetQuestLocked puts a quest back on the board (abandon/dissolve/sweep).
-func (w *World) resetQuestLocked(q *quest) {
+func (*World) resetQuestLocked(q *quest) {
 	q.state = protocol.QuestAvailable
 	q.progress = 0
 	q.holderEntity = 0
@@ -273,7 +277,7 @@ func (w *World) resetQuestLocked(q *quest) {
 func (w *World) abandonPersonalQuestLocked(e *entity) {
 	for _, q := range w.personalQuestsLocked(e) {
 		w.resetQuestLocked(q)
-		w.announce("system", fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
+		w.announce(systemSender, fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
 	}
 }
 
@@ -293,7 +297,7 @@ func (w *World) promotePersonalQuestLocked(e *entity) {
 	q := personal[0]
 	q.holderEntity = 0
 	q.holderParty = e.partyID
-	w.announce("system", fmt.Sprintf("quest #%d (%s) is now %s's party's quest", q.id, q.name, e.name))
+	w.announce(systemSender, fmt.Sprintf("quest #%d (%s) is now %s's party's quest", q.id, q.name, e.name))
 }
 
 // returnPartyQuestLocked returns a dissolved party's quest to the board.
@@ -301,7 +305,7 @@ func (w *World) returnPartyQuestLocked(partyID int64) {
 	for _, q := range w.quests {
 		if q.state == protocol.QuestTaken && q.holderParty == partyID {
 			w.resetQuestLocked(q)
-			w.announce("system", fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
+			w.announce(systemSender, fmt.Sprintf("quest #%d (%s) returned to the board", q.id, q.name))
 
 			return
 		}
@@ -337,7 +341,7 @@ func (w *World) tickKillQuestsLocked(members []*entity, killed int) {
 
 			// Progress feedback where players are actually looking mid-fight: the
 			// chat stream. (Completion has its own announcement.)
-			w.announce("system", fmt.Sprintf("%s: %d down, %d to go", q.name, q.progress, q.targetN-q.progress))
+			w.announce(systemSender, fmt.Sprintf("%s: %d down, %d to go", q.name, q.progress, q.targetN-q.progress))
 		}
 	}
 }
@@ -391,7 +395,9 @@ func (w *World) completeQuestLocked(q *quest) {
 		e.xp += award
 		syncMaxHPLocked(e)
 		g, lvl, up := grantSkillPointsLocked(e)
-		w.announceLevelUpLocked(e, g, lvl, up)
+		if up {
+			w.announceLevelUpLocked(e, g, lvl)
+		}
 		names = append(names, e.name)
 	}
 

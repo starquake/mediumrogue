@@ -186,16 +186,16 @@ func TestArchiveDoesNotCoverPartyOrQuest(t *testing.T) {
 	w.StreamOpened(a.Token)
 	w.StreamOpened(b.Token)
 
-	if _, err := w.QuestTake(a.Token, 1); err != nil {
-		t.Fatalf("QuestTake: %v", err)
+	if _, takeErr := w.QuestTake(a.Token, 1); takeErr != nil {
+		t.Fatalf("QuestTake: %v", takeErr)
 	}
 
-	if _, err := w.PartyInvite(a.Token, "bob"); err != nil {
-		t.Fatalf("PartyInvite: %v", err)
+	if _, inviteErr := w.PartyInvite(a.Token, "bob"); inviteErr != nil {
+		t.Fatalf("PartyInvite: %v", inviteErr)
 	}
 
-	if _, err := w.PartyAccept(b.Token); err != nil {
-		t.Fatalf("PartyAccept: %v", err)
+	if _, acceptErr := w.PartyAccept(b.Token); acceptErr != nil {
+		t.Fatalf("PartyAccept: %v", acceptErr)
 	}
 
 	// Disconnect and sweep alice only.

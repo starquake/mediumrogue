@@ -196,13 +196,13 @@ func TestRespawnScalesMaxHPToLevel(t *testing.T) {
 		t.Fatalf("player %d should respawn, not vanish", me.EntityID)
 	}
 
-	want := game.MaxHPForTest(protocol.ClassFighter, 2)
+	wantHP := game.MaxHPForTest(protocol.ClassFighter, 2)
 
-	if got, want := e.MaxHP, want; got != want {
+	if got, want := e.MaxHP, wantHP; got != want {
 		t.Errorf("respawned level-2 fighter MaxHP = %d, want %d", got, want)
 	}
 
-	if got, want := e.HP, want; got != want {
+	if got, want := e.HP, wantHP; got != want {
 		t.Errorf("respawned fighter HP = %d, want %d (full bar)", got, want)
 	}
 
@@ -223,7 +223,8 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("rogue bow", func(t *testing.T) {
 		t.Parallel()
 
-		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassRogue)
+		w, ok := game.RangedWeaponForTest(protocol.ClassRogue)
+		dmg, rangeHex, aoe := w.Damage, w.RangeHex, w.AoERadius
 		if !ok {
 			t.Fatal("rogue should have a ranged weapon")
 		}
@@ -244,7 +245,8 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("mage magic", func(t *testing.T) {
 		t.Parallel()
 
-		dmg, rangeHex, aoe, ok := game.RangedWeaponForTest(protocol.ClassMage)
+		w, ok := game.RangedWeaponForTest(protocol.ClassMage)
+		dmg, rangeHex, aoe := w.Damage, w.RangeHex, w.AoERadius
 		if !ok {
 			t.Fatal("mage should have a ranged weapon")
 		}
@@ -265,7 +267,7 @@ func TestRangedWeaponByClass(t *testing.T) {
 	t.Run("fighter has no ranged", func(t *testing.T) {
 		t.Parallel()
 
-		if _, _, _, ok := game.RangedWeaponForTest(protocol.ClassFighter); ok {
+		if _, ok := game.RangedWeaponForTest(protocol.ClassFighter); ok {
 			t.Error("fighter should have no ranged weapon")
 		}
 	})

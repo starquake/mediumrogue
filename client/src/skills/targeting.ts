@@ -48,7 +48,7 @@ export function pressOutcome(aim: string): PressOutcome {
  *
  * A hex-aimed active takes any hex — including an occupied one, which for a
  * blast is the normal case. Whether it is a legal target is the server's call
- * (range, sight, and for a blink walkability), surfaced as a rejection toast.
+ * (range, sight, and for a evade walkability), surfaced as a rejection toast.
  */
 export function clickOutcome(aim: string, hostileIdAtTarget: number | null): ClickOutcome {
   if (aim !== SkillAimEntity) return { kind: "send", targetEntityId: 0 };

@@ -21,7 +21,7 @@ import (
 // without mirroring internal/game/content.go's shortbow/ember-focus numbers
 // as local literals — the wire is now the single source of truth, also
 // pinned directly against the registry by internal/game's items_test.go.
-func equippedRangedStats(bundle protocol.TurnEvent, id int64) (int, int, bool) {
+func equippedRangedStats(bundle protocol.TurnEvent, id int64) (damage, rangeHex int, found bool) {
 	e, found := entityOf(bundle, id)
 	if !found {
 		return 0, 0, false
@@ -329,12 +329,23 @@ func bestAoETarget(mine protocol.Hex, hostiles []protocol.Hex, aoeRadius int) (p
 // if that hex is within range, else chase the nearest monster into range.
 // A rejection increments *consecutiveRejected and, past 40 in a row, fails the
 // test loudly instead of silently exhausting the whole deadline.
+//
+// The mage's own fixed stats travel together as mageTurn, so a call site cannot
+// transpose mageRange and aoeRadius — two ints that mean very different things.
+type mageTurn struct {
+	ts        *httptest.Server
+	me        protocol.JoinResponse
+	mageRange int
+	aoeRadius int
+}
+
 func fireAoEOrChase(
-	t *testing.T, ts *httptest.Server, me protocol.JoinResponse,
-	bundle protocol.TurnEvent, myHex protocol.Hex, monsterHexes []protocol.Hex,
-	mageRange, aoeRadius int, consecutiveRejected *int,
+	t *testing.T, m mageTurn, bundle protocol.TurnEvent,
+	myHex protocol.Hex, monsterHexes []protocol.Hex, consecutiveRejected *int,
 ) {
 	t.Helper()
+
+	ts, me, mageRange, aoeRadius := m.ts, m.me, m.mageRange, m.aoeRadius
 
 	candidate, _ := bestAoETarget(myHex, monsterHexes, aoeRadius)
 
@@ -509,7 +520,9 @@ func TestMageAoEDamagesMonsters(t *testing.T) {
 		}
 
 		if len(monsterHexes) > 0 {
-			fireAoEOrChase(t, ts, me, bundle, myHex, monsterHexes, mageRange, aoeRadius, &consecutiveRejected)
+			fireAoEOrChase(t,
+				mageTurn{ts: ts, me: me, mageRange: mageRange, aoeRadius: aoeRadius},
+				bundle, myHex, monsterHexes, &consecutiveRejected)
 		}
 
 		seenNow := make(map[int64]bool, len(startHP))

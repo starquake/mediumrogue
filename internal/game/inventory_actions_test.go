@@ -624,7 +624,10 @@ func TestDrinkInBubbleConsumesTurn(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, monsterID, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	monsterID := fx.monsterID
+	form := fx.form
 
 	stackID := w.GrantItemForTest(idA, defHealingPotion)
 
@@ -675,7 +678,9 @@ func TestPickupInBubbleConsumesTurn(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, _, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	form := fx.form
 
 	hexA := hexOfSnap(form, idA)
 	ground := w.GroundItemForTest(hexA, defIronWarhammer)

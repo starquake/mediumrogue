@@ -1,10 +1,16 @@
 package game
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
+
+// errUnhandledPendingAction is deliberately unexported: it is logged, never
+// returned to an HTTP caller, so it stays out of api.go's status mapping (and
+// out of the guard test that keeps that mapping honest).
+var errUnhandledPendingAction = errors.New("unhandled pending item action")
 
 // inventory.go: the five inventory ACTIONS (equip, unequip, drop, pickup,
 // drink) — task 2 of the inventory-slots milestone (spec:
@@ -33,7 +39,7 @@ type pendingItemAction struct {
 // intent's HTTP response); inside one it records the pending action and
 // clears any queued move/attack — you act on your inventory, you don't also
 // move or shoot this turn. Callers hold w.mu.
-func (w *World) commitItemActionLocked(e *entity, kind string, id int64, apply func() error) error {
+func (*World) commitItemActionLocked(e *entity, kind string, id int64, apply func() error) error {
 	// #271: an inventory action cancels a queued throw/recall either way — an
 	// immediate action outside a bubble must not leave a throw to resolve next
 	// world turn, and inside one the pending action is the turn's action.
@@ -85,11 +91,16 @@ func (w *World) applyPendingItemLocked(e *entity) {
 		err = w.pickupGroundLocked(e, p.id)
 	case protocol.IntentDrink:
 		err = w.drinkItemLocked(e, p.id)
+	default:
+		// A pending action nothing handles used to leave err nil and report
+		// success, losing the intent silently. TestEveryIntentSentinelIsMapped
+		// guards the mapping; this makes the failure visible if it ever slips.
+		err = fmt.Errorf("%w: %s", errUnhandledPendingAction, p.kind)
 	}
 
 	if err != nil {
-		w.logger.Info(combatLogMsg, "event", combatEventFizzle, "reason", "pending_item_action",
-			"kind", p.kind, "id", e.id, "item", p.id, "err", err.Error())
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventFizzle, logKeyReason, "pending_item_action",
+			"kind", p.kind, logKeyID, e.id, logKeyItem, p.id, "err", err.Error())
 	}
 }
 
@@ -211,7 +222,7 @@ func (w *World) groundItemsAddLocked(hex protocol.Hex, gs groundStack) {
 
 // logDropLocked emits the drop combat-log event. Callers hold w.mu.
 func (w *World) logDropLocked(e *entity, inst itemInstance, count int) {
-	w.logger.Info(combatLogMsg, "event", combatEventDrop, "id", e.id, "item", inst.defID, "count", count, "at", e.hex)
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventDrop, logKeyID, e.id, logKeyItem, inst.defID, "count", count, "at", e.hex)
 }
 
 // findGroundStackLocked returns the ground stack with the given representative
@@ -270,7 +281,7 @@ func (w *World) pickupGroundLocked(e *entity, groundItemID int64) error {
 	}
 
 	w.announce("system", pickupAnnounce(e.name, itemDefByID[gs.inst.defID].name, taken))
-	w.logger.Info(combatLogMsg, "event", combatEventPickup, "id", e.id, "item", gs.inst.defID, "count", taken)
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventPickup, logKeyID, e.id, logKeyItem, gs.inst.defID, "count", taken)
 
 	return nil
 }
@@ -355,7 +366,7 @@ func (w *World) drinkItemLocked(e *entity, itemID int64) error {
 		e.backpack[idx] = backpackEntry{}
 	}
 
-	w.logger.Info(combatLogMsg, "event", combatEventDrink, "id", e.id, "item", inst.defID,
+	w.logger.Info(combatLogMsg, logKeyEvent, combatEventDrink, logKeyID, e.id, logKeyItem, inst.defID,
 		"hp", e.hp, "cleared", cleared, "buffs", len(def.appliesEffect))
 
 	return nil

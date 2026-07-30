@@ -245,7 +245,7 @@ func TestWalkToMonsterHexStopsAdjacent(t *testing.T) {
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 
 	if !submitOK(w, me, monsterHex) {
-		t.Fatalf("SubmitIntent(walk to monster hex) failed")
+		t.Fatal("SubmitIntent(walk to monster hex) failed")
 	}
 
 	var last protocol.TurnEvent

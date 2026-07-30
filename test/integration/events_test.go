@@ -55,6 +55,8 @@ func readFrames(t *testing.T, r *bufio.Reader, count int) []sseFrame {
 				cur.event = strings.TrimPrefix(line, "event: ")
 			case strings.HasPrefix(line, "data: "):
 				cur.data = strings.TrimPrefix(line, "data: ")
+			default:
+				// Any other SSE line is not part of this assertion.
 			}
 		}
 	}()
@@ -146,6 +148,8 @@ func TestEventsHeartbeatIsNamedEvent(t *testing.T) {
 				return
 			case line == "":
 				sawID = false // frame boundary resets id tracking
+			default:
+				// Any other SSE line is not part of this assertion.
 			}
 		}
 	}()
@@ -221,6 +225,8 @@ func readFrameWithin(t *testing.T, r *bufio.Reader, timeout time.Duration) (sseF
 				cur.event = strings.TrimPrefix(line, "event: ")
 			case strings.HasPrefix(line, "data: "):
 				cur.data = strings.TrimPrefix(line, "data: ")
+			default:
+				// Any other SSE line is not part of this assertion.
 			}
 		}
 	}()

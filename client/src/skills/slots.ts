@@ -47,7 +47,7 @@ export function defaultAssignment(learnedActiveIDs: string[]): string[] {
  *    per character), so a dead slot is otherwise the normal case after a
  *    reroll, not an edge one.
  *  - Learning a new active never DISPLACES an assigned one. It fills empty
- *    slots only. Silently pushing Blink out of slot 1 because you learned
+ *    slots only. Silently pushing Evade out of slot 1 because you learned
  *    something else is the kind of thing that gets noticed mid-fight.
  */
 export function reconcile(stored: string[], learnedActiveIDs: string[]): string[] {

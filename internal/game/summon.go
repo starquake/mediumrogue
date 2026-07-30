@@ -84,11 +84,7 @@ func validateMonsterSummon(def *monsterDef) {
 // unconditionally while a world-domain one obeys aggro range. members arrives
 // id-sorted (bubbleMembersLocked), so multiple summoners process — and consume
 // rng — in a deterministic order. Callers hold w.mu.
-func (w *World) tickSummonsLocked(rng *mrand.Rand, members []*entity, worldDomain bool) {
-	if worldDomain {
-		return
-	}
-
+func (w *World) tickSummonsLocked(rng *mrand.Rand, members []*entity) {
 	for _, e := range members {
 		k := kindOf(e)
 		if k == nil || k.summon == nil || e.hp <= 0 {
@@ -150,7 +146,7 @@ func (w *World) raiseMinionsLocked(rng *mrand.Rand, summoner *entity, spec *summ
 		// authority and leave the id out of the bubble's own member map.
 		w.entities[w.nextID] = m
 
-		w.logger.Info(combatLogMsg, "event", combatEventSummon,
+		w.logger.Info(combatLogMsg, logKeyEvent, combatEventSummon,
 			"summoner", summoner.id, "minion", m.id, "kind", minionDef.id, "at", m.hex)
 	}
 }

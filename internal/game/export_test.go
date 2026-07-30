@@ -263,23 +263,18 @@ func (w *World) ApplyEffectForTest(id int64, defID string, magnitude, turns int)
 // EffectForTest reports an entity's active timed effect of the given def:
 // its magnitude, remaining turns, and whether it is present at all — so a test
 // can assert application, refresh, and expiry.
-func (w *World) EffectForTest(id int64, defID string) (int, int, bool) {
-	var (
-		magnitude, turnsRemaining int
-		ok                        bool
-	)
-
+func (w *World) EffectForTest(id int64, defID string) (magnitude, turnsRemaining int, found bool) {
 	w.withEntityForTest(id, func(e *entity) {
 		for _, te := range e.effects {
 			if te.defID == defID {
-				magnitude, turnsRemaining, ok = te.magnitude, te.turnsRemaining, true
+				magnitude, turnsRemaining, found = te.magnitude, te.turnsRemaining, true
 
 				return
 			}
 		}
 	})
 
-	return magnitude, turnsRemaining, ok
+	return magnitude, turnsRemaining, found
 }
 
 // EffectCountForTest returns how many active timed effects an entity carries,
@@ -493,7 +488,7 @@ func (w *World) ResolveCombatOnlyForTest() {
 	// #271: mirror resolveCombatLocked's in-combat summon hook (worldDomain
 	// false — this bridge resolves a combat/bubble turn). A no-op for a set
 	// with no summoner, so existing callers are unaffected.
-	w.tickSummonsLocked(rng, members, false)
+	w.tickSummonsLocked(rng, members)
 
 	w.advanceTurnLocked()
 }
@@ -646,15 +641,22 @@ func ItemAoERadiusForTest(id string) int { return itemDefByID[id].aoeRadius }
 // the class has one at all (false for Fighter and any classless entity,
 // whose class defaults are melee-tagged only). Levels do not scale damage
 // (#60, roadmap XP3).
-func RangedWeaponForTest(class string) (int, int, int, bool) {
+// RangedWeaponStats describes a class's default ranged weapon for tests.
+type RangedWeaponStats struct {
+	Damage    int
+	RangeHex  int
+	AoERadius int
+}
+
+func RangedWeaponForTest(class string) (RangedWeaponStats, bool) {
 	for _, id := range classDefaultIDs(class) {
 		def := itemDefByID[id]
 		if def.hasTag(protocol.WeaponTagRanged) || def.hasTag(protocol.WeaponTagMagic) {
-			return itemDamage(def), def.rangeHex, def.aoeRadius, true
+			return RangedWeaponStats{Damage: itemDamage(def), RangeHex: def.rangeHex, AoERadius: def.aoeRadius}, true
 		}
 	}
 
-	return 0, 0, 0, false
+	return RangedWeaponStats{}, false
 }
 
 // GrantItemForTest mints and grants (but does not equip) an item instance of
@@ -697,7 +699,7 @@ func (w *World) GrantItemForTest(entityID int64, defID string) int64 {
 // still holds the melee-ish item and off the ranged-ish one (fighter's
 // off-hand is simply empty), so pre-keystone equip tests keep their
 // close/ranged assertions unchanged across the storage model change.
-func (w *World) EquippedSlotsForTest(id int64) (int64, int64) {
+func (w *World) EquippedSlotsForTest(id int64) (mainHand, offHand int64) {
 	var main, off int64
 
 	w.withEntityForTest(id, func(e *entity) {
@@ -946,13 +948,7 @@ func (w *World) ActiveReadyTurnForTest(id int64, skill string) int64 {
 }
 
 // SkillStateForTest reads back what SetSkillStateForTest wrote.
-func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
-	var (
-		learned      []string
-		points       int
-		grantedLevel int
-	)
-
+func (w *World) SkillStateForTest(id int64) (learned []string, points, grantedLevel int) {
 	w.withEntityForTest(id, func(e *entity) {
 		learned, points, grantedLevel = e.learned, e.skillPoints, e.pointsGrantedLevel
 	})
@@ -966,6 +962,8 @@ func (w *World) SkillStateForTest(id int64) ([]string, int, int) {
 func (w *World) GrantSkillPointsForTest(id int64) {
 	w.withEntityForTest(id, func(e *entity) {
 		g, level, up := grantSkillPointsLocked(e)
-		w.announceLevelUpLocked(e, g, level, up)
+		if up {
+			w.announceLevelUpLocked(e, g, level)
+		}
 	})
 }

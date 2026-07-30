@@ -97,11 +97,11 @@ func TestCombatBubbleFreezesOverHTTP(t *testing.T) {
 	}
 
 	if !entered {
-		t.Fatalf("player never entered a combat bubble before deadline")
+		t.Fatal("player never entered a combat bubble before deadline")
 	}
 
 	if meEntity, _ := entityOf(freezeBundle, me.EntityID); !meEntity.InCombat {
-		t.Fatalf("player InCombat = false in the bundle that formed the bubble, want true")
+		t.Fatal("player InCombat = false in the bundle that formed the bubble, want true")
 	}
 
 	// Snapshot every bubble member's hex at the instant of formation.
@@ -186,5 +186,5 @@ func TestCombatBubbleFreezesOverHTTP(t *testing.T) {
 		}
 	}
 
-	t.Fatalf("second player never joined the first player's combat bubble before deadline")
+	t.Fatal("second player never joined the first player's combat bubble before deadline")
 }

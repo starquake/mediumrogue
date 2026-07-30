@@ -158,8 +158,8 @@ func TestWorldSurvivesRestartCharacterSurvivesSweep(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "snapshot.json")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatalf("write snapshot file: %v", err)
+	if writeErr := os.WriteFile(path, data, 0o600); writeErr != nil {
+		t.Fatalf("write snapshot file: %v", writeErr)
 	}
 
 	// "server B from the file": a fresh world, restored before its control
@@ -231,8 +231,8 @@ func TestWorldSurvivesRestartCharacterSurvivesSweep(t *testing.T) {
 	}
 
 	for id, want := range preMonsters {
-		got, ok := postMonsters[id]
-		if !ok {
+		got, stillThere := postMonsters[id]
+		if !stillThere {
 			t.Errorf("restored monsters missing pre-snapshot monster %d (%s, %d hp)", id, want.kind, want.hp)
 
 			continue

@@ -19,16 +19,23 @@ package game
 // so absence from w.entities is the win signal.
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
-	"sort"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
+)
+
+// Defaults for the balance harness when a config leaves them unset.
+const (
+	defaultBalanceMaxTurns = 60
+	defaultDuelCount       = 200
 )
 
 // duelWorldRadius is deliberately tiny: a duel needs two adjacent walkable
@@ -108,6 +115,8 @@ func (d *deathLog) Handle(_ context.Context, r slog.Record) error {
 			kind = a.Value.String()
 		case "id":
 			id = a.Value.Int64()
+		default:
+			// Every other attribute on the line is irrelevant to this scan.
 		}
 
 		return true
@@ -141,18 +150,18 @@ func deriveSeed(base uint64, parts ...string) uint64 {
 // duelSite returns a deterministic pair of adjacent walkable hexes: the
 // map-derived spawnable set is SORTED before scanning (the standing
 // determinism rule), and the first adjacent pair wins.
-func duelSite(w *World) (protocol.Hex, protocol.Hex) {
+func duelSite(w *World) (site, adjacent protocol.Hex) {
 	hexes := make([]protocol.Hex, 0, len(w.spawnable))
 	for h := range w.spawnable {
 		hexes = append(hexes, h)
 	}
 
-	sort.Slice(hexes, func(i, j int) bool {
-		if hexes[i].Q != hexes[j].Q {
-			return hexes[i].Q < hexes[j].Q
+	slices.SortFunc(hexes, func(a, b protocol.Hex) int {
+		if a.Q != b.Q {
+			return cmp.Compare(a.Q, b.Q)
 		}
 
-		return hexes[i].R < hexes[j].R
+		return cmp.Compare(a.R, b.R)
 	})
 
 	set := make(map[protocol.Hex]bool, len(hexes))
@@ -213,7 +222,7 @@ func (w *World) placeDuelPlayer(hex protocol.Hex, cfg DuelConfig) *entity {
 
 	e.learned = append(e.learned, cfg.Passives...)
 
-	sort.Strings(e.learned) // the entity invariant: learned stays sorted
+	slices.Sort(e.learned) // the entity invariant: learned stays sorted
 
 	return e
 }
@@ -241,7 +250,7 @@ func RunDuel(cfg DuelConfig) DuelResult {
 	}
 
 	if cfg.MaxTurns <= 0 {
-		cfg.MaxTurns = 60
+		cfg.MaxTurns = defaultBalanceMaxTurns
 	}
 
 	kind, ok := monsterDefByID[cfg.MonsterKind]
@@ -410,7 +419,7 @@ type MatrixReport struct {
 // RunDuelMatrix runs the class x kind x level grid.
 func RunDuelMatrix(cfg MatrixConfig) MatrixReport {
 	if cfg.Duels <= 0 {
-		cfg.Duels = 200
+		cfg.Duels = defaultDuelCount
 	}
 
 	if len(cfg.Levels) == 0 {

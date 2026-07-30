@@ -74,7 +74,7 @@ func formBubble(t *testing.T, w *game.World, clk *fakeClock) (protocol.JoinRespo
 	clk.advance(time.Second)
 
 	if !w.PollTickForTest() {
-		t.Fatalf("world tick did not resolve on the forming poll")
+		t.Fatal("world tick did not resolve on the forming poll")
 	}
 
 	snap := w.Snapshot()
@@ -83,7 +83,7 @@ func formBubble(t *testing.T, w *game.World, clk *fakeClock) (protocol.JoinRespo
 	}
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Fatalf("player InCombat = false after forming poll, want true")
+		t.Fatal("player InCombat = false after forming poll, want true")
 	}
 
 	return me, monsterID, snap
@@ -135,7 +135,7 @@ func TestBubbleFreezesWhileWorldTicks(t *testing.T) {
 	}
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Errorf("player InCombat = false, want true (bubble must persist)")
+		t.Error("player InCombat = false, want true (bubble must persist)")
 	}
 }
 
@@ -268,7 +268,7 @@ func TestWorldDomainResolvesWhileBubbleFrozen(t *testing.T) {
 	}
 
 	if inCombat(t, snap, wandererID) {
-		t.Errorf("wanderer InCombat = true, want false (it is far from the bubble)")
+		t.Error("wanderer InCombat = true, want false (it is far from the bubble)")
 	}
 
 	// The frozen bubble did not advance: its monster took no new action.
@@ -277,7 +277,7 @@ func TestWorldDomainResolvesWhileBubbleFrozen(t *testing.T) {
 	}
 
 	if !inCombat(t, snap, me.EntityID) {
-		t.Errorf("bubble player InCombat = false, want true")
+		t.Error("bubble player InCombat = false, want true")
 	}
 }
 
@@ -304,7 +304,7 @@ func TestNoDoubleResolveAfterLockIn(t *testing.T) {
 
 	// A poll at the same clock instant must be a no-op for this bubble.
 	if got := w.PollTickForTest(); got {
-		t.Errorf("poll after lock-in resolved something, want no-op")
+		t.Error("poll after lock-in resolved something, want no-op")
 	}
 
 	snap := w.Snapshot()
@@ -388,7 +388,7 @@ func TestNoDoubleActionWalkingIntoExpiredBubble(t *testing.T) {
 		prevInCombat = nowInCombat
 	}
 
-	t.Fatalf("walker never joined the bubble within the step budget")
+	t.Fatal("walker never joined the bubble within the step budget")
 }
 
 // TestRunLoopSurvivesConcurrentIntents drives the real control-loop goroutine

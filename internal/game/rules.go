@@ -384,6 +384,12 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 			// for rollDamageLocked to heal the attacker with, and touch neither
 			// add nor muls. Sums so multiple lifesteal cards stack additively.
 			trace.lifestealPct += c.then.n
+		default:
+			// Unreachable: validateRuleCards (items.go) panics at init on an
+			// unknown effect kind, so the vocabulary is closed by the time a
+			// fold runs. Reaching here means that switch and this one
+			// disagree — the four-places hazard in CLAUDE.md.
+			panic("game: rule card effect " + c.then.kind + " is validated but not applied")
 		}
 	}
 
@@ -404,14 +410,10 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 	}
 
 	switch event {
-	case evTakeDamage:
-		if v < 1 {
-			v = 1
-		}
-	case evAggroRange:
-		// A noticeability radius stays ≥1 (#88): shipped cards are
-		// multiplicative and cannot go negative, but a future negative-`add`
-		// card could fold it to 0 — a monster that never notices anyone.
+	// Both floor at 1. Damage below 1 is a no-op hit; a noticeability radius
+	// below 1 is a monster that never notices anyone (#88) — shipped cards are
+	// multiplicative and cannot go negative, but a future negative-`add` could.
+	case evTakeDamage, evAggroRange:
 		if v < 1 {
 			v = 1
 		}
@@ -419,6 +421,9 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 		if v < 0 {
 			v = 0
 		}
+	default:
+		// Only the events above have a floor; the rest fold to whatever their
+		// cards produce.
 	}
 
 	return v, trace

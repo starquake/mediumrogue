@@ -234,7 +234,7 @@ func clearHarmfulEffectsLocked(e *entity) int {
 // next turn, while a fresh DoT — whose event has not yet folded this turn —
 // bites now. Each is correct for its own event's place in the resolution order.
 // Callers hold w.mu.
-func (w *World) tickEffectsLocked(members []*entity) {
+func (*World) tickEffectsLocked(members []*entity) {
 	for _, e := range members {
 		if len(e.effects) == 0 {
 			continue

@@ -103,10 +103,10 @@ func TestWireNeverSendsNullTags(t *testing.T) {
 	// a shield, and a weapon (non-nil tags — the case that always worked).
 	for _, defID := range []string{"pilgrims-mantle", "wooden-buckler", "iron-sword"} {
 		instID := w.GrantItemForTest(me.EntityID, defID)
-		if err := w.SubmitIntent(protocol.IntentRequest{
+		if submitErr := w.SubmitIntent(protocol.IntentRequest{
 			EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentEquip, ItemID: instID,
-		}); err != nil {
-			t.Fatalf("equip %s: %v", defID, err)
+		}); submitErr != nil {
+			t.Fatalf("equip %s: %v", defID, submitErr)
 		}
 	}
 

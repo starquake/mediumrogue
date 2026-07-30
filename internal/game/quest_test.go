@@ -332,7 +332,7 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 	}
 
 	if q1 == 0 {
-		t.Fatalf("no kill quest on the board")
+		t.Fatal("no kill quest on the board")
 	}
 
 	if _, err := w.QuestTake(alice.Token, q1); err != nil {
@@ -360,7 +360,7 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 
 	progressed := questByID(t, w, q1).Progress
 	if progressed == 0 {
-		t.Fatalf("progress after solo kill = 0, want > 0 (test setup did not land a kill)")
+		t.Fatal("progress after solo kill = 0, want > 0 (test setup did not land a kill)")
 	}
 
 	// A second available quest, distinct from q1, for the full-slot check below.
@@ -375,7 +375,7 @@ func TestFormingPartyPromotesInviterQuest(t *testing.T) {
 	}
 
 	if q2 == 0 {
-		t.Fatalf("need a second available quest distinct from q1")
+		t.Fatal("need a second available quest distinct from q1")
 	}
 
 	mustInviteAccept(t, w, alice, bob, "bob")
@@ -728,7 +728,7 @@ func TestSweepReturnsAllPersonalQuests(t *testing.T) {
 // quests", matching nthAvailableQuest's shape.
 //
 //nolint:unparam // n is always 2 today; kept for the self-documenting call shape.
-func firstAvailableQuests(t *testing.T, w *game.World, n int) (int64, int64) {
+func firstAvailableQuests(t *testing.T, w *game.World, n int) (first, second int64) {
 	t.Helper()
 
 	if n != 2 {
@@ -820,7 +820,7 @@ func killQuest(t *testing.T, w *game.World, want int) (int64, int) {
 	}
 
 	if fallbackID == 0 {
-		t.Fatalf("no kill quest on the board")
+		t.Fatal("no kill quest on the board")
 	}
 
 	return fallbackID, fallbackN
@@ -837,7 +837,7 @@ func reachQuest(t *testing.T, w *game.World) (int64, protocol.Hex) {
 		}
 	}
 
-	t.Fatalf("no reach quest on the board")
+	t.Fatal("no reach quest on the board")
 
 	return 0, protocol.Hex{}
 }

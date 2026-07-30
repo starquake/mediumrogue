@@ -57,7 +57,7 @@ const SKILL_TILE_COLOR = 0x7cb342;
 
 /**
  * The armed-skill target overlay (#300): while an active is armed, every tile
- * it can be aimed at is tinted, so pressing Blink shows its reach instead of
+ * it can be aimed at is tinted, so pressing Evade shows its reach instead of
  * leaving the player to guess and eat a rejection.
  *
  * Separate from MoveRangeLayer rather than a fourth set on it, for two

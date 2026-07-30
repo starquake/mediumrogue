@@ -91,7 +91,7 @@ func TestThrowFlaskBlastsAndBurns(t *testing.T) {
 	// is present with its full duration but has NOT drained yet this turn.
 	mag, turns, ok := w.EffectForTest(monsterID, burningEffectID)
 	if !ok {
-		t.Fatalf("monster has no burning effect after the blast")
+		t.Fatal("monster has no burning effect after the blast")
 	}
 
 	if mag != flaskBurnMag || turns != flaskBurnTurns {

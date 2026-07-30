@@ -44,29 +44,41 @@ func main() {
 		os.Exit(exitUsage)
 	}
 
+	var writeErr error
+
 	switch *mode {
 	case "matrix":
 		report := game.RunDuelMatrix(game.MatrixConfig{BaseSeed: *seed, Duels: *duels, Levels: lv})
 		printMatrix(report)
-		writeJSON(*jsonPath, report)
+
+		writeErr = writeJSON(*jsonPath, report)
 	case "deltas":
 		report := game.RunDeltas(game.DeltaConfig{BaseSeed: *seed, Duels: *duels, Levels: lv})
 		printDeltas(report)
-		writeJSON(*jsonPath, report)
+
+		writeErr = writeJSON(*jsonPath, report)
 	case "sim":
 		report := game.RunPartySim(game.PartySimConfig{BaseSeed: *seed})
 		printSim(report)
-		writeJSON(*jsonPath, report)
+
+		writeErr = writeJSON(*jsonPath, report)
 	case "composition":
 		reports := runCompositions(*seed, *party, *seeds)
 		for _, r := range reports {
 			printComposition(r)
 		}
 
-		writeJSON(*jsonPath, reports)
+		writeErr = writeJSON(*jsonPath, reports)
 	default:
 		fmt.Fprintf(os.Stderr, "balance: unknown mode %q (matrix | deltas | sim | composition)\n", *mode)
 		os.Exit(exitUsage)
+	}
+
+	// The report already printed to stdout; a failed JSON write still fails the
+	// run, because -json is how CI captures it.
+	if writeErr != nil {
+		fmt.Fprintln(os.Stderr, "balance:", writeErr)
+		os.Exit(1)
 	}
 }
 
@@ -93,23 +105,25 @@ func parseLevels(s string) ([]int, error) {
 	return out, nil
 }
 
-func writeJSON(path string, v any) {
+// writeJSON returns its error rather than exiting, so the decision to stop the
+// process stays in main where it is visible.
+func writeJSON(path string, v any) error {
 	if path == "" {
-		return
+		return nil
 	}
 
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "balance: marshal:", err)
-		os.Exit(1)
+		return fmt.Errorf("marshal: %w", err)
 	}
 
 	if err := os.WriteFile(path, append(data, '\n'), reportPerm); err != nil {
-		fmt.Fprintln(os.Stderr, "balance: write:", err)
-		os.Exit(1)
+		return fmt.Errorf("write: %w", err)
 	}
 
 	outln("\nJSON report:", path)
+
+	return nil
 }
 
 func printMatrix(r game.MatrixReport) {

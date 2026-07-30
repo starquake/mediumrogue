@@ -300,7 +300,7 @@ func TestJoinArchivedRestoreNeverCrossesTokens(t *testing.T) {
 	}
 
 	if !w.ArchivedForTest(alice.Token) || !w.ArchivedForTest(bob.Token) {
-		t.Fatalf("both tokens must be archived after sweep")
+		t.Fatal("both tokens must be archived after sweep")
 	}
 
 	// Restore bob FIRST (opposite order from how they joined), then alice —
@@ -893,23 +893,17 @@ func TestSetLoggerIsMutexGuarded(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for range 300 {
 			w.SetLogger(slog.New(slog.DiscardHandler))
 		}
-	}()
+	})
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for range 300 {
 			w.ResolveTurnForTest()
 		}
-	}()
+	})
 
 	wg.Wait()
 }

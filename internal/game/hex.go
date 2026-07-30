@@ -12,13 +12,18 @@ func HexDistance(a, b protocol.Hex) int {
 	dr := a.R - b.R
 	ds := -dq - dr
 
-	return (abs(dq) + abs(dr) + abs(ds)) / 2 //nolint:mnd // the /2 is the cube-distance formula itself.
+	//nolint:revive // add-constant: the /2 is the cube-distance formula itself.
+	return (abs(dq) + abs(dr) + abs(ds)) / 2
 }
+
+// HexDirections is how many neighbours a hex has — the length of the
+// HexNeighbors result and the arity of every direction table.
+const HexDirections = 6
 
 // HexNeighbors returns the six adjacent hexes of h, in the flat-top
 // direction order N, NE, SE, S, SW, NW (matching the W/E/D/S/A/Q keys).
-func HexNeighbors(h protocol.Hex) [6]protocol.Hex {
-	return [6]protocol.Hex{
+func HexNeighbors(h protocol.Hex) [HexDirections]protocol.Hex {
+	return [HexDirections]protocol.Hex{
 		{Q: h.Q, R: h.R - 1},     // N
 		{Q: h.Q + 1, R: h.R - 1}, // NE
 		{Q: h.Q + 1, R: h.R},     // SE

@@ -222,7 +222,7 @@ type skillDef struct {
 // added for this batch (weaponTagged, shieldEquipped, task 1); nothing else
 // is new, which is the point — a skill is content, not machinery.
 //
-//nolint:gochecknoglobals,mnd // fixed content registry, effectively const; validated at init.
+//nolint:gochecknoglobals // fixed content registry, effectively const; validated at init.
 var skillDefs = []*skillDef{
 	// --- Class tree -------------------------------------------------------
 	{
@@ -661,6 +661,8 @@ func validateNoSkillPrereqCycle(defs []*skillDef) {
 			panic("game: skill prerequisite cycle through " + id)
 		case done:
 			return
+		default:
+			// Zero value: not yet visited, so walk it below.
 		}
 
 		state[id] = onStack
@@ -759,6 +761,9 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 	case aimEntity:
 		return w.useEntityAimedSkillLocked(e, def, targetEntityID)
 	case aimHex:
+		// Falls through to the hex-aimed validation below.
+	default:
+		panic("game: skill " + id + " has unknown aim " + aimFor(def.active.kind))
 	}
 
 	if HexDistance(e.hex, target) > def.active.rangeHex {
@@ -846,7 +851,7 @@ func (w *World) useEntityAimedSkillLocked(e *entity, def *skillDef, targetEntity
 // window wins, exactly as elsewhere. Exactly one of `target`/`targetEntityID`
 // is set, or neither for a self-cast — the one place an active legitimately has
 // nowhere to point. Callers hold w.mu.
-func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex, targetEntityID int64) error {
+func (*World) commitActiveLocked(e *entity, id string, target *protocol.Hex, targetEntityID int64) error {
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
@@ -862,7 +867,7 @@ func (w *World) commitActiveLocked(e *entity, id string, target *protocol.Hex, t
 // combat and rejected inside a bubble (#124 Decision 4): learning is a
 // between-fights decision, so unlike equip/drop/drink it is never queued as a
 // turn's action. Callers hold w.mu.
-func (w *World) learnSkillLocked(e *entity, id string) error {
+func (*World) learnSkillLocked(e *entity, id string) error {
 	if e.bubbleID != 0 {
 		return ErrLearnInCombat
 	}

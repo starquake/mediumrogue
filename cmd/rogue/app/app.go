@@ -25,6 +25,10 @@ import (
 	"github.com/starquake/mediumrogue/internal/server"
 )
 
+// logKeyPath is the slog attribute key for the snapshot file every
+// snapshot-lifecycle line reports on.
+const logKeyPath = "path"
+
 // shutdownGrace is how long in-flight requests (including open SSE streams,
 // which close on context cancel) get to drain after SIGTERM/SIGINT.
 const shutdownGrace = 5 * time.Second
@@ -233,9 +237,9 @@ func loadSnapshot(logger *slog.Logger, path string, world *game.World) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			logger.Info("snapshot: no existing file, starting fresh", "path", path)
+			logger.Info("snapshot: no existing file, starting fresh", logKeyPath, path)
 		} else {
-			logger.Error("snapshot: read", "path", path, "err", err)
+			logger.Error("snapshot: read", logKeyPath, path, "err", err)
 		}
 
 		return false
@@ -250,16 +254,16 @@ func loadSnapshot(logger *slog.Logger, path string, world *game.World) bool {
 		rejected := fmt.Sprintf("%s.rejected-%d", path, time.Now().Unix())
 		if mvErr := os.Rename(path, rejected); mvErr != nil {
 			logger.Error("snapshot: REJECTED and could not be moved aside — the periodic saver may overwrite it",
-				"path", path, "err", err, "renameErr", mvErr)
+				logKeyPath, path, "err", err, "renameErr", mvErr)
 		} else {
 			logger.Error("snapshot: REJECTED — starting fresh; original preserved",
-				"path", path, "preserved", rejected, "err", err)
+				logKeyPath, path, "preserved", rejected, "err", err)
 		}
 
 		return false
 	}
 
-	logger.Info("snapshot: restored", "path", path)
+	logger.Info("snapshot: restored", logKeyPath, path)
 
 	return true
 }
@@ -309,7 +313,7 @@ func saveSnapshot(logger *slog.Logger, path string, world *game.World) {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
-		logger.Error("snapshot: write", "path", tmpPath, "err", err)
+		logger.Error("snapshot: write", logKeyPath, tmpPath, "err", err)
 
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
@@ -322,7 +326,7 @@ func saveSnapshot(logger *slog.Logger, path string, world *game.World) {
 	// the data hasn't, leaving a garbage file at the live path and costing
 	// the whole world.
 	if err := tmp.Sync(); err != nil {
-		logger.Error("snapshot: sync temp file", "path", tmpPath, "err", err)
+		logger.Error("snapshot: sync temp file", logKeyPath, tmpPath, "err", err)
 
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
@@ -331,7 +335,7 @@ func saveSnapshot(logger *slog.Logger, path string, world *game.World) {
 	}
 
 	if err := tmp.Close(); err != nil {
-		logger.Error("snapshot: close temp file", "path", tmpPath, "err", err)
+		logger.Error("snapshot: close temp file", logKeyPath, tmpPath, "err", err)
 		_ = os.Remove(tmpPath)
 
 		return
@@ -344,5 +348,5 @@ func saveSnapshot(logger *slog.Logger, path string, world *game.World) {
 		return
 	}
 
-	logger.Info("snapshot: saved", "path", path)
+	logger.Info("snapshot: saved", logKeyPath, path)
 }

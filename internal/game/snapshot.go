@@ -344,7 +344,7 @@ func (w *World) RestoreState(data []byte) error {
 	// Identity audit trail (item 7, playtest feedback batch 3): what a
 	// restart actually restored, correlatable with the join-* events that
 	// follow — see identityLogMsg (world.go).
-	w.logger.Info(identityLogMsg, "event", identityEventSnapshotRestore,
+	w.logger.Info(identityLogMsg, logKeyEvent, identityEventSnapshotRestore,
 		"players", players, "archived", len(w.archive), "world_id", w.worldID)
 
 	return nil

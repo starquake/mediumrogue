@@ -1,7 +1,8 @@
 package game
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
@@ -338,8 +339,8 @@ func GuideData() Guide {
 		})
 	}
 
-	sort.Slice(g.Items, func(i, j int) bool { return g.Items[i].ID < g.Items[j].ID })
-	sort.Slice(g.Monsters, func(i, j int) bool { return g.Monsters[i].ID < g.Monsters[j].ID })
+	slices.SortFunc(g.Items, func(a, b GuideItem) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(g.Monsters, func(a, b GuideMonster) int { return cmp.Compare(a.ID, b.ID) })
 
 	return g
 }

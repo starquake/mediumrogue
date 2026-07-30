@@ -74,13 +74,13 @@ func TestEventsTokenTracksPresence(t *testing.T) {
 
 	// Past the grace: A's open stream protects it; B, never streamed, is swept.
 	// This asserts the sweep is live, so A's survival is the stream's doing.
-	waitEntity(t, world, playerA.EntityID, true, 3*grace, "player A with an open stream must survive the disconnect grace")
-	waitEntity(t, world, playerB.EntityID, false, 3*grace, "player B with no stream must be swept after the grace")
+	waitEntityPresent(t, world, playerA.EntityID, 3*grace, "player A with an open stream must survive the disconnect grace")
+	waitEntityAbsent(t, world, playerB.EntityID, 3*grace, "player B with no stream must be swept after the grace")
 
 	// Cancelling the request context returns the handler, firing the deferred
 	// StreamClosed, which stamps disconnectedAt and starts A's removal grace.
 	stopStream()
-	waitEntity(t, world, playerA.EntityID, false, 3*grace, "player A must be swept after its stream closes")
+	waitEntityAbsent(t, world, playerA.EntityID, 3*grace, "player A must be swept after its stream closes")
 }
 
 // joinTest joins a fresh player over real HTTP and returns its assigned token
@@ -167,21 +167,43 @@ func openStreamTest(ctx context.Context, t *testing.T, ts *httptest.Server, toke
 	}
 }
 
-// waitEntity polls the world snapshot until entity id is present (want=true) or
-// absent (want=false), failing with msg if the deadline passes first.
-func waitEntity(t *testing.T, world *game.World, id int64, want bool, timeout time.Duration, msg string) {
+// entityWant names the state waitEntityState is polling for, so the shared
+// helper takes a target rather than a control flag.
+type entityWant int
+
+const (
+	wantPresent entityWant = iota
+	wantAbsent
+)
+
+// waitEntityPresent polls until entity id appears, failing with msg on timeout.
+func waitEntityPresent(t *testing.T, world *game.World, id int64, timeout time.Duration, msg string) {
+	t.Helper()
+	waitEntityState(t, world, id, wantPresent, timeout, msg)
+}
+
+// waitEntityAbsent polls until entity id is gone, failing with msg on timeout.
+func waitEntityAbsent(t *testing.T, world *game.World, id int64, timeout time.Duration, msg string) {
+	t.Helper()
+	waitEntityState(t, world, id, wantAbsent, timeout, msg)
+}
+
+// waitEntityState is the shared poll; the two named wrappers above are what
+// tests call, so no call site reads as a bare true/false.
+func waitEntityState(t *testing.T, world *game.World, id int64, want entityWant, timeout time.Duration, msg string) {
 	t.Helper()
 
 	deadline := time.After(timeout)
 
 	for {
-		if entityPresent(world.Snapshot(), id) == want {
+		if entityPresent(world.Snapshot(), id) == (want == wantPresent) {
 			return
 		}
 
 		select {
 		case <-deadline:
-			t.Fatalf("%s (entity %d present=%v, want present=%v)", msg, id, !want, want)
+			t.Fatalf("%s (entity %d present=%v, want present=%v)",
+				msg, id, entityPresent(world.Snapshot(), id), want == wantPresent)
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

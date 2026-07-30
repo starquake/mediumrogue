@@ -87,7 +87,17 @@ func TestEquipIntentUnknownKindStillRejected(t *testing.T) {
 // one world turn so the bubble forms around all three (mirrors
 // xp_test.go's TestSharedXPIsFullNotSplit setup). It returns both players'
 // identities and the post-formation snapshot.
-func twoPlayerBubble(t *testing.T, w *game.World) (int64, string, int64, string, int64, protocol.TurnEvent) {
+// bubbleFixture is the two-player bubble every action-in-combat test starts
+// from. A struct rather than six positional returns: the pair of (id, token)
+// per player is easy to transpose at a call site and impossible to catch.
+type bubbleFixture struct {
+	idA, idB   int64
+	tokA, tokB string
+	monsterID  int64
+	form       protocol.TurnEvent
+}
+
+func twoPlayerBubble(t *testing.T, w *game.World) bubbleFixture {
 	t.Helper()
 
 	center := protocol.Hex{Q: 0, R: 0}
@@ -104,10 +114,10 @@ func twoPlayerBubble(t *testing.T, w *game.World) (int64, string, int64, string,
 	snap := step(t, w)
 
 	if !inCombat(t, snap, idA) || !inCombat(t, snap, idB) {
-		t.Fatalf("players did not form a shared bubble around the monster")
+		t.Fatal("players did not form a shared bubble around the monster")
 	}
 
-	return idA, tokA, idB, tokB, monsterID, snap
+	return bubbleFixture{idA: idA, idB: idB, tokA: tokA, tokB: tokB, monsterID: monsterID, form: snap}
 }
 
 // TestEquipInBubbleQueuesClearsPathAppliesAfterTurn: inside a combat bubble,
@@ -120,7 +130,9 @@ func TestEquipInBubbleQueuesClearsPathAppliesAfterTurn(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, _, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	form := fx.form
 
 	hexA0 := hexOfSnap(form, idA)
 	target := walkableNeighbor(t, w, hexA0)
@@ -140,7 +152,7 @@ func TestEquipInBubbleQueuesClearsPathAppliesAfterTurn(t *testing.T) {
 	}
 
 	if closeInst, _ := w.EquippedSlotsForTest(idA); closeInst == instID {
-		t.Fatalf("close slot flipped before the bubble-turn resolved")
+		t.Fatal("close slot flipped before the bubble-turn resolved")
 	}
 
 	waiting := w.Snapshot().Bubbles[0].WaitingForIDs
@@ -176,7 +188,10 @@ func TestEquipInBubbleClearsPendingRangedAttack(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, monsterID, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	monsterID := fx.monsterID
+	form := fx.form
 	w.SetClassForTest(idA, protocol.ClassRogue) // grants dagger + shortbow
 
 	monsterHex := hexOfSnap(form, monsterID)
@@ -225,7 +240,9 @@ func TestEquipThenMoveInBubbleClearsPendingEquip(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, _, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	form := fx.form
 
 	hexA0 := hexOfSnap(form, idA)
 	target := walkableNeighbor(t, w, hexA0)
@@ -273,7 +290,10 @@ func TestEquipThenAttackInBubbleClearsPendingEquip(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	idA, tokA, idB, tokB, monsterID, form := twoPlayerBubble(t, w)
+	fx := twoPlayerBubble(t, w)
+	idA, tokA, idB, tokB := fx.idA, fx.tokA, fx.idB, fx.tokB
+	monsterID := fx.monsterID
+	form := fx.form
 	w.SetClassForTest(idA, protocol.ClassRogue) // grants dagger + shortbow
 
 	monsterHex := hexOfSnap(form, monsterID)
@@ -391,7 +411,7 @@ func TestDeathClearsPendingEquip(t *testing.T) {
 // walkable m at exactly CombatRadius from b but beyond CombatRadius of a. A
 // bubble over {a, b, m} then depends on the player at b (players anchor
 // edges; a↔m is out of range), so removing b dissolves it around a.
-func chainBubbleHexes(t *testing.T, w *game.World) (protocol.Hex, protocol.Hex, protocol.Hex) {
+func chainBubbleHexes(t *testing.T, w *game.World) (a, b, c protocol.Hex) {
 	t.Helper()
 
 	tiles := w.Map().Tiles
@@ -455,11 +475,11 @@ func TestBubbleDissolveAppliesPendingEquip(t *testing.T) {
 	w.SetDisconnectGraceForTest(0)
 
 	if !w.SweepForTest(time.Now().Add(time.Minute)) {
-		t.Fatalf("sweep removed nobody; expected B to be swept")
+		t.Fatal("sweep removed nobody; expected B to be swept")
 	}
 
 	if inCombat(t, w.Snapshot(), idA) {
-		t.Fatalf("A still in combat after sweep; expected the bubble to dissolve")
+		t.Fatal("A still in combat after sweep; expected the bubble to dissolve")
 	}
 
 	// The queued swap applied at dissolve and is no longer pending. A's

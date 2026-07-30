@@ -2,6 +2,15 @@ package game
 
 import "github.com/starquake/mediumrogue/internal/protocol"
 
+// The stat line a non-player entity or a test fixture gets when its class is
+// empty or unrecognised. Spelled out rather than reusing the rogue constants
+// so retuning the rogue does not silently retune every fixture: it is the
+// rogue's value TODAY because the rogue is the middle line, not by definition.
+const (
+	fallbackMaxHP     = protocol.RogueMaxHP
+	fallbackMaxEnergy = protocol.RogueMaxEnergy
+)
+
 // baseMaxHP returns a class's level-1 max HP. An empty or unknown class falls
 // back to RogueMaxHP (the squishy baseline); a joined player's class is always
 // valid (enforced by Join, see validClass), so this fallback only guards
@@ -15,7 +24,7 @@ func baseMaxHP(class string) int {
 	case protocol.ClassMage:
 		return protocol.MageMaxHP
 	default:
-		return protocol.RogueMaxHP
+		return fallbackMaxHP
 	}
 }
 
@@ -31,7 +40,7 @@ func baseMaxEnergy(class string) int {
 	case protocol.ClassMage:
 		return protocol.MageMaxEnergy
 	default:
-		return protocol.RogueMaxEnergy
+		return fallbackMaxEnergy
 	}
 }
 
