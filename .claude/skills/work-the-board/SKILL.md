@@ -69,6 +69,24 @@ resisted.)
 
 ## The pass
 
+**Standing authorised work goes first.** Before anything else, read the work
+lanes — `Build`, then `Plan`/`Spec` — and if the pass will build at all, it
+builds from there. Work does not earn priority by being *new*: a ticket filed
+five minutes ago, a request that just arrived, a failure you happened to notice
+are all louder than a card that has been sitting in `Build` since yesterday, and
+loudness is not precedence.
+
+The exceptions are real but must be *named as exceptions* rather than assumed:
+a red `main`, a PR carrying `ready to merge`, and a direct maintainer request in
+chat all pre-empt. Everything else queues behind the lane.
+
+(2026-07-31: #318 and #333 sat in `Build` — authorised, ungated, nobody's court
+but Claude's — for an entire session, while three reactive builds landed ahead
+of them. Every one was justifiable alone; the pattern was not. The maintainer
+had to ask why the lane was untouched. The monitor could not help: it fires on
+*transitions*, so a card that moved to `Build` an hour ago is silent forever
+after — see the standing-queue heartbeat in the Monitor section.)
+
 1. **Enumerate.** `gh issue list --state open`, `gh pr list --state open`, and a
    recently-closed sweep for comments that landed after close. Drop anything
    carrying `hold`.
@@ -321,6 +339,7 @@ GQ='{ user(login:"<owner>"){ projectV2(number:<n>){ items(first:100){ nodes{
 }}}}}'
 prev_s=$(gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
   | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n)
+ticks=0
 while true; do
   sleep 60
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -363,6 +382,17 @@ while true; do
   done
   prev_s=$cur_s
 
+  # LEVEL-TRIGGERED heartbeat. Everything above is edge-triggered and so goes
+  # silent on work that is merely *waiting* — a card parked in Build produces
+  # no transition ever again. Once every 30 cycles (~30 min), say what is
+  # standing in the work lanes, so a lane with work in it never looks like an
+  # empty one. Silent when the lanes are empty, which is the common case.
+  ticks=$((ticks + 1))
+  if [ $((ticks % 30)) -eq 0 ]; then
+    waiting=$(printf '%s\n' "$cur_s" | awk -F'|' '$2=="Build"{printf "#%s ", $1}')
+    [ -n "$waiting" ] && echo "STANDING: Build lane still holds $waiting— these outrank new work"
+  fi
+
   since=$now
 done
 ```
@@ -384,6 +414,14 @@ Things that make it behave:
   *out* of a work state is a stop signal, and a move into a gate is the
   maintainer taking something back. Reporting `old -> new` costs nothing and
   makes the direction readable.
+- **Report the standing queue, not only changes.** Every other signal here is
+  edge-triggered, which means none of them can see work that is simply
+  *waiting*: a card moved to `Build` an hour ago will never produce another
+  event. Without a level-triggered heartbeat a lane holding two authorised
+  builds is indistinguishable from an empty one, and reactive work wins by
+  default forever (#347, 2026-07-31). Every ~30 cycles is deliberate — often
+  enough that a parked lane resurfaces within the hour, rare enough that it is
+  a heartbeat rather than a nag, and silent when the lanes are empty.
 - **Never report your OWN board writes.** A pass sets several states, and each
   one otherwise wakes the agent a minute later to announce a change it just
   made — turning the cheapest signal into the noisiest. `board.sh state`
