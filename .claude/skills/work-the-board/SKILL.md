@@ -376,10 +376,12 @@ GQ='{ user(login:"<owner>"){ projectV2(number:<n>){ items(first:100){ nodes{
   content{ ... on Issue { number } }
   fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
 }}}}}'
+# NO `|| true` on a snapshot. A failed call must FAIL, so the caller can skip
+# the diff — see "a failed poll is not an empty board" below.
 snap_board(){ gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
-  | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n || true; }
-snap_label(){ gh pr list --state open --label "$1" --json number -q '.[].number' 2>/dev/null | sort || true; }
-snap_hold(){ gh issue list --state open --label hold --json number -q '.[].number' 2>/dev/null | sort || true; }
+  | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n; }
+snap_label(){ gh pr list --state open --label "$1" --json number -q '.[].number' 2>/dev/null | sort; }
+snap_hold(){ gh issue list --state open --label hold --json number -q '.[].number' 2>/dev/null | sort; }
 # statusCheckRollup in ONE call: which open PRs are red, rather than per-PR polling.
 snap_prci(){ gh pr list --state open --json number,statusCheckRollup \
   -q '.[] | select([.statusCheckRollup[]?|select(.conclusion=="FAILURE")]|length > 0) | .number' 2>/dev/null | sort || true; }
@@ -404,15 +406,17 @@ while true; do
           | "REVIEW COMMENT on \(.pull_request_url | split("/") | last) \(.path):\(.line // 0): \(.body | gsub("\n"; " ") | .[0:100])"' 2>/dev/null || true
 
   # 3. `ready to merge`, diffed — emitting the whole set every cycle would spam.
-  cur=$(snap_label "ready to merge")
-  comm -13 <(echo "$prev_l") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
-  prev_l=$cur
+  if cur=$(snap_label "ready to merge"); then
+    comm -13 <(echo "$prev_l") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
+    prev_l=$cur
+  fi
 
   # 4. `hold` is an override that STOPS work — both directions matter.
-  cur=$(snap_hold)
-  comm -13 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD ADDED: #/' || true
-  comm -23 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD LIFTED: #/' || true
-  prev_h=$cur
+  if cur=$(snap_hold); then
+    comm -13 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD ADDED: #/' || true
+    comm -23 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD LIFTED: #/' || true
+    prev_h=$cur
+  fi
 
   # 5. main going red. The pass treats this as pre-empting everything, so not
   #    watching it means the maintainer is the detector — which is what happened.
@@ -429,7 +433,13 @@ while true; do
   # 7. Board Status, every transition, old -> new. Moves WE made are skipped:
   #    board.sh records them, and each entry is consumed once so a later genuine
   #    move to the same state still fires.
-  cur_s=$(snap_board)
+  # Skip the whole board block if the query failed: an empty snapshot would
+  # read as "every card vanished", then as "every card is new" on recovery.
+  if ! cur_s=$(snap_board); then
+    since=$now
+    continue
+  fi
+
   printf '%s\n' "$cur_s" | while IFS='|' read -r n st; do
     [ -z "$n" ] && continue
     was=$(printf '%s\n' "$prev_s" | awk -F'|' -v k="$n" '$1==k{print $2}')
@@ -512,8 +522,16 @@ Things that make it behave:
 - **Diff the label set.** Emitting the current set every cycle spams a
   notification per minute for any PR that sits unmerged, and monitors that
   flood get stopped automatically.
-- **`|| true` on every remote call.** One failed request must not kill a
-  session-length watch.
+- **A failed poll is not an empty board.** `|| true` keeps one bad request from
+  killing a session-length watch — the right goal, but applied to a *snapshot*
+  it converts failure into a false **empty set**, and the diff then reports
+  every item as new the moment the API recovers. Verified 2026-08-01, when a
+  transient outage surfaced through the watch: with `prev` holding three PRs and
+  a failed call yielding "", the down-cycle is silent and the **recovery cycle
+  emits `READY TO MERGE` for all three** — none of which carried the label.
+  So: keep `|| true` on anything whose output is *emitted*, and drop it from
+  anything whose output is *compared*, guarding each diff with `if cur=$(snap);
+  then … fi` so a failed cycle leaves `prev` untouched and says nothing.
 - **Filter the diff to real values.** An empty set becomes a blank line, and
   a blank line looks "new" to `comm` — which fired a phantom
   "READY TO MERGE: PR #" the first time a merge emptied the label set
