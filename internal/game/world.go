@@ -1387,7 +1387,33 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 // dispatchIntentLocked routes one validated intent to its queue function by
 // kind (split out of SubmitIntent to keep its cognitive complexity in
 // check). Callers hold w.mu.
+// redirectsAction reports whether an intent is the player choosing a DIFFERENT
+// thing to do — as opposed to something done incidentally while travelling.
+//
+// The distinction decides whether a standing auto-walk survives (#343). An
+// inventory swap or a draught mid-walk is normal and must not stop you; aiming
+// a skill, an attack or a throw is "do this instead", and the walk is over
+// whatever the server then answers.
+func redirectsAction(kind string) bool {
+	switch kind {
+	case protocol.IntentUseSkill, protocol.IntentAttack, protocol.IntentThrow, protocol.IntentRecall:
+		return true
+	default:
+		return false
+	}
+}
+
 func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) error {
+	// Cancel a standing route BEFORE validation (#343). The accept paths
+	// already clear it — commitActiveLocked, queueAttackLocked — but they run
+	// only once validation has passed, so every refusal left the old route
+	// queued: the player was told their action failed and then kept walking the
+	// old way. Refusing an action is not a reason to resume travel the player
+	// has already abandoned.
+	if redirectsAction(req.Kind) {
+		e.path = nil
+	}
+
 	switch req.Kind {
 	case protocol.IntentMove:
 		return w.queueMoveLocked(e, req.Target)
