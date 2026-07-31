@@ -292,9 +292,15 @@ func farmKillAndPickup(
 
 	var dropped protocol.GroundItemView
 
-	myHex := me.Hex
-
 	for try := 0; try < persistFarmTries && dropped.ID == 0; try++ {
+		// Heal to full BEFORE each wolf (#318). protocol.RegenPerTurn is 1 per
+		// WORLD turn and a bubble SUSPENDS it, so back-to-back fights are
+		// cumulative: measured at ~8 HP a fight against a Fighter's 30, which
+		// kills them on about the fourth and floors their XP — the very XP this
+		// function exists to earn. The doc comment above was true per fight and
+		// false across the forty this loop can run.
+		myHex := waitForFullHP(t, reader, me.EntityID)
+
 		spawnAdjacentWolf(t, world, myHex)
 
 		fightDeadline := time.Now().Add(5 * time.Second)
@@ -380,6 +386,33 @@ func farmKillAndPickup(
 // melee range immediately instead of needing a chase. Fails the test if
 // every neighbor is refused (water/rock/StackCap) — near comes from a live
 // turn bundle, so this should only happen on a pathologically cramped map.
+// waitForFullHP consumes turn frames until the player is back to MaxHP, and
+// returns their current hex. Out of a bubble that is protocol.RegenPerTurn a
+// turn, so it costs a handful of frames; the deadline is a backstop for a
+// player who never heals (still in combat) rather than an expected path.
+func waitForFullHP(t *testing.T, reader *bufio.Reader, entityID int64) protocol.Hex {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+
+	for {
+		if time.Now().After(deadline) {
+			t.Fatal("player never returned to full HP between fights")
+		}
+
+		bundle := decodeTurnFrame(t, reader)
+
+		e, ok := entityOf(bundle, entityID)
+		if !ok {
+			t.Fatal("joined player missing from turn bundle while healing")
+		}
+
+		if e.HP >= e.MaxHP {
+			return e.Hex
+		}
+	}
+}
+
 func spawnAdjacentWolf(t *testing.T, world *game.World, near protocol.Hex) {
 	t.Helper()
 
