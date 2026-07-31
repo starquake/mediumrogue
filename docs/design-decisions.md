@@ -586,9 +586,15 @@ teleport — more expensive once, no rewrite when the second active arrives.
   Measured in turns there is no asymmetry — 3 turns is 3 turns everywhere — and
   the wall-clock difference *is* the bubble's conceit. A seconds-denominated
   cooldown would run through bullet time and break the effect.
-- **Evade does NOT pass through walls**, the opposite of the genre's usual
+- ~~**Evade does NOT pass through walls**, the opposite of the genre's usual
   evade. Escaping still requires somewhere you can see, so a rock wall stays
-  cover rather than a suggestion.
+  cover rather than a suggestion.~~ *(superseded 2026-07-31, #313)*: **evade
+  gates on its DESTINATION only** — range, walkability and occupancy, and
+  nothing about the ray between. #322 had already exempted woods; keeping the
+  wall meant a teleport that cannot cross a wall, which reads as a walk with
+  extra steps, and it is the terrain an escape is most wanted in. The
+  destination still gates, so you may jump *past* a wall and never *onto* one.
+  Consequence, accepted deliberately: see the entry below.
 - **A evade buys distance; it does not break contact** *(clarified 2026-07-26,
   #161)*. `CombatRadius` is 6 and Evade's range is 3, so evading directly away
   from an ADJACENT monster ends at distance 4 — still inside the bubble. The
@@ -601,9 +607,19 @@ teleport — more expensive once, no rewrite when the second active arrives.
   ("4+ can clear a bubble in one jump") was wrong for the same arithmetic:
   clearing from adjacent needs range 6.
 
-  So a evade escapes only by breaking LINE OF SIGHT — around a corner — never
-  by range alone. `TestEvadeBuysDistanceButDoesNotClearABubble` pins it, so
-  raising the range later is a deliberate act rather than a silent one. **#98
+  So a evade escapes only by breaking LINE OF SIGHT — never by range alone.
+  `TestEvadeBuysDistanceButDoesNotClearABubble` pins it, so raising the range
+  later is a deliberate act rather than a silent one.
+
+  *(amended 2026-07-31, #313)*: the range half is unchanged — distance alone
+  still never clears a bubble. What changed is **how** you break line of sight.
+  It used to mean walking a corner, because you could not evade to a hex you
+  could not see; with evade destination-only you can **hop behind cover and
+  clear a bubble in one jump**, at distance 4, well inside `CombatRadius`. That
+  turns evade from "a head start you still have to run with" into a dependable
+  disengage wherever cover exists — for everyone, every `EvadeCooldownTurns`
+  turns, since it is universal. The maintainer was shown this consequence
+  before deciding and chose it. `TestEvadeBehindAWallClearsABubble` pins it. **#98
   (multi-hex travel for fleeing) inherits this**: #161's title claims it
   unblocks the escape problem, and it only partly does.
 - **A queued active is dropped, not deferred**, if its caster attacked or died

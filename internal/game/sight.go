@@ -150,19 +150,6 @@ func rayObstacles(a, b protocol.Hex, terrainAt func(protocol.Hex) protocol.Terra
 	return false, forestCost
 }
 
-// hardSightBlocked reports whether a WALL stands between a and b — terrain that
-// blocks outright, ignoring the forest cost that ordinary sight pays. Evade
-// uses it (#322 decision 4).
-func hardSightBlocked(a, b protocol.Hex, terrainAt func(protocol.Hex) protocol.Terrain) bool {
-	if compareHexQR(a, b) > 0 {
-		a, b = b, a
-	}
-
-	rock, _ := rayObstacles(a, b, terrainAt)
-
-	return rock
-}
-
 // seesLocked reports whether an entity at a can spot one at b: within
 // CombatRadius is the caller's business (the cheap pre-filter), this is the
 // terrain half. Callers hold w.mu.
@@ -175,10 +162,4 @@ func (w *World) seesLocked(a, b protocol.Hex) bool {
 // rather than CombatRadius (#95). Callers hold w.mu.
 func (w *World) sightBlockedLocked(a, b protocol.Hex, radius int) bool {
 	return sightBlocked(a, b, radius, func(h protocol.Hex) protocol.Terrain { return w.terrain[h] })
-}
-
-// hardSightBlockedLocked is sightBlockedLocked's wall-only sibling. Callers
-// hold w.mu.
-func (w *World) hardSightBlockedLocked(a, b protocol.Hex) bool {
-	return hardSightBlocked(a, b, func(h protocol.Hex) protocol.Terrain { return w.terrain[h] })
 }
