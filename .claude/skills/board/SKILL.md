@@ -33,10 +33,15 @@ tokens to discover nothing changed.
 ## Starting a loop session
 
 1. **Arm the monitor first**, persistent, exactly as `work-the-board`'s
-   "Prefer a Monitor over polling" section specifies — both signals, comments
-   *and* `ready to merge`, diffed against the previous cycle. Do not hand-roll
-   a trimmed version: a label-only watch silently drops maintainer answers,
-   which has already happened once (#199, 2026-07-21).
+   "Prefer a Monitor over polling" section specifies — **all three** signals:
+   comments, `ready to merge`, *and* board **Status** moves, each diffed
+   against the previous cycle. Do not hand-roll a trimmed version. A
+   label-only watch silently drops maintainer answers (#199, 2026-07-21), and
+   a watch without the Status poll misses a card moved to `Build` — which is
+   an authorisation exactly as a `go` comment is (#313, 2026-07-31). Use the
+   targeted GraphQL query from that section, **not** `board.sh list`: the
+   latter costs 102 points a call and exceeds the GraphQL budget at a 60s
+   interval.
 2. **Check it is not already armed** — `TaskList` first, and skip if a monitor
    for this is running. Two monitors mean two notifications per event.
 3. **Run the pass**, then schedule the next tick.

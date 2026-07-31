@@ -304,12 +304,21 @@ minutes cost **nothing**, and reaction time drops from tens of minutes to
 about one.
 
 Arm one at the start of a loop session (persistent, so it lives as long as
-the session), watching the only two things a pass acts on unprompted — a new
-maintainer comment, and a PR newly carrying `ready to merge`:
+the session), watching the **three** things a pass acts on unprompted — a new
+maintainer comment, a PR newly carrying `ready to merge`, and a card moving
+to a new **Status**:
 
 ```bash
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 prev=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
+# One point per call. See the rate-limit note below for why this is NOT
+# `board.sh list`.
+GQ='{ user(login:"<owner>"){ projectV2(number:<n>){ items(first:100){ nodes{
+  content{ ... on Issue { number } }
+  fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
+}}}}}'
+prev_s=$(gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
+  | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n)
 while true; do
   sleep 60
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -328,20 +337,38 @@ while true; do
   comm -13 <(echo "$prev") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
   prev=$cur
 
+  # EVERY transition, not just Build — report old -> new so direction is visible.
+  cur_s=$(gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
+    | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n || true)
+  printf '%s\n' "$cur_s" | while IFS='|' read -r n st; do
+    [ -z "$n" ] && continue
+    was=$(printf '%s\n' "$prev_s" | awk -F'|' -v k="$n" '$1==k{print $2}')
+    if [ -z "$was" ]; then echo "BOARD: #$n added as '$st'"
+    elif [ "$was" != "$st" ]; then echo "BOARD: #$n moved $was -> $st"; fi
+  done
+  prev_s=$cur_s
+
   since=$now
 done
 ```
 
-Two things that make it behave:
+Things that make it behave:
 
-- **Both signals are mandatory — a label-only monitor is a silent trap.** The
-  watch covers *two* things: new maintainer comments AND `ready to merge`. Ship
-  it with only the label poll and every maintainer comment on a gated issue
-  goes unseen — the loop looks healthy while an answer sits unread. (2026-07-21:
-  a monitor armed with only the `ready to merge` poll dropped @starquake's
-  per-IP answer on #199; it sat unanswered until they asked in chat why nothing
-  had moved. If you hand-roll the monitor, keep the comment poll in it; never
-  trim it to "just the labels".)
+- **All three signals are mandatory — a partial monitor is a silent trap.**
+  Ship it with only the label poll and every maintainer comment on a gated
+  issue goes unseen; ship it without the Status poll and a card moved to
+  `Build` never wakes anything. Both have happened. (2026-07-21: a monitor
+  armed with only the `ready to merge` poll dropped @starquake's per-IP answer
+  on #199; it sat unanswered until they asked in chat why nothing had moved.
+  2026-07-31: #313 was moved to `Build` and the loop did not react, because the
+  monitor watched comments and labels only — the maintainer had to ask whether
+  status changes were monitored at all.) The test is simple: **if the pass acts
+  on a signal, the monitor watches it.** A move to `Build` is an authorisation
+  exactly as a `go` comment is.
+- **Watch every Status transition, not just the ones into `Build`.** A move
+  *out* of a work state is a stop signal, and a move into a gate is the
+  maintainer taking something back. Reporting `old -> new` costs nothing and
+  makes the direction readable.
 - **Diff the label set.** Emitting the current set every cycle spams a
   notification per minute for any PR that sits unmerged, and monitors that
   flood get stopped automatically.
@@ -353,12 +380,29 @@ Two things that make it behave:
   (2026-07-19). Anything derived from a diff of two lists wants a shape check
   before it becomes a notification.
 
-**Rate limits are not the constraint.** Authenticated GitHub REST allows
-5,000 requests/hour; this loop uses 2/minute — **120/hour, ~2.4% of quota**.
-If a faster poll were ever wanted, conditional requests (`If-None-Match`)
-return 304 and do not count against the primary limit. GitHub webhooks would
-be true push, but need a public receiver — real infrastructure to shave 60
-seconds off something already free.
+**Rate limits: free on REST, a real trap on GraphQL.** The two polls have
+separate budgets and only one of them is comfortable.
+
+- **REST** (comments, PR labels) — 5,000 requests/hour, and this loop uses
+  2/minute: **120/hour, ~2.4% of quota**. Not a constraint. If a faster poll
+  were ever wanted, conditional requests (`If-None-Match`) return 304 and do
+  not count against the primary limit.
+- **GraphQL** (the board) — a separate 5,000 **points**/hour budget, and the
+  obvious way to read the board blows it:
+
+  | call | cost | at 60s polling |
+  |---|---|---|
+  | `gh project item-list --limit 200` (what `board.sh list` uses) | **102** | 6,120/hr — **over budget** |
+  | the targeted `projectV2 { items { content{number} fieldValueByName } }` above | **1** | 60/hr |
+
+  Measured 2026-07-31. **Use the targeted query in the monitor** — `board.sh`
+  is built for one-shot reads in a pass, not for a loop. This is not
+  theoretical: a `gh project item-list` sweep already emptied the GraphQL
+  budget once (83 → 0 of 5,000), after which every board call failed while the
+  REST polls carried on looking healthy.
+
+GitHub webhooks would be true push, but need a public receiver — real
+infrastructure to shave 60 seconds off something already nearly free.
 
 With a Monitor armed, the scheduled tick becomes **insurance only** — set it
 to ~an hour, so a dead monitor is noticed but a healthy one costs nothing.
