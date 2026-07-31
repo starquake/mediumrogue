@@ -311,6 +311,8 @@ to a new **Status**:
 ```bash
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 prev=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
+# Same path board.sh writes its own state changes to; keep them in step.
+SELF="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/mediumrogue-board-selfset}"
 # One point per call. See the rate-limit note below for why this is NOT
 # `board.sh list`.
 GQ='{ user(login:"<owner>"){ projectV2(number:<n>){ items(first:100){ nodes{
@@ -338,13 +340,26 @@ while true; do
   prev=$cur
 
   # EVERY transition, not just Build — report old -> new so direction is visible.
+  # Moves WE made are skipped: board.sh state records them in $SELF, and each
+  # entry is consumed once. Without this, every state set during a pass wakes
+  # the agent a minute later to report its own write.
   cur_s=$(gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
     | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n || true)
   printf '%s\n' "$cur_s" | while IFS='|' read -r n st; do
     [ -z "$n" ] && continue
     was=$(printf '%s\n' "$prev_s" | awk -F'|' -v k="$n" '$1==k{print $2}')
+    [ "$was" = "$st" ] && continue
+    if [ -f "$SELF" ] && grep -qxF "$n|$st" "$SELF"; then
+      # Ours. Consume the entry so a LATER move to the same state still fires.
+      # `|| true` is load-bearing: removing the only line makes grep -v select
+      # nothing and exit 1, so `&& mv` would silently never run and the entry
+      # would suppress that state forever.
+      grep -vxF "$n|$st" "$SELF" > "$SELF.tmp" || true
+      mv "$SELF.tmp" "$SELF"
+      continue
+    fi
     if [ -z "$was" ]; then echo "BOARD: #$n added as '$st'"
-    elif [ "$was" != "$st" ]; then echo "BOARD: #$n moved $was -> $st"; fi
+    else echo "BOARD: #$n moved $was -> $st"; fi
   done
   prev_s=$cur_s
 
@@ -369,6 +384,15 @@ Things that make it behave:
   *out* of a work state is a stop signal, and a move into a gate is the
   maintainer taking something back. Reporting `old -> new` costs nothing and
   makes the direction readable.
+- **Never report your OWN board writes.** A pass sets several states, and each
+  one otherwise wakes the agent a minute later to announce a change it just
+  made — turning the cheapest signal into the noisiest. `board.sh state`
+  appends `<issue>|<state>` to `$BOARD_SELF_SET_FILE` and the monitor consumes
+  one matching entry per transition. **Consume, do not just match**: leaving
+  the entry would swallow a genuine later move to the same state, which is the
+  failure that actually matters. (Seen immediately, 2026-07-31: the first event
+  the three-signal monitor produced was `#344 added as 'Your review'` — its own
+  write, thirty seconds old.)
 - **Diff the label set.** Emitting the current set every cycle spams a
   notification per minute for any PR that sits unmerged, and monitors that
   flood get stopped automatically.
