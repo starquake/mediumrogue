@@ -780,24 +780,22 @@ func (w *World) useSkillLocked(e *entity, id string, target protocol.Hex, target
 		}
 	}
 
-	if w.activeSightBlockedLocked(def, e.hex, target) {
+	// A REPOSITION gates on its destination alone — range above, walkability
+	// and occupancy just now, and nothing about the ray between (#313,
+	// 2026-07-31). Everything else must see what it is aiming at.
+	//
+	// The gate is on the KIND, not on evade specifically: a teleport is a
+	// teleport, so a class reposition added later inherits this rather than
+	// silently getting the old rule. It reverses #322 decision 4 (walls block,
+	// woods do not) and, with it, "an evade escapes only by breaking line of
+	// sight — around a corner" — evade can now land behind cover and clear a
+	// bubble in one jump. That consequence was put to the maintainer and
+	// chosen; see design-decisions.md.
+	if def.active.kind != activeReposition && w.sightBlockedLocked(e.hex, target, def.active.rangeHex) {
 		return ErrNoLineOfSight
 	}
 
 	return w.commitActiveLocked(e, id, &target, 0)
-}
-
-// activeSightBlockedLocked answers the line-of-sight half of an active's
-// validation. Evade asks only whether a WALL is in the way (#322 decision 4):
-// the ordinary rule spends a forest cost against the skill's own range, which
-// refused any 2+ hex escape in woods — the terrain it was most needed in
-// (#313). Everything else keeps the ordinary rule. Callers hold w.mu.
-func (w *World) activeSightBlockedLocked(def *skillDef, from, to protocol.Hex) bool {
-	if def.universal && def.active.kind == activeReposition {
-		return w.hardSightBlockedLocked(from, to)
-	}
-
-	return w.sightBlockedLocked(from, to, def.active.rangeHex)
 }
 
 // checkEvadeDestinationLocked reports whether e may land on target: it must be

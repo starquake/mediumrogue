@@ -103,6 +103,13 @@ func TestEvadeIntoABubbleJoinsTheFight(t *testing.T) {
 // That is not a bug. Range 3 was chosen as "a head start you still have to run
 // with", and this test pins that reading so nobody later reads the ticket's
 // escape framing as a broken promise — or "fixes" it by widening the range.
+//
+// Still true after #313 made evade destination-only: this evade crosses OPEN
+// ground, where the change alters nothing. What #313 added is a second way
+// out — landing behind cover, which breaks the bubble's sight half rather than
+// its distance half (TestEvadeBehindAWallClearsABubble). So "distance alone
+// never clears a bubble" holds; "an evade escapes only by walking a corner"
+// no longer does.
 func TestEvadeBuysDistanceButDoesNotClearABubble(t *testing.T) {
 	t.Parallel()
 
@@ -154,12 +161,18 @@ func TestEvadeBuysDistanceButDoesNotClearABubble(t *testing.T) {
 	}
 }
 
-// TestEvadeDoesNotPassThroughWalls pins decision 2's distinctive half, which is
-// deliberately the OPPOSITE of the classic ARPG evade. That inversion is worth
-// a test precisely because the genre default is the other way: someone
-// "fixing" it to match Path of Exile would be reverting a decision, not
-// correcting an oversight. A rock wall stays real cover.
-func TestEvadeDoesNotPassThroughWalls(t *testing.T) {
+// TestEvadePassesThroughWalls pins the REVERSAL decided on 2026-07-31 (#313):
+// evade gates on its destination alone, so a rock between you and a legal
+// landing hex no longer refuses the jump.
+//
+// This test previously asserted the opposite — that a wall was real cover,
+// deliberately unlike the classic ARPG evade (#322 decision 2). It is inverted
+// rather than deleted because the direction is still the thing worth pinning:
+// whichever way the rule points, someone changing it should be reverting a
+// decision knowingly rather than correcting what looks like an oversight.
+//
+// The wall is now the ONLY difference between the two submits, and both pass.
+func TestEvadePassesThroughWalls(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -183,7 +196,87 @@ func TestEvadeDoesNotPassThroughWalls(t *testing.T) {
 
 	w.SetTerrainForTest(protocol.Hex{Q: 1, R: 0}, protocol.TerrainRock)
 
-	if got, want := w.SubmitIntent(use), game.ErrNoLineOfSight; !errors.Is(got, want) {
-		t.Errorf("evade through rock = %v, want %v", got, want)
+	if err := w.SubmitIntent(use); err != nil {
+		t.Errorf("evade through rock = %v, want it accepted (#313: destination-only)", err)
+	}
+
+	// The DESTINATION still gates: rock underfoot is not walkable, so landing
+	// ON the wall stays refused. Losing this would make evade a way to stand
+	// inside terrain, which is not what was decided.
+	onTheWall := use
+	onTheWall.Target = protocol.Hex{Q: 1, R: 0}
+
+	if got, want := w.SubmitIntent(onTheWall), game.ErrNotWalkable; !errors.Is(got, want) {
+		t.Errorf("evade onto rock = %v, want %v", got, want)
+	}
+}
+
+// TestEvadeBehindAWallClearsABubble pins the consequence of #313's
+// destination-only rule, and it is a BALANCE change rather than a rules tidy-up
+// — so it is asserted directly rather than left implied.
+//
+// Before, the pair of decisions in TestEvadeBuysDistanceButDoesNotClearABubble
+// and the old TestEvadeDoesNotPassThroughWalls meant a bubble could not be
+// cleared in one jump: range 3 against CombatRadius 6 never bought enough
+// distance, and you could not hop behind cover because you could not evade to
+// a hex you could not see. Breaking contact required WALKING a corner.
+//
+// Now the wall hop is legal, and a bubble is sight-gated as well as
+// distance-gated (#95), so landing behind rock dissolves the fight at
+// distance 4 — well inside CombatRadius. Evade is a dependable disengage where
+// cover exists. That was put to the maintainer with this consequence spelled
+// out and chosen deliberately; see design-decisions.md.
+func TestEvadeBehindAWallClearsABubble(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.SetSeedForTest(1)
+
+	origin := protocol.Hex{Q: 0, R: 0}
+	monsterHex := protocol.Hex{Q: 1, R: 0}
+	wall := protocol.Hex{Q: -2, R: 0}
+	behind := protocol.Hex{Q: -3, R: 0}
+
+	clearLine(w, origin, monsterHex, protocol.Hex{Q: -1, R: 0}, wall, behind)
+
+	me, err := w.Join("", "evader", protocol.ClassRogue, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	w.SetHexForTest(me.EntityID, origin)
+	w.SetSkillStateForTest(me.EntityID, []string{skillSurvivalistID, skillEvadeID}, 0, 1)
+	w.PlaceMonsterForTest(monsterHex)
+
+	if snap := step(t, w); !inCombat(t, snap, me.EntityID) {
+		t.Fatal("no bubble formed — nothing to escape")
+	}
+
+	// The wall goes up only now, so the bubble above formed over clear ground
+	// and the ONLY thing that changes is the cover.
+	w.SetTerrainForTest(wall, protocol.TerrainRock)
+
+	if err := w.SubmitIntent(protocol.IntentRequest{
+		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentUseSkill,
+		SkillID: skillEvadeID, Target: behind,
+	}); err != nil {
+		t.Fatalf("evade past a wall rejected: %v", err)
+	}
+
+	snap := step(t, w)
+
+	if got := entityHexIn(t, snap, me.EntityID); got != behind {
+		t.Fatalf("evader at %v, want %v", got, behind)
+	}
+
+	// Distance alone would NOT have done it: 4 is inside CombatRadius 6, the
+	// same arithmetic that keeps the open-ground evade in its bubble. The rock
+	// is what breaks contact.
+	if d, want := game.HexDistance(behind, monsterHex), 4; d != want {
+		t.Fatalf("distance after evade = %d, want %d (the test geometry moved)", d, want)
+	}
+
+	if inCombat(t, snap, me.EntityID) {
+		t.Error("evader landed behind a rock wall and the bubble followed")
 	}
 }

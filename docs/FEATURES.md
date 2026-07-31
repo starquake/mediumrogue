@@ -316,13 +316,15 @@ Evade, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
 | **Expose** | Class (Weak Spot) | 5 turns | Vulnerable **×1.20 damage taken for 3 turns** on one hostile at **4 hexes** |
 | **Ember Nova** | Class (Kindler) | 5 turns | **5 fire** in a **1-hex blast** at **4 hexes**, plus Burning **−2 HP/turn for 2 turns** |
 
-  - **A evade buys distance, it does not break contact** (#161): `CombatRadius`
-    is 6 and Evade reaches 3, so evading away from an adjacent monster ends at
-    distance 4 — still in the bubble. Escaping needs a corner (breaking line of
-    sight), never range alone.
-  - **Evade's destination** needs range, walkability, line of sight **and
-    room**: it does *not* pass through walls, deliberately unlike the classic
-    ARPG evade, so cover stays real, and it respects hex occupancy exactly like
+  - **A evade buys distance, it does not break contact by range** (#161):
+    `CombatRadius` is 6 and Evade reaches 3, so evading away from an adjacent
+    monster ends at distance 4 — still in the bubble. Range alone never clears
+    one. **Landing behind cover does**, since a bubble needs line of sight as
+    well as distance (#95): hop past a rock and the fight drops at distance 4.
+  - **Evade's destination** needs range, walkability **and room** — and
+    nothing about the ray between. It **does** pass through walls (#313,
+    2026-07-31, reversing #322), like the classic ARPG evade, and it respects
+    hex occupancy exactly like
     an ordinary mover (#196) — a hex held by a monster or already at `StackCap`
     friendlies is refused, so a evade is never a teleport onto (or through)
     someone. The occupancy check runs at both submit (surfaced 422) and
@@ -547,11 +549,13 @@ roll, so it is ARPG-legal on jewelry.
   point to spend, no row in the skills panel. `Space` **arms** it and the next map click spends it, repositioning you up to
   `protocol.EvadeRangeHex` hexes on a `protocol.EvadeCooldownTurns`-turn
   cooldown. Pressing `Space` again cancels, as does Escape.
-  - **Walls still stop it, woods no longer do.** Ordinary line of sight spends
+  - **Nothing in the ray stops it — not woods, not walls.** Evade gates on its
+    destination alone (#313, 2026-07-31). Ordinary line of sight spends
     `ForestSightCost` against a skill's own range, which refused every evade of
-    2+ hexes in forest — the terrain an escape is most wanted in. Evade asks
-    only whether a **rock** stands in the ray, so cover stays real (the decided
-    inversion of the genre default) while woods stop refusing the escape.
+    2+ hexes in forest; #322 exempted woods but kept walls, and #313 dropped
+    the ray check entirely. A teleport that cannot cross a wall reads as a walk
+    with extra steps. The **destination** still gates: rock underfoot is not
+    walkable, so you may jump past a wall but never onto one.
   - **Arming paints the reachable tiles** — everything within
     `protocol.EvadeRangeHex`, on the same overlay an armed active uses. That is
     the point of arming: the limit is visible **before** committing, rather
