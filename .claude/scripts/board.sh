@@ -23,6 +23,11 @@ PROJECT_REPO=mediumrogue
 PROJECT_ID="PVT_kwHOAA_wQM4BeuXF"
 STATUS_FIELD_ID="PVTSSF_lAHOAA_wQM4BeuXFzhZGbpQ"
 
+# Where `state` records its own writes for the board monitor to ignore. Shared
+# by both, so it is defined here rather than duplicated. Transient by design —
+# losing it costs one spurious notification, never a missed maintainer move.
+SELF_SET_FILE="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/mediumrogue-board-selfset}"
+
 # Status name -> single-select option id, looked up LIVE by name.
 #
 # These ids used to be hardcoded here, which broke the moment the board's
@@ -74,6 +79,12 @@ case "${1:-}" in
     gh api graphql -f query="mutation{updateProjectV2ItemFieldValue(input:{
         projectId:\"$PROJECT_ID\", itemId:\"$item\", fieldId:\"$STATUS_FIELD_ID\",
         value:{singleSelectOptionId:\"$opt\"}}){projectV2Item{id}}}" >/dev/null
+    # Record that this move was OURS, so the board monitor does not wake the
+    # agent to report a change the agent just made. Without it every state set
+    # in a pass fires a notification a minute later — the monitor exists so
+    # quiet minutes cost nothing, and self-echo is not quiet. The monitor
+    # consumes (and removes) the matching entry when it sees the transition.
+    printf '%s|%s\n' "$issue" "$want" >> "$SELF_SET_FILE"
     echo "#$issue -> $want"
     ;;
   get)
