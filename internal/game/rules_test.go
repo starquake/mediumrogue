@@ -14,8 +14,6 @@ import (
 )
 
 // testRNG returns a deterministic rng for condition tests.
-//
-//nolint:gosec // deterministic test RNG, not security-sensitive.
 func testRNG(seed uint64) *mrand.Rand { return mrand.New(mrand.NewPCG(seed, 0)) }
 
 func TestApplyRulesFoldOrder(t *testing.T) {

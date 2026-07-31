@@ -116,7 +116,6 @@ func TestLoadSnapshotPreservesRejectedFile(t *testing.T) {
 	other := newAppTestWorldRadius(9)
 	app.SaveSnapshotForTest(logger, path, other)
 
-	//nolint:gosec // path is a t.TempDir() file this test wrote itself, not user input.
 	original, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read mismatched snapshot fixture: %v", err)

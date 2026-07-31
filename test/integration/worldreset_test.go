@@ -66,7 +66,6 @@ func TestRestoreKeepsSameWorldID(t *testing.T) {
 		t.Fatalf("write snapshot file: %v", writeErr)
 	}
 
-	//nolint:gosec // path is a t.TempDir() file this test wrote itself, not user input.
 	loaded, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read snapshot file: %v", err)

@@ -12,7 +12,7 @@ func HexDistance(a, b protocol.Hex) int {
 	dr := a.R - b.R
 	ds := -dq - dr
 
-	//nolint:revive // add-constant: the /2 is the cube-distance formula itself.
+	// The /2 is the cube-distance formula itself, not a magic number.
 	return (abs(dq) + abs(dr) + abs(ds)) / 2
 }
 

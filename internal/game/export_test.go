@@ -460,7 +460,6 @@ func (w *World) ResolveCombatOnlyForTest() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	//nolint:gosec // deterministic per-turn combat RNG, not security-sensitive; test-only, mirrors resolveCombatLocked.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), uint64(w.turn)))
 
 	members := make([]*entity, 0, len(w.entities))
@@ -792,7 +791,6 @@ func PickDropForTest(kind string, seed uint64) string {
 		return ""
 	}
 
-	//nolint:gosec // deterministic test-only seed, not security-sensitive; reproducibility is required.
 	rng := mrand.New(mrand.NewPCG(seed, 0))
 
 	return pickDropFrom(rng, k.drops)

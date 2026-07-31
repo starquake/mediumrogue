@@ -163,6 +163,15 @@ linters:
       # the run with phantom findings from the in-flight branch copies.
       - .claude
     rules:
+      # gosec's findings in tests are structurally noise: a t.TempDir() path is
+      # not user input and a deterministic seed is the POINT. Every one was
+      # being suppressed by hand with the same three reasons, which is a path
+      # rule wearing a costume. Matches topbanana, and #334 should have brought
+      # it across — this is that alignment finished (#333). Production gosec
+      # suppressions stay individually justified.
+      - path: (_test\.go|internal/testutil/|test/)
+        linters:
+          - gosec
       # Test files may use long funcs and unwrapped errors. Magic numbers are
       # exempted at the revive rule level instead (add-constant's own
       # exclude:), since mnd is disabled.
