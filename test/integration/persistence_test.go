@@ -166,7 +166,6 @@ func TestWorldSurvivesRestartCharacterSurvivesSweep(t *testing.T) {
 	// loop starts (RestoreState's contract) and given NO monsters of its
 	// own — the restore already brings back the persisted population,
 	// mirroring cmd/rogue/app's loadSnapshot-skips-SpawnMonsters wiring.
-	//nolint:gosec // path is a t.TempDir() file this test wrote itself, not user input.
 	loaded, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read snapshot file: %v", err)
