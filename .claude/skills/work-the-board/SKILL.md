@@ -44,6 +44,35 @@ the needs build now?"* The rule was already here; the build being large and
 architectural is exactly when the pull to re-ask is strongest and must be
 resisted.)
 
+**But a work state is not a promise that the ticket is workable.** The rule
+above is about not re-asking for *permission*; it is not licence to invent
+content the ticket does not contain. When a ticket in a work state lacks the
+information to do the work — an empty body, a symptom with no reproduction, a
+title and nothing else — the honest step is back to `Your input` with
+**specific** questions, having first done every bit of investigation that does
+not need the answer.
+
+The distinction is what you are asking for. "Shall I start?" is re-inventing a
+gate. "I looked, here is what I found, and here are the two facts only you have"
+is the work. Do the investigation first either way: a question that arrives with
+findings attached is worth answering, one that arrives empty is just the ticket
+handed back.
+
+(2026-07-31: #315 sat in `Spec` with an EMPTY body — the title was the whole
+report. Reading the client found a genuine asymmetry (a move clears a committed
+attack, an attack never clears the destination ring), but three attempts to
+reproduce the reported behaviour failed, each for a different reason. Writing a
+spec would have meant inventing the bug's shape; fixing on the reading alone
+would have meant guessing which of two similar markers the maintainer saw. It
+went back with the finding, the failed attempts, and two questions.)
+
+**Do not ship a fix on a reading-only diagnosis when the reproduction fails.**
+This is the flake rule generalised past flakes: reading the code tells you what
+CAN happen, not what DID. If the repro will not come, say so plainly, publish
+the mechanism you found, and let the maintainer confirm the shape before code
+changes. A confident fix for the wrong mechanism closes the ticket and leaves
+the bug.
+
 ## The autonomy contract — do not cross
 
 - **Never decide design direction.** Open questions are surfaced TO the
