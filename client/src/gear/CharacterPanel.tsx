@@ -13,8 +13,6 @@ export interface CharacterActions {
   unequip: (itemId: number) => void;
   drop: (itemId: number) => void;
   drink: (itemId: number) => void;
-  /** Arm a throwable flask (#271): the next map click becomes the aim hex. */
-  arm: (itemId: number) => void;
   /** Use a scroll of recall (#271): teleport to safety immediately. */
   recall: (itemId: number) => void;
   /** Close the panel (its own × affordance; the `i` key / HUD button also toggle it). */
@@ -92,11 +90,9 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
   const entry = (): BackpackEntry | null => props.entry();
   const isConsumable = (): boolean => entry()?.type === ItemTypeConsumable;
 
-  // A throwable flask arms a targeted throw; a recall scroll fires now; any
-  // other consumable drinks; gear equips (#271).
+  // A recall scroll fires now; any other consumable drinks; gear equips (#271).
   const useVerb = (): string => {
     const e = entry();
-    if (e?.throwable) return "throw";
     if (e?.recall) return "recall";
     return isConsumable() ? "drink" : "equip";
   };
@@ -104,8 +100,7 @@ function BackpackCell(props: { entry: Accessor<BackpackEntry | null>; actions: C
   const cellClick = (): void => {
     const e = entry();
     if (e === null) return;
-    if (e.throwable) props.actions.arm(e.id);
-    else if (e.recall) props.actions.recall(e.id);
+    if (e.recall) props.actions.recall(e.id);
     else if (isConsumable()) props.actions.drink(e.id);
     else props.actions.equip(e.id);
   };

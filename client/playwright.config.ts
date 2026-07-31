@@ -74,7 +74,6 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // consumption, not combat damage. STARTER_CONSUMABLES hands a fresh join a
   // flask and a scroll (the only deterministic way to get a consumable into
   // the monster-free e2e world — see inventory.spec.ts).
-  { name: "throwables", env: { STARTER_CONSUMABLES: "flask-of-fire,scroll-of-recall" } },
   // client-alive (#170): the regression guard for #167 — bundles keep being
   // APPLIED after an inventory action. Monster-free: the failure is in the
   // client's own turn handler, not in combat.

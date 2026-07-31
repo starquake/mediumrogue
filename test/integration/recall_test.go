@@ -13,20 +13,20 @@ import (
 	"github.com/starquake/mediumrogue/internal/server"
 )
 
-// throwables_test.go (#271): the targeted-consumable intents over real HTTP —
-// throw and recall reach the handler, resolve or reject, and every rejection
+// recall_test.go (#271): the targeted-consumable intent over real HTTP —
+// recall reaches the handler, resolves or rejects, and every rejection
 // is a 422 (never a 500). The starter-consumables harness hands the joined
 // player a flask and a scroll deterministically.
 
 const (
-	itFlaskOfFireDef    = "flask-of-fire"
 	itScrollOfRecallDef = "scroll-of-recall"
+	itHealingPotionDef  = "healing-potion"
 )
 
 // startServerWithStarterConsumables boots the handler tree over a world that
 // grants the given consumable ids into every new player's backpack (#271, the
-// STARTER_CONSUMABLES knob), so a joined player has a flask and a scroll to
-// throw and recall with — no monster drop needed.
+// STARTER_CONSUMABLES knob), so a joined player has a scroll to recall with —
+// no monster drop needed.
 func startServerWithStarterConsumables(t *testing.T, ids ...string) *httptest.Server {
 	t.Helper()
 
@@ -63,34 +63,26 @@ func ownedItemID(bundle protocol.TurnEvent, entityID int64, defID string) int64 
 	return 0
 }
 
-// TestThrowAndRecallOverHTTP drives the new targeted-consumable intents through
-// the real handler: a flask thrown at a hex and a recall are accepted (202),
+// TestRecallOverHTTP drives the targeted-consumable intent through
+// the real handler: a recall is accepted (202),
 // while a bogus item id and a wrong-consumable id are rejected as 422 (not the
 // 500 an unmapped sentinel would produce).
-func TestThrowAndRecallOverHTTP(t *testing.T) {
+func TestRecallOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	ts := startServerWithStarterConsumables(t, itFlaskOfFireDef, itScrollOfRecallDef)
+	ts := startServerWithStarterConsumables(t, itHealingPotionDef, itScrollOfRecallDef)
 	me := join(t, ts, "")
 
 	reader := bufio.NewReader(get(t, ts, "/api/events?token="+me.Token).Body)
 
-	var flaskID, scrollID int64
+	var potionID, scrollID int64
 
 	waitForBundle(t, reader, "starter consumables visible", func(b protocol.TurnEvent) bool {
-		flaskID = ownedItemID(b, me.EntityID, itFlaskOfFireDef)
+		potionID = ownedItemID(b, me.EntityID, itHealingPotionDef)
 		scrollID = ownedItemID(b, me.EntityID, itScrollOfRecallDef)
 
-		return flaskID != 0 && scrollID != 0
+		return potionID != 0 && scrollID != 0
 	})
-
-	// A throw aimed at the player's own hex (in range, self is always visible)
-	// is accepted — no enemy in the blast, but the ACTION is valid.
-	if got, want := postJSON(t, ts, "/api/intent", protocol.IntentRequest{
-		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentThrow, ItemID: flaskID, Target: me.Hex,
-	}).StatusCode, http.StatusAccepted; got != want {
-		t.Errorf("throw status = %d, want %d", got, want)
-	}
 
 	// A recall (no target) is accepted.
 	if got, want := postJSON(t, ts, "/api/intent", protocol.IntentRequest{
@@ -99,16 +91,9 @@ func TestThrowAndRecallOverHTTP(t *testing.T) {
 		t.Errorf("recall status = %d, want %d", got, want)
 	}
 
-	// A throw of an item the player does not own is a 422, not a 500.
+	// A recall naming a potion (not a recall scroll) is a 422.
 	if got, want := postJSON(t, ts, "/api/intent", protocol.IntentRequest{
-		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentThrow, ItemID: 999999, Target: me.Hex,
-	}).StatusCode, http.StatusUnprocessableEntity; got != want {
-		t.Errorf("throw of unowned item status = %d, want %d", got, want)
-	}
-
-	// A recall naming the flask (not a recall scroll) is a 422.
-	if got, want := postJSON(t, ts, "/api/intent", protocol.IntentRequest{
-		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentRecall, ItemID: flaskID,
+		EntityID: me.EntityID, Token: me.Token, Kind: protocol.IntentRecall, ItemID: potionID,
 	}).StatusCode, http.StatusUnprocessableEntity; got != want {
 		t.Errorf("recall of a non-recall item status = %d, want %d", got, want)
 	}

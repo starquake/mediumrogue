@@ -125,7 +125,6 @@ any digit in flavour.
 | **Ember Brand**<br>`ember-brand` | weapon | fire | melee | 4 | melee | — | — | Damage 4<br> |
 | **Ember Focus**<br>`ember-focus` | weapon | fire | magic | 3 | 4 | 1 | — | Damage 3<br>Range 4<br>AoE 1<br> |
 | **Ember Staff**<br>`ember-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Adjacent<br> |
-| **Flask of Alchemist's Fire**<br>`flask-of-fire` | consumable | — | — | — | melee | — | — | Throw Damage 6 Fire<br>Throw Range 4<br>Blast 1<br>−3 HP per turn for 3 turns<br> |
 | **Frostbrand**<br>`frostbrand` | weapon | ice | melee | 4 | melee | — | — | Damage 4<br> |
 | **Frostward Charm**<br>`frostward-charm` | amulet | — | — | — | melee | — | — | +50% Ice Resistance<br> |
 | **Full Restorative**<br>`full-restorative` | consumable | — | — | — | melee | — | 999 | +999 HP<br>Stacks to 5<br> |

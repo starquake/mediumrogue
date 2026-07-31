@@ -89,8 +89,6 @@ export interface BackpackEntry extends ItemStats {
   name: string;
   type: string;
   count: number;
-  /** A throwable flask (#271): the cell offers THROW (arm-then-click) not drink. */
-  throwable: boolean;
   /** A scroll of recall (#271): the cell offers RECALL not drink. */
   recall: boolean;
 }
@@ -260,7 +258,6 @@ export function setInventory(items: ItemView[]): void {
         name: it.name,
         type: it.type,
         count: it.count,
-        throwable: it.throwable,
         recall: it.recall,
         ...stats,
       };

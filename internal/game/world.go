@@ -190,10 +190,6 @@ var (
 	ErrItemNotEquipped = errors.New("item is not equipped")
 	// ErrNotDrinkable rejects a drink intent naming a non-consumable item.
 	ErrNotDrinkable = errors.New("item is not drinkable")
-	// ErrNotThrowable rejects a throw intent naming an item that is not a
-	// throwable consumable (a flask with a throw payload) — #271. A well-formed
-	// request the world says no to, so a 422.
-	ErrNotThrowable = errors.New("item is not throwable")
 	// ErrNotRecallable rejects a recall intent naming an item that is not a
 	// recall consumable (a scroll of recall) — #271. Also a 422.
 	ErrNotRecallable = errors.New("item is not a recall scroll")
@@ -319,13 +315,6 @@ type entity struct {
 	activeSkill        string
 	activeTarget       *protocol.Hex
 	activeTargetEntity int64
-	// throwItem/throwTarget are this turn's queued throw (#271): the owned
-	// throwable consumable's instance id and its aim hex. 0/nil for none.
-	// Resolved in the attack phase (resolveThrowsLocked) — a throw is a
-	// targeted combat action, consumed at resolution. Transient like
-	// attackTarget; never snapshotted, cleared on death.
-	throwItem   int64
-	throwTarget *protocol.Hex
 	// recallItem is this turn's queued recall (#271): the owned recall
 	// consumable's instance id, or 0 for none. Resolved in the move phase
 	// (resolveRecallsLocked) as a teleport to a safe sanctuary hex, reusing the
@@ -1437,8 +1426,6 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 		return w.learnSkillLocked(e, req.SkillID)
 	case protocol.IntentUseSkill:
 		return w.useSkillLocked(e, req.SkillID, req.Target, req.TargetEntityID)
-	case protocol.IntentThrow:
-		return w.queueThrowLocked(e, req.ItemID, req.Target)
 	case protocol.IntentRecall:
 		return w.queueRecallLocked(e, req.ItemID)
 	default:
@@ -1480,7 +1467,7 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
 	e.pending = pendingItemAction{}
-	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271: a move cancels a queued throw/recall.
+	e.recallItem = 0 // #271: a move cancels a queued throw/recall.
 
 	return nil
 }
@@ -1568,7 +1555,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 		e.attackTarget = nil
 		e.path = nil
 		e.pending = pendingItemAction{}
-		e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
+		e.recallItem = 0 // #271
 
 		return nil
 	}
@@ -1595,7 +1582,7 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 	e.attackTarget = &t
 	e.path = nil
 	e.pending = pendingItemAction{}
-	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
+	e.recallItem = 0 // #271
 
 	return nil
 }
@@ -2657,7 +2644,6 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 	}
 
 	w.resolveRangedLocked(rng, byHex, damage)
-	w.resolveThrowsLocked(rng, byHex, damage)       // #271: thrown flasks land in the same shared map.
 	w.resolveActiveBlastsLocked(rng, byHex, damage) // #300: so do area-damage actives.
 
 	for id, dmg := range damage {
@@ -3167,7 +3153,7 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 		e.hp = e.maxHP
 		e.path = nil
 		e.pending = pendingItemAction{}
-		e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271: no queued throw/recall on a fresh body.
+		e.recallItem = 0 // #271: no queued throw/recall on a fresh body.
 		// A respawn is a fresh body: lingering poison/buff effects (#271) do
 		// not carry over the death that reset the HP bar.
 		e.effects = nil
@@ -3902,7 +3888,7 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 		Stats:    statViewsFor(def),
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
-		Throwable: def.isThrowable(), Recall: def.recall,
+		Recall: def.recall,
 	}
 }
 

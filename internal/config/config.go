@@ -118,9 +118,8 @@ type Config struct {
 	// StarterConsumables are item ids granted into every NEW player's backpack
 	// at join, from STARTER_CONSUMABLES (comma-separated). Empty by default, so
 	// production and every existing test/e2e keep the empty starting backpack —
-	// the knob exists so the #271 throwable/recall e2e can hand a fresh player a
-	// flask and a scroll deterministically (the same env-injection pattern the
-	// timing knobs use). Each id must name a registered consumable; the world
+	// the knob exists so the #271 recall e2e can hand a fresh player a scroll
+	// deterministically (the same env-injection pattern the timing knobs use). Each id must name a registered consumable; the world
 	// fails loud at startup otherwise.
 	StarterConsumables []string
 	// CombatPatience is the AFK fallback: how long a combat time bubble waits

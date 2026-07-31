@@ -256,17 +256,6 @@ export const IntentDrink = "drink";
  */
 export const IntentUseSkill = "use-skill";
 /**
- * IntentThrow hurls an owned throwable consumable (IntentRequest.ItemID) at
- * IntentRequest.Target — #271. It is a TARGETED combat action, resolved in
- * the turn pipeline exactly like a ranged/AoE attack (not applied instantly
- * like a drink): on landing it deals its damage to every opposing-faction
- * entity within its blast radius (AoE always hits — no to-hit roll) and
- * applies any on-land timed effect (a lingering DoT). Range- and
- * line-of-sight-gated; the flask is consumed at resolution. Like an attack
- * it clears any queued move/attack and is the entity's whole turn.
- */
-export const IntentThrow = "throw";
-/**
  * IntentRecall consumes an owned recall consumable (IntentRequest.ItemID) to
  * teleport the user to a safe hex in the shared sanctuary — #271, "evade to
  * home". It reuses the teleport resolution the active-skill Evade introduced
@@ -989,12 +978,6 @@ export interface ItemView {
    */
   count: number /* int */;
   /**
-   * Throwable marks a consumable that is HURLED at a target hex (IntentThrow)
-   * rather than drunk — a flask (#271). The client arms it and consumes the
-   * next map click as the aim hex. Always false for non-throwable items.
-   */
-  throwable: boolean;
-  /**
    * Recall marks a consumable that TELEPORTS the user to safety on use
    * (IntentRecall) — a scroll of recall (#271). The client offers a recall
    * action instead of drink. Always false for non-recall items.
@@ -1183,7 +1166,7 @@ export interface IntentRequest {
   token: string;
   /**
    * Kind is the intent type. Required: one of the Intent* constants (move,
-   * attack, equip, unequip, drop, pickup, drink, throw, recall).
+   * attack, equip, unequip, drop, pickup, drink, recall).
    */
   kind: string;
   /**

@@ -43,7 +43,7 @@ func (*World) commitItemActionLocked(e *entity, kind string, id int64, apply fun
 	// #271: an inventory action cancels a queued throw/recall either way — an
 	// immediate action outside a bubble must not leave a throw to resolve next
 	// world turn, and inside one the pending action is the turn's action.
-	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0
+	e.recallItem = 0
 
 	if e.bubbleID == 0 {
 		e.pending = pendingItemAction{}

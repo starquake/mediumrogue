@@ -853,7 +853,7 @@ func (*World) commitActiveLocked(e *entity, id string, target *protocol.Hex, tar
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
-	e.throwItem, e.throwTarget, e.recallItem = 0, nil, 0 // #271
+	e.recallItem = 0 // #271
 	e.activeSkill = id
 	e.activeTarget = target
 	e.activeTargetEntity = targetEntityID

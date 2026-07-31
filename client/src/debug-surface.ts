@@ -105,8 +105,6 @@ export interface GameDebug {
    * EvadeReadyIn, and is what an e2e asserts the cooldown against.
    */
   evadeReadyIn: number;
-  /** The flask instance id whose throw is armed for targeting, or null (#271). */
-  armedThrow: number | null;
   /**
    * What the start screen is offering (#303): "continue" for a returning
    * player's character card, "fresh" for the creation form, and "reset" (#311)
