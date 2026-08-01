@@ -39,10 +39,8 @@ var intentSentinelStatus = map[error]int{
 	game.ErrBackpackFull:           http.StatusUnprocessableEntity,
 	game.ErrItemNotEquipped:        http.StatusUnprocessableEntity,
 	game.ErrNotDrinkable:           http.StatusUnprocessableEntity,
-	// Recall rejection (#271).
-	game.ErrNotRecallable:    http.StatusUnprocessableEntity,
-	game.ErrNotEquippable:    http.StatusUnprocessableEntity,
-	game.ErrNoSuchGroundItem: http.StatusUnprocessableEntity,
+	game.ErrNotEquippable:          http.StatusUnprocessableEntity,
+	game.ErrNoSuchGroundItem:       http.StatusUnprocessableEntity,
 	// Learn-skill rejections (#124): all well-formed requests the world says
 	// no to, so 422 rather than 500.
 	game.ErrNoSuchSkill:         http.StatusUnprocessableEntity,

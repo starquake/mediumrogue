@@ -192,14 +192,6 @@ const (
 	// at IntentRequest.Target — #161. It is the turn's action, exactly like a
 	// move: it does not stack with one, and it is not a bonus action.
 	IntentUseSkill = "use-skill"
-	// IntentRecall consumes an owned recall consumable (IntentRequest.ItemID) to
-	// teleport the user to a safe hex in the shared sanctuary — #271, "evade to
-	// home". It reuses the teleport resolution the active-skill Evade introduced
-	// (#161): the destination is a guarded safe hex (respecting occupancy /
-	// StackCap), not a client-chosen target, so IntentRequest.Target is unused.
-	// Resolved in the move phase like Evade; the scroll is consumed on a
-	// successful recall.
-	IntentRecall = "recall"
 	// IntentQuaffHealth / IntentQuaffEnergy are the two ALWAYS-AVAILABLE
 	// draughts (#322): no item, no inventory slot, no scarcity — a cooldown is
 	// the whole cost. Separate kinds rather than one with a "which pool" field,
@@ -679,10 +671,6 @@ type ItemView struct {
 	// Count is the stack size for a consumable backpack stack (1..ItemStackCap);
 	// always 1 for gear.
 	Count int `json:"count"`
-	// Recall marks a consumable that TELEPORTS the user to safety on use
-	// (IntentRecall) — a scroll of recall (#271). The client offers a recall
-	// action instead of drink. Always false for non-recall items.
-	Recall bool `json:"recall"`
 }
 
 // GroundItemView is one dropped stack lying on the map, waiting to be picked
@@ -828,14 +816,14 @@ type IntentRequest struct {
 	EntityID int64  `json:"entityId"`
 	Token    string `json:"token"`
 	// Kind is the intent type. Required: one of the Intent* constants (move,
-	// attack, equip, unequip, drop, pickup, drink, recall).
+	// attack, equip, unequip, drop, pickup, drink).
 	Kind string `json:"kind"`
 	// Target is the destination/aim hex: a move's walkable goal, an attack's
-	// target hex, or a THROW's aim hex (#271). Unused by recall, which teleports
+	// target hex (#271).
 	// to a server-chosen safe hex.
 	Target Hex `json:"target"`
 	// ItemID names the OWNED item an inventory action targets. Equip, unequip,
-	// drop, drink, throw (the thrown flask), and recall (the scroll) intents.
+	// drop and drink intents.
 	ItemID int64 `json:"itemId"`
 	// SkillID names the skill a learn-skill intent spends a point on (#124).
 	SkillID string `json:"skillId"`

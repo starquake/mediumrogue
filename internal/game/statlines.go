@@ -81,10 +81,6 @@ func statLinesFor(def *itemDef) []statLine {
 
 	out = append(out, consumableEffectStatLines(def)...)
 
-	if def.recall {
-		out = append(out, statLine{text: "Recall to safety"})
-	}
-
 	return out
 }
 

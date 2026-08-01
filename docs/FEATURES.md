@@ -311,7 +311,7 @@ Evade, Second Wind, Bulwark, Expose and Ember Nova; see the table below.
 
 | Kind | Aim | What it does | Reuses |
 |---|---|---|---|
-| `reposition` | hex | moves the caster to the target hex | the Evade/recall teleport |
+| `reposition` | hex | moves the caster to the target hex | the Evade teleport |
 | `self-effect` | *none* | applies a timed effect to the caster | `applyTimedEffectLocked` (a drink) |
 | `target-effect` | entity | applies a timed effect to a hostile | the same, plus a shot's target gates |
 | `area-damage` | hex | damages every hostile in a radius | `resolveAoELocked` |
@@ -825,11 +825,9 @@ roll, so it is ARPG-legal on jewelry.
   and the **Vampiric Blade** on the wraith (w2 — a life-draining elite). The wolf
   additions were the only ones to move a pinned drop seed, re-derived in
   `drops_test.go`. Items land on the death hex and render as map markers. The
-  **targeted consumable** (#271, slice 5 — **Scroll of Recall**) is **not** on
-  any drop table yet: it is reachable through the `STARTER_CONSUMABLES` starter
-  kit (see §3), with drop-table placement deferred to a content pass so this
-  action-path slice stays off the shared drop registries. (The Flask of
-  Alchemist's Fire shipped beside it and was removed in #352.)
+  #271 slice 5's two **targeted consumables** (the Flask of Alchemist's Fire
+  and the Scroll of Recall) were removed in #352 and are on no drop table
+  because they no longer exist.
 - **Five inventory actions, one rule** — free & instant out of combat, **your
   whole turn inside a bubble** (a later move/attack supersedes a queued
   action; bubble dissolve applies it):
@@ -861,14 +859,6 @@ roll, so it is ARPG-legal on jewelry.
     `aoeRadius`.
   - **drink** — a consumable: applies its heal (clamped to max HP) and
     decrements the stack; an emptied stack frees its entry.
-  - **recall** (#271) — a **scroll of recall** teleports the user to a safe hex
-    in the shared **sanctuary** (`IntentRecall`, `ItemID`; no target). It reuses
-    the **Evade** teleport (#161): occupancy/`StackCap` respected, the scroll
-    consumed only on a *successful* recall (a blocked/saturated destination
-    fizzles and keeps it), resolved in the move phase. The sanctuary is every
-    player's shared "home" until per-player beds land. Non-recall item → 422
-    `ErrNotRecallable`. *Proof consumer:* **Scroll of Recall**. Client: its
-    backpack cell reads "recall" and fires immediately.
 - **Keybindings** — `I` or `C` toggles the character panel, `Esc` closes it (a genuine
   no-op while already closed, never a toggle); both share the control keys'
   typing-focus guard (`client/src/input/keys.ts`), so typing "i"/Escape into
@@ -1220,7 +1210,7 @@ roll, so it is ARPG-legal on jewelry.
   under one mutex; per-domain turn loops). Coalescing hub: a tick means
   "fetch latest state", never a delta.
 - **Wire**: POST `/api/join`, `/api/intent`
-  (move/attack/equip/unequip/drop/pickup/drink/learn-skill/use-skill/recall), `/api/chat`,
+  (move/attack/equip/unequip/drop/pickup/drink/learn-skill/use-skill), `/api/chat`,
   `/api/token-check` (`TokenCheckRequest`/`TokenCheckResponse` — read-only
   "would this token still reclaim a character?", the start screen's pre-flight;
   a POST body, never a URL parameter, because the token is a bearer secret);
@@ -1729,7 +1719,7 @@ roll, so it is ARPG-legal on jewelry.
 | `TURN_INTERVAL` | `4s` | world-turn period (tests shrink it) |
 | `HEARTBEAT_INTERVAL` | `15s` | SSE keep-alive cadence |
 | `MONSTER_COUNT` | `0` | monsters spawned at startup |
-| `STARTER_CONSUMABLES` | `""` (none) | comma-separated consumable ids granted into every **new** player's backpack at join (#271); each id must be a registered consumable or the world fails loud at startup. Empty in production; used by the recall e2e to deterministically hand a fresh player a scroll |
+| `STARTER_CONSUMABLES` | `""` (none) | comma-separated consumable ids granted into every **new** player's backpack at join; each id must be a registered consumable or the world fails loud at startup. Empty in production. Added for #271's two consumables, which were removed in #352 — the knob is content-agnostic and kept for future starter kits |
 | `COMBAT_PATIENCE` | `30s` | bubble AFK fallback before auto-resolve |
 | `BUBBLE_POLL` | `100ms` | control-loop poll (must be < TURN_INTERVAL) |
 | `DISCONNECT_GRACE` | `20s` | despawn delay for disconnected players |

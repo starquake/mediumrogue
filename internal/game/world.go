@@ -190,9 +190,6 @@ var (
 	ErrItemNotEquipped = errors.New("item is not equipped")
 	// ErrNotDrinkable rejects a drink intent naming a non-consumable item.
 	ErrNotDrinkable = errors.New("item is not drinkable")
-	// ErrNotRecallable rejects a recall intent naming an item that is not a
-	// recall consumable (a scroll of recall) — #271. Also a 422.
-	ErrNotRecallable = errors.New("item is not a recall scroll")
 	// ErrNotEquippable rejects an equip intent naming an item whose type has
 	// no equip slot at all (a consumable — drink, not equip, is its action).
 	// Class gates are gone (gear keystone, #56): anyone may equip anything
@@ -315,11 +312,6 @@ type entity struct {
 	activeSkill        string
 	activeTarget       *protocol.Hex
 	activeTargetEntity int64
-	// recallItem is this turn's queued recall (#271): the owned recall
-	// consumable's instance id, or 0 for none. Resolved in the move phase
-	// (resolveRecallsLocked) as a teleport to a safe sanctuary hex, reusing the
-	// Evade teleport path. Transient; never snapshotted, cleared on death.
-	recallItem int64
 	// path is the remaining route (steps excluding the current hex), consumed
 	// one hex per turn. Empty when the entity is idle.
 	path []protocol.Hex
@@ -1381,11 +1373,14 @@ func (w *World) sweepDisconnectedLocked(now time.Time) bool {
 //
 // The distinction decides whether a standing auto-walk survives (#343). An
 // inventory swap or a draught mid-walk is normal and must not stop you; aiming
-// a skill, an attack or a throw is "do this instead", and the walk is over
-// whatever the server then answers.
+// a skill or an attack is "do this instead", and the walk is over whatever the
+// server then answers.
+//
+// It also listed throw and recall until #352 removed both — if a targeted
+// consumable ever returns, it belongs here.
 func redirectsAction(kind string) bool {
 	switch kind {
-	case protocol.IntentUseSkill, protocol.IntentAttack, protocol.IntentThrow, protocol.IntentRecall:
+	case protocol.IntentUseSkill, protocol.IntentAttack:
 		return true
 	default:
 		return false
@@ -1426,8 +1421,6 @@ func (w *World) dispatchIntentLocked(e *entity, req protocol.IntentRequest) erro
 		return w.learnSkillLocked(e, req.SkillID)
 	case protocol.IntentUseSkill:
 		return w.useSkillLocked(e, req.SkillID, req.Target, req.TargetEntityID)
-	case protocol.IntentRecall:
-		return w.queueRecallLocked(e, req.ItemID)
 	default:
 		return ErrInvalidIntentKind
 	}
@@ -1467,7 +1460,6 @@ func (w *World) queueMoveLocked(e *entity, target protocol.Hex) error {
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
 	e.pending = pendingItemAction{}
-	e.recallItem = 0 // #271: a move cancels a queued throw/recall.
 
 	return nil
 }
@@ -1555,7 +1547,6 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 		e.attackTarget = nil
 		e.path = nil
 		e.pending = pendingItemAction{}
-		e.recallItem = 0 // #271
 
 		return nil
 	}
@@ -1582,7 +1573,6 @@ func (w *World) queueAttackLocked(e *entity, target protocol.Hex, targetEntityID
 	e.attackTarget = &t
 	e.path = nil
 	e.pending = pendingItemAction{}
-	e.recallItem = 0 // #271
 
 	return nil
 }
@@ -2366,7 +2356,6 @@ func (w *World) movePhaseLocked(
 	w.resolveActivesLocked(byHex, members, attacked)
 	// Recall (#271) is a teleport like Evade — resolved here alongside actives,
 	// before ordinary movement, reusing the same teleport mechanism.
-	w.resolveRecallsLocked(byHex, members, attacked)
 
 	movers := make([]*entity, 0, len(members))
 
@@ -3153,7 +3142,6 @@ func (w *World) resolveDeathsLocked(rng *mrand.Rand, members []*entity) ([]*mons
 		e.hp = e.maxHP
 		e.path = nil
 		e.pending = pendingItemAction{}
-		e.recallItem = 0 // #271: no queued throw/recall on a fresh body.
 		// A respawn is a fresh body: lingering poison/buff effects (#271) do
 		// not carry over the death that reset the HP bar.
 		e.effects = nil
@@ -3888,7 +3876,6 @@ func itemViewOf(inst itemInstance, slot string, count int) protocol.ItemView {
 		Stats:    statViewsFor(def),
 		Flavor:   def.flavor,
 		Equipped: equipped, Count: count,
-		Recall: def.recall,
 	}
 }
 

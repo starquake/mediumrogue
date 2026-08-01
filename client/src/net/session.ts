@@ -14,7 +14,6 @@ import {
   IntentEquip,
   IntentLearnSkill,
   IntentPickup,
-  IntentRecall,
   IntentUnequip,
   IntentUseSkill,
 } from "../protocol.gen";
@@ -555,11 +554,6 @@ export async function submitUseSkill(
 }
 
 /**
- * Uses an owned scroll of recall (#271) — teleports the user to a safe hex in
- * the shared sanctuary. No target hex (recall is self-targeted); the scroll is
- * consumed at resolution.
- */
-/**
  * Drinks one of the two always-available draughts (#322). No item id and no
  * target: there is nothing to own and nothing to aim at — the only gate is the
  * draught's own cooldown, which the server holds. A refusal surfaces through
@@ -581,18 +575,3 @@ export async function submitQuaff(
   });
 }
 
-export async function submitRecall(
-  identity: Pick<Identity, "entityId" | "token">,
-  itemId: number,
-): Promise<boolean> {
-  return postIntent({
-    entityId: identity.entityId,
-    token: identity.token,
-    target: { q: 0, r: 0 },
-    kind: IntentRecall,
-    itemId,
-    groundItemId: 0,
-    targetEntityId: 0,
-    skillId: "",
-  });
-}

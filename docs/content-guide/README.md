@@ -147,7 +147,6 @@ any digit in flavour.
 | **Padded Boots**<br>`padded-boots` | boots | — | — | — | melee | — | — | −25% Aggro Range<br> |
 | **Pilgrim's Mantle**<br>`pilgrims-mantle` | chest | — | — | — | melee | — | — | +50% Chaos Resistance<br> |
 | **Ring of Precision**<br>`ring-of-precision` | ring | — | — | — | melee | — | — | 10% chance ×2 Damage<br> |
-| **Scroll of Recall**<br>`scroll-of-recall` | consumable | — | — | — | melee | — | — | Recall to safety<br> |
 | **Shortbow**<br>`shortbow` | weapon | sharp | ranged | 4 | 4 | — | — | Damage 4<br>Range 4<br> |
 | **Vampiric Blade**<br>`vampiric-blade` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>+25% Lifesteal<br> |
 | **Venom Fang**<br>`venom-fang` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+4 Damage vs Full HP<br> |

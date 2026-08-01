@@ -82,11 +82,6 @@ type itemDef struct {
 	// timed effect from the drinker (a poison DoT) while leaving buffs intact —
 	// an Antivenom (#271, slice 2, clearHarmfulEffectsLocked). Consumables only.
 	cleansesHarmful bool
-	// recall marks a CONSUMABLE that, on use (IntentRecall), teleports the user
-	// to a safe sanctuary hex — a scroll of recall (#271). Pure data,
-	// consumables only (validateRecall). Distinct from the throw payload: recall
-	// targets the user, needs no aim hex, and reuses the Evade teleport path.
-	recall bool
 }
 
 // hasTag reports whether this def's weapon tags include tag (always false
@@ -702,9 +697,7 @@ const (
 // scroll — the proof consumers of the new targeted-action path. Named here for
 // the usual reason (registry + starter-kit config + tests can't drift on a
 // typo).
-const (
-	idScrollOfRecall = "scroll-of-recall"
-)
+const ()
 
 // Starter-drop-set item ids: named the same way as the class-default ids
 // above, and for the same reason — referenced from both the item registry
@@ -917,17 +910,6 @@ func validateItemDefs(defs []*itemDef) {
 		validateRuleCards(def.id, def.rules)
 		validateItemOnHit(def)
 		validateItemAppliesEffect(def)
-		validateRecall(def)
-	}
-}
-
-// validateRecall panics if a non-consumable carries the recall flag (#271):
-// recall is a consumable-only rider (its action, IntentRecall, consumes one
-// unit like a drink). A recall consumable needs no other payload — its whole
-// value is the teleport — which validateConsumablePayload allows.
-func validateRecall(def *itemDef) {
-	if def.recall && def.itemType != protocol.ItemTypeConsumable {
-		panic("game: non-consumable item " + def.id + " must not set recall (recall scrolls are consumables)")
 	}
 }
 
@@ -1104,10 +1086,9 @@ func validateConsumablePayload(def *itemDef) {
 			panic("game: consumable " + def.id + " must not have negative heal")
 		}
 
-		if def.heal == 0 && len(def.appliesEffect) == 0 && !def.cleansesHarmful &&
-			!def.recall {
+		if def.heal == 0 && len(def.appliesEffect) == 0 && !def.cleansesHarmful {
 			panic("game: consumable " + def.id +
-				" does nothing (needs heal, appliesEffect, cleansesHarmful, throw, or recall)")
+				" does nothing (needs heal, appliesEffect, or cleansesHarmful)")
 		}
 
 		return

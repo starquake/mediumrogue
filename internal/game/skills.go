@@ -73,7 +73,7 @@ type activeDef struct {
 	// kind names WHAT this active does. Without it every new active would be
 	// another hardcoded branch at resolution, and the category would become a
 	// switch statement pretending to be a system (#300). Each kind routes to
-	// machinery that already exists for consumables and throwables, so a new
+	// machinery that already exists for consumables and ranged AoE, so a new
 	// active is content rather than engine work.
 	kind string
 	// cooldownTurns is how many turns must pass before it can fire again.
@@ -853,7 +853,6 @@ func (*World) commitActiveLocked(e *entity, id string, target *protocol.Hex, tar
 	e.path = nil
 	e.attackTarget = nil
 	e.attackTargetEntity = 0
-	e.recallItem = 0 // #271
 	e.activeSkill = id
 	e.activeTarget = target
 	e.activeTargetEntity = targetEntityID

@@ -42,7 +42,6 @@ function itemView(overrides: Partial<ItemView>): ItemView {
     flavor: "",
     equipped: false,
     count: 1,
-    recall: false,
     ...overrides,
   };
 }

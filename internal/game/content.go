@@ -726,19 +726,6 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: percentBase + 100}},
 		},
 	},
-
-	// Targeted consumable (#271, slice 5): the recall scroll. The thrown flask
-	// that shipped beside it was removed in #352. Heals 0 and applies nothing on
-	// drink; its whole value is the teleport.
-	{
-		// A scroll of recall: read it and you are gone, whisked to a safe hex in
-		// the shared sanctuary. Reuses the Evade teleport (#161); the destination
-		// is the sanctuary until per-player beds land. An escape tool, not an
-		// attack — no aim, no damage.
-		id: idScrollOfRecall, name: "Scroll of Recall", itemType: protocol.ItemTypeConsumable,
-		flavor: "The long way home, folded into a word.",
-		recall: true,
-	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:

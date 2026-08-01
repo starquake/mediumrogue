@@ -89,8 +89,6 @@ export interface BackpackEntry extends ItemStats {
   name: string;
   type: string;
   count: number;
-  /** A scroll of recall (#271): the cell offers RECALL not drink. */
-  recall: boolean;
 }
 
 /** One row of the per-hex pickup modal. */
@@ -258,7 +256,6 @@ export function setInventory(items: ItemView[]): void {
         name: it.name,
         type: it.type,
         count: it.count,
-        recall: it.recall,
         ...stats,
       };
       next++;

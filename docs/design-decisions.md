@@ -838,9 +838,21 @@ while bubbled, raises weak **Risen** adds on nearby free hexes. The decisions:
   check, no save, no roll to resist the add. The threat is attrition (the swarm),
   not a stat-check.
 
-## Targeted-consumable actions: ~~throw~~ & recall *(built 2026-07-21, #271 slice 5; throw removed 2026-07-31, #352)*
+## ~~Targeted-consumable actions: throw & recall~~ *(built 2026-07-21, #271 slice 5; BOTH removed 2026-08-01, #352)*
 
-> **The throw half was removed in #352.** Its *resolution* was ARPG-clean — AoE
+> **Both halves were removed in #352, in two passes.**
+>
+> **Recall** went second. Its resolution was fine; its *destination* was empty.
+> `SanctuaryRadius` is implemented as exactly one thing — no hostile monster
+> spawns inside it — and its own comment calls it "the seed of a future trade
+> hub". There is no vendor, no stash, no crafting, so a teleport home has
+> nothing to go home *for*: a two-way portal would be machinery for a round trip
+> with nothing at the far end, and a one-way version is just "escape", which
+> evade already covers. Rebuilding it as a universal cooldown-gated mechanic is
+> parked in #355 until the hub exists — at which point the one-way/two-way
+> question answers itself.
+>
+> **The throw half went first.** Its *resolution* was ARPG-clean — AoE
 > always hits, no to-hit roll, damage folded through the pipeline with
 > decoupled `glance%`/`crit%`. Its **economy** was not: the flask was on no drop
 > table, so it was scarce, single-use and hoarded, which is TTRPG texture ("do I

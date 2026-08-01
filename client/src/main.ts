@@ -46,7 +46,6 @@ import {
   submitIntent,
   submitLearnSkill,
   submitPickup,
-  submitRecall,
   submitUnequip,
   submitQuaff,
   submitUseSkill,
@@ -1340,12 +1339,6 @@ async function start(): Promise<void> {
     drink: (itemId: number): void => {
       beginItemAction(itemId);
       void submitDrink(identity, itemId).then(rejectClears(itemId));
-    },
-    // #271: use a scroll of recall — teleport to safety (clock-gated, so it
-    // gets the same pending badge as drink/equip).
-    recall: (itemId: number): void => {
-      beginItemAction(itemId);
-      void submitRecall(identity, itemId).then(rejectClears(itemId));
     },
     close: (): void => applyPanelOpen(false),
   };
