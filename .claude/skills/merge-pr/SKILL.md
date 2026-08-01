@@ -43,6 +43,35 @@ on a blocking check. `deploy-*` jobs that show `skipping` are fine (they don't
 run on PRs). If CI is still running, wait or tell the user; never merge red or
 pending.
 
+## Step 2b — The title must still describe the diff
+
+A squash merge takes the **PR title** as the commit subject, permanently. Read
+it against what the PR now does:
+
+```bash
+gh pr view <n> --json title,files -q '.title + "\n" + ([.files[].path] | join("\n"))'
+```
+
+If the scope changed after the PR was opened — widened, narrowed, redirected —
+the title almost certainly did not follow, because nothing forces it to.
+
+```bash
+gh pr edit <n> --title "<what it actually does>"
+```
+
+(2026-08-01: #354 was opened as *"remove the thrown consumable, **keep the
+recall scroll**"*, then widened on the maintainer's instruction to remove recall
+too. The title was never updated, so `d137f08` on `main` now says it keeps a
+thing it deletes. The body was correct — both commit messages survived the
+squash — but `git log --oneline` reads the opposite of the truth, and shared
+history cannot be rewritten to fix it.)
+
+The general form, which is why this sits beside the label and CI checks:
+**anything that becomes immutable at merge is verified AT merge**, not when it
+was written. The label can be withdrawn, CI can go stale on a push, and the
+title can be outrun by its own diff — all three are re-read at the last moment
+for the same reason.
+
 ## Step 3 — Rebase if the branch is behind main
 
 If `mergeStateStatus` is `BEHIND`/`DIRTY` or `mergeable` is `CONFLICTING`, the
@@ -58,7 +87,8 @@ branch needs to be brought up to date. **How depends on who owns the branch:**
   ```
   A force-push **re-triggers CI and can drop the `ready to merge` label** — so
   after it, go back to Step 1 (re-verify the label) and Step 2 (wait for CI)
-  before merging.
+  before merging. If resolving conflicts changed what the PR does, Step 2b
+  applies again too.
 
 - **A dependabot PR** — do NOT rebase it by hand. Post a comment and let
   dependabot rebase + re-run CI:
