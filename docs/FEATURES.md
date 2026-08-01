@@ -149,6 +149,14 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   server-side like any unreachable target (accepted false positive). Drawn under
   the attack layer; `window.game.hoverMoveTile` (`{ hex, kind: "walk" | "wait" }`
   or null) / `.hoverTile(q, r)`.
+- **A redirecting action cancels a queued auto-walk, accepted or not** (#343):
+  aiming a skill, an attack, a throw or a recall means "do this instead", so
+  the standing route is dropped at submit — *before* validation. Previously
+  only the accept paths cleared it, so a refused action (out of range, on
+  cooldown, target gone) told you it had failed and then walked you the old way
+  anyway. **Incidental intents deliberately do NOT cancel a walk**: equipping,
+  dropping, picking up or drinking while travelling is normal and leaves the
+  route intact.
 - **Entering a combat bubble hard-cancels a queued auto-walk** (#103): the
   server clears the remaining route — down to and including its **last hex**
   (#117: a single-step exemption, a leftover from the pre-#116 melee-bump
