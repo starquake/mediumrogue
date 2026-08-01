@@ -44,6 +44,35 @@ the needs build now?"* The rule was already here; the build being large and
 architectural is exactly when the pull to re-ask is strongest and must be
 resisted.)
 
+**But a work state is not a promise that the ticket is workable.** The rule
+above is about not re-asking for *permission*; it is not licence to invent
+content the ticket does not contain. When a ticket in a work state lacks the
+information to do the work — an empty body, a symptom with no reproduction, a
+title and nothing else — the honest step is back to `Your input` with
+**specific** questions, having first done every bit of investigation that does
+not need the answer.
+
+The distinction is what you are asking for. "Shall I start?" is re-inventing a
+gate. "I looked, here is what I found, and here are the two facts only you have"
+is the work. Do the investigation first either way: a question that arrives with
+findings attached is worth answering, one that arrives empty is just the ticket
+handed back.
+
+(2026-07-31: #315 sat in `Spec` with an EMPTY body — the title was the whole
+report. Reading the client found a genuine asymmetry (a move clears a committed
+attack, an attack never clears the destination ring), but three attempts to
+reproduce the reported behaviour failed, each for a different reason. Writing a
+spec would have meant inventing the bug's shape; fixing on the reading alone
+would have meant guessing which of two similar markers the maintainer saw. It
+went back with the finding, the failed attempts, and two questions.)
+
+**Do not ship a fix on a reading-only diagnosis when the reproduction fails.**
+This is the flake rule generalised past flakes: reading the code tells you what
+CAN happen, not what DID. If the repro will not come, say so plainly, publish
+the mechanism you found, and let the maintainer confirm the shape before code
+changes. A confident fix for the wrong mechanism closes the ticket and leaves
+the bug.
+
 ## The autonomy contract — do not cross
 
 - **Never decide design direction.** Open questions are surfaced TO the
@@ -68,6 +97,28 @@ resisted.)
 - **At most ONE build per pass** (see the cap).
 
 ## The pass
+
+**Standing authorised work goes first.** Before anything else, read **every**
+work lane — `Build`, then `Plan`, then `Spec` — and work from there. All three
+are work states, all three are yours, and none of them needs further
+permission. A spec waiting to be written is standing work exactly as a build
+is, and it is the easiest to leave sitting precisely because nothing about it
+feels urgent.
+
+Work does not earn priority by being *new*: a ticket filed five minutes ago, a
+request that just arrived, a failure you happened to notice are all louder than
+a card that has been parked since yesterday, and loudness is not precedence.
+
+The exceptions are real but must be *named as exceptions* rather than assumed:
+a red `main`, a PR carrying `ready to merge`, and a direct maintainer request in
+chat all pre-empt. Everything else queues behind the lane.
+
+(2026-07-31: #318 and #333 sat in `Build`, and #315 in `Spec` — authorised,
+ungated, nobody's court but Claude's — for an entire session, while three
+reactive builds landed ahead of them. Every one was justifiable alone; the pattern was not. The maintainer
+had to ask why the lane was untouched. The monitor could not help: it fires on
+*transitions*, so a card that moved to `Build` an hour ago is silent forever
+after — see the standing-queue heartbeat in the Monitor section.)
 
 1. **Enumerate.** `gh issue list --state open`, `gh pr list --state open`, and a
    recently-closed sweep for comments that landed after close. Drop anything
@@ -303,57 +354,99 @@ outside the agent's context, and only a printed line wakes anyone. Quiet
 minutes cost **nothing**, and reaction time drops from tens of minutes to
 about one.
 
-Arm one at the start of a loop session (persistent, so it lives as long as
-the session), watching the **three** things a pass acts on unprompted — a new
-maintainer comment, a PR newly carrying `ready to merge`, and a card moving
-to a new **Status**:
+Arm one at the start of a loop session (persistent, so it lives as long as the
+session). The list of what it watches is not a matter of taste — it is derived
+from **what the pass acts on**, and every omission has cost a real miss:
+
+| signal | why the pass cares |
+|---|---|
+| issue/PR conversation comments | the maintainer's answers and go-signals |
+| **PR review comments** | inline diff feedback — a *different* endpoint |
+| `ready to merge` | the only merge authorisation |
+| `hold` added / lifted | an override that stops or releases work |
+| board **Status** transitions | a move to `Build` authorises a build |
+| **`main` going red** | pre-empts everything else in the pass |
+| an open PR going red | after its build stopped watching CI |
+| **standing work lanes** (level-triggered) | authorised work that is merely *waiting* |
 
 ```bash
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-prev=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
-# Same path board.sh writes its own state changes to; keep them in step.
 SELF="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/mediumrogue-board-selfset}"
-# One point per call. See the rate-limit note below for why this is NOT
-# `board.sh list`.
 GQ='{ user(login:"<owner>"){ projectV2(number:<n>){ items(first:100){ nodes{
   content{ ... on Issue { number } }
   fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
 }}}}}'
-prev_s=$(gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
-  | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n)
+# NO `|| true` on a snapshot. A failed call must FAIL, so the caller can skip
+# the diff — see "a failed poll is not an empty board" below.
+snap_board(){ gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
+  | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n; }
+snap_label(){ gh pr list --state open --label "$1" --json number -q '.[].number' 2>/dev/null | sort; }
+snap_hold(){ gh issue list --state open --label hold --json number -q '.[].number' 2>/dev/null | sort; }
+# statusCheckRollup in ONE call: which open PRs are red, rather than per-PR polling.
+snap_prci(){ gh pr list --state open --json number,statusCheckRollup \
+  -q '.[] | select([.statusCheckRollup[]?|select(.conclusion=="FAILURE")]|length > 0) | .number' 2>/dev/null | sort || true; }
+snap_main(){ gh run list --branch main --workflow CI --limit 1 \
+  --json conclusion -q '.[0].conclusion // "none"' 2>/dev/null || echo none; }
+
+prev_s=$(snap_board); prev_l=$(snap_label "ready to merge"); prev_h=$(snap_hold)
+prev_ci=$(snap_prci); prev_main=$(snap_main); ticks=0
 while true; do
   sleep 60
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-  # Human comments anywhere in the repo; ours carry the bot header and are skipped.
+  # 1. Human comments — issue AND pull-request CONVERSATION comments.
   gh api "repos/<owner>/<repo>/issues/comments?since=$since&per_page=30" \
     --jq '.[] | select((.body | startswith("> 🤖")) | not)
           | "COMMENT on #\(.issue_url | split("/") | last): \(.body | gsub("\n"; " ") | .[0:120])"' 2>/dev/null || true
 
-  # DIFFED against last cycle, or a labelled PR re-fires every minute and the
-  # monitor gets auto-stopped for noise.
-  cur=$(gh pr list --state open --label "ready to merge" --json number -q '.[].number' 2>/dev/null | sort)
-  # grep keeps ONLY real numbers: when the labelled set empties, `echo ""`
-  # feeds comm a blank line that it reports as new, emitting a bogus
-  # "READY TO MERGE: PR #" with no number.
-  comm -13 <(echo "$prev") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
-  prev=$cur
+  # 2. PR REVIEW comments live on a DIFFERENT endpoint — inline diff feedback is
+  #    invisible to the poll above, however many comments it returns.
+  gh api "repos/<owner>/<repo>/pulls/comments?since=$since&per_page=30" \
+    --jq '.[] | select((.body | startswith("> 🤖")) | not)
+          | "REVIEW COMMENT on \(.pull_request_url | split("/") | last) \(.path):\(.line // 0): \(.body | gsub("\n"; " ") | .[0:100])"' 2>/dev/null || true
 
-  # EVERY transition, not just Build — report old -> new so direction is visible.
-  # Moves WE made are skipped: board.sh state records them in $SELF, and each
-  # entry is consumed once. Without this, every state set during a pass wakes
-  # the agent a minute later to report its own write.
-  cur_s=$(gh api graphql -f query="$GQ" --jq '.data.user.projectV2.items.nodes[]
-    | select(.content.number != null) | "\(.content.number)|\(.fieldValueByName.name // "none")"' 2>/dev/null | sort -n || true)
+  # 3. `ready to merge`, diffed — emitting the whole set every cycle would spam.
+  if cur=$(snap_label "ready to merge"); then
+    comm -13 <(echo "$prev_l") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
+    prev_l=$cur
+  fi
+
+  # 4. `hold` is an override that STOPS work — both directions matter.
+  if cur=$(snap_hold); then
+    comm -13 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD ADDED: #/' || true
+    comm -23 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD LIFTED: #/' || true
+    prev_h=$cur
+  fi
+
+  # 5. main going red. The pass treats this as pre-empting everything, so not
+  #    watching it means the maintainer is the detector — which is what happened.
+  cur=$(snap_main)
+  [ "$cur" != "$prev_main" ] && [ "$cur" = "failure" ] && echo "MAIN IS RED: CI failed on main"
+  [ "$cur" != "$prev_main" ] && [ "$prev_main" = "failure" ] && [ "$cur" = "success" ] && echo "main is green again"
+  prev_main=$cur
+
+  # 6. An open PR going red AFTER its build watched CI to completion.
+  cur=$(snap_prci)
+  comm -13 <(echo "$prev_ci") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/PR CI RED: #/' || true
+  prev_ci=$cur
+
+  # 7. Board Status, every transition, old -> new. Moves WE made are skipped:
+  #    board.sh records them, and each entry is consumed once so a later genuine
+  #    move to the same state still fires.
+  # Skip the whole board block if the query failed: an empty snapshot would
+  # read as "every card vanished", then as "every card is new" on recovery.
+  if ! cur_s=$(snap_board); then
+    since=$now
+    continue
+  fi
+
   printf '%s\n' "$cur_s" | while IFS='|' read -r n st; do
     [ -z "$n" ] && continue
     was=$(printf '%s\n' "$prev_s" | awk -F'|' -v k="$n" '$1==k{print $2}')
     [ "$was" = "$st" ] && continue
     if [ -f "$SELF" ] && grep -qxF "$n|$st" "$SELF"; then
-      # Ours. Consume the entry so a LATER move to the same state still fires.
-      # `|| true` is load-bearing: removing the only line makes grep -v select
-      # nothing and exit 1, so `&& mv` would silently never run and the entry
-      # would suppress that state forever.
+      # `|| true`: grep -v exits 1 when it removes the only line, and `&& mv`
+      # would then silently never run, suppressing that state forever.
       grep -vxF "$n|$st" "$SELF" > "$SELF.tmp" || true
       mv "$SELF.tmp" "$SELF"
       continue
@@ -363,9 +456,29 @@ while true; do
   done
   prev_s=$cur_s
 
+  # 8. LEVEL-TRIGGERED heartbeat. Everything above fires on a CHANGE and is
+  #    blind to work that is merely waiting. Every ~30 cycles, name what stands
+  #    in the work lanes; silent when they are empty.
+  ticks=$((ticks + 1))
+  if [ $((ticks % 30)) -eq 0 ]; then
+    waiting=""
+    for lane in Build Plan Spec; do
+      ids=$(printf '%s\n' "$cur_s" | awk -F'|' -v L="$lane" '$2==L{printf "#%s ", $1}')
+      [ -n "$ids" ] && waiting="$waiting$lane: $ids"
+    done
+    [ -n "$waiting" ] && echo "STANDING work, outranks anything newly arrived — $waiting"
+  fi
+
   since=$now
 done
 ```
+
+Deriving the list from the pass is the whole discipline. Three separate misses
+came from watching a subset — a comment poll omitted (#199), Status omitted
+(#313), the standing lanes and then `Spec` alone omitted (#347) — and each time
+the monitor looked perfectly healthy while something sat unread. The cost of an
+extra poll is one REST call a minute; the cost of a missing one is silence that
+is indistinguishable from calm.
 
 Things that make it behave:
 
@@ -384,6 +497,19 @@ Things that make it behave:
   *out* of a work state is a stop signal, and a move into a gate is the
   maintainer taking something back. Reporting `old -> new` costs nothing and
   makes the direction readable.
+- **Report EVERY work lane, not just `Build`.** Watching one lane reproduces
+  the original bug one lane over — which is exactly what happened: the first
+  version of this heartbeat greped `Build` alone, while #315 sat in `Spec`,
+  unworked, through the very session that prompted the fix. The maintainer
+  caught it with "do you also check the other lanes like Spec?" (2026-07-31).
+- **Report the standing queue, not only changes.** Every other signal here is
+  edge-triggered, which means none of them can see work that is simply
+  *waiting*: a card moved to `Build` an hour ago will never produce another
+  event. Without a level-triggered heartbeat a lane holding two authorised
+  builds is indistinguishable from an empty one, and reactive work wins by
+  default forever (#347, 2026-07-31). Every ~30 cycles is deliberate — often
+  enough that a parked lane resurfaces within the hour, rare enough that it is
+  a heartbeat rather than a nag, and silent when the lanes are empty.
 - **Never report your OWN board writes.** A pass sets several states, and each
   one otherwise wakes the agent a minute later to announce a change it just
   made — turning the cheapest signal into the noisiest. `board.sh state`
@@ -396,8 +522,16 @@ Things that make it behave:
 - **Diff the label set.** Emitting the current set every cycle spams a
   notification per minute for any PR that sits unmerged, and monitors that
   flood get stopped automatically.
-- **`|| true` on every remote call.** One failed request must not kill a
-  session-length watch.
+- **A failed poll is not an empty board.** `|| true` keeps one bad request from
+  killing a session-length watch — the right goal, but applied to a *snapshot*
+  it converts failure into a false **empty set**, and the diff then reports
+  every item as new the moment the API recovers. Verified 2026-08-01, when a
+  transient outage surfaced through the watch: with `prev` holding three PRs and
+  a failed call yielding "", the down-cycle is silent and the **recovery cycle
+  emits `READY TO MERGE` for all three** — none of which carried the label.
+  So: keep `|| true` on anything whose output is *emitted*, and drop it from
+  anything whose output is *compared*, guarding each diff with `if cur=$(snap);
+  then … fi` so a failed cycle leaves `prev` untouched and says nothing.
 - **Filter the diff to real values.** An empty set becomes a blank line, and
   a blank line looks "new" to `comm` — which fired a phantom
   "READY TO MERGE: PR #" the first time a merge emptied the label set
