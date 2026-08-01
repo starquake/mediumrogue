@@ -46,8 +46,6 @@ import {
   submitIntent,
   submitLearnSkill,
   submitPickup,
-  submitRecall,
-  submitThrow,
   submitUnequip,
   submitQuaff,
   submitUseSkill,
@@ -593,7 +591,6 @@ window.game = {
   skillsPanelOpen: false,
   controlsOpen: false,
   armedSkill: (): string | null => null,
-  armedThrow: null,
   startMode: "fresh",
   startOverConfirmOpen: false,
   startBoundAtTiles: -1,
@@ -1343,15 +1340,6 @@ async function start(): Promise<void> {
       beginItemAction(itemId);
       void submitDrink(identity, itemId).then(rejectClears(itemId));
     },
-    // #271: arm a flask's throw — the next map click is the aim hex (armThrow
-    // closes the panel so the map is clickable).
-    arm: (itemId: number): void => armThrow(itemId),
-    // #271: use a scroll of recall — teleport to safety (clock-gated, so it
-    // gets the same pending badge as drink/equip).
-    recall: (itemId: number): void => {
-      beginItemAction(itemId);
-      void submitRecall(identity, itemId).then(rejectClears(itemId));
-    },
     close: (): void => applyPanelOpen(false),
   };
 
@@ -1604,10 +1592,6 @@ async function start(): Promise<void> {
   const actionBarEl = mustGet("action-bar");
   const actionSlotEls = Array.from(actionBarEl.querySelectorAll<HTMLElement>(".aslot"));
   let armedSkill: string | null = null;
-  // #271: the owned flask instance id whose throw is armed — the next map click
-  // becomes its aim hex. Mutually exclusive with armedSkill (arming one cancels
-  // the other). null when nothing is armed to throw.
-  let armedThrow: number | null = null;
 
   // learnedActives is every triggerable skill this player owns, registry order
   // — the pool the four slots are drawn FROM (#304). Five actives exist and
@@ -1720,10 +1704,8 @@ async function start(): Promise<void> {
   };
 
   const cancelArm = (): void => {
-    if (armedSkill !== null || armedThrow !== null) {
+    if (armedSkill !== null) {
       armedSkill = null;
-      armedThrow = null;
-      window.game.armedThrow = null;
       renderActionBar();
       drawSkillRange();
     }
@@ -1734,8 +1716,6 @@ async function start(): Promise<void> {
     if (s === undefined || !s.ready) {
       return; // empty or cooling slot: nothing to arm
     }
-    armedThrow = null; // arming a skill cancels a queued throw
-    window.game.armedThrow = null;
 
     // #300: a self-cast fires on the press; everything else arms. The rule
     // lives in skills/targeting.ts so it is testable.
@@ -1853,34 +1833,7 @@ async function start(): Promise<void> {
   );
   window.game.armedSkill = (): string | null => armedSkill;
 
-  // armThrow arms a flask's throw (#271): the panel closes so the map is
-  // clickable, and the next clickTarget consumes the click as the aim hex.
-  // Arming a throw cancels any armed skill (one thing armed at a time).
-  const armThrow = (itemId: number): void => {
-    armedSkill = null;
-    armedThrow = itemId;
-    window.game.armedThrow = itemId;
-    renderActionBar();
-    applyPanelOpen(false);
-  };
-
   const clickTarget = (target: Hex): Promise<void> => {
-    // #271: an armed throw consumes the next map click as the flask's aim hex.
-    if (armedThrow !== null) {
-      const itemId = armedThrow;
-      armedThrow = null;
-      window.game.armedThrow = null;
-      clearItemPending(); // a real intent replaces a queued in-bubble action
-
-      // The flask's burst (#298). Played on ACCEPT, not on the landing turn,
-      // for the same reason equip/drop/pickup are: it is feedback for the
-      // action you just took. The blast's own damage still arrives as hits
-      // next resolution and sounds like hits.
-      return submitThrow(identity, itemId, target).then((accepted) => {
-        if (accepted) sound.play("blast");
-      });
-    }
-
     // #185: an armed active consumes the next map click as its target.
     if (armedSkill !== null) {
       const skill = armedSkill;
@@ -2530,8 +2483,6 @@ async function start(): Promise<void> {
       }
 
       armedSkill = armedSkill === EVADE_SKILL_ID ? null : EVADE_SKILL_ID;
-      armedThrow = null;
-      window.game.armedThrow = null;
       renderActionBar();
       renderEvadeBall(window.game.evadeReadyIn);
       drawSkillRange();
@@ -2557,7 +2508,7 @@ async function start(): Promise<void> {
       }
     },
     isPanelOpen: (): boolean =>
-      panelOpen() || skillsPanelOpen() || isControlsOverlayOpen() || armedSkill !== null || armedThrow !== null,
+      panelOpen() || skillsPanelOpen() || isControlsOverlayOpen() || armedSkill !== null,
     isBlocked: (): boolean => !startScreenEl.hidden,
   });
 

@@ -119,6 +119,11 @@ spawn (Q9 first half).
 - **Throwables** — G4 (stacking throwables), G5 (multi-mode melee+thrown), Q1
   (thrown weapons). Not a staple ARPG mechanic; no thrown content will ship.
   The `thrown-weapon` type was already deleted by the gear keystone. (2026-07-14)
+
+  *(reaffirmed 2026-07-31, #352)*: this cut was **violated** on 2026-07-21 —
+  #271 slice 5 shipped a thrown flask anyway, and nothing flagged the
+  contradiction at the time. It has been removed and the cut stands. The
+  recall scroll from the same slice stays: it is a self-teleport, not a throw.
 - **Subclasses / hybrids** — SU1 cross-class skill access (#58). Far-future,
   downstream of the whole skill system; cut rather than kept as an indefinite
   vision. The decided direction (subclasses-not-classes, via a class-tree
@@ -833,7 +838,29 @@ while bubbled, raises weak **Risen** adds on nearby free hexes. The decisions:
   check, no save, no roll to resist the add. The threat is attrition (the swarm),
   not a stat-check.
 
-## Targeted-consumable actions: throw & recall *(built 2026-07-21, #271 slice 5)*
+## ~~Targeted-consumable actions: throw & recall~~ *(built 2026-07-21, #271 slice 5; BOTH removed 2026-08-01, #352)*
+
+> **Both halves were removed in #352, in two passes.**
+>
+> **Recall** went second. Its resolution was fine; its *destination* was empty.
+> `SanctuaryRadius` is implemented as exactly one thing — no hostile monster
+> spawns inside it — and its own comment calls it "the seed of a future trade
+> hub". There is no vendor, no stash, no crafting, so a teleport home has
+> nothing to go home *for*: a two-way portal would be machinery for a round trip
+> with nothing at the far end, and a one-way version is just "escape", which
+> evade already covers. Rebuilding it as a universal cooldown-gated mechanic is
+> parked in #355 until the hub exists — at which point the one-way/two-way
+> question answers itself.
+>
+> **The throw half went first.** Its *resolution* was ARPG-clean — AoE
+> always hits, no to-hit roll, damage folded through the pipeline with
+> decoupled `glance%`/`crit%`. Its **economy** was not: the flask was on no drop
+> table, so it was scarce, single-use and hoarded, which is TTRPG texture ("do I
+> spend my one flask?") where ARPG consumables are abundant. The alternative
+> considered was putting it on drop tables to make it plentiful; removal was
+> chosen instead. It also restored the **2026-07-14 cut** above, which #271 had
+> violated without anyone noticing. Everything below describes the throw half as
+> built, and is kept because the recall half still works this way.
 
 The two consumables the `add-content` recipe could not build because the engine
 had no action/targeting path for them: a **throwable flask** (hurled at a hex,

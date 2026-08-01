@@ -95,7 +95,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("SSE_MAX_STREAMS", "3")
 	t.Setenv("TRUST_PROXY_IP", "true")
 	t.Setenv("PER_IP_SSE_STREAMS", "9")
-	t.Setenv("STARTER_CONSUMABLES", " flask-of-fire , scroll-of-recall ,")
+	t.Setenv("STARTER_CONSUMABLES", " healing-potion , minor-salve ,")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -160,7 +160,7 @@ func TestLoadOverrides(t *testing.T) {
 
 	// STARTER_CONSUMABLES parses to trimmed, non-empty ids (the trailing/empty
 	// field and surrounding spaces are dropped) — #271.
-	if got, want := cfg.StarterConsumables, []string{"flask-of-fire", "scroll-of-recall"}; !slices.Equal(got, want) {
+	if got, want := cfg.StarterConsumables, []string{"healing-potion", "minor-salve"}; !slices.Equal(got, want) {
 		t.Errorf("StarterConsumables = %v, want %v", got, want)
 	}
 }

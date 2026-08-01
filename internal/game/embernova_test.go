@@ -16,6 +16,10 @@ import (
 // these pin.
 
 const (
+	// burningEffectID moved here in #352: it used to live beside the thrown
+	// flask's tests, and the nova is now the only thing that applies this DoT.
+	burningEffectID = "burning"
+
 	skillEmberNovaID = "ember-nova"
 	skillKindlerID   = "kindler"
 )

@@ -726,34 +726,6 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: percentBase + 100}},
 		},
 	},
-
-	// Targeted consumables (#271, slice 5): the throwable flask and the recall
-	// scroll — proof consumers of the new targeted-action path. Both heal 0 and
-	// apply nothing on drink; their whole value is the thrown blast / the
-	// teleport.
-	{
-		// A thrown fire flask: shatters on the aim hex, dealing fire damage to
-		// every opposing entity in a 1-hex blast (AoE always hits) and leaving a
-		// short burning DoT on each. Fire, so a fire-vulnerable troll takes it
-		// harder — the damage folds through the same pipeline every hit does.
-		// Reach 4+1 = 5 ≤ CombatRadius (validateMaxReach).
-		id: idFlaskOfFire, name: "Flask of Alchemist's Fire", itemType: protocol.ItemTypeConsumable,
-		flavor: "Do not shake. Do not drop. Do, by all means, throw.",
-		// Authored content: 6 fire in a 1-hex blast at range 4, plus −3/turn burning for 3 turns.
-		throw: &throwPayload{
-			rangeHex: 4, aoeRadius: 1, damage: 6, damageType: protocol.DamageTypeFire,
-			onLand: []appliedEffect{{effectID: idEffectBurning, magnitude: -3, turns: 3}},
-		},
-	},
-	{
-		// A scroll of recall: read it and you are gone, whisked to a safe hex in
-		// the shared sanctuary. Reuses the Evade teleport (#161); the destination
-		// is the sanctuary until per-player beds land. An escape tool, not an
-		// attack — no aim, no damage.
-		id: idScrollOfRecall, name: "Scroll of Recall", itemType: protocol.ItemTypeConsumable,
-		flavor: "The long way home, folded into a word.",
-		recall: true,
-	},
 }
 
 // itemDefByID is the lookup table derived from itemDefs at package init:
