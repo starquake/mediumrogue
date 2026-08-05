@@ -1312,3 +1312,52 @@ func mustValidateContent() {
 		}
 	}
 }
+
+// damageSource is what the damage pipeline actually needs from whatever is
+// dealing the damage: a wielded weapon, natural weapons, or a skill's blast.
+//
+// It replaced a `weapon *itemDef` parameter (#353). That parameter was never
+// really a weapon — it was this set of fields, read off an itemDef because a
+// weapon happened to be the first thing that dealt damage. Anything that was
+// NOT an item therefore had to fabricate one, which meant knowing which fields
+// the callee would touch and zeroing the rest. That contract was invisible:
+// adding a field read inside rollDamageLocked silently gave every fabricator a
+// zero. Now adding a field here is a compile error at every producer.
+type damageSource struct {
+	// id names the source in combat logs (logKeyWeapon). Display only.
+	id string
+	// damageType is the type the deal-damage fold runs under, and what
+	// condDamageType gates on.
+	damageType string
+	// rules are the source's OWN cards. Their position in the fold is
+	// CONTRACTUAL — see rollDamageLocked's comment; moving them shifts every
+	// pinned seed in the repo.
+	rules []ruleCard
+	// onHit are the buffered effect riders applied on a landed hit, so a fresh
+	// DoT first bites next turn.
+	onHit []appliedEffect
+	// tags is what condWeaponTagged gates on ("+10% with melee weapons"). A
+	// skill supplies none, so such a card simply does not fire for it — the
+	// same behaviour the fabricated def gave.
+	tags []string
+	// aoeRadius is the blast radius for sources that splash; 0 is single-target.
+	aoeRadius int
+}
+
+func (d damageSource) hasTag(tag string) bool { return slices.Contains(d.tags, tag) }
+
+// sourceFromItem is the damage source of a wielded item — a weapon, or the
+// natural weapons that stand in for one.
+func sourceFromItem(def *itemDef) damageSource {
+	return damageSource{
+		id: def.id, damageType: def.damageType, rules: def.rules,
+		onHit: def.onHit, tags: def.tags, aoeRadius: def.aoeRadius,
+	}
+}
+
+// sourceFromActive is the damage source of an area-damage active (#300). It
+// carries no tags and no cards of its own: a skill is not a weapon, and its
+// numbers live on the activeDef rather than in rule cards.
+func sourceFromActive(id, damageType string, onHit []appliedEffect, aoeRadius int) damageSource {
+	return damageSource{id: id, damageType: damageType, onHit: onHit, aoeRadius: aoeRadius}
+}

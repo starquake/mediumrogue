@@ -98,7 +98,7 @@ const (
 	// condWeaponTagged (s = a protocol.WeaponTag* value) gates on the weapon
 	// being SWUNG carrying that tag — "+10% with melee weapons" (#124's
 	// Combat Training, the maintainer's chosen scope over damage type). It
-	// reads ctx.weapon, which only rollDamageLocked fills; every other fold
+	// reads ctx.source, which only rollDamageLocked fills; every other fold
 	// leaves it nil and the condition fails closed.
 	//
 	// Deliberately distinct from condDamageType: a tag is how a weapon is
@@ -191,7 +191,7 @@ type ruleCtx struct {
 	// leaves it nil, where a weapon-tag card simply never holds. Kept as the
 	// def (not just its tags) so a future condition can read damage, range,
 	// or two-handedness without another ctx field.
-	weapon       *itemDef
+	source       *damageSource
 	allyInBubble bool
 	rng          *mrand.Rand
 }
@@ -225,7 +225,7 @@ func conditionHolds(c condition, ctx ruleCtx) bool {
 	case condDamageType:
 		return ctx.damageType == c.s
 	case condWeaponTagged:
-		return ctx.weapon != nil && ctx.weapon.hasTag(c.s)
+		return ctx.source != nil && ctx.source.hasTag(c.s)
 	case condShieldEquipped, condDualWielding:
 		return equipmentConditionHolds(c, ctx)
 	default:

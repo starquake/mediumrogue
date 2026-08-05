@@ -2102,9 +2102,9 @@ func (w *World) allyInBubbleLocked(e *entity) bool {
 // close attacker, a real equipped item for ranged, since an empty ranged def
 // list never reaches here — see queueAttackLocked/resolveRangedLocked). Every
 // damage number in the game flows through here. Callers hold w.mu.
-func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weapon *itemDef, base int) int {
+func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, src damageSource, base int) int {
 	ctx := ruleCtx{
-		attacker: attacker, victim: victim, damageType: weapon.damageType, weapon: weapon,
+		attacker: attacker, victim: victim, damageType: src.damageType, source: &src,
 		allyInBubble: w.allyInBubbleLocked(attacker), rng: rng,
 	}
 
@@ -2136,7 +2136,7 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 	// pre-existing source to keep all pinned seeds' positions. Nil for an
 	// attacker wearing no offensive jewelry, so no existing pin can move.
 	attackerCards := slices.Concat(
-		speciesCards(attacker.species), weapon.rules, kindCards(attacker), skillCards(attacker),
+		speciesCards(attacker.species), src.rules, kindCards(attacker), skillCards(attacker),
 		activeEffectCards(attacker), attackerGearCards(attacker),
 	)
 	dealt, dealTrace := applyRulesTraced(evDealDamage, base, attackerCards, ctx)
@@ -2151,7 +2151,7 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 
 	taken, takeTrace := applyRulesTraced(evTakeDamage, dealt, victimCards, ctx)
 
-	w.recordHitOutcomeLocked(attacker, victim, weapon, taken, dealTrace, takeTrace)
+	w.recordHitOutcomeLocked(attacker, victim, src, taken, dealTrace, takeTrace)
 
 	return taken
 }
@@ -2162,7 +2162,7 @@ func (w *World) rollDamageLocked(rng *mrand.Rand, attacker, victim *entity, weap
 // contractual fold order above stays in one piece. Consumes no rng, so it
 // cannot move a pinned seed.
 func (w *World) recordHitOutcomeLocked(
-	attacker, victim *entity, weapon *itemDef, taken int, dealTrace, takeTrace ruleTrace,
+	attacker, victim *entity, src damageSource, taken int, dealTrace, takeTrace ruleTrace,
 ) {
 	// #114: record the hit for the turn bundle's Hits view. Crit is the
 	// ATTACKER-side moment (a chance-conditioned boost fired in the
@@ -2184,7 +2184,7 @@ func (w *World) recordHitOutcomeLocked(
 	// must not fold into the same turn's later hits, and a DoT must not drain
 	// the turn it lands. A weapon with no onHit (all but the #271 proof
 	// consumers) appends nothing.
-	w.pendingEffects = collectOnHitEffects(w.pendingEffects, attacker, victim, weapon)
+	w.pendingEffects = collectOnHitEffects(w.pendingEffects, attacker, victim, src)
 
 	// Lifesteal (#271): a deal-damage rider read from the trace, not a transform
 	// of the damage. The attacker heals for lifestealPct% of the damage the
@@ -2530,12 +2530,11 @@ func (w *World) resolveActiveBlastsLocked(
 			onHit = []appliedEffect{*a.effect}
 		}
 
-		wpn := &itemDef{id: def.id, name: def.name, damageType: a.damageType, onHit: onHit}
-
 		w.logger.Info(combatLogMsg, logKeyEvent, "active", "skill", id, logKeyID, e.id,
 			"target", target, "radius", a.aoeRadius)
 
-		w.resolveAoELocked(rng, byHex, e, wpn, target, a.aoeRadius, a.damage, damage)
+		src := sourceFromActive(def.id, a.damageType, onHit, a.aoeRadius)
+		w.resolveAoELocked(rng, byHex, e, src, target, a.aoeRadius, a.damage, damage)
 		w.startActiveCooldownLocked(e, id, a)
 	}
 }
@@ -2624,7 +2623,7 @@ func (w *World) attackLocked(rng *mrand.Rand, byHex map[protocol.Hex][]*entity, 
 		// rng consumption deterministic.
 		for _, weapon := range meleeDefsFor(a.attacker) {
 			base := itemDamage(weapon)
-			dealt := w.rollDamageLocked(rng, a.attacker, victim, weapon, base)
+			dealt := w.rollDamageLocked(rng, a.attacker, victim, sourceFromItem(weapon), base)
 			damage[victim.id] += dealt
 
 			w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, a.attacker.id, logKeyVictim, victim.id,
@@ -2803,12 +2802,12 @@ func (w *World) resolveGroundTargetedLocked(
 				picked = true
 			}
 
-			w.resolveBowLocked(rng, e, def, victim, dmg, damage)
+			w.resolveBowLocked(rng, e, sourceFromItem(def), victim, dmg, damage)
 
 			continue
 		}
 
-		w.resolveAoELocked(rng, byHex, e, def, target, def.aoeRadius, dmg, damage)
+		w.resolveAoELocked(rng, byHex, e, sourceFromItem(def), target, def.aoeRadius, dmg, damage)
 	}
 }
 
@@ -2892,7 +2891,7 @@ func (w *World) resolveEntityTargetedLocked(
 	if HexDistance(attacker.hex, victim.hex) == 1 {
 		for _, weapon := range meleeDefsFor(attacker) {
 			base := itemDamage(weapon)
-			dealt := w.rollDamageLocked(rng, attacker, victim, weapon, base)
+			dealt := w.rollDamageLocked(rng, attacker, victim, sourceFromItem(weapon), base)
 			damage[victim.id] += dealt
 
 			w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, victim.id,
@@ -2912,18 +2911,19 @@ func (w *World) resolveEntityTargetedLocked(
 
 	for _, weapon := range defs {
 		dmg := itemDamage(weapon)
+		wsrc := sourceFromItem(weapon)
 
 		if weapon.aoeRadius == 0 {
-			dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+			dealt := w.rollDamageLocked(rng, attacker, victim, wsrc, dmg)
 			damage[victim.id] += dealt
 
 			w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, victim.id,
-				logKeyWeapon, weapon.id, logKeyBase, dmg, logKeyDealt, dealt)
+				logKeyWeapon, wsrc.id, logKeyBase, dmg, logKeyDealt, dealt)
 
 			continue
 		}
 
-		w.resolveAoELocked(rng, byHex, attacker, weapon, victim.hex, weapon.aoeRadius, dmg, damage)
+		w.resolveAoELocked(rng, byHex, attacker, wsrc, victim.hex, weapon.aoeRadius, dmg, damage)
 	}
 }
 
@@ -2952,17 +2952,17 @@ func (*World) stackVictimLocked(
 // against victim (already picked — stackVictimLocked); a nil victim (empty or
 // friendly-only target hex) is a no-op. Callers hold w.mu.
 func (w *World) resolveBowLocked(
-	rng *mrand.Rand, attacker *entity, weapon *itemDef, victim *entity, dmg int, damage map[int64]int,
+	rng *mrand.Rand, attacker *entity, src damageSource, victim *entity, dmg int, damage map[int64]int,
 ) {
 	if victim == nil {
 		return
 	}
 
-	dealt := w.rollDamageLocked(rng, attacker, victim, weapon, dmg)
+	dealt := w.rollDamageLocked(rng, attacker, victim, src, dmg)
 	damage[victim.id] += dealt
 
 	w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, victim.id,
-		logKeyWeapon, weapon.id, logKeyBase, dmg, logKeyDealt, dealt)
+		logKeyWeapon, src.id, logKeyBase, dmg, logKeyDealt, dealt)
 }
 
 // resolveAoELocked accumulates AoE ranged damage: dmg to every opposing-faction
@@ -2976,7 +2976,7 @@ func (w *World) resolveBowLocked(
 // Callers hold w.mu.
 func (w *World) resolveAoELocked(
 	rng *mrand.Rand, byHex map[protocol.Hex][]*entity,
-	attacker *entity, weapon *itemDef, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
+	attacker *entity, src damageSource, target protocol.Hex, aoeRadius, dmg int, damage map[int64]int,
 ) {
 	var victims []*entity
 
@@ -2991,11 +2991,11 @@ func (w *World) resolveAoELocked(
 	slices.SortFunc(victims, byEntityID)
 
 	for _, o := range victims {
-		dealt := w.rollDamageLocked(rng, attacker, o, weapon, dmg)
+		dealt := w.rollDamageLocked(rng, attacker, o, src, dmg)
 		damage[o.id] += dealt
 
 		w.logger.Info(combatLogMsg, logKeyEvent, combatEventAttack, logKeyAttacker, attacker.id, logKeyVictim, o.id,
-			logKeyWeapon, weapon.id, logKeyBase, dmg, logKeyDealt, dealt)
+			logKeyWeapon, src.id, logKeyBase, dmg, logKeyDealt, dealt)
 	}
 }
 

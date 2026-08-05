@@ -301,8 +301,8 @@ type pendingEffectApply struct {
 // each to the attacker (toSelf) or the victim. A weapon with no onHit riders —
 // every weapon in the game today except the two #271 proof consumers — appends
 // nothing, so this is a no-op on the hot path.
-func collectOnHitEffects(acc []pendingEffectApply, attacker, victim *entity, weapon *itemDef) []pendingEffectApply {
-	for _, ae := range weapon.onHit {
+func collectOnHitEffects(acc []pendingEffectApply, attacker, victim *entity, src damageSource) []pendingEffectApply {
+	for _, ae := range src.onHit {
 		target := victim
 		if ae.toSelf {
 			target = attacker
