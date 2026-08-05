@@ -93,20 +93,111 @@ func (c *Client) Submit(ctx context.Context, req protocol.IntentRequest) error {
 	return nil
 }
 
+// Event is one thing the world told us: a resolved turn, or a chat line.
+//
+// Both arrive on the same SSE stream and a bot needs both — a party INVITE is
+// announced only as chat (party.go), with no field on the bundle to read — so
+// splitting them into two subscriptions would mean two streams and two
+// presences for one player.
+type Event struct {
+	// Turn is set for a resolved world turn; Chat is nil.
+	Turn *protocol.TurnEvent
+	// Chat is set for a chat line; Turn is nil.
+	Chat *protocol.ChatMessage
+}
+
 // Turns streams resolved turn bundles until ctx is cancelled or the stream
 // drops. Heartbeat frames are consumed and not surfaced: they exist to keep the
 // connection warm, and a bot has nothing to do with one.
 //
 // The channel is closed when the stream ends, so a caller ranging over it
 // learns about a disconnect by the range finishing.
+//
+// Chat is dropped here. Use Events for a bot that needs it.
 func (c *Client) Turns(ctx context.Context) (<-chan protocol.TurnEvent, error) {
-	// The token goes on the query string, exactly as the browser does it
-	// (client/src/net/events.ts). It does two things, and BOTH were missing
-	// while this connected anonymously: it selects the VIEWER, so own-only
-	// fields (cooldowns, energy, skills) are populated rather than zero — a bot
-	// reading a zeroed HealthPotionReadyIn quaffs on cooldown forever — and it
-	// registers the stream for presence, so the bot is a connected player
-	// rather than one silently running down its disconnect grace.
+	//nolint:bodyclose // closed by the streaming goroutine below.
+	resp, err := c.openStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan protocol.TurnEvent)
+
+	go func() {
+		defer close(out)
+		defer func() { _ = resp.Body.Close() }()
+
+		scanFrames(bufio.NewReader(resp.Body), func(ev Event) bool {
+			if ev.Turn == nil {
+				return true // chat: not this subscription's business
+			}
+
+			select {
+			case out <- *ev.Turn:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		})
+	}()
+
+	return out, nil
+}
+
+// Events is Turns plus chat, for a bot that must react to what players say —
+// accepting a party invite, above all.
+func (c *Client) Events(ctx context.Context) (<-chan Event, error) {
+	//nolint:bodyclose // closed by the streaming goroutine below.
+	resp, err := c.openStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan Event)
+
+	go func() {
+		defer close(out)
+		defer func() { _ = resp.Body.Close() }()
+
+		scanFrames(bufio.NewReader(resp.Body), func(ev Event) bool {
+			select {
+			case out <- ev:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		})
+	}()
+
+	return out, nil
+}
+
+// Say sends a chat line — including the slash verbs, which is how a bot
+// accepts a party invite.
+func (c *Client) Say(ctx context.Context, text string) error {
+	resp, err := c.post(ctx, "/api/chat", protocol.ChatRequest{Token: c.identity.Token, Text: text})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("%w: chat: status %d", ErrIntentRejected, resp.StatusCode)
+	}
+
+	return nil
+}
+
+// openStream opens the SSE connection.
+//
+// The token goes on the query string, exactly as the browser does it
+// (client/src/net/events.ts). It does two things, and BOTH were missing while
+// this connected anonymously: it selects the VIEWER, so own-only fields
+// (cooldowns, energy, skills) are populated rather than zero — a bot reading a
+// zeroed HealthPotionReadyIn quaffs on cooldown forever — and it registers the
+// stream for presence, so the bot is a connected player rather than one
+// silently running down its disconnect grace.
+func (c *Client) openStream(ctx context.Context) (*http.Response, error) {
 	url := c.baseURL + "/api/events"
 	if c.identity.Token != "" {
 		url += "?token=" + neturl.QueryEscape(c.identity.Token)
@@ -117,7 +208,7 @@ func (c *Client) Turns(ctx context.Context) (<-chan protocol.TurnEvent, error) {
 		return nil, fmt.Errorf("botclient: events request: %w", err)
 	}
 
-	//nolint:bodyclose // closed by the streaming goroutine below, which bodyclose cannot follow.
+	//nolint:bodyclose // closed by the streaming goroutine in the caller, which bodyclose cannot follow.
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("botclient: open event stream: %w", err)
@@ -129,32 +220,44 @@ func (c *Client) Turns(ctx context.Context) (<-chan protocol.TurnEvent, error) {
 		return nil, fmt.Errorf("%w: status %d", ErrStream, resp.StatusCode)
 	}
 
-	out := make(chan protocol.TurnEvent)
-
-	go func() {
-		defer close(out)
-		defer func() { _ = resp.Body.Close() }()
-
-		scanFrames(bufio.NewReader(resp.Body), func(bundle protocol.TurnEvent) bool {
-			select {
-			case out <- bundle:
-				return true
-			case <-ctx.Done():
-				return false
-			}
-		})
-	}()
-
-	return out, nil
+	return resp, nil
 }
 
-// scanFrames parses the SSE stream and hands each TURN bundle to onTurn,
+// scanFrames parses the SSE stream and hands each turn or chat frame to onEvent,
 // stopping when it returns false or the stream ends.
 //
 // SSE framing: `id:`/`event:`/`data:` lines, a blank line ending the frame.
 // Only the event and data matter here — the id is the turn number, which the
 // bundle already carries.
-func scanFrames(r *bufio.Reader, onTurn func(protocol.TurnEvent) bool) {
+// dispatchFrame decodes one completed SSE frame and delivers it, reporting
+// whether scanning should continue. A frame that fails to decode is skipped
+// rather than ending the stream: one malformed line must not kill a bot.
+func dispatchFrame(event, data string, onEvent func(Event) bool) bool {
+	if data == "" {
+		return true
+	}
+
+	switch event {
+	case protocol.EventTurn:
+		var bundle protocol.TurnEvent
+		if json.Unmarshal([]byte(data), &bundle) != nil {
+			return true
+		}
+
+		return onEvent(Event{Turn: &bundle})
+	case protocol.EventChat:
+		var msg protocol.ChatMessage
+		if json.Unmarshal([]byte(data), &msg) != nil {
+			return true
+		}
+
+		return onEvent(Event{Chat: &msg})
+	default:
+		return true // heartbeat and anything new: nothing for a bot to do
+	}
+}
+
+func scanFrames(r *bufio.Reader, onEvent func(Event) bool) {
 	var event, data string
 
 	for {
@@ -165,11 +268,8 @@ func scanFrames(r *bufio.Reader, onTurn func(protocol.TurnEvent) bool) {
 
 		switch line = strings.TrimRight(line, "\n"); {
 		case line == "":
-			if event == protocol.EventTurn && data != "" {
-				var bundle protocol.TurnEvent
-				if json.Unmarshal([]byte(data), &bundle) == nil && !onTurn(bundle) {
-					return
-				}
+			if !dispatchFrame(event, data, onEvent) {
+				return
 			}
 
 			event, data = "", ""

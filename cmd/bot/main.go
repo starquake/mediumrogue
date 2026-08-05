@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/starquake/mediumrogue/internal/bot"
@@ -34,20 +35,29 @@ func main() {
 		species = flag.String("species", protocol.SpeciesHuman, "human, elf or dwarf")
 		token   = flag.String("token", "", "reclaim an existing character instead of creating one")
 		follow  = flag.String("follow", "", "player name to trail when out of combat")
+		count   = flag.Int("count", 1, "how many bots to run in this process")
 	)
 	flag.Parse()
 
-	if err := run(url, name, class, species, token, follow); err != nil {
+	// Ctrl-C ends every stream cleanly rather than leaving entities waiting out
+	// the disconnect grace — which matters far more with five of them.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	err := run(ctx, url, name, class, species, token, follow, *count)
+
+	// Released before Exit, which would skip a defer.
+	stop()
+
+	if err != nil {
 		slog.Error("bot: exiting", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(url, name, class, species, token, follow *string) error {
-	// Ctrl-C ends the stream cleanly rather than leaving an entity waiting out
-	// the disconnect grace.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+func run(ctx context.Context, url, name, class, species, token, follow *string, count int) error {
+	if count > 1 {
+		return runParty(ctx, url, name, species, follow, count)
+	}
 
 	client, err := botclient.Join(ctx, *url, protocol.JoinRequest{
 		Token: *token, Name: *name, Class: *class, Species: *species,
@@ -63,14 +73,25 @@ func run(url, name, class, species, token, follow *string) error {
 		// protecting the way a player's is.
 		"token", me.Token)
 
-	turns, err := client.Turns(ctx)
+	// Events rather than Turns: a party INVITE is announced only as chat, with
+	// no field on the bundle to read, so a bot that ignores chat can never join
+	// a party — which is the whole point of running several.
+	events, err := client.Events(ctx)
 	if err != nil {
 		return fmt.Errorf("bot: stream: %w", err)
 	}
 
 	cfg := bot.Config{FollowName: *follow}
 
-	for bundle := range turns {
+	for ev := range events {
+		if ev.Chat != nil {
+			acceptIfInvited(ctx, client, *ev.Chat, *name)
+
+			continue
+		}
+
+		bundle := *ev.Turn
+
 		// The bot only ever acts on ITSELF as the world reports it — never on
 		// remembered state. A bundle is the whole truth for that turn.
 		self, ok := entityByID(bundle, me.EntityID)
@@ -96,9 +117,9 @@ func run(url, name, class, species, token, follow *string) error {
 		slog.Info("bot: acted", "turn", bundle.Turn, "kind", intent.Kind, "hp", self.HP)
 	}
 
-	// The channel closes on cancellation or a dropped stream; only the second
-	// is an error worth reporting.
-	if ctx.Err() != nil {
+	// The channel closes on cancellation or on a dropped stream. Cancellation
+	// is Ctrl-C — the ordinary way a bot stops — so only the drop is an error.
+	if errors.Is(ctx.Err(), context.Canceled) {
 		return nil
 	}
 
@@ -113,4 +134,57 @@ func entityByID(bundle protocol.TurnEvent, id int64) (protocol.Entity, bool) {
 	}
 
 	return protocol.Entity{}, false
+}
+
+// runParty runs several bots in one process, one goroutine each, so a single
+// person can field a party (#371). Party features, bubble merging under real
+// load and a five-player boss cannot be exercised alone otherwise.
+//
+// Each bot is a SEPARATE identity over its own connection — not one client
+// pretending to be five — because the thing being tested is how the server
+// handles several players, and a shortcut here would test the shortcut.
+func runParty(ctx context.Context, url, name, species, follow *string, count int) error {
+	// The roster a multi-bot run draws from, in order. Five identical fighters
+	// test one shape of fight; a mixed party is what a real group looks like,
+	// and it is what makes a boss's telegraph interesting.
+	partyClasses := []string{
+		protocol.ClassFighter, protocol.ClassRogue, protocol.ClassMage,
+		protocol.ClassFighter, protocol.ClassRogue,
+	}
+
+	var wg sync.WaitGroup
+
+	for i := range count {
+		botName := fmt.Sprintf("%s%d", *name, i+1)
+		botClass := partyClasses[i%len(partyClasses)]
+
+		wg.Go(func() {
+			// A bot that dies on a transport blip should not take the party
+			// with it: log and let the others carry on.
+			if err := run(ctx, url, &botName, &botClass, species, new(string), follow, 1); err != nil {
+				slog.Error("bot: member stopped", "name", botName, "err", err)
+			}
+		})
+	}
+
+	wg.Wait()
+
+	return nil
+}
+
+// acceptIfInvited joins a party when the invite names this bot. Split out of
+// run to keep it under the complexity limit, and because "did someone invite
+// me" is a decision, not plumbing.
+func acceptIfInvited(ctx context.Context, client *botclient.Client, msg protocol.ChatMessage, name string) {
+	if !bot.InviteAddressesMe(msg, name) {
+		return
+	}
+
+	if err := client.Say(ctx, "/accept"); err != nil {
+		slog.Warn("bot: could not accept invite", "name", name, "err", err)
+
+		return
+	}
+
+	slog.Info("bot: joined a party", "name", name)
 }
