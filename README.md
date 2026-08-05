@@ -49,6 +49,20 @@ make dev          # terminal 1: Go server with auto-restart (:8080)
 make client-dev   # terminal 2: Vite dev server with HMR (:5173, proxies /api)
 ```
 
+## Playtest with a party
+
+This is a multiplayer game, so most of it cannot be tried alone. `cmd/bot`
+fields headless players that trail you, fight what you fight, and accept a
+party invite when you send one:
+
+```sh
+go run ./cmd/bot -count 5 -follow YourName   # five bots, mixed classes
+```
+
+Invite them from your own client (`/invite bot1` …) and they join. Ctrl-C
+ends every stream cleanly. They are deliberately dumb — no skills, no focus
+fire, no retreat.
+
 ## Verify
 
 ```sh
