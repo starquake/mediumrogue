@@ -377,6 +377,10 @@ type entity struct {
 	// zero value is the origin hex, which is fine because no player code path
 	// ever reads it.
 	homeHex protocol.Hex
+	// settledTurn is the turn this monster last arrived home (#366): a
+	// per-turn transient, never persisted, read only to keep idle drift from
+	// adding a second move on the turn it settled.
+	settledTurn int64
 	// returningHome marks a monster walking back to homeHex after exceeding
 	// its leash (#102): while set, the WORLD-domain think pass ignores players
 	// entirely — no re-aggro mid-return — until arrivedHomeLocked clears it.
@@ -3325,6 +3329,11 @@ func (w *World) spawnCandidatesByRingLocked(rng *mrand.Rand) ([][]protocol.Hex, 
 // When adjacent, path[0] is the player's own hex, so the move phase converts
 // this into a melee attack (6.3).
 func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity, domain simDomain) {
+	// A stream of its own, per turn — see wanderStream. Built here rather than
+	// passed in so no caller has to know idle drift exists.
+	//nolint:gosec // deterministic seeded wander, not security-sensitive.
+	wanderRng := mrand.New(mrand.NewPCG(uint64(w.seed), wanderStream+uint64(w.turn)))
+
 	for _, m := range members {
 		if m.kind != protocol.EntityMonster {
 			continue
@@ -3335,19 +3344,18 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 		}
 
 		if len(targets) == 0 {
-			continue // no players anywhere: paths stay untouched (pre-#102 behavior)
+			w.thinkIdleLocked(wanderRng, m, targets, domain)
+
+			continue
 		}
 
-		var target *entity
-		if domain == domainWorld {
-			target = w.nearestAggroedPlayerLocked(rng, m, targets)
-			if target == nil {
-				m.path = nil // nobody within their own aggro range: stand still
+		target, ok := w.thinkTargetLocked(rng, m, targets, domain)
+		if !ok {
+			w.thinkIdleLocked(wanderRng, m, targets, domain)
+		}
 
-				continue
-			}
-		} else {
-			target = nearestPlayer(m.hex, targets)
+		if !ok {
+			continue // nothing to chase; idle handling already applied
 		}
 
 		// A monster whose natural weapon has reach SHOOTS instead of closing
@@ -3473,6 +3481,10 @@ func (w *World) thinkReturnHomeLocked(m *entity) bool {
 
 	if w.arrivedHomeLocked(m) {
 		m.returningHome = false
+		// Stamped so idle drift can tell "settled this turn" from "idle for a
+		// while" (#366) without the caller threading a flag down. A per-turn
+		// transient like path — never persisted.
+		m.settledTurn = w.turn
 
 		return false
 	}
@@ -4353,6 +4365,110 @@ func baseAggroRadiusFor(m *entity) int {
 // The leash is a monster↔home relation with no player in the equation, so
 // the per-player evAggroRange noticeability fold (aggroRadiusForLocked)
 // deliberately does not apply here.
+// thinkIdleLocked is what a monster with nothing to chase does: drift, or
+// nothing. Both idle paths route through here so the rules live in one place.
+//
+// It stays put in a bubble (it is fighting), and on the turn it settled home
+// (it has already moved — letting it drift too would be a second move that
+// discards the arrival).
+func (w *World) thinkIdleLocked(rng *mrand.Rand, m *entity, targets []*entity, domain simDomain) {
+	// settledTurn: a monster that reached home THIS turn has already moved, and
+	// drifting too would be a second move that discards the arrival it just
+	// made (leash_test's full-home rat stepped adjacent, then drifted off).
+	if domain != domainWorld || m.settledTurn == w.turn {
+		return
+	}
+
+	w.thinkWanderLocked(rng, m, targets)
+}
+
+// thinkTargetLocked picks what a monster chases this turn, or reports that it
+// has nothing to chase — having dropped any stale path. Whether an idle monster
+// then DRIFTS is the caller's call, because that depends on turn context this
+// function has no business knowing.
+//
+// Split out of thinkMonstersLocked so that function stays under the complexity
+// limit once #366 gave the idle case something to do. Callers hold w.mu.
+func (w *World) thinkTargetLocked(
+	rng *mrand.Rand, m *entity, targets []*entity, domain simDomain,
+) (*entity, bool) {
+	if domain != domainWorld {
+		return nearestPlayer(m.hex, targets), true
+	}
+
+	target := w.nearestAggroedPlayerLocked(rng, m, targets)
+	if target == nil {
+		m.path = nil // nobody within their own aggro range; the caller decides
+		// whether it also drifts.
+		return nil, false
+	}
+
+	return target, true
+}
+
+// thinkWanderLocked gives an idle monster somewhere to be (#366). It steps to a
+// neighbouring hex sometimes, never further from home than its leash allows —
+// so a wanderer stays findable, and #102's leash keeps meaning what it meant.
+//
+// WORLD DOMAIN ONLY, and only when nothing is being chased: a monster in a
+// bubble is fighting, and one that drifted mid-fight would invalidate the
+// attack a player committed to a hex the turn before (the WeGo commit problem,
+// #130/#133).
+//
+// HexNeighbors returns a FIXED order, so the candidate list needs no sort
+// before the draw — unlike anything derived from a map. Callers hold w.mu.
+func (w *World) thinkWanderLocked(rng *mrand.Rand, m *entity, targets []*entity) {
+	// Hold still while anyone is in the neighbourhood, even someone this
+	// monster has not aggroed. Two reasons, and the second is the load-bearing
+	// one:
+	//
+	//   - It reads better. A creature that notices you stops milling about.
+	//   - WeGo commits are made a turn ahead. A monster that drifts between a
+	//     player's click and its resolution invalidates the action they chose,
+	//     which is the stale-target problem (#130/#133) reintroduced as
+	//     ambience. Out of everyone's earshot, nobody can be committing to it.
+	//
+	// MonsterAggroRadius rather than a monster's own radius: the point is
+	// PLAYER proximity, and a quiet monster with a short radius standing next
+	// to you should still look alert.
+	//
+	// The +1 is a HARD GUARANTEE, not a cushion: a wander step closes at most
+	// one hex, so refusing to drift at radius+1 means drifting can never bring
+	// a player into aggro range. Without it an idle monster slowly vacuums
+	// players in, turning ambience into a hunt nobody asked for — and it did:
+	// a wolf at 11 hexes drifted to 10 and noticed a player it should not
+	// have (monster_test.go's noticeability boundary).
+	for _, t := range targets {
+		if HexDistance(m.hex, t.hex) <= protocol.MonsterAggroRadius+1 {
+			return
+		}
+	}
+
+	if rng.IntN(wanderOneInN) != 0 {
+		return
+	}
+
+	var options []protocol.Hex
+
+	for _, h := range HexNeighbors(m.hex) {
+		if !w.walkableLocked(h) || w.occupancyLocked(h) >= protocol.StackCap {
+			continue
+		}
+
+		if HexDistance(h, m.homeHex) > leashRadiusFor(m) {
+			continue
+		}
+
+		options = append(options, h)
+	}
+
+	if len(options) == 0 {
+		return // hemmed in: standing still is the honest answer
+	}
+
+	m.path = []protocol.Hex{options[rng.IntN(len(options))]}
+}
+
 func leashRadiusFor(m *entity) int {
 	return defLeashRadius(kindOf(m))
 }
@@ -4428,3 +4544,16 @@ func nearestPlayer(from protocol.Hex, players []*entity) *entity {
 // a fixed world seed and call sequence (#36 — random spawn points instead of
 // every join/respawn racing to pile onto the exact same tile).
 const spawnPointStream uint64 = 0x50A5
+
+// wanderStream keys the idle-wander rng (#366). Its own stream, deliberately:
+// drawing from the turn rng would shift every pinned seed in the repo, because
+// the sequence a fold consumes is contractual (see rollDamageLocked). A
+// separate stream means an idle monster can drift without moving a single
+// existing expectation.
+const wanderStream uint64 = 0x3A11
+
+// wanderOneInN is the chance an idle monster steps on a given world turn. Not
+// every turn: at a 4-second cadence that is constant motion, and it multiplies
+// the entity deltas in every bundle for no gain. One in four reads as alive
+// while leaving the board legible.
+const wanderOneInN = 4
