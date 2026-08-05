@@ -741,6 +741,21 @@
         padding: 0.2rem 0.45rem;
         cursor: pointer;
       }
+      /* The point cost, on the Learn button (#368). Set apart rather than run
+         into the label so "LEARN 3" does not read as a skill named 3 —
+         tabular so the column does not shift if the cost ever changes width. */
+      .skill-cost {
+        display: inline-block;
+        margin-left: 0.28rem;
+        padding: 0 0.22rem;
+        border-radius: 2px;
+        background: rgba(0, 0, 0, 0.28);
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      .skill-learn:disabled .skill-cost {
+        background: transparent;
+        border: 1px solid #3d222a;
+      }
       .skill-learn:hover:enabled {
         background: #c2405c;
       }
