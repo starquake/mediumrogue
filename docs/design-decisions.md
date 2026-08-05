@@ -1216,3 +1216,89 @@ most wanted (#313 found this). Evade now asks only whether a rock stands in the
 ray. Rock staying real cover is the decided inversion of the classic ARPG blink
 and keeps its test; the forest cost was never a decision, just a side effect of
 reusing the sight budget.
+
+## Direction set 2026-08-05 (roadmap conversation, not yet built)
+
+A brainstorm settled four directions and rejected one idea outright. None of it
+is built; recorded here because the reasoning is the expensive part and it would
+otherwise live only in a chat log. Tickets: #366–#371.
+
+- **Dungeons are SEPARATE MAPS reached through a transition**, not a bigger or
+  differently-shaped single grid. This is what Diablo and Grim Dawn both do, and
+  it is the prerequisite for the party crystal-quest chain (which is D2 Act 2's
+  Horadric Staff structure — collect three, combine, open a sealed lair, kill the
+  boss). The cost is real: the world is currently ONE grid, so *which map am I
+  on* becomes a new concept threaded through entities, bubbles, snapshots and
+  the wire.
+
+- **Currency buys FLEXIBILITY, never power** — Grim Dawn's spirit guide: coin
+  pays for respec and consumables. Chests hold consumables and authored fixed
+  items placed by the generator, not a roll.
+
+  This was the answer to a collision, not a free choice. Chests, traders,
+  currency and villages all import the ARPG *structure*
+  `game-identity.md` explicitly cut — "no random-affix loot slot-machine, no
+  rarity tiers / crafting / currency / market economy… We took ARPG's *stat
+  math*, not its *structure*." With a flat power curve a chest cannot hold
+  *better* loot, because better does not exist. Buying flexibility keeps the
+  curve flat while giving currency a real sink.
+
+- **Bosses TELEGRAPH ONE TURN AHEAD.** Diablo and Grim Dawn telegraph within an
+  animation and you dodge reactively; that is impossible here and contradicts
+  the identity doc's "no reflexes, no skill-shot timing, ever. Skill is
+  planning." So a boss announces "next turn it slams this ring" in *this* turn's
+  bundle and you commit knowing it. Dodge-reflex becomes dodge-planning. It is
+  also cheap — a field on the bundle and a queued action on the boss.
+
+- **Solo playtesting is solved with BOTS, not a single-player mode.** The
+  multiplayer architecture is the expensive part and is already paid for
+  (server-authoritative sim, bubbles, parties, SSE, identity reclaim), so there
+  is nothing to retrofit. A single-player mode would also *distort* the design:
+  WeGo only makes sense with several players — solo, the 4-second turn and the
+  patience timeout are just delay. Bots run **over the wire** like a browser, at
+  a deliberately **dumb tier** first (#369–#371), because a bot good enough to
+  trust with balance numbers is a hard problem and playtesting must not wait for
+  it.
+
+### Rejected: counterfactual replay *(2026-08-05)*
+
+~~Record player intents plus the seed, then re-run the session with different
+numbers to answer "what if the wolf had 12 HP?"~~ **It does not work**, and the
+maintainer's counter-example is the clearest statement of why:
+
+> the players walk to X, encounter enemies, 2 of them die. Then they go to Y…
+> Then we make the party stronger. Then the recording doesn't make sense anymore
+> because 2 of the party died and their movements don't make sense anymore if
+> they survive after changing.
+
+Recorded intents are a **script**; the world is not. The two who died have no
+recorded inputs after their death. The survivors' moves were *reactions* to a
+state that no longer exists. And divergence starts earlier than any visible
+change — a tweak altering the *number* of rng draws desyncs the stream
+immediately. Death is only the vivid case: any divergence invalidates the rest,
+since an intent is only meaningful against the state it was issued against.
+
+This is why Warcraft 3 and StarCraft replays are patch-locked and desync
+otherwise; the only replays surviving rule changes are ones where actors do not
+interact (racing ghosts, chess).
+
+**What replaces it:**
+
+| goal | tool |
+|---|---|
+| "show me that fight" / a bug report | faithful replay, **same build only** |
+| "how often does a party of 3 wipe to 5 wolves?" | a hand-authored **scenario** + bots, run many times for a distribution |
+| "what do players actually do?" | telemetry over intents — immune to version skew, since it describes *inputs* |
+
+So **recording left the balance critical path entirely** and is now only about
+bug reproduction. Balance belongs to `cmd/balance`'s existing simulation
+harness, whose synthetic actors *react* to a changed world where a recorded
+script cannot — which is also what makes bots load-bearing for balance and not
+merely for playtesting. Scenarios are **hand-authored** rather than mined from
+recordings: controlled and repeatable beats real-but-messy, and it keeps
+recording off the critical path.
+
+A standing example of the surviving use: **#315** went to `Backlog` for want of a
+reproduction — "sometimes both markers show", no steps. A same-build recording
+would have settled it.
+
