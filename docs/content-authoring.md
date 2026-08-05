@@ -261,14 +261,40 @@ free outside one), not a combat event:
 ```
 Name:        (evocative)
 Type:        consumable
-Effect:      what drinking one does — today's vocabulary: heal N HP
-             (clamped to your max; `heal` is a field on the item, not a
-             pipeline rule)
+Effect:      what drinking one does. Three kinds, and an item may combine them:
+               heal N HP        — clamped to your max; a field on the item,
+                                  not a pipeline rule
+               a timed buff     — appliesEffect: a named effect, a magnitude
+                                  and a duration in turns. May be OFFENSIVE
+                                  (Draught of Fury, +25% deal-damage) or
+                                  defensive (Warding Tonic, +25% resistance)
+               cleanse          — cleansesHarmful strips every harmful timed
+                                  effect (Antivenom)
+             A consumable must do at least one of the three, or it fails at
+             load (validateConsumablePayload).
 Stacks:      up to 5 identical ones share a backpack entry; stacks never
              split, drinking uses one
 Drops from:  same transcription rule as gear
 Intent:      the one-line reason this item exists
 ```
+
+**What a consumable may NOT be** (settled 2026-08-05). Three boundaries, each
+already enforced at content load — a violation panics at process start, never
+mid-fight:
+
+- **Never a weapon, and never a direct damage-dealer.** Only a weapon or jewelry
+  may carry a deal-damage card (`validateItemNature`). A buff that *raises* your
+  damage is fine; an item that *deals* damage is not. The thrown flask was the
+  one exception and was removed in #352.
+- **Only the drinker is affected** — never an enemy, never another player.
+  `drinkItemLocked` applies the heal, the cleanse and every buff to the drinker
+  and takes no target at all, and `validateItemAppliesEffect` panics if a
+  consumable sets `toSelf`, because self is the only possibility.
+- **Timed, not permanent.** Every buff carries `turns > 0`.
+
+Note that **energy restoration is not an item**: the `R`/`E` draughts are a
+universal mechanic on a cooldown (#322), not consumables. Do not add an energy
+potion thinking one is missing.
 
 Base-stats-only items are completely fine — the plain "speed vs damage vs
 reach" spread is the bread and butter; rule-carrying items are the spice.
