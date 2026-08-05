@@ -136,10 +136,21 @@ func TestDecideFollowsOnlyWhenTooFar(t *testing.T) {
 	me := player(1, "botty", 0, 30)
 	cfg := bot.Config{FollowName: "leader"}
 
-	// Within FollowDistance: hold position rather than crowd them.
+	// Within FollowDistance: halt rather than crowd them. Halting is an
+	// explicit move onto our own hex, NOT the absence of an intent — the
+	// earlier version of this test asserted "no intent" and read that as
+	// "holds position", which is not what happens: the route to the leader's
+	// hex survives and walks the bot onto them. Five bots following one leader
+	// all ended up stacked on their leader's hex (live run, 2026-08-06).
 	near := protocol.TurnEvent{Entities: []protocol.Entity{me, player(2, "leader", 2, 30)}}
-	if _, ok := bot.Decide(cfg, me, near); ok {
-		t.Error("followed a leader already within FollowDistance")
+
+	halt, ok := bot.Decide(cfg, me, near)
+	if !ok {
+		t.Fatal("issued no intent near the leader, so an existing route keeps walking")
+	}
+
+	if got, want := halt.Target, me.Hex; got != want {
+		t.Errorf("halt target = %v, want own hex %v", got, want)
 	}
 
 	far := protocol.TurnEvent{Entities: []protocol.Entity{me, player(2, "leader", 6, 30)}}

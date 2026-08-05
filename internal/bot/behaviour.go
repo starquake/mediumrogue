@@ -70,9 +70,18 @@ func Decide(cfg Config, me protocol.Entity, bundle protocol.TurnEvent) (protocol
 		return protocol.IntentRequest{Kind: protocol.IntentMove, Target: target.Hex}, true
 	}
 
-	if leader, ok := findLeader(cfg.FollowName, me, bundle); ok &&
-		distance(me.Hex, leader.Hex) > FollowDistance {
-		return protocol.IntentRequest{Kind: protocol.IntentMove, Target: leader.Hex}, true
+	if leader, ok := findLeader(cfg.FollowName, me, bundle); ok {
+		if distance(me.Hex, leader.Hex) > FollowDistance {
+			return protocol.IntentRequest{Kind: protocol.IntentMove, Target: leader.Hex}, true
+		}
+
+		// Close enough — which has to be SAID, not merely left unsaid. A move
+		// sets a multi-turn ROUTE to the leader's own hex, so a bot that just
+		// stops issuing intents keeps walking the route it was already on and
+		// arrives standing on top of the leader. Moving onto its own hex
+		// replaces that route with an empty one (queueMoveLocked), which is
+		// what actually halts the bot at FollowDistance.
+		return protocol.IntentRequest{Kind: protocol.IntentMove, Target: me.Hex}, true
 	}
 
 	// Nothing to do. Inside a bubble that still has to be SAID, or the turn
