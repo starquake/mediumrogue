@@ -206,6 +206,18 @@ drift between calls; use absolute paths or `cd` to the repo root before
   the build — approve the spec, plan or mockup so work can start. `Your review`
   comes **after** it — the work is done, its PR is open, and it is waiting for
   `ready to merge`. Decide-the-design versus review-the-diff.
+  **A position in the flow is a STATUS; a property of the ticket is a LABEL.**
+  That is the whole rule, and it answers this class of question without a new
+  column. `hold` is a label because it is an override, `ready to merge` because
+  it is an approval — and **`needs: spec` / `needs: build`** because they name
+  which ROUTE a ticket takes, not where it sits. Claude applies one when filing
+  (it did the investigation, so it has already made the call) and states the
+  reason in the body, so the maintainer can drag straight from the board card
+  without opening anything — and disagree by dragging elsewhere, which is the
+  override. Reaching for a new Status option instead is the expensive answer:
+  reordering a single-select **replaces every option and clears every item's
+  value** (2026-07-28).
+
   **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
   an issue state, and **PRs are not board items**. The auto-add workflow must
   filter `is:issue` or it drags every new PR onto the board unstatused (seen
