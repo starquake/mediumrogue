@@ -17,7 +17,7 @@ live in [`game-identity.md`](game-identity.md); the ARPG-vs-TTRPG reasoning in
 | **Combat depth** | #69 (glance/crit umbrella), #91 (glance% build), #104 (attacks-before-moves) | committed |
 | **Gear** | #88 (noticeability gear), #90 (shields) | committed |
 | **Damage types** | #92 (DT1) | deferred |
-| **Skills** | #57, #61, #62 | deferred |
+| **Skills** | #57, #62 | deferred (the #61 principles now live in `skill-tree-principles.md`) |
 | **Progression** | #60 | deferred |
 | **Test hardening** | #89 | committed |
 
