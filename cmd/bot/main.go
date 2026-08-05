@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/starquake/mediumrogue/internal/bot"
 	"github.com/starquake/mediumrogue/internal/botclient"
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
@@ -32,16 +33,17 @@ func main() {
 		class   = flag.String("class", protocol.ClassFighter, "fighter, rogue or mage")
 		species = flag.String("species", protocol.SpeciesHuman, "human, elf or dwarf")
 		token   = flag.String("token", "", "reclaim an existing character instead of creating one")
+		follow  = flag.String("follow", "", "player name to trail when out of combat")
 	)
 	flag.Parse()
 
-	if err := run(url, name, class, species, token); err != nil {
+	if err := run(url, name, class, species, token, follow); err != nil {
 		slog.Error("bot: exiting", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(url, name, class, species, token *string) error {
+func run(url, name, class, species, token, follow *string) error {
 	// Ctrl-C ends the stream cleanly rather than leaving an entity waiting out
 	// the disconnect grace.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -66,8 +68,32 @@ func run(url, name, class, species, token *string) error {
 		return fmt.Errorf("bot: stream: %w", err)
 	}
 
+	cfg := bot.Config{FollowName: *follow}
+
 	for bundle := range turns {
-		slog.Info("bot: turn", "turn", bundle.Turn, "entities", len(bundle.Entities))
+		// The bot only ever acts on ITSELF as the world reports it — never on
+		// remembered state. A bundle is the whole truth for that turn.
+		self, ok := entityByID(bundle, me.EntityID)
+		if !ok {
+			continue // dead or out of our own interest radius; nothing to decide with
+		}
+
+		intent, act := bot.Decide(cfg, self, bundle)
+		if !act {
+			continue
+		}
+
+		intent.EntityID, intent.Token = me.EntityID, me.Token
+		if err := client.Submit(ctx, intent); err != nil {
+			// A refusal is normal — the world saying no to a well-formed
+			// intent (a hex that filled, a cooldown). Log and take the next
+			// turn rather than dying on it.
+			slog.Warn("bot: intent refused", "kind", intent.Kind, "err", err)
+
+			continue
+		}
+
+		slog.Info("bot: acted", "turn", bundle.Turn, "kind", intent.Kind, "hp", self.HP)
 	}
 
 	// The channel closes on cancellation or a dropped stream; only the second
@@ -77,4 +103,14 @@ func run(url, name, class, species, token *string) error {
 	}
 
 	return errStreamEnded
+}
+
+func entityByID(bundle protocol.TurnEvent, id int64) (protocol.Entity, bool) {
+	for _, e := range bundle.Entities {
+		if e.ID == id {
+			return e, true
+		}
+	}
+
+	return protocol.Entity{}, false
 }
