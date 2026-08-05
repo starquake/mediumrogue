@@ -7,7 +7,8 @@ design — every decided rule and open question — lives in
 
 **Resuming work?** `docs/FEATURES.md` is the source of truth for what's built;
 `docs/design-decisions.md` records the design direction, the cuts, and the open
-questions. Live work is tracked in **GitHub issues + milestones**.
+questions; `docs/skill-tree-principles.md` is the governing record for the
+skill system specifically. Live work is tracked in **GitHub issues + milestones**.
 
 **`docs/FEATURES.md` is the implemented-features reference** (mechanics,
 systems, env vars, protocol constants — doubles as the player manual).
