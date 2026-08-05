@@ -370,6 +370,11 @@ from **what the pass acts on**, and every omission has cost a real miss:
 | **standing work lanes** (level-triggered) | authorised work that is merely *waiting* |
 
 ```bash
+# pipefail is LOAD-BEARING: every snapshot below ends in `| sort`, and a
+# pipeline's status is the LAST command's. Without this a failed `gh` returns 0
+# with no output, and every guard in this script silently passes (#359).
+set -o pipefail
+
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SELF="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/mediumrogue-board-selfset}"
 GQ='{ user(login:"<owner>"){ projectV2(number:<n>){ items(first:100){ nodes{
@@ -388,7 +393,10 @@ snap_prci(){ gh pr list --state open --json number,statusCheckRollup \
 snap_main(){ gh run list --branch main --workflow CI --limit 1 \
   --json conclusion -q '.[0].conclusion // "none"' 2>/dev/null || echo none; }
 
-prev_s=$(snap_board); prev_l=$(snap_label "ready to merge"); prev_h=$(snap_hold)
+# Guard the INITIALISATION too: a failed first call leaves prev empty, and the
+# first successful cycle then floods however well the loop is guarded.
+until prev_s=$(snap_board) && [ -n "$prev_s" ]; do sleep 30; done
+prev_l=$(snap_label "ready to merge"); prev_h=$(snap_hold)
 prev_ci=$(snap_prci); prev_main=$(snap_main); ticks=0
 while true; do
   sleep 60
@@ -406,13 +414,17 @@ while true; do
           | "REVIEW COMMENT on \(.pull_request_url | split("/") | last) \(.path):\(.line // 0): \(.body | gsub("\n"; " ") | .[0:100])"' 2>/dev/null || true
 
   # 3. `ready to merge`, diffed — emitting the whole set every cycle would spam.
-  if cur=$(snap_label "ready to merge"); then
+  # `[ -n "$cur" ] || [ -z "$prev_l" ]` is the SOFT-failure guard: gh can return
+  # HTTP 200 with an errors array and no data, so jq prints nothing and the exit
+  # code is 0 — which no exit-status check catches. A set that was non-empty and
+  # is now empty is an outage until proven otherwise.
+  if cur=$(snap_label "ready to merge") && { [ -n "$cur" ] || [ -z "$prev_l" ]; }; then
     comm -13 <(echo "$prev_l") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/READY TO MERGE: PR #/' || true
     prev_l=$cur
   fi
 
   # 4. `hold` is an override that STOPS work — both directions matter.
-  if cur=$(snap_hold); then
+  if cur=$(snap_hold) && { [ -n "$cur" ] || [ -z "$prev_h" ]; }; then
     comm -13 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD ADDED: #/' || true
     comm -23 <(echo "$prev_h") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/HOLD LIFTED: #/' || true
     prev_h=$cur
@@ -426,16 +438,17 @@ while true; do
   prev_main=$cur
 
   # 6. An open PR going red AFTER its build watched CI to completion.
-  cur=$(snap_prci)
-  comm -13 <(echo "$prev_ci") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/PR CI RED: #/' || true
-  prev_ci=$cur
+  if cur=$(snap_prci) && { [ -n "$cur" ] || [ -z "$prev_ci" ]; }; then
+    comm -13 <(echo "$prev_ci") <(echo "$cur") 2>/dev/null | grep -E '^[0-9]+$' | sed 's/^/PR CI RED: #/' || true
+    prev_ci=$cur
+  fi
 
   # 7. Board Status, every transition, old -> new. Moves WE made are skipped:
   #    board.sh records them, and each entry is consumed once so a later genuine
   #    move to the same state still fires.
   # Skip the whole board block if the query failed: an empty snapshot would
   # read as "every card vanished", then as "every card is new" on recovery.
-  if ! cur_s=$(snap_board); then
+  if ! cur_s=$(snap_board) || { [ -z "$cur_s" ] && [ -n "$prev_s" ]; }; then
     since=$now
     continue
   fi
@@ -522,6 +535,21 @@ Things that make it behave:
 - **Diff the label set.** Emitting the current set every cycle spams a
   notification per minute for any PR that sits unmerged, and monitors that
   flood get stopped automatically.
+- **`set -o pipefail`, or none of the other guards work.** Every snapshot ends
+  in `| sort`, and a pipeline's exit status is the LAST command's — `sort`
+  succeeds on empty input, so a failed `gh` returns **0 with no output** and
+  every `if cur=$(snap); then` passes. (#359, 2026-08-02: the guard added by
+  #347 could never fire, and the monitor emitted "added as …" for all 24 board
+  items at once. The original verification used a stub that returned 1
+  directly — that tested the guard's *shape* and never the real function's
+  failure mode. **A mock that fails differently from the real thing proves
+  nothing.**)
+- **Guard the initialisation, and treat sudden emptiness as failure.**
+  `prev=$(snap)` at startup has no guard at all, so a failed first call starts
+  you from a lie. And `gh api graphql` can return HTTP 200 with an `errors`
+  array and no `data` — jq prints nothing, exit code 0, which *no* exit-status
+  check catches. A set that was non-empty and is now empty is an outage until
+  proven otherwise.
 - **A failed poll is not an empty board.** `|| true` keeps one bad request from
   killing a session-length watch — the right goal, but applied to a *snapshot*
   it converts failure into a false **empty set**, and the diff then reports
