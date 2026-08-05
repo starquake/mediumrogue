@@ -344,6 +344,21 @@ func kindDisplayName(id string) string {
 // statViewsFor renders a def's stat lines for the wire. Always non-nil: the
 // generated TS type is a non-optional StatView[], and a nil slice marshals to
 // null — the exact shape that froze the client in #167.
+// statViewsForCards renders a bare list of rule cards, for callers that have
+// cards and nothing else — a skill, a monster kind. They used to fabricate an
+// `&itemDef{rules: ...}` to reach statViewsFor, which meant knowing that every
+// other field of itemDef would render to nothing (#353).
+func statViewsForCards(cards []ruleCard) []protocol.StatView {
+	out := make([]protocol.StatView, 0, len(cards))
+
+	for _, c := range cards {
+		l := cardStatLine(c)
+		out = append(out, protocol.StatView{Text: l.text, Drawback: l.drawback})
+	}
+
+	return out
+}
+
 func statViewsFor(def *itemDef) []protocol.StatView {
 	lines := statLinesFor(def)
 	out := make([]protocol.StatView, 0, len(lines))

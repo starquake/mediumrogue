@@ -278,9 +278,16 @@ func sampleConditionFor(kind string) condition {
 
 // guideStatsFor renders a def's stat lines through statlines.go — the SAME
 // path that fills a tooltip, never a second rendering.
-func guideStatsFor(def *itemDef) []GuideStat {
-	views := statViewsFor(def)
+// guideStatsForCards is guideStatsFor for callers holding bare cards (#353).
+func guideStatsForCards(cards []ruleCard) []GuideStat {
+	return toGuideStats(statViewsForCards(cards))
+}
 
+func guideStatsFor(def *itemDef) []GuideStat {
+	return toGuideStats(statViewsFor(def))
+}
+
+func toGuideStats(views []protocol.StatView) []GuideStat {
 	out := make([]GuideStat, 0, len(views))
 	for _, v := range views {
 		out = append(out, GuideStat{Text: v.Text, Drawback: v.Drawback})
@@ -335,7 +342,7 @@ func GuideData() Guide {
 			Weapon: def.weaponDef.name, Damage: def.weaponDef.damage,
 			RangeHex: def.weaponDef.rangeHex, DamageType: def.weaponDef.damageType,
 			XP: def.xp, AggroRadius: aggroRadiusOf(def),
-			DropChance: def.dropChance, Stats: guideStatsFor(&itemDef{rules: def.rules}),
+			DropChance: def.dropChance, Stats: guideStatsForCards(def.rules),
 		})
 	}
 

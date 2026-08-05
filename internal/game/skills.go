@@ -924,7 +924,7 @@ func skillViewsLocked(e *entity, turn int64) []protocol.SkillView {
 
 		view := protocol.SkillView{
 			ID: def.id, Name: def.name, Tree: def.tree,
-			Stats: statViewsFor(&itemDef{rules: def.rules}), Flavor: def.flavor, Learned: learned,
+			Stats: statViewsForCards(def.rules), Flavor: def.flavor, Learned: learned,
 		}
 
 		if def.active != nil {
