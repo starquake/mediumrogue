@@ -313,11 +313,11 @@ func TestV1SkillContentFoldsThroughThePipeline(t *testing.T) {
 
 		cards := cardsOf(skillCombatTraining)
 
-		if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{weapon: melee}), 11; got != want {
+		if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{source: new(sourceFromItem(melee))}), 11; got != want {
 			t.Errorf("melee swing of 10 = %d, want %d", got, want)
 		}
 
-		if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{weapon: bow}), 10; got != want {
+		if got, want := applyRules(evDealDamage, 10, cards, ruleCtx{source: new(sourceFromItem(bow))}), 10; got != want {
 			t.Errorf("bow shot of 10 = %d, want %d (melee-only)", got, want)
 		}
 	})

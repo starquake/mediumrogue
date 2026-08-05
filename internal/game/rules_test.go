@@ -574,7 +574,14 @@ func TestCondWeaponTagged(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := ruleCtx{weapon: tt.weapon}
+			// A nil source is "nothing is swinging" — the state every fold but
+			// deal-damage is in. Building a source from a nil def would be a
+			// different (and wrong) thing to assert.
+			var ctx ruleCtx
+			if tt.weapon != nil {
+				src := sourceFromItem(tt.weapon)
+				ctx.source = &src
+			}
 			if got, want := conditionHolds(condition{kind: condWeaponTagged, s: tt.tag}, ctx), tt.want; got != want {
 				t.Errorf("condWeaponTagged holds = %v, want %v", got, want)
 			}

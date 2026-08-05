@@ -165,9 +165,10 @@ func TestCrusherAndCombatTrainingSUMRatherThanCompound(t *testing.T) {
 		skillDefByID[skillCrusher].rules...,
 	)
 
-	ctx := ruleCtx{damageType: protocol.DamageTypeBlunt, weapon: &itemDef{
+	src := sourceFromItem(&itemDef{
 		id: "x", itemType: protocol.ItemTypeWeapon, tags: []string{protocol.WeaponTagMelee},
-	}}
+	})
+	ctx := ruleCtx{damageType: protocol.DamageTypeBlunt, source: &src}
 
 	// 10 * (1 + 0.10 + 0.10) = 12, NOT 10 * 1.1 * 1.1 = 12.1 -> 12 by luck.
 	// Using 100 makes the two readings differ (120 vs 121).
