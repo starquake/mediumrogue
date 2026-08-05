@@ -228,6 +228,42 @@ after — see the standing-queue heartbeat in the Monitor section.)
    Audit with `gh issue list --json number,labels` filtered to those carrying
    no `needs:` label — a pass that files anything should end by running it.
 
+## Filing a ticket: say which route it takes
+
+Every ticket you file states its **routing, with the reason**, and carries the
+matching label — `needs: spec` or `needs: build`. Both already exist.
+
+```
+Routing: straight to Build — a tweak, no unexamined assumption.
+Routing: Spec first — the reward economy is undecided, and it changes the shape.
+```
+
+You filed the ticket and did the investigation, so you have already made this
+call; leaving it in your head means the maintainer re-derives it from a title on
+a board card. **The label is what makes it visible without opening anything** —
+the board renders titles, not bodies.
+
+**The reason is not decoration.** A bare verdict cannot be disagreed with, and
+disagreement is expected: the maintainer dragging the card somewhere else *is*
+the override, exactly as with any other routing call.
+
+Which is which follows CLAUDE.md's existing rule — *is there a design decision
+with unexamined assumptions?*
+
+- **`needs: build`** — a bug, or a tweak (a tuning number, a config default,
+  copy, an order). Straight to a PR.
+- **`needs: spec`** — a new mechanic or feature, where the assumptions want
+  questioning before anything is written.
+
+**Do not reach for a new Status option to carry this.** A position in the flow
+is a Status; a property of the ticket is a label — the same reason `hold` and
+`ready to merge` are labels. Adding a Status option means touching the
+single-select, and reordering one replaces every option and clears every item's
+value (2026-07-28). (Raised 2026-08-05: *"do you have a better idea for me to
+know if the next step is spec or build?"* — the first instinct was a `Triage`
+lane, and a label is strictly better: no column, no wipe risk, and one drag
+instead of two.)
+
 ## The Next-steps reminder — append one whenever the state moves
 
 Every open ticket carries an auto-maintained comment, headed
