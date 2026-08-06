@@ -320,10 +320,10 @@ func TestMonsterAIStepsTowardNearerOfTwoPlayers(t *testing.T) {
 	}
 }
 
-// TestMonsterBeyondAggroRangeStandsStill (#36): a WORLD-domain monster more
+// TestMonsterBeyondAggroRangeDoesNotHunt (#36): a WORLD-domain monster more
 // than MonsterAggroRadius from the only player never notices it — it stands
 // still (no wander this slice) instead of hunting from arbitrarily far away.
-func TestMonsterBeyondAggroRangeStandsStill(t *testing.T) {
+func TestMonsterBeyondAggroRangeDoesNotHunt(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -338,11 +338,29 @@ func TestMonsterBeyondAggroRangeStandsStill(t *testing.T) {
 	// needs SOME hex outside range, not a specific one.
 	farHex := walkableHexAtDistance(t, w, me.Hex, protocol.MonsterAggroRadius+1, protocol.MonsterAggroRadius*3)
 	monsterID := w.PlaceMonsterForTest(farHex)
+	w.SetMonsterHomeForTest(monsterID, farHex)
 
-	snap := step(t, w)
+	// "Stands still" WAS the observable proof of "does not hunt", and #366 ended
+	// that: an unaggroed monster now drifts near home. So assert the EXACT
+	// invariant the drift guarantees instead.
+	//
+	// thinkWanderLocked refuses to drift while a player is within
+	// MonsterAggroRadius+1, and one step closes at most one hex — so a drifting
+	// monster can approach to that boundary and never past it. A hunter, at one
+	// hex a turn, would be on top of the player long before turn 20.
+	//
+	// A margin like "no more than N hexes closer than it started" was tried and
+	// is FLAKY: over 20 turns a random walk drifts several hexes in one
+	// direction often enough to fail roughly one run in two.
+	const closest = protocol.MonsterAggroRadius + 1
 
-	if got, want := hexOfSnap(snap, monsterID), farHex; got != want {
-		t.Errorf("monster hex = %v, want unchanged %v (beyond MonsterAggroRadius, should stand still)", got, want)
+	for range 20 {
+		step(t, w)
+
+		if got := game.HexDistance(hexOfSnap(w.Snapshot(), monsterID), me.Hex); got < closest {
+			t.Fatalf("monster reached %d hexes from the player, want never nearer than %d "+
+				"(drift must never bring a player into aggro range)", got, closest)
+		}
 	}
 }
 
