@@ -70,6 +70,25 @@ PR-level gate you never set — see `merge-pr`.
   ```
   ~~~
 
+  Two ways this rule gets broken, both seen on 2026-08-06 (#391):
+
+  - **Asking in chat instead of in the issue.** Questions raised in
+    conversation — including when the maintainer says "grill me" — are not on
+    the record: they cannot be answered later, by anyone else, or after the
+    session ends. Ask in the chat if that is where the conversation is, then
+    **post the same questions to the issue with a block**. The issue is the
+    design record; a chat transcript is not (#385 was grilled entirely in
+    chat and had to be reconstructed onto the ticket afterwards).
+  - **A question in the prose that is missing from the block.** The block is
+    the thing that gets answered, so anything not in it is effectively not
+    asked. Re-read the prose against the block before posting and confirm
+    every question has a line (#355 called its cooldown number "worth an
+    opinion too" and then left it out of the block, so it stayed unanswered
+    through two passes).
+
+  When either happens, fix it by posting a NEW comment carrying the complete
+  block — never by editing the old one, which breaks the thread's history.
+
   Prose questions get prose answers, which are slower to write and easy to
   answer only partly; a fillable block gets every question answered in one
   pass. Mirror the same block in the `> 🤖 **Next steps**` comment, so the
