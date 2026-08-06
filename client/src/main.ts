@@ -1390,6 +1390,30 @@ async function start(): Promise<void> {
   toggleHelpEl.hidden = false;
   toggleHelpEl.addEventListener("click", toggleControlsOverlay);
   mustGet("controls-close").addEventListener("click", () => setControlsOverlay(false));
+
+  // "Start a new character" (#367). Two steps on purpose: from this browser's
+  // side it is irreversible, and a levelled character is not something to lose
+  // to a stray click. The character itself is NOT deleted — it stays in the
+  // world, reachable by its character link, which is why the warning names it.
+  const newCharConfirmEl = mustGet("new-char-confirm");
+  mustGet("new-character").addEventListener("click", () => {
+    newCharConfirmEl.hidden = false;
+  });
+  mustGet("new-character-cancel").addEventListener("click", () => {
+    newCharConfirmEl.hidden = true;
+  });
+  mustGet("new-character-go").addEventListener("click", () => {
+    clearIdentity();
+    // Reload rather than unwind in place: a live session owns an SSE stream, a
+    // PixiJS app and a world's worth of state, and tearing all of that down to
+    // reach a screen the boot path already renders would be far more code and
+    // far more ways to be wrong.
+    //
+    // The path is used WITHOUT the hash: a `#t=<token>` character link would
+    // otherwise be re-adopted on boot (cameFromCharacterLink) and reclaim the
+    // very character we just forgot.
+    window.location.replace(window.location.pathname + window.location.search);
+  });
   if (localStorage.getItem("mediumrogue.seenControls") === null) {
     localStorage.setItem("mediumrogue.seenControls", "1");
     setControlsOverlay(true);

@@ -91,6 +91,7 @@ const specs: { name: string; monsters?: number; env?: Record<string, string> }[]
   // CSS, because #controls-overlay is pointer-events: none and a link without
   // its own `auto` renders perfectly while swallowing every click.
   { name: "credits" },
+  { name: "menu" },
   { name: "client-alive" },
   { name: "identity" },
   { name: "identity-multitab" },

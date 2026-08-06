@@ -210,6 +210,45 @@
         pointer-events: none;
       }
       #controls-overlay .close { pointer-events: auto; }
+      /* The overlay is pointer-events: none so it never traps game input. It
+         used to be purely informational; #367 gave it actions, so the
+         interactive parts opt back in individually — the same escape hatch
+         .close already used, rather than making the whole panel clickable. */
+      #controls-overlay button { pointer-events: auto; }
+      #controls-overlay h3 {
+        margin: 0.9rem 0 0.1rem;
+        font-family: var(--font-display);
+        font-size: 0.7rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      #new-char-row,
+      #new-char-confirm .row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.2rem;
+      }
+      #new-char-confirm .row { margin-top: 0.45rem; }
+      #new-char-row .hint { color: var(--dim); font-size: 0.72rem; }
+      #controls-overlay button {
+        font-family: inherit;
+        font-size: 0.72rem;
+        color: var(--fg);
+        background: transparent;
+        border: 1px solid var(--dim);
+        padding: 0.18rem 0.5rem;
+        cursor: pointer;
+      }
+      #controls-overlay button:hover { border-color: var(--accent); }
+      /* Irreversible from this browser's point of view, so it looks it. */
+      #controls-overlay button.danger {
+        color: var(--on-accent);
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      #new-char-confirm[hidden] { display: none; }
       #controls-overlay .credits {
         margin-top: 0.7rem;
         padding-top: 0.6rem;
@@ -1612,7 +1651,7 @@
         <button id="copy-link" type="button" hidden>copy character link</button>
         <button id="toggle-inventory" type="button" hidden>inventory (i)</button>
         <button id="toggle-sound" type="button" hidden>sound: on</button>
-        <button id="toggle-help" type="button" hidden>? controls</button>
+        <button id="toggle-help" type="button" hidden>menu</button>
         <div id="combat-panel" hidden>
           In combat — waiting for: <span id="combat-waiting"></span> · <span id="combat-patience"></span>s left
         </div>
@@ -1644,12 +1683,29 @@
     <div id="levelup" hidden></div>
     <div id="controls-overlay" hidden>
       <span class="close" id="controls-close">×</span>
-      <h2>Controls</h2>
-      <div>Move click a tile · <kbd>Space</kbd> arm evade, then click a tile · <kbd>.</kbd> wait · <kbd>R</kbd>/<kbd>E</kbd> health/energy draught</div>
-      <div>Camera follows you · scroll to zoom</div>
+      <h2>Menu</h2>
+      <h3>Mouse</h3>
+      <div><b>Click a tile</b> to walk there · <b>click a monster</b> to attack it</div>
+      <div>With a skill armed, <b>click a lit tile</b> to aim it · <b>click your own tile</b> to wait</div>
+      <div><b>Scroll</b> to zoom · the camera follows you</div>
+      <h3>Keys</h3>
+      <div><kbd>Space</kbd> arm evade, then click a tile · <kbd>.</kbd> wait · <kbd>R</kbd>/<kbd>E</kbd> health/energy draught</div>
       <div>Panels <kbd>I</kbd>/<kbd>C</kbd> character · <kbd>K</kbd> skills · <kbd>Esc</kbd> close</div>
       <div style="margin-top:.5rem;color:var(--dim)">Chat: /help · /here · /quest &lt;id&gt;</div>
       <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /leave</div>
+      <h3>Character</h3>
+      <div id="new-char-row">
+        <button id="new-character" type="button">Start a new character</button>
+        <span class="hint">this browser forgets the current one</span>
+      </div>
+      <div id="new-char-confirm" hidden>
+        <div>Your current character <b>stays in the world</b>, but this browser will
+          forget it — the only way back is its character link.</div>
+        <div class="row">
+          <button id="new-character-cancel" type="button">Cancel</button>
+          <button id="new-character-go" type="button" class="danger">Forget it and start fresh</button>
+        </div>
+      </div>
       <div class="credits">
         Sound <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>, CC0 ·
         Glyphs <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a>, CC&nbsp;BY&nbsp;3.0 ·
