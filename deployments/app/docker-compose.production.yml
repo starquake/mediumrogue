@@ -19,6 +19,19 @@ services:
       - mediumrogue_production_data:/data
     networks:
       - web
+    # Cap the container log (#388). Docker's default json-file driver has no
+    # max-size and no max-file, so the log grows until the disk does not.
+    # This server is chattier than most: the combat/identity event stream is
+    # structured slog output, several lines per resolution, and bubbles
+    # resolve on their own clock rather than the 4s world tick.
+    #
+    # 10m x 3 keeps roughly the last half-hour of a busy fight — enough to
+    # read back a session that went wrong, bounded at 30 MB per service.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     restart: unless-stopped
 
 volumes:
