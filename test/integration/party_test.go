@@ -261,3 +261,72 @@ func TestAcceptWhenAlreadyInPartyRejected(t *testing.T) {
 		t.Errorf("error = %q, should contain %q", got, want)
 	}
 }
+
+// TestPendingInviteRidesTheBundle drives #385's wire field over real HTTP: the
+// invitee's own stream carries the pending invite, the inviter's does not, and
+// accepting clears it.
+//
+// The unit tests already pin the same thing against the World directly. This
+// exists because the field is only useful if it survives the per-viewer bundle
+// build and the SSE encoding — a field the handler tree drops is a field the
+// client never sees, and no world-level test can tell you that.
+func TestPendingInviteRidesTheBundle(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, 20*time.Millisecond, time.Hour)
+
+	alice := joinNamed(t, ts, "alice")
+	bob := joinNamed(t, ts, "bob")
+
+	bobStream := get(t, ts, "/api/events?token="+bob.Token)
+	bobReader := bufio.NewReader(bobStream.Body)
+
+	aliceStream := get(t, ts, "/api/events?token="+alice.Token)
+	aliceReader := bufio.NewReader(aliceStream.Body)
+
+	resp := postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: alice.Token, Text: "/invite bob"})
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("/invite status = %d, want %d", got, want)
+	}
+
+	// awaitTurnFrame, not "the next frame": the POST and the stream are
+	// independent connections, so bundles built before the invite landed can
+	// already be buffered here (see its doc).
+	var invitedTurn int64
+
+	awaitTurnFrame(t, bobReader, "bob's bundle to carry the pending invite", func(b protocol.TurnEvent) bool {
+		if b.PendingInvite == nil || b.PendingInvite.InviterName != "alice" {
+			return false
+		}
+
+		invitedTurn = b.Turn
+
+		return true
+	})
+
+	// The negative has to be read from a bundle built at or after the turn bob
+	// saw it on. Simply reading alice's next frame would pass just as happily
+	// on a bundle rendered BEFORE the invite existed — proving nothing, and
+	// passing for the wrong reason on every run.
+	for {
+		aliceBundle := decodeTurnFrame(t, aliceReader)
+		if aliceBundle.Turn < invitedTurn {
+			continue
+		}
+
+		if got := aliceBundle.PendingInvite; got != nil {
+			t.Errorf("inviter's own bundle at turn %d carries the invite: %+v", aliceBundle.Turn, got)
+		}
+
+		break
+	}
+
+	resp = postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: bob.Token, Text: "/accept"})
+	if got, want := resp.StatusCode, http.StatusAccepted; got != want {
+		t.Fatalf("/accept status = %d, want %d", got, want)
+	}
+
+	awaitTurnFrame(t, bobReader, "the pending invite to clear once accepted", func(b protocol.TurnEvent) bool {
+		return b.PendingInvite == nil
+	})
+}

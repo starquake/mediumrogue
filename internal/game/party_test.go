@@ -205,3 +205,71 @@ func TestDisconnectSweepDissolvesParty(t *testing.T) {
 		t.Errorf("alice party = %d after bob's disconnect sweep, want 0 (dissolved)", got)
 	}
 }
+
+// TestPendingInviteIsOwnOnly pins the #385 wire field: an invite reaches the
+// bundle of the player who has to answer it, and nobody else's — not the
+// inviter's, and not a viewer-less snapshot's.
+//
+// The own-only half is the part that rots silently. A field wired into the
+// shared bundle instead of the per-viewer one would still make every test
+// about the invitee pass, while quietly telling the whole world who has been
+// asked to join whom.
+func TestPendingInviteIsOwnOnly(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+	bob := joinNamed(t, w, "bob")
+
+	if got := w.SnapshotFor(bob.Token).PendingInvite; got != nil {
+		t.Fatalf("pending invite before any was sent: %+v", got)
+	}
+
+	if _, err := w.PartyInvite(alice.Token, "bob"); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+
+	invite := w.SnapshotFor(bob.Token).PendingInvite
+	if invite == nil {
+		t.Fatal("invitee's bundle carries no pending invite")
+	}
+
+	if got, want := invite.InviterName, "alice"; got != want {
+		t.Errorf("InviterName = %q, want %q", got, want)
+	}
+
+	if got, want := invite.InviterID, alice.EntityID; got != want {
+		t.Errorf("InviterID = %d, want %d", got, want)
+	}
+
+	if got := w.SnapshotFor(alice.Token).PendingInvite; got != nil {
+		t.Errorf("inviter's own bundle carries the invite: %+v", got)
+	}
+
+	if got := w.Snapshot().PendingInvite; got != nil {
+		t.Errorf("viewer-less snapshot carries the invite: %+v", got)
+	}
+}
+
+// TestPendingInviteClearsOnAccept: the prompt has to go away by itself. The
+// server already deletes the pending invite in PartyAccept, so this pins that
+// the WIRE follows the state rather than needing its own clearing step.
+func TestPendingInviteClearsOnAccept(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+	bob := joinNamed(t, w, "bob")
+
+	if _, err := w.PartyInvite(alice.Token, "bob"); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+
+	if _, err := w.PartyAccept(bob.Token); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+
+	if got := w.SnapshotFor(bob.Token).PendingInvite; got != nil {
+		t.Errorf("invite still pending after accepting it: %+v", got)
+	}
+}

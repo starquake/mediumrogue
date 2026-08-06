@@ -1253,6 +1253,15 @@ roll, so it is ARPG-legal on jewelry.
   from `entities` like anything else, so the client reads its roster panel
   from this field — deriving it from `entities` would make the panel shrink
   as a party spread out.
+  **Pending party invite** (`TurnEvent.PendingInvite`, #385): the invite
+  waiting on this viewer's answer — inviter id and name — or absent when
+  none is. Own-only for the same reason the roster is: who has asked you to
+  join them is your business. At most one is pending per player (a second
+  invite overwrites the first), which is why it is a nullable object rather
+  than a list. It clears when the invite is accepted. Before this field the
+  invite existed only as the chat announcement, so answering it meant reading
+  a sentence and typing `/accept` — still supported, and still what headless
+  clients use.
   **The visible edge** (`client/src/render/fog.ts`): a soft vignette (variant
   A) starting 2 hexes inside the boundary and reaching full opacity one hex
   PAST it — so nothing the server still sends is left without ground under it.
