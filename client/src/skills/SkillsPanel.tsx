@@ -59,12 +59,20 @@ function SkillsPanel(props: { learn: (id: string) => void }): JSXElement {
                         when={!skill().learned}
                         fallback={<span class="skill-tag">Learned</span>}
                       >
+                        {/* The cost is on the button, from the protocol
+                            constant — never a literal "3". #368 exists because
+                            that number is expected to change, and a hardcoded
+                            one would rot silently while the server charged
+                            something else. The header's point total supplies
+                            the other half: cost against balance is what makes
+                            a disabled button self-explanatory. */}
                         <button
                           class="skill-learn"
                           disabled={points() < SkillPointCost}
+                          title={`Costs ${SkillPointCost} of your ${points()}`}
                           onClick={() => props.learn(skill().id)}
                         >
-                          Learn
+                          Learn <span class="skill-cost">{SkillPointCost}</span>
                         </button>
                       </Show>
                     </div>
