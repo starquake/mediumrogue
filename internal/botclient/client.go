@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"strings"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
@@ -99,7 +100,19 @@ func (c *Client) Submit(ctx context.Context, req protocol.IntentRequest) error {
 // The channel is closed when the stream ends, so a caller ranging over it
 // learns about a disconnect by the range finishing.
 func (c *Client) Turns(ctx context.Context) (<-chan protocol.TurnEvent, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/events", nil)
+	// The token goes on the query string, exactly as the browser does it
+	// (client/src/net/events.ts). It does two things, and BOTH were missing
+	// while this connected anonymously: it selects the VIEWER, so own-only
+	// fields (cooldowns, energy, skills) are populated rather than zero — a bot
+	// reading a zeroed HealthPotionReadyIn quaffs on cooldown forever — and it
+	// registers the stream for presence, so the bot is a connected player
+	// rather than one silently running down its disconnect grace.
+	url := c.baseURL + "/api/events"
+	if c.identity.Token != "" {
+		url += "?token=" + neturl.QueryEscape(c.identity.Token)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("botclient: events request: %w", err)
 	}
