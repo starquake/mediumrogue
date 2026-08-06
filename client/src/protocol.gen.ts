@@ -689,6 +689,20 @@ export interface PartyMemberView {
   name: string;
 }
 /**
+ * PartyInviteView is the invite currently waiting on the viewer's answer
+ * (#385): who asked, so the client can name them in a prompt.
+ * Before this field the invite existed ONLY as a chat sentence
+ * ("<inviter> invited <target> to a party — <target>: /accept"), which meant
+ * the one interaction in the game whose whole UI was "read a line and type a
+ * thing" — and meant a headless client had to pattern-match English prose to
+ * know it had been invited. The state was always there server-side
+ * (w.pendingInvites); it simply never reached the wire.
+ */
+export interface PartyInviteView {
+  inviterId: number /* int64 */;
+  inviterName: string;
+}
+/**
  * BubbleView is a window into a combat bubble: who's in it, which members it's
  * still waiting on, and how long until the patience timeout. Every bundle
  * carries all active bubbles; a client picks the one whose MemberIDs include
@@ -753,6 +767,15 @@ export interface TurnEvent {
    * data, not positional data.
    */
   party: PartyMemberView[];
+  /**
+   * PendingInvite is the party invite awaiting this viewer's answer, or nil
+   * when none is (#385). Own-only, for the same reason Party is: it is the
+   * viewer's own identity state, and nobody else's business.
+   * A pointer rather than a slice because the server keeps at most one
+   * pending invite per target — a second invite overwrites the first — so
+   * "either there or not" is the honest shape.
+   */
+  pendingInvite?: PartyInviteView;
   /**
    * Hits is every hit landed in the last few turn resolutions (see
    * HitView's doc for the coalescing/dedupe contract) — the per-hit

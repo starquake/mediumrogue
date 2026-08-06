@@ -1015,6 +1015,7 @@ func (w *World) SnapshotFor(viewerToken string) protocol.TurnEvent {
 		Bubbles: w.bubbleViewsLocked(w.now(), visible), Quests: w.questViewsLocked(),
 		GroundItems: w.groundItemViewsLocked(centre), WorldID: w.worldID,
 		Hits: w.hitViewsLocked(visible), Party: w.partyViewsLocked(viewerToken),
+		PendingInvite: w.pendingInviteViewLocked(viewerToken),
 	}
 }
 
@@ -1725,6 +1726,35 @@ func (w *World) partyViewsLocked(viewerToken string) []protocol.PartyMemberView 
 	slices.SortFunc(members, func(a, b protocol.PartyMemberView) int { return int(a.ID - b.ID) })
 
 	return members
+}
+
+// pendingInviteViewLocked renders the party invite awaiting this viewer's
+// answer, or nil when none is (#385). Own-only, exactly like the roster:
+// whether someone has asked you to join them is your business and nobody
+// else's, so it keys off the viewer's token rather than riding a shared field.
+//
+// Nil for a token-less watcher, and nil when the inviter has since left —
+// pendingInvites is purged for a departed inviter by the same locked sweep
+// that removes the entity, but the lookup is guarded anyway rather than
+// trusting that invariant to hold as new removal paths land (see the matching
+// guard in PartyAccept).
+func (w *World) pendingInviteViewLocked(viewerToken string) *protocol.PartyInviteView {
+	viewer, ok := w.byToken[viewerToken]
+	if !ok || viewer == nil {
+		return nil
+	}
+
+	inviterID, ok := w.pendingInvites[viewer.id]
+	if !ok {
+		return nil
+	}
+
+	inviter, ok := w.entities[inviterID]
+	if !ok {
+		return nil
+	}
+
+	return &protocol.PartyInviteView{InviterID: inviter.id, InviterName: inviter.name}
 }
 
 // bubbleViewsLocked renders the bubbles this viewer can resolve: one with no
