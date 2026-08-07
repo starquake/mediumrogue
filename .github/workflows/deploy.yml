@@ -33,6 +33,15 @@ jobs:
         github.event.workflow_run.head_repository.full_name == github.repository &&
         github.event.workflow_run.head_branch == 'main') ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    # One staging deploy at a time. Without this, a burst of merges fires a
+    # Deploy per CI completion and they all SSH into the same directory at
+    # once — which is how three of six runs for 731a1a7 failed on 2026-08-06
+    # (#387). NOT cancel-in-progress: a cancelled run can stop between
+    # `docker compose pull` and `up -d`, leaving the host on a half-applied
+    # deploy that nothing retries. Queueing is slower and always lands.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     environment:
       name: staging
       url: ${{ vars.SERVER_URL }}
@@ -109,7 +118,7 @@ jobs:
             IMAGE_NAME='${IMAGE_NAME}'
             IMAGE_DIGEST='${IMAGE_DIGEST}'
             EOF
-            mv -f docker-compose.staging.yml docker-compose.yml
+            cp -f docker-compose.staging.yml docker-compose.yml
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker compose pull
             docker compose up -d
@@ -146,6 +155,11 @@ jobs:
         github.event.workflow_run.head_repository.full_name == github.repository &&
         startsWith(github.event.workflow_run.head_branch, 'v')) ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    # Same guard as staging, and the same reasoning applies harder here:
+    # interrupting a production deploy is worse than making it wait (#387).
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     environment:
       name: production
       url: ${{ vars.SERVER_URL }}
@@ -244,7 +258,7 @@ jobs:
             IMAGE_NAME='${IMAGE_NAME}'
             IMAGE_DIGEST='${IMAGE_DIGEST}'
             EOF
-            mv -f docker-compose.production.yml docker-compose.yml
+            cp -f docker-compose.production.yml docker-compose.yml
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker compose pull
             docker compose up -d
@@ -354,7 +368,7 @@ jobs:
             IMAGE_NAME='${IMAGE_NAME}'
             IMAGE_DIGEST='${IMAGE_DIGEST}'
             EOF
-            mv -f docker-compose.development.yml docker-compose.yml
+            cp -f docker-compose.development.yml docker-compose.yml
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker compose pull
             docker compose up -d
