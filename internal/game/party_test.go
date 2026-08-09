@@ -328,3 +328,83 @@ func TestPendingInviteClearsOnAccept(t *testing.T) {
 		t.Errorf("invite still pending after accepting it: %+v", got)
 	}
 }
+
+// TestPartyDeclineClearsTheInvite: declining is a real server-side answer, not
+// a client-side dismissal (maintainer's call 2026-08-08). The pending invite
+// is gone afterwards — the prompt clears, and a later /accept has nothing to
+// accept.
+func TestPartyDeclineClearsTheInvite(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+	bob := joinNamed(t, w, "bob")
+
+	if _, err := w.PartyInvite(alice.Token, "bob"); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+
+	line, recipient, err := w.PartyDecline(bob.Token)
+	if err != nil {
+		t.Fatalf("decline: %v", err)
+	}
+
+	// The line goes to the INVITER, not the world: a broadcast decline is
+	// socially expensive in a fifteen-friend group.
+	if got, want := recipient, alice.EntityID; got != want {
+		t.Errorf("recipient = %d, want alice's id %d", got, want)
+	}
+
+	if got, want := line, "bob"; !strings.Contains(got, want) {
+		t.Errorf("line = %q, should name the decliner %q", got, want)
+	}
+
+	if got := w.SnapshotFor(bob.Token).PendingInvite; got != nil {
+		t.Errorf("invite still pending after decline: %+v", got)
+	}
+
+	if _, err := w.PartyAccept(bob.Token); !errors.Is(err, game.ErrNoPendingInvite) {
+		t.Errorf("accept after decline: err = %v, want ErrNoPendingInvite", err)
+	}
+}
+
+// TestPartyDeclineWithNothingPending: /decline out of the blue is a 422, the
+// same shape /accept already has.
+func TestPartyDeclineWithNothingPending(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	joinNamed(t, w, "alice")
+	bob := joinNamed(t, w, "bob")
+
+	if _, _, err := w.PartyDecline(bob.Token); !errors.Is(err, game.ErrNoPendingInvite) {
+		t.Errorf("err = %v, want ErrNoPendingInvite", err)
+	}
+}
+
+// TestPartyDeclineDoesNotBlockReInviting pins the maintainer's call that a
+// decline carries no cooldown (2026-08-08): fifteen friends, so invite spam is
+// a social problem rather than one the server should model.
+func TestPartyDeclineDoesNotBlockReInviting(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+	bob := joinNamed(t, w, "bob")
+
+	if _, err := w.PartyInvite(alice.Token, "bob"); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+
+	if _, _, err := w.PartyDecline(bob.Token); err != nil {
+		t.Fatalf("decline: %v", err)
+	}
+
+	if _, err := w.PartyInvite(alice.Token, "bob"); err != nil {
+		t.Fatalf("re-invite immediately after a decline: %v", err)
+	}
+
+	if got := w.SnapshotFor(bob.Token).PendingInvite; got == nil {
+		t.Error("re-invite after decline did not reach bob's bundle")
+	}
+}
