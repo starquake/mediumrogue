@@ -662,6 +662,77 @@
         font-size: 0.85rem;
         line-height: 1.4;
       }
+      /* Party invite prompt (#385): shares the roster's slot and metrics, and
+         stacks above it. PASSIVE — pointer-events only on the panel itself,
+         like every other overlay here, so it never blocks a click on the map.
+         The ACCENT border is load-bearing: every other panel on screen is
+         there because you opened it, and this one is not. */
+      #invite-prompt {
+        pointer-events: auto;
+        width: 13rem;
+        margin-bottom: 0.5rem;
+        background: rgba(15, 10, 12, 0.92);
+        border: 1px solid var(--accent);
+        padding: 0.5rem 0.6rem 0.6rem;
+        text-shadow: 0 1px 2px #000;
+      }
+      .invite-title {
+        margin-bottom: 0.3rem;
+        color: var(--dim);
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      /* The inviter's name is set in the BODY face, not the display face:
+         Cinzel is caps-only, so a name set in it reads as SHOUTING mid-
+         sentence. */
+      .invite-line {
+        font-size: 0.85rem;
+        line-height: 1.35;
+      }
+      .invite-roster {
+        margin-top: 0.35rem;
+        border-left: 2px solid #3d222a;
+        padding-left: 0.45rem;
+      }
+      .invite-member {
+        color: var(--dim);
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+      .invite-warning {
+        margin-top: 0.35rem;
+        color: #ffcc33;
+        font-size: 0.68rem;
+        line-height: 1.3;
+      }
+      .invite-buttons {
+        display: flex;
+        gap: 0.4rem;
+        margin-top: 0.55rem;
+      }
+      .invite-buttons button {
+        flex: 1;
+        padding: 0.35rem 0.2rem;
+        font-family: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+        border: 1px solid var(--dim);
+        background: #201217;
+        color: var(--fg);
+      }
+      .invite-buttons button:hover {
+        background: #3d222a;
+        border-color: var(--accent);
+      }
+      /* The action bar's .keycap is absolutely positioned for a slot corner,
+         so the same treatment is re-expressed inline here rather than reused. */
+      .invite-key {
+        margin-left: 0.25rem;
+        color: var(--dim);
+        font-size: 0.62rem;
+        font-weight: bold;
+      }
       /* Quest + gear stack below the HUD, both inside #left-column (see
          above) — no fixed position/offset of their own any more. Flex flow
          — not per-panel fixed offsets — is what keeps them from ever
@@ -1692,7 +1763,7 @@
       <div><kbd>Space</kbd> arm evade, then click a tile · <kbd>.</kbd> wait · <kbd>R</kbd>/<kbd>E</kbd> health/energy draught</div>
       <div>Panels <kbd>I</kbd>/<kbd>C</kbd> character · <kbd>K</kbd> skills · <kbd>Esc</kbd> close</div>
       <div style="margin-top:.5rem;color:var(--dim)">Chat: /help · /here · /quest &lt;id&gt;</div>
-      <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /leave</div>
+      <div style="color:var(--dim)">Party: /invite &lt;name&gt; · /accept · /decline · /leave</div>
       <h3>Character</h3>
       <div id="new-char-row">
         <button id="new-character" type="button">Start a new character</button>

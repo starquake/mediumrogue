@@ -50,8 +50,9 @@ import {
   submitQuaff,
   submitUseSkill,
 } from "./net/session";
+import { answerInvite, mountInvitePrompt } from "./party/InvitePrompt";
 import { mountRoster } from "./party/RosterPanel";
-import { setParty } from "./party/store";
+import { setParty, setPendingInvite } from "./party/store";
 import type { GroundItemView, Hex, HitView, ItemView, QuestView, SkillView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
 import { mountSkills } from "./skills/SkillsPanel";
@@ -572,6 +573,7 @@ window.game = {
   sendChat: (text: string): Promise<void> => storeSendChat(text),
   party: [],
   partyId: 0,
+  pendingInvite: null,
   quest: null,
   myQuests: [],
   quests: [],
@@ -724,6 +726,8 @@ async function start(): Promise<void> {
   }
 
   mountChat(mustGet("chat-root"));
+  // Before the roster, so the prompt stacks ABOVE it in the shared slot.
+  mountInvitePrompt(mustGet("roster-root"));
   mountRoster(mustGet("roster-root"));
   mountQuests(mustGet("quest-root"));
 
@@ -2303,6 +2307,13 @@ async function start(): Promise<void> {
       window.game.party = partyNames;
       window.game.partyId = myPartyId;
 
+      // Pending party invite (#385): own-only on the wire, so this is only
+      // ever set for the player who has to answer it. Synced with the real
+      // state rather than a bundle late, like every other window.game field.
+      const invite = event.pendingInvite ?? null;
+      setPendingInvite(invite);
+      window.game.pendingInvite = invite;
+
       // Quest board: refreshed every turn from the bundle itself (full-snapshot
       // philosophy — no separate quest-membership stream). My active quests are
       // every "taken" quest held by me or (if I'm in a party) my party — item
@@ -2534,6 +2545,7 @@ async function start(): Promise<void> {
     isPanelOpen: (): boolean =>
       panelOpen() || skillsPanelOpen() || isControlsOverlayOpen() || armedSkill !== null,
     isBlocked: (): boolean => !startScreenEl.hidden,
+    onAnswerInvite: (accept: boolean): boolean => answerInvite(accept),
   });
 
   // Click-to-move (or, in combat with a ranged class, click-to-attack): canvas

@@ -26,6 +26,11 @@ const SKILLS_KEY = "KeyK";
 const HELP_KEY = "Slash"; // "?" is Shift+/ — the physical key is Slash (#203)
 const ACTION_KEYS: Record<string, number> = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }; // action bar (#185)
 const ESCAPE_KEY = "Escape";
+// Y/N answer a pending party invite (#385). Contextual: they do nothing at all
+// unless a prompt is on screen, which is why two otherwise-useful letters can
+// be spent on it — onAnswerInvite reports whether it consumed the key.
+const INVITE_ACCEPT_KEY = "KeyY";
+const INVITE_DECLINE_KEY = "KeyN";
 
 export interface KeyCallbacks {
   /**
@@ -85,6 +90,13 @@ export interface KeyCallbacks {
    * while its class/species is still being chosen.
    */
   isBlocked?: () => boolean;
+  /**
+   * Y/N: answer the pending party invite (#385). Returns whether there was an
+   * invite to answer — false means the key was not consumed and the handler
+   * falls through, so Y and N stay free for anything else while no prompt is
+   * up.
+   */
+  onAnswerInvite?: (accept: boolean) => boolean;
 }
 
 // isTypingTarget reports whether el is (or would receive) text input — the
@@ -121,6 +133,12 @@ export function bindMovementKeys(callbacks: KeyCallbacks): void {
       callbacks.onWait();
 
       return;
+    }
+
+    if (ev.code === INVITE_ACCEPT_KEY || ev.code === INVITE_DECLINE_KEY) {
+      if (callbacks.onAnswerInvite?.(ev.code === INVITE_ACCEPT_KEY) ?? false) {
+        return;
+      }
     }
 
     if (ev.code === QUAFF_HEALTH_KEY) {
