@@ -63,7 +63,7 @@
       #tooltip-root,
       #character-root,
       #pickup-root,
-      #roster-root,
+      #party-column,
       #quest-root,
       #action-bar {
         font-variant-numeric: tabular-nums lining-nums;
@@ -636,11 +636,23 @@
          re-enables pointer events, so empty overlay space still passes clicks
          through to the map. Placed top-right-ish, well clear of the bottom-
          left chat and the top-right class/species pickers. */
-      #roster-root {
+      /* One fixed column holds the invite prompt and the roster, stacked. They
+         are SEPARATE Solid roots and must stay in separate containers: render()
+         replaces its container's children, so two roots sharing one element
+         silently wipe each other out (the roster unmounted the invite prompt
+         until #385 split them). */
+      #party-column {
         position: fixed;
         top: 8rem;
         right: 1rem;
         z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        pointer-events: none;
+      }
+      #invite-root,
+      #roster-root {
         pointer-events: none;
       }
       #roster-panel {
@@ -1898,7 +1910,10 @@
     <div id="slot-menu" hidden></div>
     <div id="slot-tip" hidden></div>
     <div id="chat-root"></div>
-    <div id="roster-root"></div>
+    <div id="party-column">
+      <div id="invite-root"></div>
+      <div id="roster-root"></div>
+    </div>
     <div id="hover-tooltip" hidden>
       <span class="tooltip-kind"></span><span class="tooltip-hp"></span>
     </div>

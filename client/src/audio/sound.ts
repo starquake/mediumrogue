@@ -25,7 +25,8 @@ export type SoundName =
   | "equip"
   | "panelOpen"
   | "panelClose"
-  | "uiClick";
+  | "uiClick"
+  | "invite";
 
 // Variants exist only where repetition would grate — a single footstep clip
 // turns walking into a metronome. One entry means one clip, deliberately.
@@ -47,6 +48,17 @@ export const SOURCES: Record<SoundName, string[]> = {
   panelOpen: ["bookOpen.ogg"],
   panelClose: ["bookClose.ogg"],
   uiClick: ["click1.ogg", "click2.ogg"],
+  // A party invite arriving (#385). Shares panelOpen's clip: the prompt IS a
+  // panel appearing, and every one of the 26 shipped clips is already spoken
+  // for — none of them means "someone is asking you something", and the rule
+  // here is to stay inside a pack already shipped rather than add one.
+  //
+  // A distinct NAME rather than just calling play("panelOpen"), because the two
+  // are different events: this one is the panel you did not open, it is the
+  // only cue for a passive prompt you can otherwise miss, and window.game's
+  // debug.last has to be able to tell them apart. Re-skinning it later is then
+  // a one-line change here.
+  invite: ["bookOpen.ogg"],
 };
 
 const AUDIO_BASE = "audio/";
