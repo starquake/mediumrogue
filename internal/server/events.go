@@ -145,8 +145,25 @@ func handleEvents(deps Deps) http.Handler {
 
 		lastSent := openSSEStream(w, r, deps, flusher, token)
 
-		streamEvents(r.Context(), w, deps, flusher, token, lastSent, ticks, chatCh)
+		streamEvents(r.Context(), w, deps, flusher, viewerFor(deps, token), lastSent, ticks, chatCh)
 	})
+}
+
+// streamViewer is who a stream belongs to. The id is carried alongside the
+// token because the directed-chat filter (#385) runs per frame and a world
+// lookup there would take the world lock on every chat line for every stream.
+type streamViewer struct {
+	token string
+	// id is 0 for a token-less watcher, which therefore matches no directed
+	// line and receives the global channel only.
+	id int64
+}
+
+// viewerFor resolves a stream's viewer once, at open.
+func viewerFor(deps Deps, token string) streamViewer {
+	id, _ := deps.World.EntityIDFor(token)
+
+	return streamViewer{token: token, id: id}
 }
 
 // streamEvents is handleEvents' pump: it forwards turn ticks, chat messages,
@@ -154,7 +171,7 @@ func handleEvents(deps Deps) http.Handler {
 // ends or a write fails.
 func streamEvents(
 	ctx context.Context, w http.ResponseWriter, deps Deps, flusher http.Flusher,
-	token string, lastSent int64, ticks <-chan struct{}, chatCh <-chan protocol.ChatMessage,
+	viewer streamViewer, lastSent int64, ticks <-chan struct{}, chatCh <-chan protocol.ChatMessage,
 ) {
 	heartbeat := time.NewTicker(deps.HeartbeatInterval)
 	defer heartbeat.Stop()
@@ -164,8 +181,15 @@ func streamEvents(
 		case <-ctx.Done():
 			return
 		case <-ticks:
-			lastSent = writeTurn(w, deps, flusher, lastSent, token)
+			lastSent = writeTurn(w, deps, flusher, lastSent, viewer.token)
 		case msg := <-chatCh:
+			// A directed line (#385) is written to its recipient's stream and
+			// to no other — the frame never leaves the server for anyone else,
+			// so privacy does not depend on the client choosing to hide it.
+			if msg.Recipient != 0 && msg.Recipient != viewer.id {
+				continue
+			}
+
 			if !writeChat(w, deps, flusher, msg) {
 				return
 			}

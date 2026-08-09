@@ -4,13 +4,18 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/starquake/mediumrogue/internal/chat"
+	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
+	"github.com/starquake/mediumrogue/internal/server"
 )
 
 // joinNamed is join plus an explicit display name, for chat tests that need
@@ -24,12 +29,12 @@ func joinNamed(t *testing.T, ts *httptest.Server, name string) protocol.JoinResp
 }
 
 // readChatWithin scans the SSE stream for the next `event: chat` frame within
-// timeout, skipping every other frame (turn, heartbeat) along the way — the
-// stream always emits a turn frame immediately on connect.
-func readChatWithin(t *testing.T, r *bufio.Reader, timeout time.Duration) (protocol.ChatMessage, bool) {
+// frameReadTimeout, skipping every other frame (turn, heartbeat) along the way
+// — the stream always emits a turn frame immediately on connect.
+func readChatWithin(t *testing.T, r *bufio.Reader) (protocol.ChatMessage, bool) {
 	t.Helper()
 
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(frameReadTimeout)
 
 	for {
 		remaining := time.Until(deadline)
@@ -73,7 +78,7 @@ func TestChatFansOutToOtherClient(t *testing.T) {
 		t.Fatalf("chat status = %d, want %d", got, want)
 	}
 
-	msg, ok := readChatWithin(t, reader, frameReadTimeout)
+	msg, ok := readChatWithin(t, reader)
 	if !ok {
 		t.Fatal("bob's stream never received a chat frame")
 	}
@@ -114,7 +119,7 @@ func TestChatDeliversSequentialMessagesInOrder(t *testing.T) {
 	var prevSeq int64
 
 	for i, wantText := range texts {
-		msg, ok := readChatWithin(t, reader, frameReadTimeout)
+		msg, ok := readChatWithin(t, reader)
 		if !ok {
 			t.Fatalf("bob's stream never received chat frame %d of %d", i+1, len(texts))
 		}
@@ -151,7 +156,7 @@ func TestHereCommandSharesLocation(t *testing.T) {
 		t.Fatalf("chat status = %d, want %d", got, want)
 	}
 
-	msg, ok := readChatWithin(t, reader, frameReadTimeout)
+	msg, ok := readChatWithin(t, reader)
 	if !ok {
 		t.Fatal("bob's stream never received a chat frame")
 	}
@@ -260,5 +265,119 @@ func TestHelpVerbAndUnknownCommandHint(t *testing.T) {
 
 	if !strings.Contains(bogusBody.Error, "/help") {
 		t.Errorf("unknown-command reply = %q, want it to point at /help", bogusBody.Error)
+	}
+}
+
+// startServerWithBroker is startServer plus a handle on the chat broker, so a
+// test can publish a line the HTTP surface has no route for. Directed lines
+// (#385) are produced by /decline, which is the layer above this one — this
+// harness pins the STREAM FILTER on its own, so a bug in the filter is not
+// hidden by a bug in the decline that feeds it.
+func startServerWithBroker(t *testing.T) (*httptest.Server, *chat.Broker) {
+	t.Helper()
+
+	ticks := hub.New()
+
+	world := game.NewWorld(game.WorldConfig{
+		Interval:        time.Hour,
+		CombatPatience:  time.Minute,
+		BubblePoll:      5 * time.Millisecond,
+		DisconnectGrace: testDisconnectGrace,
+		WorldSeed:       0xC0FFEE,
+		Radius:          12,
+		Ticks:           ticks,
+	})
+
+	broker := chat.NewBroker()
+	world.SetAnnounce(broker.Publish)
+
+	go world.Run(t.Context())
+
+	ts := httptest.NewServer(server.New(server.Deps{
+		Logger:            slog.New(slog.DiscardHandler),
+		World:             world,
+		Ticks:             ticks,
+		Chat:              broker,
+		HeartbeatInterval: time.Hour,
+	}))
+	t.Cleanup(ts.Close)
+
+	return ts, broker
+}
+
+// TestDirectedChatReachesOnlyItsRecipient is the privacy pin for #385's
+// private line: a message addressed to alice is written to alice's stream and
+// never to bob's.
+//
+// The negative half is the load-bearing one, and it is why this asserts on a
+// SECOND line rather than on a timeout. "Bob got nothing within N" is a race
+// dressed as an assertion — it passes on a slow machine for the wrong reason.
+// Instead bob's stream is made to deliver a later GLOBAL line: if the directed
+// one had leaked, it would arrive first and the read would see it.
+func TestDirectedChatReachesOnlyItsRecipient(t *testing.T) {
+	t.Parallel()
+
+	ts, broker := startServerWithBroker(t)
+
+	alice := joinNamed(t, ts, "alice")
+	bob := joinNamed(t, ts, "bob")
+
+	aliceStream := get(t, ts, "/api/events?token="+alice.Token)
+	aliceReader := bufio.NewReader(aliceStream.Body)
+
+	bobStream := get(t, ts, "/api/events?token="+bob.Token)
+	bobReader := bufio.NewReader(bobStream.Body)
+
+	broker.PublishTo(alice.EntityID, protocol.SystemSender, "bob declined your invite")
+	broker.Publish("alice", "everyone sees this")
+
+	// Alice gets the directed line first, then the global one.
+	msg, ok := readChatWithin(t, aliceReader)
+	if !ok {
+		t.Fatal("alice's stream never received the line addressed to her")
+	}
+
+	if got, want := msg.Text, "bob declined your invite"; got != want {
+		t.Errorf("alice first line = %q, want %q", got, want)
+	}
+
+	if got, want := msg.Recipient, alice.EntityID; got != want {
+		t.Errorf("Recipient = %d, want alice's id %d", got, want)
+	}
+
+	// Bob's FIRST chat frame must be the global line — the directed one was
+	// published earlier, so if it leaked it would be sitting ahead of it.
+	msg, ok = readChatWithin(t, bobReader)
+	if !ok {
+		t.Fatal("bob's stream never received the global line")
+	}
+
+	if got, want := msg.Text, "everyone sees this"; got != want {
+		t.Errorf("bob first line = %q, want %q — the directed line leaked", got, want)
+	}
+}
+
+// TestDirectedChatIsWithheldFromTokenlessWatcher: a watcher with no token has
+// no entity, so it matches no recipient and sees global lines only.
+func TestDirectedChatIsWithheldFromTokenlessWatcher(t *testing.T) {
+	t.Parallel()
+
+	ts, broker := startServerWithBroker(t)
+
+	alice := joinNamed(t, ts, "alice")
+
+	watcher := get(t, ts, "/api/events")
+	reader := bufio.NewReader(watcher.Body)
+
+	broker.PublishTo(alice.EntityID, protocol.SystemSender, "private")
+	broker.Publish("alice", "public")
+
+	msg, ok := readChatWithin(t, reader)
+	if !ok {
+		t.Fatal("watcher never received the global line")
+	}
+
+	if got, want := msg.Text, "public"; got != want {
+		t.Errorf("watcher first line = %q, want %q — a directed line reached a watcher", got, want)
 	}
 }

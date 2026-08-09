@@ -53,10 +53,26 @@ func (b *Broker) Subscribe() (<-chan protocol.ChatMessage, func()) {
 // Publish stamps a monotonic Seq and delivers the message to every current
 // subscriber, skipping any whose buffer is full (best-effort).
 func (b *Broker) Publish(sender, text string) {
+	b.PublishTo(0, sender, text)
+}
+
+// PublishTo is Publish addressed to a single entity (#385): the message still
+// fans out to every subscriber, and the SSE handler drops it for streams whose
+// viewer is not the recipient.
+//
+// The filter lives at the stream and not here on purpose. The broker has no
+// idea which subscriber belongs to which player — it hands out bare channels —
+// whereas the SSE handler already resolved its viewer to serve own-only bundle
+// fields. Teaching the broker identity would duplicate that mapping, and a
+// second copy of "which stream is whose" is exactly the thing that drifts.
+//
+// recipient 0 means the global channel.
+func (b *Broker) PublishTo(recipient int64, sender, text string) {
 	msg := protocol.ChatMessage{
-		Seq:    b.seq.Add(1),
-		Sender: sender,
-		Text:   text,
+		Seq:       b.seq.Add(1),
+		Sender:    sender,
+		Text:      text,
+		Recipient: recipient,
 	}
 
 	b.mu.Lock()

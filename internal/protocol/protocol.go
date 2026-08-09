@@ -878,6 +878,17 @@ type ChatMessage struct {
 	Seq    int64  `json:"seq"`
 	Sender string `json:"sender"`
 	Text   string `json:"text"`
+	// Recipient addresses this line to ONE entity; 0 (the default) is the
+	// global channel every line used before #385. Added for the party decline,
+	// which has to reach the inviter and nobody else — a broadcast makes
+	// saying no socially expensive, and silence is indistinguishable from
+	// being ignored.
+	//
+	// Enforced SERVER-SIDE: writeChat (internal/server/events.go) never writes
+	// the frame to a stream whose viewer is not the recipient, so this is not a
+	// "please hide this" flag the client is trusted to honour. The only client
+	// that ever sees the field is the one it is addressed to.
+	Recipient int64 `json:"recipient,omitempty"`
 }
 
 // ChatRequest is the body of POST /api/chat. Token authenticates the sender;
