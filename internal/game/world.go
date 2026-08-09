@@ -1917,17 +1917,20 @@ func (w *World) quaffPoolLocked(ready *int64, pool *int, poolMax int) error {
 }
 
 // regenPlayersLocked tops up both player pools once per turn (#322): HP by
-// protocol.RegenPerTurn and energy by protocol.EnergyRegenPerTurn
-// on a WORLD-domain turn resolution — the passive recovery layer (plan §9):
-// staying alive and out of a fight is now itself a way to top up HP, instead
-// of death (a full-HP respawn) being the only heal. It never fires for a
-// bubbled player (mid-fight means no regen), a monster (they don't regen at
-// all), a dead entity (hp <= 0), or one already at max HP, and it never pushes
-// hp past maxHP. members is always the world-domain set here
-// (resolveWorldTurnLocked's only caller passes domainMembersLocked, already
-// filtered to bubbleID == 0), but the check below stays explicit rather than
-// relying on that — cheap, and it fails safe if a future caller ever passes a
-// mixed set. Callers hold w.mu.
+// protocol.RegenPerTurn and energy by protocol.EnergyRegenPerTurn — the
+// passive recovery layer (plan §9): staying alive is now itself a way to top
+// up, instead of death (a full-HP respawn) being the only heal.
+//
+// Called from BOTH domains — resolveWorldTurnLocked and
+// resolveBubbleTurnLocked (#322 decision 11) — so it has no bubble check and
+// wants none. This comment used to claim the opposite ("never fires for a
+// bubbled player"), contradicting the inline comment at its own bubble call
+// site and two tests that pin the behaviour; corrected in #398. Anyone
+// reasoning about fight arithmetic from the old wording concluded a bubble was
+// pure attrition, which it is not.
+//
+// It skips a monster (they never regen), a dead entity (hp <= 0), and one
+// already at max HP, and never pushes hp past maxHP. Callers hold w.mu.
 func (*World) regenPlayersLocked(members []*entity) {
 	for _, e := range members {
 		if e.kind != protocol.EntityPlayer || e.hp <= 0 {

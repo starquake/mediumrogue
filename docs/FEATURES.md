@@ -575,8 +575,13 @@ roll, so it is ARPG-legal on jewelry.
   - **`.` waits** — the roguelike convention. It took over from `Space`, which
     evade now owns: the panic button gets the key a hand already rests on.
   - Formerly the **Blink** skill; renamed with its numbers unchanged.
-- **Passive regen**: +1 HP per world turn while out of combat (never in a
-  bubble, never above max). Removes death-as-the-only-heal.
+- **Passive regen**: **+1 HP per turn resolution, in a combat bubble as well as
+  out of one** (#322 decision 11; never above max). Removes
+  death-as-the-only-heal. The rate stays at 1 precisely *because* it ticks
+  mid-fight — a trickle that small cannot outpace a monster hitting for 3–9,
+  so recovery never becomes attrition removed rather than managed. Energy
+  regenerates on the same pass, at `EnergyRegenPerTurn`. Monsters never regen;
+  only the Hydra heals, via its bite card.
 - **HUD stats line** (item 9, playtest batch 2; XP portion reworked for the
   quadratic curve, fast-lane batch): `Lv L · (xp into this level)/(XP needed
   this level) XP · (q, r)` — my entity's hex, live per turn bundle.
