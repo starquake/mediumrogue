@@ -1302,3 +1302,53 @@ A standing example of the surviving use: **#315** went to `Backlog` for want of 
 reproduction — "sometimes both markers show", no steps. A same-build recording
 would have settled it.
 
+
+---
+
+## A party invite is state, not a sentence *(decided 2026-08-08, built #385)*
+
+The invite was the one interaction in the game whose entire UI was **"read a
+line and type a thing"**. It existed only as a broadcast chat sentence; the turn
+bundle carried nothing. So a player had to be watching chat to know they'd been
+asked, and anything headless — the playtest bots — had to pattern-match English
+prose to find out.
+
+It is now `TurnEvent.pendingInvite`, **own-only** like the roster (invite state
+is identity data, not positional data, so the interest radius must not cull it),
+drawn as a panel.
+
+**The decisions, and why they went the way they did.**
+
+- **Passive, not modal.** An invite is not urgent the way a pile of loot at your
+  feet is — it can arrive mid-fight. The panel never takes focus or covers the
+  board. The **accent border** carries the whole burden of saying "you did not
+  open this one", and the **sound cue** is what makes passive safe rather than
+  missable; without it, "passive" just means "easy to never notice".
+- **No expiry.** A real decline makes a TTL unnecessary. It also avoids a trap:
+  `w.turn` increments for **every combat bubble**, not just the world clock, so
+  a turn-counted TTL lapses fastest for the player who is mid-fight — precisely
+  the player least able to answer. Wall-clock would have worked but is the only
+  option here that isn't deterministic.
+- **Decline is real, and private.** The two alternatives were both worse:
+  broadcasting makes saying no socially expensive in a group of friends, and
+  silence is indistinguishable from being ignored — the exact ambiguity the
+  prompt exists to remove. This is why **directed chat** exists at all
+  (`ChatMessage.Recipient`), and it is the one directed line in the game.
+- **The prompt names the GROUP.** You are deciding whether to join a party, not
+  a person, so it lists the inviter's current members — empty when they are solo,
+  because accepting is what creates the party.
+- **It warns before it costs you a party.** Accepting always dropped you out of
+  your current party; it just did it invisibly.
+- **What deliberately did NOT change**, because a fifteen-friend trust model
+  makes them social problems rather than software ones: **no range limit** on
+  `/invite`, **no cooldown** on re-inviting after a decline, being invited
+  **while dead** stays allowed, and a second invite still **overwrites** the
+  first (last-wins).
+
+**Directed chat is enforced server-side.** `ChatMessage.Recipient` is filtered at
+the SSE handler, which never writes the frame to a non-recipient's stream — not
+a "please hide this" flag the client is trusted to honour. The filter lives at
+the stream rather than in the broker deliberately: the broker hands out bare
+channels and has no idea which belongs to whom, while the stream already
+resolved its viewer for own-only bundle fields, and a second copy of
+which-stream-is-whose is what drifts.
