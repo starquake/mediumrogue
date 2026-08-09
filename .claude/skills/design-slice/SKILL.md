@@ -61,14 +61,24 @@ PR-level gate you never set — see `merge-pr`.
 - **Open questions get a copy-pastable answer block.** Any question left FOR
   the maintainer goes in the issue's *Open questions* section, and that
   section ends with a fenced block they can copy, fill in, and paste back as
-  a comment — one line per question, the options spelled out inline:
+  a comment — one line per question, the options spelled out inline, and
+  **every line carrying a marked recommendation, `(rec)`** (#396):
 
   ~~~
   ```
-  Q1 partymates: [ a exempt from culling / b separate roster field / c accept shrinking ]
-  Q2 fog visual: [ none for now / want a mockup ]
+  Q1 partymates: exempt from culling (rec) / separate roster field / accept shrinking
+  Q2 fog visual: none for now (rec) / want a mockup
   ```
   ~~~
+
+  The marker belongs **in the block**, not in a paragraph under it. A bare
+  menu makes the maintainer reconstruct reasoning you already did, which is
+  the slowest kind of question to answer — #365 put its leanings in prose
+  below the block, covered one line of eight, and drew *"why are there no
+  recommendations in #365 code block?"*. Where you genuinely have no view,
+  mark that on the line (`discuss (rec)`) rather than leaving it blank: "I
+  have no recommendation" is real information, and it is different from having
+  forgotten to give one.
 
   **Two routes to an answer** (#399). The issue is always the RECORD; the
   INTERFACE is the maintainer's choice, and you **offer both** whenever a
@@ -111,9 +121,9 @@ PR-level gate you never set — see `merge-pr`.
   Prose questions get prose answers, which are slower to write and easy to
   answer only partly; a fillable block gets every question answered in one
   pass. Mirror the same block in the `> 🤖 **Next steps**` comment, so the
-  maintainer can answer from the thread without opening the body. Where a
-  question has a defensible default, say which option you'd take and why —
-  recommending is not deciding, and it makes "yes, do that" a valid reply.
+  maintainer can answer from the thread without opening the body. Recommending
+  is not deciding — a `(rec)` makes "yes, do that" a valid reply, and gives
+  them something to push against rather than into space.
 - **Determinism & seeded tests**: state whether rng is consumed or
   reordered, and which pinned seeds/tables can move.
 - **Mockup**: if the slice's value is how it looks, produce the mockup NOW —

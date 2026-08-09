@@ -61,7 +61,7 @@ project spin up its own server, or lean on the shared one? Ports are
 
 For Go-side races: `go test -run TestX -count=N -race`.
 
-## The four traps that are almost always the cause
+## The five traps that are almost always the cause
 
 ### 1. `<Index>`, never `<For>`, for any list from a turn bundle
 
@@ -126,6 +126,29 @@ Other helpers you'll want rather than re-derive: `gotoReady`, `seedIdentity`,
 A tap/action fired without `await` outlives the assertion and lands in the
 next turn's world — the #117 shape. Await every action a spec issues before it
 asserts.
+
+### 5. Shared player names in a shared-world spec
+
+Players auto-join as **"traveler"**. A spec that resolves another player *by
+name* — `/invite` above all — is unambiguous only while it is the **only**
+test in its project doing so, and `/invite` picks the **nearest** match, so a
+second test in the same file turns that into a coin flip against random spawn
+positions.
+
+**The failure lands in the test you did not touch.** Adding one test to
+`parties.spec.ts` made **both** flake (#385: 3 clean rounds in 6), and the
+older one had been stable for weeks — so every instinct says "I broke the old
+test" or "flaky CI", and neither is where the fix goes.
+
+Worse, the *right* repro tool still gives a poor signal here: `--repeat-each`
+is already wrong for a shared-world spec (see above) and wipes out 12/12,
+while independent invocations come back ~50/50 — which reads as "probably
+fine" if you only run it twice. **"It passed twice" is not evidence.**
+
+Fix by giving the spec's players **unique names**, which needs a cleared
+`storageState` (every project is pre-seeded with a remembered "traveler"
+identity — `playwright.config.ts`'s `storageStateFor`). Do not rely on being
+the only pair in the world.
 
 ## Parallel-agent hazards
 

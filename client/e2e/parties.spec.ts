@@ -7,6 +7,13 @@ import { continueIfReturning } from "./helpers";
 // server-side /invite <name> resolves to the NEAREST player named <name>
 // EXCLUDING the sender (see World.nearestPlayerByNameLocked), so when A
 // invites "traveler" it necessarily targets B, the only other "traveler".
+//
+// THAT HOLDS ONLY WHILE THIS IS THE SOLE INVITE TEST IN THE FILE. Tests here
+// run as parallel workers against one shared project server, so a second test
+// that also invites "traveler" puts four of them in the world and "the only
+// other one" becomes "whichever is nearest" — a coin flip that flakes BOTH
+// tests, not just the new one (#385: 3 clean rounds in 6). Adding one? Give
+// its players unique names via a cleared storageState (#395).
 test("parties: invite, accept, roster, and leave dissolves it", async ({ browser }) => {
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
