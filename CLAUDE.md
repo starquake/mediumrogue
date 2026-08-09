@@ -268,6 +268,13 @@ drift between calls; use absolute paths or `cd` to the repo root before
   — never edit the previous in place**: the thread is the ticket's history, and
   appending keeps it readable in order. Nothing changed since the last one? Post
   nothing.
+  **A block may be answered on GitHub OR in chat** (#399) — the issue is the
+  RECORD, the interface is the maintainer's choice, and Claude offers both when
+  a ticket carries more than two or three open questions. Answered in chat,
+  Claude **writes the answers back to the issue** before acting on them: a
+  decisions table, the date, a verbatim quote of anything whose wording carries
+  reasoning a table flattens, and what became moot. An answer that stays in the
+  transcript is not on the record. See `design-slice` for the full shape.
 - **One issue = one deliverable.** A ticket needing several PRs *in different
   states* is several tickets: split it into **sub-issues** (the board carries
   `Parent issue` and `Sub-issues progress`, and the auto-add-sub-issues workflow

@@ -70,15 +70,34 @@ PR-level gate you never set — see `merge-pr`.
   ```
   ~~~
 
-  Two ways this rule gets broken, both seen on 2026-08-06 (#391):
+  **Two routes to an answer** (#399). The issue is always the RECORD; the
+  INTERFACE is the maintainer's choice, and you **offer both** whenever a
+  ticket carries more than two or three open questions — a long block is what
+  made #365 read as *"I'm kinda lost"*.
 
-  - **Asking in chat instead of in the issue.** Questions raised in
-    conversation — including when the maintainer says "grill me" — are not on
-    the record: they cannot be answered later, by anyone else, or after the
-    session ends. Ask in the chat if that is where the conversation is, then
-    **post the same questions to the issue with a block**. The issue is the
-    design record; a chat transcript is not (#385 was grilled entirely in
-    chat and had to be reconstructed onto the ticket afterwards).
+  - **On GitHub** — the block is posted, they fill it in as a comment.
+    Nothing further is required of you.
+  - **In chat** — you ask the questions conversationally, **3–4 at a time**,
+    each with its recommendation and what it costs. Then you **write the
+    answers back to the issue**, and that step is not optional.
+
+  The write-back is a NEW comment, posted **before you act on the answers** so
+  the record survives a session that ends unexpectedly, carrying: a
+  **decisions table** (one row per question); the **date**, and that it was
+  answered in conversation, so a reader knows why it is not a filled-in block;
+  a **verbatim quote** of anything whose wording carries reasoning the table
+  flattens; and what became **moot**, so unanswered lines do not read as
+  forgotten. #365's is the worked example — and it shows the payoff, since
+  answering conversationally surfaced that the whole ticket was obsolete,
+  which two board passes of the block had not.
+
+  Ways this rule gets broken (#391, 2026-08-06; #399, 2026-08-09):
+
+  - **Answers that never reach the ticket.** Asking and answering in chat is
+    fine — that is the route above. What breaks the rule is leaving them
+    there: an answer only in a transcript cannot be read later, by anyone
+    else, or after the session ends (#385 was grilled entirely in chat and had
+    to be reconstructed onto the ticket afterwards).
   - **A question in the prose that is missing from the block.** The block is
     the thing that gets answered, so anything not in it is effectively not
     asked. Re-read the prose against the block before posting and confirm
