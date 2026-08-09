@@ -468,6 +468,15 @@ type PartyMemberView struct {
 type PartyInviteView struct {
 	InviterID   int64  `json:"inviterId"`
 	InviterName string `json:"inviterName"`
+	// Members is the inviter's party as it stands right now — you are deciding
+	// whether to join a GROUP, so the prompt names the group (maintainer's
+	// call, 2026-08-08). id-sorted like the roster, so the client's <Index>
+	// rows do not shuffle between turns.
+	//
+	// EMPTY when the inviter is not in a party yet, which is the common case:
+	// accepting is what creates it. Empty rather than a one-entry roster
+	// naming the inviter, who is already named by InviterName.
+	Members []PartyMemberView `json:"members,omitempty"`
 }
 
 // BubbleView is a window into a combat bubble: who's in it, which members it's

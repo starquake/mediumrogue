@@ -1717,8 +1717,23 @@ func (w *World) partyViewsLocked(viewerToken string) []protocol.PartyMemberView 
 		return members
 	}
 
+	return w.partyMembersLocked(viewer.partyID)
+}
+
+// partyMembersLocked renders the roster of party pid, id-sorted. Empty for
+// pid 0 — "no party" is not a party of everyone unpartied. Shared by the
+// viewer's own roster and the invite prompt's (#385), which must agree:
+// the group you are shown before accepting is the group you land in.
+// Callers hold w.mu.
+func (w *World) partyMembersLocked(pid int64) []protocol.PartyMemberView {
+	members := make([]protocol.PartyMemberView, 0, typicalPartySize)
+
+	if pid == 0 {
+		return members
+	}
+
 	for _, e := range w.entities {
-		if e.partyID != viewer.partyID {
+		if e.partyID != pid {
 			continue
 		}
 
@@ -1758,7 +1773,11 @@ func (w *World) pendingInviteViewLocked(viewerToken string) *protocol.PartyInvit
 		return nil
 	}
 
-	return &protocol.PartyInviteView{InviterID: inviter.id, InviterName: inviter.name}
+	return &protocol.PartyInviteView{
+		InviterID:   inviter.id,
+		InviterName: inviter.name,
+		Members:     w.partyMembersLocked(inviter.partyID),
+	}
 }
 
 // bubbleViewsLocked renders the bubbles this viewer can resolve: one with no

@@ -2,6 +2,7 @@ package game_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -248,6 +249,60 @@ func TestPendingInviteIsOwnOnly(t *testing.T) {
 
 	if got := w.Snapshot().PendingInvite; got != nil {
 		t.Errorf("viewer-less snapshot carries the invite: %+v", got)
+	}
+}
+
+// TestPendingInviteCarriesInvitersParty pins the roster the prompt shows
+// (#385, maintainer's call 2026-08-08): you are deciding whether to join a
+// GROUP, so the panel names the group, not just whoever typed /invite.
+//
+// The empty case is the one worth pinning. A solo inviter has no party yet —
+// accepting CREATES one — so Members is empty rather than a one-entry roster
+// naming the inviter twice, once as the asker and once as a member.
+func TestPendingInviteCarriesInvitersParty(t *testing.T) {
+	t.Parallel()
+
+	w := newPartyWorld(t)
+	alice := joinNamed(t, w, "alice")
+	bob := joinNamed(t, w, "bob")
+	carol := joinNamed(t, w, "carol")
+
+	// Solo inviter: no party exists yet, so there is no roster to show.
+	if _, err := w.PartyInvite(alice.Token, "bob"); err != nil {
+		t.Fatalf("invite bob: %v", err)
+	}
+
+	invite := w.SnapshotFor(bob.Token).PendingInvite
+	if invite == nil {
+		t.Fatal("invitee's bundle carries no pending invite")
+	}
+
+	if got := len(invite.Members); got != 0 {
+		t.Errorf("Members = %+v, want empty for a solo inviter", invite.Members)
+	}
+
+	// Bob accepts, so alice+bob are now a party of two.
+	if _, err := w.PartyAccept(bob.Token); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+
+	if _, err := w.PartyInvite(alice.Token, "carol"); err != nil {
+		t.Fatalf("invite carol: %v", err)
+	}
+
+	invite = w.SnapshotFor(carol.Token).PendingInvite
+	if invite == nil {
+		t.Fatal("carol's bundle carries no pending invite")
+	}
+
+	names := make([]string, 0, len(invite.Members))
+	for _, m := range invite.Members {
+		names = append(names, m.Name)
+	}
+
+	// id-sorted, like the roster — alice joined first.
+	if got, want := strings.Join(names, ","), "alice,bob"; got != want {
+		t.Errorf("Members = %q, want %q", got, want)
 	}
 }
 
