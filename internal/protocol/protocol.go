@@ -185,8 +185,10 @@ const (
 	// than costing a bubble turn.
 	IntentLearnSkill = "learn-skill"
 	// IntentDrink drinks one unit of an owned consumable stack
-	// (IntentRequest.ItemID): applies the def's heal (clamped to max HP) and
-	// decrements the stack; an emptied stack frees its backpack entry.
+	// (IntentRequest.ItemID): applies the def's timed-effect payload (a
+	// self-buff, a cleanse) and decrements the stack; an emptied stack frees
+	// its backpack entry. There is no flat heal — #410 deleted the heal
+	// consumables and #415 the field behind them.
 	IntentDrink = "drink"
 	// IntentUseSkill triggers a learned ACTIVE skill (IntentRequest.SkillID)
 	// at IntentRequest.Target — #161. It is the turn's action, exactly like a

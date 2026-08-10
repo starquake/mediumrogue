@@ -3,11 +3,11 @@ package game_test
 // content_consumables_test.go (#268): consumables through the live drink
 // action (inventory.go).
 //
-// The heal-ladder half is GONE with #410, which deleted every consumable that
-// had a `heal` value. itemDef.heal and the drink action's healing branch are
-// still there, but no registered content exercises them, so there is nothing
-// left to assert — a test naming a deleted item id would simply not compile.
-// What remains is the buff/cure half, which is unaffected.
+// The heal-ladder half is GONE: #410 deleted every consumable that had a
+// `heal` value, and #415 deleted the field and the drink action's healing
+// branch behind them. What remains is the buff/cure half, which is unaffected
+// — and which is also the shape a re-introduced healing potion would take, a
+// timed idEffectRegen rather than a flat restore.
 
 import (
 	"testing"

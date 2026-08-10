@@ -915,14 +915,6 @@ func (w *World) SetTerrainForTest(h protocol.Hex, t protocol.Terrain) {
 	w.terrain[h] = t
 }
 
-// SeesForTest exposes the terrain half of the spotting check (#95).
-func (w *World) SeesForTest(a, b protocol.Hex) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	return w.seesLocked(a, b)
-}
-
 // SetSkillStateForTest seeds an entity's skill state (#124) so a snapshot
 // round-trip can prove all three fields survive — learned ids, the unspent
 // bank, and the high-water mark that keeps the per-level grant idempotent.

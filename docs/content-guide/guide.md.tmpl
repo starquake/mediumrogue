@@ -88,9 +88,9 @@ any digit in flavour.
 {{end}}
 ## Every item today
 
-| Item | Type | Damage type | Tags | Damage | Range | AoE | Heal | Stat lines |
-|---|---|---|---|---|---|---|---|---|
-{{range .Items}}| **{{.Name}}**<br>`{{.ID}}` | {{.Type}}{{if .TwoHanded}}<br>two-handed{{end}} | {{if .DamageType}}{{.DamageType}}{{else}}—{{end}} | {{if .Tags}}{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}{{else}}—{{end}} | {{if .Damage}}{{.Damage}}{{else}}—{{end}} | {{if .RangeHex}}{{.RangeHex}}{{else}}melee{{end}} | {{if .AoERadius}}{{.AoERadius}}{{else}}—{{end}} | {{if .Heal}}{{.Heal}}{{else}}—{{end}} | {{range .Stats}}{{if .Drawback}}⚠ {{end}}{{.Text}}<br>{{else}}—{{end}} |
+| Item | Type | Damage type | Tags | Damage | Range | AoE | Stat lines |
+|---|---|---|---|---|---|---|---|
+{{range .Items}}| **{{.Name}}**<br>`{{.ID}}` | {{.Type}}{{if .TwoHanded}}<br>two-handed{{end}} | {{if .DamageType}}{{.DamageType}}{{else}}—{{end}} | {{if .Tags}}{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}{{else}}—{{end}} | {{if .Damage}}{{.Damage}}{{else}}—{{end}} | {{if .RangeHex}}{{.RangeHex}}{{else}}melee{{end}} | {{if .AoERadius}}{{.AoERadius}}{{else}}—{{end}} | {{range .Stats}}{{if .Drawback}}⚠ {{end}}{{.Text}}<br>{{else}}—{{end}} |
 {{end}}
 ⚠ marks a **drawback** — a stat that makes its holder worse. Sign alone can't
 say: `+25% Aggro Range` is a cost, `+5% XP` is not.

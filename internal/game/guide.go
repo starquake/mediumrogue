@@ -51,7 +51,6 @@ type GuideItem struct {
 	Damage     int
 	RangeHex   int
 	AoERadius  int
-	Heal       int
 	Stats      []GuideStat
 	Flavor     string
 }
@@ -337,7 +336,7 @@ func GuideData() Guide {
 		g.Items = append(g.Items, GuideItem{
 			ID: def.id, Name: def.name, Type: def.itemType, DamageType: def.damageType,
 			Tags: wireTags(def), TwoHanded: def.twoHanded,
-			Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius, Heal: def.heal,
+			Damage: def.damage, RangeHex: def.rangeHex, AoERadius: def.aoeRadius,
 			Stats: guideStatsFor(def), Flavor: def.flavor,
 		})
 	}
