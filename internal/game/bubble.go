@@ -96,6 +96,11 @@ func (w *World) recomputeBubblesLocked(now time.Time) {
 	}
 
 	w.bubbles = next
+
+	// After every comp has its bubbleID, never inside the loop above: scatter
+	// moves entities, and moving one comp's members would change the occupancy
+	// the next comp is placed against.
+	w.scatterStacksLocked()
 }
 
 // entitiesSlice returns every entity sorted by id, so component grouping and
@@ -343,4 +348,115 @@ func (u *unionFind) union(a, b int) {
 	if ra != rb {
 		u.parent[ra] = rb
 	}
+}
+
+// scatterStacksLocked separates every stacked hex inside a bubble, so a fight
+// is fought from distinct hexes (#412). Callers hold w.mu.
+//
+// Runs on EVERY recompute rather than only when a bubble first forms, which is
+// what makes the two timing answers fall out of one code path: recompute
+// happens before a bubble's first resolution, so the opening turn never
+// resolves against a stack; and it happens again every turn, so a walk-in who
+// arrives on an occupied hex is separated on arrival rather than refused at the
+// door.
+//
+// The lowest-id member of a stack holds the hex and the rest relocate, which is
+// the same "sort before you draw" rule the map-derived-slice convention states —
+// here it removes the need to draw at all.
+//
+// DELIBERATELY NO RNG. Placement walks HexNeighbors in its fixed direction
+// order, so a scatter is reproducible without touching a seeded stream — which
+// matters because this runs inside recompute, on every turn, for every bubble:
+// an rng draw here would consume from a stream on a schedule that depends on
+// how many players happen to be standing on each other, and every pinned seed
+// in the suite would move whenever that changed. The visible cost is that a
+// party fans out the same way each time; in a tactics game that reads as a
+// formation rather than as a tell.
+func (w *World) scatterStacksLocked() {
+	for _, b := range w.bubbles {
+		members := make([]*entity, 0, len(b.members))
+		for id := range b.members {
+			if e, ok := w.entities[id]; ok {
+				members = append(members, e)
+			}
+		}
+
+		slices.SortFunc(members, byEntityID)
+
+		seen := make(map[protocol.Hex]bool, len(members))
+
+		for _, e := range members {
+			if !seen[e.hex] {
+				seen[e.hex] = true
+
+				continue
+			}
+
+			if h, ok := w.scatterHexLocked(e); ok {
+				e.hex = h
+			}
+
+			seen[e.hex] = true
+		}
+	}
+}
+
+// scatterHexLocked finds somewhere for a stacked bubble member to stand, in
+// tiers that each relax a guard — the shape spawnHexLocked (spawn.go) uses for
+// the same class of problem: place an entity somewhere sane, and never fail in
+// a way the caller has to handle.
+//
+// 1. a free neighbour; 2. a free hex two out; 3. any free hex within
+// CombatRadius; 4. nothing — reported as !ok, and the caller leaves the entity
+// where it is.
+//
+// Tier 4 is the decided answer to "what if there is nowhere to go" (@starquake,
+// 2026-08-10): ALLOW the stack for that fight. A bubble that cannot form, or a
+// scatter that errors, is a worse failure than a corridor party standing on one
+// hex — and unlike those, a tolerated stack is self-correcting, because the
+// next recompute tries again from a board that has since moved.
+//
+// Callers hold w.mu.
+func (w *World) scatterHexLocked(e *entity) (protocol.Hex, bool) {
+	for _, h := range HexNeighbors(e.hex) {
+		if w.scatterableLocked(e, h) {
+			return h, true
+		}
+	}
+
+	for radius := 2; radius <= protocol.CombatRadius; radius++ {
+		var ring []protocol.Hex
+
+		for h := range w.terrain {
+			if HexDistance(e.hex, h) == radius && w.scatterableLocked(e, h) {
+				ring = append(ring, h)
+			}
+		}
+
+		if len(ring) == 0 {
+			continue
+		}
+
+		// The terrain map is a map, so its iteration order is random — sort
+		// before picking, or the same board scatters differently run to run
+		// (the map-derived-slice rule, and the reason this is not just
+		// ring[0]).
+		slices.SortFunc(ring, compareHexQR)
+
+		return ring[0], true
+	}
+
+	return e.hex, false
+}
+
+// scatterableLocked reports whether h can take a scattering bubble member: on
+// the map, walkable, and empty. EMPTY, not "under the cap" — the whole point of
+// the scatter is to reach one entity per hex, so a hex holding anyone at all
+// (ally or enemy, bubbled or not) is no use here. Callers hold w.mu.
+func (w *World) scatterableLocked(e *entity, h protocol.Hex) bool {
+	if h == e.hex || !w.walkableLocked(h) {
+		return false
+	}
+
+	return w.occupancyLocked(h) == 0
 }
