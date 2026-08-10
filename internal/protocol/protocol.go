@@ -330,12 +330,19 @@ const EvadeCooldownTurns = 3
 // so the aim is never a guess.
 const EvadeRangeHex = 3
 
-// RegenPerTurn is the HP a player passively recovers each WORLD-domain turn
-// resolution while out of combat (bubbleID == 0) and below max HP — the
-// passive recovery layer (plan §9). It kills the inverted incentive where
-// dying (a full-HP respawn) was the only way to heal: standing around out of
-// a fight now tops you up too, slowly. Monsters never regen; a bubbled player
-// (mid-fight) does not either — being in a fight means no regen.
+// RegenPerTurn is the HP a player passively recovers on each turn resolution
+// while below max HP — the passive recovery layer (plan §9). It kills the
+// inverted incentive where dying (a full-HP respawn) was the only way to heal:
+// standing around out of a fight now tops you up too, slowly.
+//
+// It applies in BOTH domains — world turns and combat-bubble turns alike
+// (#322 decision 11). Bubbles originally had no healing at all, and the
+// comments here said so long after that stopped being true (#398). The value
+// stays at 1 precisely BECAUSE it now ticks mid-fight: a trickle that small
+// cannot outpace a monster hitting for 3-9, so recovery-in-combat never
+// becomes attrition removed rather than managed.
+//
+// Monsters never regen at all — only the Hydra heals, via its bite card.
 const RegenPerTurn = 1
 
 // XP & leveling (milestone 6b.1; curve replaced by a quadratic one in the
