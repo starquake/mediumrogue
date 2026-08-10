@@ -195,11 +195,32 @@ drift between calls; use absolute paths or `cd` to the repo root before
   (`Your input` / `Your sign-off` / `Your review`) stop the work and are the
   maintainer's; **work states** (`Spec` / `Plan` / `Build`) mean proceed and are Claude's.
   The test is the wording itself: **if the state says "your", it is a gate.**
-  `Backlog` is "filed, no baton yet"; `Done` is closed/merged. The flow:
+  `Backlog` is "filed, no baton yet"; `Done` is closed/merged.
+
+  **The columns are batons, NOT a pipeline.** Left to right they read:
 
   ```
-  Backlog → Spec → Your input → Plan → Your sign-off → Build → Your review → Done
+  Backlog · Your input · Spec · Plan · Your sign-off · Build · Your review · Done
   ```
+
+  That is the column ORDER, not a required traversal, and reading it as one is
+  the mistake this section exists to prevent:
+
+  - **`Your input` is an INTERRUPT, not a stage.** Any work state raises it —
+    `Spec → Your input`, `Plan → Your input`, `Build → Your input` are all
+    normal, and so is the return. A question arriving mid-build is the field
+    doing its job, not a regression. It sits beside `Backlog` because it is the
+    one gate belonging to no particular stage (moved there 2026-08-10).
+  - **Movement is bidirectional**, so a card moving LEFT is routine. Nothing
+    validates transitions; the field answers one question only — *who acts
+    next* — and that answer legitimately changes hands repeatedly.
+  - **Stages are skippable.** `Backlog → Your input` is the common route when a
+    decision is needed before spec work is worth doing; `Backlog → Build` suits
+    a bug. `Spec` and `Plan` are for the slices that need them.
+
+  Build progress is NOT carried here — the plan's ticked checkboxes and the
+  branch are the progress record (`build-slice`), which is why one value per
+  issue suffices even when a ticket bounces between `Build` and `Your input`.
 
   **The two "your" gates around a build are different jobs, and conflating them
   is what made the lane useless** (2026-07-28): `Your sign-off` comes **before**
@@ -217,6 +238,15 @@ drift between calls; use absolute paths or `cd` to the repo root before
   override. Reaching for a new Status option instead is the expensive answer:
   reordering a single-select **replaces every option and clears every item's
   value** (2026-07-28).
+
+  **A reorder is survivable, and the procedure is snapshot → reorder → restore
+  → verify** (done once, 2026-08-10: 54 items, clean). Snapshot every item's
+  `number|status` first; apply `updateProjectV2Field` with the whole option
+  list in the new order (its input takes name/color/description and NO id,
+  which is exactly why every value is cleared); restore from the snapshot; then
+  **diff restored-against-snapshot** before calling it done. It works only
+  because `board.sh` resolves options **by name** at call time — every option
+  id changes in a reorder, so anything holding ids would restore nothing.
 
   **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
   an issue state, and **PRs are not board items**. The auto-add workflow must
