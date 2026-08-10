@@ -73,9 +73,10 @@ func run(ctx context.Context, url, name, class, species, token, follow *string, 
 		// protecting the way a player's is.
 		"token", me.Token)
 
-	// Events rather than Turns: a party INVITE is announced only as chat, with
-	// no field on the bundle to read, so a bot that ignores chat can never join
-	// a party — which is the whole point of running several.
+	// Events rather than Turns: chat is still read for everything else a bot
+	// might react to. The party INVITE no longer needs it — since #385 the
+	// bundle carries PendingInvite, so the bot answers a field instead of
+	// pattern-matching an English sentence.
 	events, err := client.Events(ctx)
 	if err != nil {
 		return fmt.Errorf("bot: stream: %w", err)
@@ -85,12 +86,12 @@ func run(ctx context.Context, url, name, class, species, token, follow *string, 
 
 	for ev := range events {
 		if ev.Chat != nil {
-			acceptIfInvited(ctx, client, *ev.Chat, *name)
-
 			continue
 		}
 
 		bundle := *ev.Turn
+
+		acceptIfInvited(ctx, client, bundle, *name)
 
 		// The bot only ever acts on ITSELF as the world reports it — never on
 		// remembered state. A bundle is the whole truth for that turn.
@@ -172,11 +173,20 @@ func runParty(ctx context.Context, url, name, species, follow *string, count int
 	return nil
 }
 
-// acceptIfInvited joins a party when the invite names this bot. Split out of
-// run to keep it under the complexity limit, and because "did someone invite
-// me" is a decision, not plumbing.
-func acceptIfInvited(ctx context.Context, client *botclient.Client, msg protocol.ChatMessage, name string) {
-	if !bot.InviteAddressesMe(msg, name) {
+// acceptIfInvited joins a party when the bundle says this bot has been asked.
+// Split out of run to keep it under the complexity limit, and because "did
+// someone invite me" is a decision, not plumbing.
+//
+// Reads PendingInvite (#385). It used to match the broadcast sentence
+// "<inviter> invited <target> to a party — <target>: /accept", which was the
+// only way to know before the field existed and which would have broken
+// silently on any reword. The field is own-only, so its mere presence means
+// this bot is the one being asked — there is no name to compare.
+//
+// Answering every turn while an invite stands is harmless: the second /accept
+// gets a 422 because the first already cleared it.
+func acceptIfInvited(ctx context.Context, client *botclient.Client, bundle protocol.TurnEvent, name string) {
+	if bundle.PendingInvite == nil {
 		return
 	}
 

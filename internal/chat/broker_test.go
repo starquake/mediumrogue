@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/starquake/mediumrogue/internal/chat"
+	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
 func TestBrokerFansOutInOrderWithMonotonicSeq(t *testing.T) {
@@ -110,5 +111,69 @@ func TestUnsubscribeStopsDeliveryAndNeverBlocks(t *testing.T) {
 		}
 	default:
 		// nothing delivered — correct
+	}
+}
+
+// TestPublishToStampsRecipientAndStillFansOut pins the split of duties for the
+// directed line (#385): the BROKER addresses, the STREAM filters.
+//
+// The fan-out half is the counter-intuitive one and the reason this test
+// exists. It looks like a privacy bug — a private message handed to every
+// subscriber — but the broker deals in bare channels and has no idea which one
+// belongs to whom. Enforcement lives at the SSE handler, which already
+// resolved its viewer. If someone "fixes" this by filtering here, they will
+// have to teach the broker identity, and that second copy of which-stream-is-
+// whose is what drifts out of sync with the real one.
+func TestPublishToStampsRecipientAndStillFansOut(t *testing.T) {
+	t.Parallel()
+
+	b := chat.NewBroker()
+
+	first, cancelFirst := b.Subscribe()
+	defer cancelFirst()
+
+	second, cancelSecond := b.Subscribe()
+	defer cancelSecond()
+
+	const recipient int64 = 42
+
+	b.PublishTo(recipient, "system", "alice declined")
+
+	for i, ch := range []<-chan protocol.ChatMessage{first, second} {
+		select {
+		case msg := <-ch:
+			if got, want := msg.Recipient, recipient; got != want {
+				t.Errorf("subscriber %d Recipient = %d, want %d", i, got, want)
+			}
+
+			if got, want := msg.Text, "alice declined"; got != want {
+				t.Errorf("subscriber %d Text = %q, want %q", i, got, want)
+			}
+		default:
+			t.Errorf("subscriber %d received nothing", i)
+		}
+	}
+}
+
+// TestPublishLeavesRecipientZero: an ordinary line is global, and stays global.
+// Recipient 0 is what every pre-#385 line was, so the plain Publish path must
+// not start addressing anything by accident.
+func TestPublishLeavesRecipientZero(t *testing.T) {
+	t.Parallel()
+
+	b := chat.NewBroker()
+
+	ch, cancel := b.Subscribe()
+	defer cancel()
+
+	b.Publish("alice", "hello")
+
+	select {
+	case msg := <-ch:
+		if got, want := msg.Recipient, int64(0); got != want {
+			t.Errorf("Recipient = %d, want %d (global)", got, want)
+		}
+	default:
+		t.Fatal("received nothing")
 	}
 }

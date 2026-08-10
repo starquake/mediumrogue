@@ -106,6 +106,44 @@ func (w *World) PartyAccept(token string) (string, error) {
 	return fmt.Sprintf("%s joined %s's party", accepter.name, inviter.name), nil
 }
 
+// PartyDecline refuses the token holder's pending invite. Returns the line to
+// send and the entity id it is addressed to — the INVITER's, because a decline
+// is told to the person who asked and to nobody else (maintainer's call,
+// 2026-08-08).
+//
+// The two alternatives were both worse: broadcasting makes saying no socially
+// expensive in a group of friends, and staying silent is indistinguishable
+// from being ignored, which is the ambiguity the prompt exists to remove.
+//
+// No cooldown on re-inviting. Fifteen friends means invite spam is a social
+// problem, and a block would make /decline a dismiss button with extra steps.
+func (w *World) PartyDecline(token string) (string, int64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	decliner, err := w.playerByTokenLocked(token)
+	if err != nil {
+		return "", 0, err
+	}
+
+	inviterID, ok := w.pendingInvites[decliner.id]
+	if !ok {
+		return "", 0, ErrNoPendingInvite
+	}
+
+	delete(w.pendingInvites, decliner.id)
+
+	// The invite is cleared either way: an inviter who has left cannot be told,
+	// but the decliner's prompt must still go. Same defensive guard as
+	// PartyAccept's — the disconnect sweep should have purged this already.
+	inviter, ok := w.entities[inviterID]
+	if !ok {
+		return "", 0, nil
+	}
+
+	return decliner.name + " declined your party invite", inviter.id, nil
+}
+
 // PartyLeave removes the token holder from their party (dissolving it if it
 // drops below two members).
 func (w *World) PartyLeave(token string) (string, error) {

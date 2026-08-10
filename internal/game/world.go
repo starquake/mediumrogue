@@ -846,6 +846,26 @@ func (w *World) SenderFor(token string) (string, protocol.Hex, bool) {
 	return e.name, e.hex, true
 }
 
+// EntityIDFor resolves token to its live entity id, or 0/false for an unknown,
+// empty, or not-joined token (#385). The SSE handler calls it ONCE per stream,
+// at open, so a directed chat line can be matched against the viewer without
+// taking the world lock on every frame.
+//
+// Deliberately not a field on TurnEvent: the client has no use for its own id
+// that it does not already get from JoinResponse, and putting it on every
+// bundle would be state on the wire serving only the server's own filter.
+func (w *World) EntityIDFor(token string) (int64, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e, ok := w.byToken[token]
+	if !ok || token == "" {
+		return 0, false
+	}
+
+	return e.id, true
+}
+
 // TokenKnown reports whether token belongs to a returning player — a live
 // entity or an archived character. The HTTP layer's join rate limiter (#199)
 // exempts exactly this set, mirroring the player cap's reclaim/restore
@@ -1717,8 +1737,23 @@ func (w *World) partyViewsLocked(viewerToken string) []protocol.PartyMemberView 
 		return members
 	}
 
+	return w.partyMembersLocked(viewer.partyID)
+}
+
+// partyMembersLocked renders the roster of party pid, id-sorted. Empty for
+// pid 0 — "no party" is not a party of everyone unpartied. Shared by the
+// viewer's own roster and the invite prompt's (#385), which must agree:
+// the group you are shown before accepting is the group you land in.
+// Callers hold w.mu.
+func (w *World) partyMembersLocked(pid int64) []protocol.PartyMemberView {
+	members := make([]protocol.PartyMemberView, 0, typicalPartySize)
+
+	if pid == 0 {
+		return members
+	}
+
 	for _, e := range w.entities {
-		if e.partyID != viewer.partyID {
+		if e.partyID != pid {
 			continue
 		}
 
@@ -1758,7 +1793,11 @@ func (w *World) pendingInviteViewLocked(viewerToken string) *protocol.PartyInvit
 		return nil
 	}
 
-	return &protocol.PartyInviteView{InviterID: inviter.id, InviterName: inviter.name}
+	return &protocol.PartyInviteView{
+		InviterID:   inviter.id,
+		InviterName: inviter.name,
+		Members:     w.partyMembersLocked(inviter.partyID),
+	}
 }
 
 // bubbleViewsLocked renders the bubbles this viewer can resolve: one with no

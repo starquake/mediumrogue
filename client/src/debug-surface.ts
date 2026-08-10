@@ -7,7 +7,7 @@
 // still owns the live object and writes every field at the same times it always
 // did, and re-exports GameDebug so the e2e specs' `import { GameDebug } from
 // "../src/main"` keeps resolving unchanged.
-import type { Hex, HitView, QuestView } from "./protocol.gen";
+import type { Hex, HitView, PartyInviteView, QuestView } from "./protocol.gen";
 import type { CommittedAction } from "./render/feedback";
 import type { HoverMoveTile } from "./render/hover";
 
@@ -257,6 +257,11 @@ export interface GameDebug {
   party: string[];
   /** This client's entity's party id, from the latest bundle. 0 when solo. */
   partyId: number;
+  /**
+   * The party invite awaiting MY answer (#385), or null. Own-only on the
+   * wire, so this is never populated for anyone but the person being asked.
+   */
+  pendingInvite: PartyInviteView | null;
   /**
    * My FIRST active quest (taken by me or my party), from the latest
    * bundle — null when I hold none. Kept for backward compatibility with

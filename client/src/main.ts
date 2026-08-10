@@ -50,8 +50,9 @@ import {
   submitQuaff,
   submitUseSkill,
 } from "./net/session";
+import { answerInvite, mountInvitePrompt } from "./party/InvitePrompt";
 import { mountRoster } from "./party/RosterPanel";
-import { setParty } from "./party/store";
+import { setParty, setPendingInvite } from "./party/store";
 import type { GroundItemView, Hex, HitView, ItemView, QuestView, SkillView, TurnEvent } from "./protocol.gen";
 import { mountQuests } from "./quest/QuestPanel";
 import { mountSkills } from "./skills/SkillsPanel";
@@ -520,6 +521,9 @@ const ZOOM_MIN = 0.5; // most zoomed-OUT (survey the big world)
 const ZOOM_MAX = 2.5; // most zoomed-IN
 const ZOOM_EASE_RATE = 12; // 1/s — higher eases toward targetZoom faster (1 - e^(-rate·dt))
 const ZOOM_WHEEL_SENSITIVITY = 0.0015; // multiplicative zoom per wheel deltaY unit
+// The invite cue is deliberately under the effects around it (#385): it has to
+// be noticeable while you are looking elsewhere without competing with a fight.
+const INVITE_VOLUME = 0.45;
 
 window.game = {
   turn: -1,
@@ -572,6 +576,7 @@ window.game = {
   sendChat: (text: string): Promise<void> => storeSendChat(text),
   party: [],
   partyId: 0,
+  pendingInvite: null,
   quest: null,
   myQuests: [],
   quests: [],
@@ -724,6 +729,9 @@ async function start(): Promise<void> {
   }
 
   mountChat(mustGet("chat-root"));
+  // Separate containers, deliberately: Solid's render() replaces its
+  // container's children, so two roots in one element wipe each other.
+  mountInvitePrompt(mustGet("invite-root"));
   mountRoster(mustGet("roster-root"));
   mountQuests(mustGet("quest-root"));
 
@@ -2303,6 +2311,26 @@ async function start(): Promise<void> {
       window.game.party = partyNames;
       window.game.partyId = myPartyId;
 
+      // Pending party invite (#385): own-only on the wire, so this is only
+      // ever set for the player who has to answer it. Synced with the real
+      // state rather than a bundle late, like every other window.game field.
+      const invite = event.pendingInvite ?? null;
+
+      // One quiet cue on ARRIVAL (maintainer's call): a passive panel is right
+      // mid-fight and wrong when you are staring at the board, and the sound is
+      // what makes "passive" safe rather than missable.
+      //
+      // Keyed on the INVITER changing, not merely on null -> non-null, so a
+      // second invite that overwrites a pending one (last-wins, today's
+      // behaviour) still announces itself. Re-cueing every turn while the same
+      // invite sits there would be the obvious bug in the other direction.
+      if (invite !== null && invite.inviterId !== (window.game.pendingInvite?.inviterId ?? 0)) {
+        sound.play("invite", INVITE_VOLUME);
+      }
+
+      setPendingInvite(invite);
+      window.game.pendingInvite = invite;
+
       // Quest board: refreshed every turn from the bundle itself (full-snapshot
       // philosophy — no separate quest-membership stream). My active quests are
       // every "taken" quest held by me or (if I'm in a party) my party — item
@@ -2534,6 +2562,7 @@ async function start(): Promise<void> {
     isPanelOpen: (): boolean =>
       panelOpen() || skillsPanelOpen() || isControlsOverlayOpen() || armedSkill !== null,
     isBlocked: (): boolean => !startScreenEl.hidden,
+    onAnswerInvite: (accept: boolean): boolean => answerInvite(accept),
   });
 
   // Click-to-move (or, in combat with a ranged class, click-to-attack): canvas

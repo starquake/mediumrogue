@@ -1060,12 +1060,43 @@ roll, so it is ARPG-legal on jewelry.
   on EACH of my active "reach" quests' goal hexes — above the ground-loot
   layer, below entities. Kill quests get no marker (no single hex to point
   at); a marker clears when its quest completes or is abandoned.
-- **Parties** via chat commands (`/invite <name>`, `/accept`, `/leave`):
-  ≥2 members, dissolve below that, survive death, swept on disconnect.
-  Partymates colored on-map; roster panel.
+- **Parties** via chat commands (`/invite <name>`, `/accept`, `/decline`,
+  `/leave`): ≥2 members, dissolve below that, survive death, swept on
+  disconnect. Partymates colored on-map; roster panel.
+- **The invite is a prompt, not a sentence to read and type at** (#385). A
+  pending invite rides the turn bundle as `TurnEvent.pendingInvite`
+  (`PartyInviteView`: `inviterId`, `inviterName`, `members`), **own-only** like
+  the roster — present for the person being asked and absent from everyone
+  else's bundle, including the inviter's. The client draws a **passive** panel
+  in the roster's slot with **Accept (Y) / Decline (N)**: it never takes focus
+  or covers the board, because an invite can arrive mid-fight, and an **accent
+  border** marks it as the one panel you did not open. It shows the inviter's
+  **current party** when they have one (you are joining a group, so the group
+  is named) and **warns when accepting would drop you out of your own** — the
+  leave always happened, it was just invisible. One quiet **sound cue on
+  arrival**, which is what makes a passive panel safe to miss-proof.
+  - **No expiry.** Invites do not lapse; a real `/decline` makes a TTL
+    unnecessary. (A turn-counted TTL would also have lapsed *fastest* for the
+    player mid-fight — the turn counter ticks for every combat bubble — i.e.
+    exactly the player least able to answer.)
+  - **`/decline` is a real answer**, cleared server-side, and it tells the
+    **inviter alone** (see directed chat below). No cooldown on re-inviting.
+  - **No range limit**: `/invite` still resolves the nearest player of that
+    name anywhere in the world.
+  - Unchanged and deliberate: being invited **while dead** is allowed, and a
+    second invite **overwrites** a pending one (last-wins).
+  - `/accept` and `/decline` still work as typed commands — headless clients
+    and the playtest bots use them. The **bot reads `pendingInvite`** rather
+    than pattern-matching the chat sentence.
 - **Global chat** over SSE (ephemeral, no history), `/here` shares position;
   system announces (quests, pickups, kills, deaths) make it the de facto
   combat log.
+- **Directed chat lines** (#385): `ChatMessage.recipient` addresses one entity
+  (`0` = the global channel, which is every line but the party decline).
+  Enforced **server-side** — the SSE handler never writes the frame to a stream
+  whose viewer is not the recipient, so it is not a flag the client is trusted
+  to honour, and a token-less watcher matches no recipient and sees the global
+  channel only.
 
 ### Joining & identity
 - **Start screen — shown on every load** (#303). A **new** player gets the
@@ -1254,13 +1285,15 @@ roll, so it is ARPG-legal on jewelry.
   from this field — deriving it from `entities` would make the panel shrink
   as a party spread out.
   **Pending party invite** (`TurnEvent.PendingInvite`, #385): the invite
-  waiting on this viewer's answer — inviter id and name — or absent when
-  none is. Own-only for the same reason the roster is: who has asked you to
-  join them is your business. At most one is pending per player (a second
-  invite overwrites the first), which is why it is a nullable object rather
-  than a list. It clears when the invite is accepted. Before this field the
-  invite existed only as the chat announcement, so answering it meant reading
-  a sentence and typing `/accept` — still supported, and still what headless
+  waiting on this viewer's answer — inviter id and name, plus the inviter's
+  current party `members` (empty when they are solo, since accepting is what
+  creates the party) — or absent when none is. Own-only for the same reason
+  the roster is: who has asked you to join them is your business. At most one
+  is pending per player (a second invite overwrites the first), which is why
+  it is a nullable object rather than a list. It clears when the invite is
+  accepted **or declined**, and never expires. Before this field the invite
+  existed only as the chat announcement, so answering it meant reading a
+  sentence and typing `/accept` — still supported, and still what headless
   clients use.
   **The visible edge** (`client/src/render/fog.ts`): a soft vignette (variant
   A) starting 2 hexes inside the boundary and reaching full opacity one hex

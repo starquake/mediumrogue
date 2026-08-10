@@ -55,37 +55,31 @@ func entityInBundle(t *testing.T, ts *httptest.Server, id int64) protocol.Entity
 	return protocol.Entity{}
 }
 
-// readSystemChat scans bob's stream for the next `event: chat` frame within
-// frameReadTimeout, skipping every other frame along the way. Local to this
-// file (rather than reusing chat_test.go's readChatWithin) so that helper's
-// timeout parameter isn't given a fourth always-identical call site.
+// readSystemChat is readChatWithin with the timeout treated as fatal, for the
+// party and quest tests, where a missing announcement is never a legitimate
+// outcome worth branching on.
+//
+// It used to duplicate readChatWithin's whole scan loop to avoid giving that
+// helper's timeout parameter another always-identical call site. #385 removed
+// the parameter, so the duplication had nothing left to buy and this delegates.
 func readSystemChat(t *testing.T, r *bufio.Reader) protocol.ChatMessage {
 	t.Helper()
 
-	deadline := time.Now().Add(frameReadTimeout)
-
-	for {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			t.Fatal("no chat frame arrived before timeout")
-		}
-
-		frame, ok := readFrameWithin(t, r, remaining)
-		if !ok {
-			t.Fatal("no chat frame arrived before timeout")
-		}
-
-		if frame.event != protocol.EventChat {
-			continue
-		}
-
-		var msg protocol.ChatMessage
-		if err := json.Unmarshal([]byte(frame.data), &msg); err != nil {
-			t.Fatalf("unmarshal chat frame %q: %v", frame.data, err)
-		}
-
-		return msg
+	msg, ok := readChatWithin(t, r)
+	if !ok {
+		t.Fatal("no chat frame arrived before timeout")
 	}
+
+	return msg
+}
+
+// chatPost POSTs text to /api/chat as token and returns the status code — the
+// party verbs are chat commands, so every one of these tests speaks over the
+// same route a player's client does.
+func chatPost(t *testing.T, ts *httptest.Server, token, text string) int {
+	t.Helper()
+
+	return postJSON(t, ts, "/api/chat", protocol.ChatRequest{Token: token, Text: text}).StatusCode
 }
 
 // formParty joins alice and bob under distinct names, has alice invite bob
@@ -329,4 +323,72 @@ func TestPendingInviteRidesTheBundle(t *testing.T) {
 	awaitTurnFrame(t, bobReader, "the pending invite to clear once accepted", func(b protocol.TurnEvent) bool {
 		return b.PendingInvite == nil
 	})
+}
+
+// TestDeclineOverHTTPReachesOnlyTheInviter is the whole #385 decline path over
+// real HTTP: bob declines, alice (who asked) is told, and carol — a bystander
+// on the same server — is not.
+//
+// Carol is the point of the test. A decline that leaks is not a crash; it is a
+// social failure nobody would notice in a unit test, so the bystander is
+// asserted on explicitly rather than assumed.
+func TestDeclineOverHTTPReachesOnlyTheInviter(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+
+	alice := joinNamed(t, ts, "alice")
+	bob := joinNamed(t, ts, "bob")
+	carol := joinNamed(t, ts, "carol")
+
+	aliceReader := bufio.NewReader(get(t, ts, "/api/events?token="+alice.Token).Body)
+	carolReader := bufio.NewReader(get(t, ts, "/api/events?token="+carol.Token).Body)
+
+	if got, want := chatPost(t, ts, alice.Token, "/invite bob"), http.StatusAccepted; got != want {
+		t.Fatalf("/invite status = %d, want %d", got, want)
+	}
+
+	if got, want := chatPost(t, ts, bob.Token, "/decline"), http.StatusAccepted; got != want {
+		t.Fatalf("/decline status = %d, want %d", got, want)
+	}
+
+	// A later global line gives carol's stream something legitimate to deliver,
+	// so "carol did not get the decline" is a real assertion rather than a
+	// timeout that passes on a slow machine.
+	if got, want := chatPost(t, ts, carol.Token, "still here"), http.StatusAccepted; got != want {
+		t.Fatalf("plain chat status = %d, want %d", got, want)
+	}
+
+	// Alice sees the invite broadcast, then the decline addressed to her.
+	readSystemChat(t, aliceReader)
+
+	decline := readSystemChat(t, aliceReader)
+
+	if got, want := decline.Text, "bob declined"; !strings.Contains(got, want) {
+		t.Errorf("alice's second line = %q, should contain %q", got, want)
+	}
+
+	if got, want := decline.Recipient, alice.EntityID; got != want {
+		t.Errorf("Recipient = %d, want alice's id %d", got, want)
+	}
+
+	// Carol saw the invite broadcast; her NEXT line must be the plain one, not
+	// the decline that was published between them.
+	readSystemChat(t, carolReader)
+
+	if got, want := readSystemChat(t, carolReader).Text, "still here"; got != want {
+		t.Errorf("carol's second line = %q, want %q — the decline leaked to a bystander", got, want)
+	}
+}
+
+// TestDeclineWithNothingPendingIs422: the same shape /accept already has.
+func TestDeclineWithNothingPendingIs422(t *testing.T) {
+	t.Parallel()
+
+	ts := startServer(t, time.Hour, time.Hour)
+	bob := joinNamed(t, ts, "bob")
+
+	if got, want := chatPost(t, ts, bob.Token, "/decline"), http.StatusUnprocessableEntity; got != want {
+		t.Errorf("/decline with no invite: status = %d, want %d", got, want)
+	}
 }

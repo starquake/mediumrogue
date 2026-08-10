@@ -59,16 +59,16 @@ func handleChat(deps Deps) http.Handler {
 			return
 		}
 
-		sender, broadcast := name, text
+		outcome := chatOutcome{sender: name, text: text}
 
 		if strings.HasPrefix(text, "/") {
-			sender, broadcast, ok = routeChatCommand(w, deps, req.Token, name, senderHex, text)
+			outcome, ok = routeChatCommand(w, deps, req.Token, name, senderHex, text)
 			if !ok {
 				return
 			}
 		}
 
-		deps.Chat.Publish(sender, broadcast)
+		deps.Chat.PublishTo(outcome.recipient, outcome.sender, outcome.text)
 		w.WriteHeader(http.StatusAccepted)
 	})
 }
@@ -82,7 +82,7 @@ const systemSender = protocol.SystemSender
 // error. Self-only (a 422 the client renders as a system line), so it never
 // spams the shared channel. Keep in step with client/src/input/keys.ts.
 const helpText = "controls — move QWE/ASD · wait Space · panels I·C inventory, K skills · " +
-	"chat /help /here /quest <id> · party /invite <name> /accept /leave"
+	"chat /help /here /quest <id> · party /invite <name> /accept /decline /leave"
 
 // questIDArg parses the numeric id argument shared by /quest and /abandon,
 // responding with a usage error and reporting false if it is missing or
@@ -98,17 +98,32 @@ func questIDArg(w http.ResponseWriter, deps Deps, rest, verb string) (int64, boo
 	return id, true
 }
 
-// routeChatCommand runs a "/command" and returns the sender label to publish
-// under (systemSender for party ops, the player's own name otherwise) and the
-// text to broadcast. Party verbs (invite/accept/leave) go straight to World;
-// every other command runs through chat.RunCommand under the player's own
-// name. On failure it writes the error response itself and returns ok=false.
+// chatOutcome is the line a chat POST produced: who it is published as, what
+// it says, and — since #385 — who it is FOR. A zero recipient is the global
+// channel, which is every line but the party decline.
+type chatOutcome struct {
+	sender    string
+	text      string
+	recipient int64
+}
+
+// routeChatCommand runs a "/command" and returns the line to publish: the
+// sender label (systemSender for party ops, the player's own name otherwise),
+// the text, and its recipient. Party verbs (invite/accept/decline/leave) go
+// straight to World; every other command runs through chat.RunCommand under
+// the player's own name. On failure it writes the error response itself and
+// returns ok=false.
 func routeChatCommand(
 	w http.ResponseWriter, deps Deps, token string, name string, senderHex protocol.Hex, text string,
-) (sender, out string, ok bool) {
+) (chatOutcome, bool) {
 	verb, rest := cutVerb(text)
 
-	var err error
+	var (
+		sender    string
+		out       string
+		recipient int64
+		err       error
+	)
 
 	switch verb {
 	case "invite":
@@ -117,6 +132,11 @@ func routeChatCommand(
 	case "accept":
 		sender = systemSender
 		out, err = deps.World.PartyAccept(token)
+	case "decline":
+		// The one directed line in the game (#385): told to the inviter, not
+		// to the world.
+		sender = systemSender
+		out, recipient, err = deps.World.PartyDecline(token)
 	case "leave":
 		sender = systemSender
 		out, err = deps.World.PartyLeave(token)
@@ -125,7 +145,7 @@ func routeChatCommand(
 
 		id, ok := questIDArg(w, deps, rest, "/quest")
 		if !ok {
-			return "", "", false
+			return chatOutcome{}, false
 		}
 
 		out, err = deps.World.QuestTake(token, id)
@@ -134,14 +154,14 @@ func routeChatCommand(
 		// typer's own log (chat/store.ts), never broadcast.
 		respondError(w, deps.Logger, http.StatusUnprocessableEntity, helpText)
 
-		return "", "", false
+		return chatOutcome{}, false
 	case "abandon":
 		// A player can hold several quests, so /abandon names which (like /quest).
 		sender = systemSender
 
 		id, ok := questIDArg(w, deps, rest, "/abandon")
 		if !ok {
-			return "", "", false
+			return chatOutcome{}, false
 		}
 
 		out, err = deps.World.QuestAbandon(token, id)
@@ -158,10 +178,10 @@ func routeChatCommand(
 
 		respondError(w, deps.Logger, http.StatusUnprocessableEntity, msg)
 
-		return "", "", false
+		return chatOutcome{}, false
 	}
 
-	return sender, out, true
+	return chatOutcome{sender: sender, text: out, recipient: recipient}, true
 }
 
 // cutVerb splits a "/verb rest…" chat command into a lower-cased verb and the
