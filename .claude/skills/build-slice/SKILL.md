@@ -167,6 +167,19 @@ scanning past it.
 - Last task is always docs: `FEATURES.md` (values from `internal/protocol` /
   `content.go`, never memory), `design-decisions.md` for decided direction,
   plus a stale-claim sweep (`grep -rn "<topic>" docs/`).
+- **If the slice had a mockup, repoint its embed to `/raw/main/…` now** (#393).
+  The design issue embeds it from the work branch, and merging this PR deletes
+  that branch — so the approved screenshot 404s the moment you land, silently
+  and retroactively. `mockup` states the rule; this is the step where it
+  actually gets done, because it can only be done here. Edit the embed in the
+  issue, then confirm it resolves:
+
+  ```bash
+  curl -s -o /dev/null -w '%{http_code}\n' -L "https://github.com/starquake/mediumrogue/raw/main/docs/mockups/<file>.png"
+  ```
+
+  It is one line and it is skipped by default — #385, #161 and #308 all landed
+  with dead embeds, which is exactly the visual half of the design record.
 - `make e2e` if the client changed at all.
 - **A NEW e2e test that drives movement, combat, or the turn clock gets a load
   run before you mark it ready** — `cd client && npx playwright test <spec>
