@@ -316,6 +316,17 @@ drift between calls; use absolute paths or `cd` to the repo root before
   that constraint has lifted and both forms now resolve; the rule stays anyway,
   because one documented form means no per-embed decision, and churning image
   URLs is how these embeds broke the last time.
+  **The ref in that path is two-step**, and the second step is where it breaks
+  (#393): a `/raw/<branch>/` embed **dies when the branch is deleted on merge**
+  — retroactively, in a comment nobody is looking at. Embed from the **work
+  branch** while the design is in flight (the image is not on `main` yet; that
+  is the whole point of approving before the build), then the **PR that merges
+  the mockup repoints the embed to `/raw/main/…`**. Not the commit SHA: PRs are
+  squash-merged, so the original commit is not in `main`'s history and a SHA
+  embed is a slower version of the same rot. `mockup` states this rule and
+  `build-slice` carries the merge-time half — it is repeated here because it is
+  the step that gets skipped: every `feat/*` embed tested was a 404 (#385,
+  #161, #308), and `design/*` ones survived only by never being merged.
 - **AI-authored GitHub content is marked as such**: any issue, pull request, or
   comment Claude creates on the maintainer's behalf (via `gh issue create`,
   `gh pr create`, `gh issue comment`/`gh pr comment --body-file`) opens with a
