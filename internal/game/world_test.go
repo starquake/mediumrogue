@@ -476,23 +476,45 @@ func TestIntentRejectsUnwalkableTarget(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	me, _ := w.Join("", "tester", protocol.ClassFighter, protocol.SpeciesHuman)
 
-	// Find an adjacent unwalkable hex if the spawn has one; otherwise walk a
-	// probe entity to the lake shore... which milestone 3 cannot do without
-	// pathfinding, so settle for the direct check against the map.
-	for _, n := range game.HexNeighbors(me.Hex) {
-		if !isWalkable(w, n) {
-			req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: me.EntityID, Token: me.Token, Target: n}
-			if got, want := w.SubmitIntent(req), game.ErrNotWalkable; !errors.Is(got, want) {
-				t.Fatalf("err = %v, want ErrNotWalkable", got)
+	// PLACED at a shore hex, not joined at spawn (#413). This test used to
+	// check only the SPAWN's own neighbours and skip when none was unwalkable
+	// — which, with the world seed pinned, meant it skipped on every run and
+	// ErrNotWalkable had no coverage at all while the test reported green.
+	//
+	// The old comment blamed milestone 3 for having no pathfinding to reach a
+	// shore. PlaceEntityForTest removes the need to walk there at all.
+	shore, blocked := shoreHex(t, w)
+	id, token := w.PlaceEntityForTest(shore)
+
+	req := protocol.IntentRequest{Kind: protocol.IntentMove, EntityID: id, Token: token, Target: blocked}
+	if got, want := w.SubmitIntent(req), game.ErrNotWalkable; !errors.Is(got, want) {
+		t.Fatalf("err = %v, want ErrNotWalkable", got)
+	}
+}
+
+// shoreHex finds a walkable hex with at least one unwalkable neighbour, and
+// returns both. Deterministic (Tiles is a stable slice) and Fatal rather than
+// Skip: a map with no shore at all would mean worldgen stopped producing water
+// or rock, which is worth failing over (#413).
+func shoreHex(t *testing.T, w *game.World) (walkable, blocked protocol.Hex) {
+	t.Helper()
+
+	for _, tile := range w.Map().Tiles {
+		if !isWalkable(w, tile.Hex) {
+			continue
+		}
+
+		for _, n := range game.HexNeighbors(tile.Hex) {
+			if !isWalkable(w, n) {
+				return tile.Hex, n
 			}
-
-			return
 		}
 	}
 
-	t.Skip("spawn has no unwalkable neighbor on this map")
+	t.Fatal("no walkable hex with an unwalkable neighbour on this map")
+
+	return protocol.Hex{}, protocol.Hex{}
 }
 
 // walkableNeighbor returns the first neighbor a fresh entity can step to.
