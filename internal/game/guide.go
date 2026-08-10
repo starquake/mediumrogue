@@ -127,6 +127,12 @@ var guideDescriptions = map[string]GuideVocabEntry{
 		Param:       "—",
 		Description: "How far a monster notices you from. Clamped to ≥1, so noticeability can never reach zero.",
 	},
+	evRegen: {
+		Param: "—",
+		Description: "A player's passive HP recovery each turn, in a combat bubble as well as out of one. " +
+			"Folds without rng, so chance conditions are rejected. Clamped to ≥0 — gear can speed recovery " +
+			"up or slow it, never turn it into a drain.",
+	},
 	evEndOfTurn: {
 		Param: "—",
 		Description: "A per-turn HP delta from an entity's active timed effects (a DoT drains, a regen restores). " +

@@ -1990,8 +1990,23 @@ func (*World) regenPlayersLocked(members []*entity) {
 			continue
 		}
 
-		e.hp = min(e.hp+protocol.RegenPerTurn, e.maxHP)
+		e.hp = min(e.hp+regenForLocked(e), e.maxHP)
 	}
+}
+
+// regenForLocked returns the HP e recovers this turn: protocol.RegenPerTurn
+// folded through e's own cards via evRegen (#397), so gear can say
+// "+X% recovery".
+//
+// Structurally aggroRadiusForLocked's twin, deliberately — same card sources in
+// the same order, same bare ctx. No rng is threaded (recovery is not rolled),
+// which is why validateRuleCondition rejects a chance condition on evRegen:
+// conditionHolds would nil-deref the first time one rolled. applyRules' own
+// clamp keeps the result at >= 0. Callers hold w.mu.
+func regenForLocked(e *entity) int {
+	cards := slices.Concat(speciesCards(e.species), equippedRuleCards(e), skillCards(e))
+
+	return applyRules(evRegen, protocol.RegenPerTurn, cards, ruleCtx{attacker: e})
 }
 
 // resolveBubbleTurnLocked advances one combat bubble a single action-gated turn:

@@ -202,12 +202,16 @@ func subjectText(c ruleCard) string {
 		noun = "XP"
 	case evAggroRange:
 		noun = "Aggro Range"
-	case evEndOfTurn:
-		// An end-of-turn effect is an HP delta per turn, not damage dealt.
-		// Falling through to "Damage" shipped in #271 and reads exactly
-		// backwards on both signs: a regen (+3) read as bonus damage, and a
-		// poison or burning DoT (−3) as a damage REDUCTION — the fire flask's
-		// tooltip has said "−3 Damage for 3 turns" for a rider that drains HP.
+	case evEndOfTurn, evRegen:
+		// Both are an HP delta per turn, not damage dealt — a timed effect's
+		// tick (#271) and passive recovery (#397). A player does not care which
+		// fold produced it, so they share a noun.
+		//
+		// Falling through to "Damage" is the hazard, and it has bitten twice:
+		// it shipped for end-of-turn in #271, where a fire flask's DoT rider
+		// read as "−3 Damage" (a damage REDUCTION) for something that drains
+		// HP; and evRegen would have rendered the Mender's Locket's +1 as
+		// "+1 Damage", naming a stat the item does not touch.
 		noun = "HP per turn"
 	default:
 		// Events without a noun contribute no stat line.
@@ -282,13 +286,14 @@ func suffixText(when []condition) string {
 //	deal-damage  less is worse  (you deal less)
 //	earn-xp      less is worse
 //	aggro-range  more is worse  (noticed sooner)
+//	regen        less is worse  (slower recovery)
 func isDrawback(c ruleCard) bool {
 	worse := increases(c.then)
 
 	switch c.event {
 	case evTakeDamage, evAggroRange:
 		return worse
-	case evDealDamage, evEarnXP:
+	case evDealDamage, evEarnXP, evRegen:
 		return !worse && changes(c.then)
 	}
 

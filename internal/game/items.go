@@ -778,6 +778,7 @@ const (
 	idLongbow            = "longbow"
 	idIronboundGauntlets = "ironbound-gauntlets"
 	idFrostwardCharm     = "frostward-charm"
+	idMendersLocket      = "menders-locket"
 )
 
 // Content-expansion consumable ids (#268): the heal LADDER — a cheap salve
@@ -1149,7 +1150,7 @@ func validateItemCombatStats(def *itemDef) {
 func validateRuleCards(owner string, cards []ruleCard) {
 	for _, c := range cards {
 		switch c.event {
-		case evDealDamage, evTakeDamage, evEarnXP, evAggroRange, evEndOfTurn:
+		case evDealDamage, evTakeDamage, evEarnXP, evAggroRange, evEndOfTurn, evRegen:
 		default:
 			panic("game: " + owner + " rule card has unknown event " + c.event)
 		}
@@ -1213,12 +1214,13 @@ func validateRuleCondition(owner, event string, cond condition) {
 		panic("game: " + owner + " rule card has unknown condition " + cond.kind)
 	}
 
-	// earn-xp and end-of-turn both fold WITHOUT an rng (resolveBubbleTurnLocked's
-	// award loop and tickEffectsLocked build a bare ruleCtx), so a chance
-	// condition on either would nil-deref conditionHolds' ctx.rng the first time
-	// it rolled, mid-turn. Reject at load; lift per-event once a fold threads a
+	// earn-xp, end-of-turn and regen all fold WITHOUT an rng
+	// (resolveBubbleTurnLocked's award loop, tickEffectsLocked and
+	// regenPlayersLocked each build a bare ruleCtx), so a chance condition on
+	// any of them would nil-deref conditionHolds' ctx.rng the first time it
+	// rolled, mid-turn. Reject at load; lift per-event once a fold threads a
 	// real rng.
-	if cond.kind == condChance && (event == evEarnXP || event == evEndOfTurn) {
+	if cond.kind == condChance && (event == evEarnXP || event == evEndOfTurn || event == evRegen) {
 		panic("game: " + owner + " " + event + " rule card has a chance condition (" +
 			event + " folds run without rng)")
 	}
