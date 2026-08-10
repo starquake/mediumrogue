@@ -778,6 +778,7 @@ const (
 	idLongbow            = "longbow"
 	idIronboundGauntlets = "ironbound-gauntlets"
 	idFrostwardCharm     = "frostward-charm"
+	idMendersLocket      = "menders-locket"
 )
 
 // Content-expansion consumable ids (#268): the heal LADDER — a cheap salve

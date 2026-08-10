@@ -565,6 +565,25 @@ var itemDefs = []*itemDef{
 				then: effect{kind: effMulPct, n: 50}},
 		},
 	},
+	{
+		// First content on evRegen (#397), and the first item that does
+		// anything at all outside a fight.
+		//
+		// effAdd, NOT effMulPct, and that is forced rather than chosen:
+		// protocol.RegenPerTurn is 1, and the fold truncates
+		// (v*(100+delta)/100), so every percentage below +100% floors straight
+		// back to 1 and does nothing. A "+25% recovery" card would validate,
+		// load, render in the guide and have zero effect. Percentages become
+		// expressible here only if the base rate rises.
+		//
+		// +1 doubles recovery, which is deliberately the whole first step: at
+		// this base there is no smaller one.
+		id: idMendersLocket, name: "Mender's Locket", itemType: protocol.ItemTypeAmulet,
+		flavor: "A knot of someone else's hair. You keep meaning to ask whose.",
+		rules: []ruleCard{
+			{event: evRegen, then: effect{kind: effAdd, n: 1}},
+		},
+	},
 
 	// Content-expansion consumables (#268): the heal ladder, extending the
 	// shipped Healing Potion (5). heal is applied by the drink action
@@ -860,6 +879,10 @@ var monsterDefs = []*monsterDef{
 			// cumulative-weight position (this kind is not seed-pinned by
 			// drops_test.go — only wolf is).
 			{defID: idRingOfPrecision, weight: 2},
+			// Mender's Locket (#397): appended LAST so every earlier entry keeps
+			// its cumulative-weight position. Rare (weight 1) — recovery gear
+			// should be found, not farmed.
+			{defID: idMendersLocket, weight: 1},
 		},
 		rings: []int{1, 2},
 	},
