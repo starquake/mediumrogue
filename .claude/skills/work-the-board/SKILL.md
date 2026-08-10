@@ -95,6 +95,23 @@ the bug.
 - Every comment you post carries the 🤖 attribution header (it goes through the
   maintainer's account; see CLAUDE.md).
 - **At most ONE build per pass** (see the cap).
+- **Sweep for closed issues not in `Done`.** The `Item closed → Done` workflow
+  is a GitHub automation, not something the pass does, so when it breaks
+  nothing announces it — merged work simply accumulates in `Your review`
+  (#423, after a Status reorder disabled it). One query, and it catches a dead
+  automation within a pass instead of whenever someone notices stale cards:
+
+  ```bash
+  gh api graphql -f query='{ user(login:"<owner>"){ projectV2(number:<n>){ items(first:100){ nodes{
+    content{ ... on Issue { number state } }
+    fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
+  }}}}}' --jq '.data.user.projectV2.items.nodes[]
+    | select(.content.number != null) | select(.content.state=="CLOSED")
+    | select(.fieldValueByName.name != "Done") | .content.number'
+  ```
+
+  Move what it returns to `Done`, and if it returns anything, say so — a
+  non-empty result means an automation is off, which is a maintainer fix.
 
 ## The pass
 
