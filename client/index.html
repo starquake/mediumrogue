@@ -655,6 +655,31 @@
       #roster-root {
         pointer-events: none;
       }
+      /* Name row (#402): the field plus its reroll die. The button is sized to
+         the input's own height so the row does not shift the card layout. */
+      .namerow {
+        display: flex;
+        gap: 0.4rem;
+        align-items: stretch;
+      }
+      .namerow #start-name {
+        flex: 1;
+        min-width: 0;
+      }
+      #start-reroll {
+        flex: none;
+        padding: 0 0.6rem;
+        font-size: 1rem;
+        line-height: 1;
+        cursor: pointer;
+        border: 1px solid var(--dim);
+        background: #201217;
+        color: var(--fg);
+      }
+      #start-reroll:hover {
+        background: #3d222a;
+        border-color: var(--accent);
+      }
       #roster-panel {
         pointer-events: auto;
         width: 10rem;
@@ -1855,7 +1880,10 @@
         <div class="tagline">a shared world · everyone moves on the same beat · bring friends</div>
 
         <label class="label" for="start-name">Your name</label>
-        <input id="start-name" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />
+        <div class="namerow">
+          <input id="start-name" type="text" autocomplete="off" maxlength="24" placeholder="traveler" />
+          <button id="start-reroll" type="button" title="Roll another name">&#127922;</button>
+        </div>
 
         <div class="label">Class — how you fight</div>
         <div class="cards">
