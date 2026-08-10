@@ -50,6 +50,7 @@ import {
   submitQuaff,
   submitUseSkill,
 } from "./net/session";
+import { generateName } from "./identity/names";
 import { answerInvite, mountInvitePrompt } from "./party/InvitePrompt";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty, setPendingInvite } from "./party/store";
@@ -252,6 +253,7 @@ const combatWaitingEl = mustGet("combat-waiting");
 const combatPatienceEl = mustGet("combat-patience");
 const startScreenEl = mustGet("start-screen");
 const startNameEl = mustGet("start-name") as HTMLInputElement;
+const rerollNameEl = document.getElementById("start-reroll");
 const startEnterEl = mustGet("start-enter") as HTMLButtonElement;
 const classCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-class]"));
 const speciesCards = Array.from(startScreenEl.querySelectorAll<HTMLElement>(".card[data-species]"));
@@ -289,12 +291,15 @@ function selectClass(cls: string): void {
   for (const card of classCards) {
     card.classList.toggle("selected", card.dataset["class"] === cls);
   }
+
+  // The premise is that the name FITS what you picked, so it follows the
+  // picks. Guarded against clobbering a typed name (refreshGeneratedName).
+  refreshGeneratedName();
 }
 
 for (const card of classCards) {
   card.addEventListener("click", () => selectClass(card.dataset["class"] ?? ClassFighter));
 }
-selectClass(ClassFighter);
 
 // Species cards mirror the class cards exactly — same visibility rule
 // (brand-new player only; a returning player's token already fixes their
@@ -306,30 +311,69 @@ function selectSpecies(species: string): void {
   for (const card of speciesCards) {
     card.classList.toggle("selected", card.dataset["species"] === species);
   }
+
+  refreshGeneratedName();
 }
 
 for (const card of speciesCards) {
   card.addEventListener("click", () => selectSpecies(card.dataset["species"] ?? SpeciesHuman));
 }
-selectSpecies(SpeciesHuman);
 
-// Name field: free text rather than cards. Defaults to "traveler" so a fresh
-// page load can still join with a sensible name (e.g. a test that never
-// touches the field) — the input's own placeholder communicates the default
-// rather than pre-filling the value, so a deliberately-typed name never has
-// to first clear placeholder text.
-const DEFAULT_NAME = "traveler";
-let selectedName: string = DEFAULT_NAME;
+// Name field: free text rather than cards, PREFILLED with a generated name
+// that fits the class and species (#402).
+//
+// Prefilling reverses the earlier choice deliberately. A placeholder was right
+// for the word "traveler" — it meant a typed name never had to clear text
+// first — and is wrong for a joke you want people to SEE: a greyed placeholder
+// is easy to ignore, so most players would never notice the generator existed.
+// The cost is real and accepted: you now clear the field to type your own.
+let selectedName: string = generateName(selectedClass, selectedSpecies);
+// Whether the player has typed their own name. Once true, changing class or
+// species must never clobber it — regenerating over someone's deliberate
+// choice is the failure mode this whole feature would be remembered for.
+let nameIsMine = false;
 
 function readStartName(): string {
   const trimmed = startNameEl.value.trim();
 
-  return trimmed === "" ? DEFAULT_NAME : trimmed;
+  return trimmed === "" ? generateName(selectedClass, selectedSpecies) : trimmed;
+}
+
+/**
+ * refreshGeneratedName re-rolls the name for the current class/species and
+ * writes it into the field — unless the player has typed their own.
+ */
+function refreshGeneratedName(): void {
+  if (nameIsMine) {
+    return;
+  }
+
+  selectedName = generateName(selectedClass, selectedSpecies);
+  startNameEl.value = selectedName;
 }
 
 startNameEl.addEventListener("input", () => {
+  // An empty field is not "mine": clearing it hands the name back to the
+  // generator rather than committing the player to a blank.
+  nameIsMine = startNameEl.value.trim() !== "";
   selectedName = readStartName();
 });
+
+startNameEl.value = selectedName;
+
+// AFTER the name state exists: selectClass/selectSpecies call
+// refreshGeneratedName, which reads nameIsMine — calling them earlier would hit
+// the temporal dead zone on a `let` and crash the start screen.
+selectClass(ClassFighter);
+selectSpecies(SpeciesHuman);
+
+if (rerollNameEl !== null) {
+  rerollNameEl.addEventListener("click", () => {
+    // An explicit reroll overrides a typed name — the player asked for one.
+    nameIsMine = false;
+    refreshGeneratedName();
+  });
+}
 
 /**
  * Resolves once a brand-new player commits to their choices — clicking
@@ -1145,10 +1189,15 @@ async function start(): Promise<void> {
       // is the abandoned character, and reading it here would override the
       // class/species just picked on the creation form with the old
       // character's — the same stale-capture bug as the reclaim above.
-      joinedName = selectedName;
+      // A stored NAME wins over the picker's too (#402) — the same rule the
+      // two lines below have always applied to class and species. It was
+      // invisible until names stopped being the single shared default: with a
+      // generated name in the field, a pre-seeded identity was joining under a
+      // fresh random name instead of the one it stored.
+      joinedName = activeIdentity?.name || selectedName;
       joinedClass = activeIdentity?.class || selectedClass;
       joinedSpecies = activeIdentity?.species || selectedSpecies;
-      me = await join(selectedName, joinedClass, joinedSpecies);
+      me = await join(joinedName, joinedClass, joinedSpecies);
     }
   } catch (err) {
     // A REJECTED reclaim (4xx) means the stored identity itself is dead —
