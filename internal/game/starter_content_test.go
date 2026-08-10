@@ -143,7 +143,7 @@ func TestHeadbandBoostsXPThroughLivePipeline(t *testing.T) {
 	}
 
 	// Fold order (applyRules): no adds, then multipliers in card order —
-	// species cards first, then equipped gear (earnXPCards): base * 1.5
+	// species cards first, then equipped gear (allRuleCards): base * 1.5
 	// (human), then * 1.05 (headband), integer math at each step.
 	base := game.MonsterXPForTest("wolf")
 	// re-derived (#124 task 8): with the Human multiplier retired the species

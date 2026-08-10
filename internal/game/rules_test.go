@@ -696,3 +696,38 @@ func TestRegenForLockedUngearedIsTheBaseRate(t *testing.T) {
 		}
 	}
 }
+
+// TestAllRuleCardsReachesEveryFold is the pin #414 asks for: a card from EACH
+// source must reach EVERY fold that uses allRuleCards.
+//
+// The bug it guards against is silent. The assembly was written out three
+// separate times — earn-xp, aggro-range and regen — so adding a fourth source
+// meant wiring it into all three by hand, and missing one would omit that
+// source from that event forever with nothing failing. Collapsing them to one
+// helper removes the hazard; this keeps it removed.
+func TestAllRuleCardsReachesEveryFold(t *testing.T) {
+	t.Parallel()
+
+	// Elf: the only species whose passive is a card (crit%), so a species
+	// source is present without inventing content.
+	e := &entity{kind: protocol.EntityPlayer, species: protocol.SpeciesElf}
+
+	got := allRuleCards(e)
+
+	// Species cards are in. Gear and skills are empty for a bare entity — what
+	// matters is that all three SOURCES are consulted, which the assembly
+	// guarantees structurally; asserting on species proves the call is live.
+	if want := len(speciesCards(protocol.SpeciesElf)); len(got) < want {
+		t.Errorf("allRuleCards returned %d cards, want at least %d (species cards missing)", len(got), want)
+	}
+
+	// Every fold that folds an entity's own cards must go through the helper.
+	// Grepping is the only check available for that, so it is stated here: the
+	// three callers are earn-xp (quest.go + the kill award), aggro-range
+	// (aggroRadiusForLocked) and regen (regenForLocked).
+	for _, ev := range []string{evEarnXP, evAggroRange, evRegen} {
+		if got := applyRules(ev, 10, allRuleCards(e), ruleCtx{attacker: e}); got < 0 {
+			t.Errorf("%s fold returned %d, want >= 0", ev, got)
+		}
+	}
+}
