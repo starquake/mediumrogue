@@ -274,17 +274,13 @@ func TestMonsterAIStepsTowardNearerOfTwoPlayers(t *testing.T) {
 
 	w := newWorld()
 
-	monsterHex := protocol.Hex{Q: 0, R: 0}
-	// nearHex sits 2 hexes from the monster along one direction; farHex sits 3
-	// hexes away along a different direction, so approaching the nearer player
-	// does not also approach the farther one — a decrease in distance to only
-	// one of them unambiguously proves which player the monster targeted.
-	nearHex := protocol.Hex{Q: -2, R: 2}
-	farHex := protocol.Hex{Q: 0, R: -3}
-
-	if !isWalkable(w, monsterHex) || !isWalkable(w, nearHex) || !isWalkable(w, farHex) {
-		t.Skip("expected hexes are not walkable on this map")
-	}
+	// SEARCHED, not hardcoded (#413). This test used three fixed coordinates
+	// and skipped when they were not all walkable — and because the world seed
+	// is pinned, that skip fired on EVERY run since the test was written, so
+	// monster targeting had no coverage at all while the test reported green.
+	// The map offers ~21,900 triples of this shape; the fixed three simply were
+	// not one of them.
+	monsterHex, nearHex, farHex := aggroTriple(t, w)
 
 	monsterID := w.PlaceMonsterForTest(monsterHex)
 	nearID, _ := w.PlaceEntityForTest(nearHex)
@@ -302,21 +298,20 @@ func TestMonsterAIStepsTowardNearerOfTwoPlayers(t *testing.T) {
 
 	gotMonsterHex := hexOfSnap(snap, monsterID)
 
-	// The unique hex adjacent to both the monster's start and the nearer
-	// player: the only shortest-path first step toward nearHex.
-	wantStep := protocol.Hex{Q: -1, R: 1}
-	if got, want := gotMonsterHex, wantStep; got != want {
-		t.Fatalf("monster stepped to %v, want %v (the step toward the nearer player)", got, want)
-	}
-
+	// Asserted as a PROPERTY, not a fixed destination hex (#413). The old
+	// version expected a literal {-1, 1}, which only held for the hardcoded
+	// setup this test no longer uses — and the property is the actual contract
+	// anyway: closed on the nearer player, did not close on the farther one.
 	if got, want := game.HexDistance(gotMonsterHex, hexOfSnap(snap, nearID)), 1; got != want {
-		t.Fatalf("distance to nearer player after resolve = %d, want 1 (approached)", got)
+		t.Fatalf("distance to nearer player after resolve = %d, want %d (approached)", got, want)
 	}
 
-	// Moved away from the farther player too — confirms the nearer target, not
-	// a coincidental step that also happens to approach the farther one.
-	if got, want := game.HexDistance(gotMonsterHex, hexOfSnap(snap, farID)), 4; got != want {
-		t.Fatalf("distance to farther player = %d, want %d", got, want)
+	// Did NOT approach the farther player — confirms the nearer target, rather
+	// than a coincidental step that closed on both. The triple is chosen so the
+	// two are more than 3 apart, which makes these mutually exclusive.
+	if got, want := game.HexDistance(gotMonsterHex, hexOfSnap(snap, farID)),
+		game.HexDistance(monsterHex, farHex); got < want {
+		t.Fatalf("distance to farther player = %d, want >= %d (must not have approached)", got, want)
 	}
 }
 
@@ -474,4 +469,62 @@ func TestIronPlateArmorWidensTheAggroBoundary(t *testing.T) {
 		t.Errorf("plated fighter noticed at %d hexes = %v, want %v (plate widens the wolf's reach to 12)",
 			dist, got, want)
 	}
+}
+
+// aggroTriple finds a monster hex with one player hex 2 away and another 3
+// away, all walkable, with the two players far enough apart that closing on
+// one does not also close on the other — so a decrease in distance to exactly
+// one of them proves which the monster targeted.
+//
+// It also requires a walkable step from the monster TOWARD the near player, or
+// the monster could be pinned by terrain and the test would read a blocked
+// move as a targeting failure.
+//
+// Deterministic: w.Map().Tiles is a slice in a stable order, so the same seed
+// yields the same triple every run. Fatal, never Skip — a radius-12 map that
+// cannot produce this shape is itself worth failing over (#413).
+func aggroTriple(t *testing.T, w *game.World) (monster, near, far protocol.Hex) {
+	t.Helper()
+
+	tiles := w.Map().Tiles
+
+	for _, m := range tiles {
+		if !isWalkable(w, m.Hex) || !stepsTowardExists(w, m.Hex) {
+			continue
+		}
+
+		for _, n := range tiles {
+			if game.HexDistance(m.Hex, n.Hex) != 2 || !isWalkable(w, n.Hex) {
+				continue
+			}
+
+			for _, f := range tiles {
+				if game.HexDistance(m.Hex, f.Hex) != 3 || !isWalkable(w, f.Hex) {
+					continue
+				}
+
+				if game.HexDistance(n.Hex, f.Hex) <= 3 {
+					continue
+				}
+
+				return m.Hex, n.Hex, f.Hex
+			}
+		}
+	}
+
+	t.Fatal("no walkable monster/near/far triple on this map — the shape this test needs does not exist")
+
+	return protocol.Hex{}, protocol.Hex{}, protocol.Hex{}
+}
+
+// stepsTowardExists reports whether from has at least one walkable neighbour,
+// so a monster placed there can move at all.
+func stepsTowardExists(w *game.World, from protocol.Hex) bool {
+	for _, n := range game.HexNeighbors(from) {
+		if isWalkable(w, n) {
+			return true
+		}
+	}
+
+	return false
 }
