@@ -52,6 +52,15 @@ const (
 	// in applyRulesTraced — the HP clamp lives at the apply site, because a
 	// per-turn drain must be able to fold to a lethal negative.
 	evEndOfTurn = "end-of-turn"
+	// evRegen folds a player's PASSIVE recovery (#397): base
+	// protocol.RegenPerTurn, folded through the holder's own cards in
+	// regenPlayersLocked (world.go) so gear can say "+X% recovery". Structurally
+	// the aggro-range fold's twin — a constant that used to be untouchable, now
+	// a value with an event. Like earn-xp it folds WITHOUT rng, so
+	// validateRuleCondition rejects a chance condition on it. Floors at 0, not
+	// at 1: "no recovery this turn" is a legitimate result, where a damage or
+	// noticeability of 0 is not.
+	evRegen = "regen"
 )
 
 // Condition kinds. chance consumes the turn rng (deterministic: cards are
@@ -417,7 +426,7 @@ func applyRulesTraced(event string, base int, cards []ruleCard, ctx ruleCtx) (in
 		if v < 1 {
 			v = 1
 		}
-	case evEarnXP:
+	case evEarnXP, evRegen:
 		if v < 0 {
 			v = 0
 		}

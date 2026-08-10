@@ -642,3 +642,35 @@ func TestCondShieldEquippedRejectsANonShieldOffHand(t *testing.T) {
 		t.Errorf("condShieldEquipped with a dagger in the off-hand = %v, want %v", got, want)
 	}
 }
+
+// TestApplyRulesRegenFolds (#397): the recovery fold. Gear says "+X% regen"
+// with an ordinary mulPct card over protocol.RegenPerTurn, which was a flat
+// constant nothing could influence before this event existed.
+func TestApplyRulesRegenFolds(t *testing.T) {
+	t.Parallel()
+
+	cards := []ruleCard{
+		{event: evRegen, then: effect{kind: effMulPct, n: percentBase + 100}}, // x2
+		{event: evDealDamage, then: effect{kind: effAdd, n: 99}},              // wrong event: ignored
+	}
+
+	if got, want := applyRules(evRegen, 3, cards, ruleCtx{}), 6; got != want {
+		t.Errorf("applyRules regen = %d, want %d", got, want)
+	}
+}
+
+// TestApplyRulesRegenFloorsAtZero: recovery clamps at 0, not at 1 — unlike
+// take-damage and aggro-range, "no recovery this turn" is a legitimate result
+// where "no damage" and "notices nobody" are not.
+//
+// The clamp is what keeps a drawback card from being smuggled in through a
+// recovery item: negative regen would be gear that costs you health, which is
+// a game-wide design question (#397) and not this event's to answer.
+func TestApplyRulesRegenFloorsAtZero(t *testing.T) {
+	t.Parallel()
+
+	cards := []ruleCard{{event: evRegen, then: effect{kind: effAdd, n: -999}}}
+	if got, want := applyRules(evRegen, 1, cards, ruleCtx{}), 0; got != want {
+		t.Errorf("applyRules regen = %d, want floor %d", got, want)
+	}
+}
