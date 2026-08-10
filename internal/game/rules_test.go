@@ -674,3 +674,25 @@ func TestApplyRulesRegenFloorsAtZero(t *testing.T) {
 		t.Errorf("applyRules regen = %d, want floor %d", got, want)
 	}
 }
+
+// TestRegenForLockedUngearedIsTheBaseRate (#397): threading regen through the
+// pipeline must not change what an unmodified player recovers. A fold that
+// quietly shifted the base would be a balance change disguised as plumbing,
+// and every existing bubble-regen assertion (combat_gating_test.go,
+// inventory_actions_test.go) is written against protocol.RegenPerTurn.
+//
+// The GEARED case is asserted in content_regen_test.go rather than here: the
+// cards come from equippedRuleCards, which resolves an item INSTANCE through
+// the registry, so the state is unreachable until a registered item carries an
+// evRegen card. Testing it at the layer that can reach it beats a fixture that
+// fakes the registry.
+func TestRegenForLockedUngearedIsTheBaseRate(t *testing.T) {
+	t.Parallel()
+
+	for _, species := range []string{protocol.SpeciesHuman, protocol.SpeciesElf, protocol.SpeciesDwarf} {
+		e := &entity{kind: protocol.EntityPlayer, species: species}
+		if got, want := regenForLocked(e), protocol.RegenPerTurn; got != want {
+			t.Errorf("regenForLocked(%s) = %d, want %d — no species card feeds evRegen", species, got, want)
+		}
+	}
+}
