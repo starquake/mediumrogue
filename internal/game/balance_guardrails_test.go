@@ -81,16 +81,25 @@ func TestGuardrailSoloIsDangerousAndPartiesAreSafer(t *testing.T) {
 	solo, party := rep.Sizes[0], rep.Sizes[1]
 
 	// The boring floor: a solo player who never risks death has no game.
-	// Observed 2.00/100 turns over eight seeds at PotionRestorePercent 25
-	// (#410). The 5.83 this comment used to cite was measured when the sim
-	// modelled a carried 5 HP potion rather than the free draught, so it is
-	// not a like-for-like figure and is not a target.
+	// Observed 1.50/100 turns over eight seeds (#412, down from 2.00 under
+	// #410's numbers — banning in-bubble overlap scatters MONSTER stacks too,
+	// so fewer of them reach a lone player at once). The 5.83 this comment
+	// used to cite was measured when the sim modelled a carried 5 HP potion
+	// rather than the free draught, so it is not a like-for-like figure and is
+	// not a target.
 	if got, want := solo.DeathsPer100, 0.0; got <= want {
 		t.Errorf("solo DeathsPer100 = %.2f, want > %.1f (solo play should carry real risk)", got, want)
 	}
 
 	// The direction of safety: more players must not be MORE lethal per
-	// player-turn (observed: 0.09 vs 5.83 — a steep drop).
+	// player-turn (observed 0.21 at 15 against solo's 1.50, #412).
+	//
+	// The 15-player figure ROSE with #412 — 0.12 to 0.21, and XP spread with
+	// it, 0.65 to 1.09 — because a stacked hex took each single-target hit on
+	// a random member, so the blob was spreading damage a spread party
+	// concentrates. That was the "stacking is strictly better" problem #412
+	// exists to remove, so the rise is the change working, not a regression.
+	// The gap this guardrail actually names is still an order of magnitude.
 	if got, want := party.DeathsPer100, solo.DeathsPer100; got > want {
 		t.Errorf("15-player DeathsPer100 = %.2f, want <= solo's %.2f", got, want)
 	}

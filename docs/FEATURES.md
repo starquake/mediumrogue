@@ -75,10 +75,12 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   is **click/tap only** — the old QWE/ASD single-step keys were dropped by the
   survey-camera experiment (#273/#274); the camera follows the player and the
   mouse-wheel zooms (see the Camera bullet below). WASD is unbound.
-  Up to **5 friendly entities stack** per hex (a full party moves as one blob;
-  count badge rendered).
+  Up to **5 friendly entities stack** per hex **while travelling** (a party
+  moves as one blob; count badge rendered). **Inside a combat bubble the cap
+  is 1** (#412) — see the no-overlap-in-combat bullet under Combat.
 - **A blocked walk detours instead of stalling** (#96): when a queued path's
-  next hex is closed — hostile-held, or same-faction at `StackCap` — a
+  next hex is closed — hostile-held, or same-faction at the mover's stack cap
+  (`StackCap` travelling, **1 in a bubble**, #412) — a
   **player** re-routes around it and still advances that turn. Only occupancy
   ever blocks a step: terrain is generated once and never mutates, so a hex
   that was walkable when you clicked still is. The re-route aims at the
@@ -191,10 +193,40 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   (#195) if its named victim is being resolved in a **different domain** —
   entity-targeted resolution fetches the victim by id, so it is domain-guarded
   against byHex rather than reaching across a bubble boundary.
+- **No overlap inside a combat bubble** (#412): travel keeps the blob, combat
+  bans it. The occupancy cap is a property of the **mover**, not of the hex —
+  `StackCap` (5) in the world domain, **1** for anyone whose `bubbleID` is set
+  — and bubble recompute **scatters** any stack it finds, monsters included.
+  - **Why split on the bubble**: travel genuinely wants overlap (five players
+    through a corridor otherwise become a queue, and at a 4-second cadence the
+    rearmost trails ~16 seconds per chokepoint) and combat genuinely does not
+    (a stack has no formation, no flanking, no chokepoint to hold). The bubble
+    is a line the engine already draws, so it splits the two exactly.
+  - **Stacking used to be strictly better**, which is why this is a removal
+    rather than a cost: a stacked hex takes each single-target hit on a random
+    member, so a blob *spread* damage that a spread party concentrates, and
+    nothing pushed back. The balance sim shows the correction — 15-player
+    deaths/100 turns rose 0.12 → 0.21 while solo *fell* 2.00 → 1.50, the
+    latter because monster stacks scatter too and so fewer of them reach a lone
+    player at once.
+  - **Scatter is tiered and cannot fail** (`scatterHexLocked`, the shape
+    `spawnHexLocked` uses): free neighbour → free hex two out → any free hex
+    within `CombatRadius` → **leave the stack alone**. A bubble that cannot
+    form is a worse failure than a corridor party sharing a hex, and a
+    tolerated stack self-corrects on the next recompute.
+  - **Walk-in reinforcement is never refused.** Because the cap keys on the
+    mover, a player stepping toward a fight is still in the world domain and
+    the step is legal; they arrive and the recompute separates them.
+  - **No rng.** Placement walks the fixed `HexNeighbors` order and the
+    lowest-id member holds the hex, so scatter is reproducible without drawing
+    from any seeded stream — which matters because it runs every turn for
+    every bubble, on a schedule that depends on who happens to be standing on
+    whom.
 - **Phased resolution** (#104, attacks-before-moves): all attacks resolve
   simultaneously against **pre-move positions** (shared damage map — mutual
   kills are possible and intended; a stacked hex takes hits on a **random
-  member**), then all moves resolve (seeded-RNG tie-break on hex overflow;
+  member** — which since #412 can only happen outside a bubble, or in the rare
+  tolerated in-bubble stack), then all moves resolve (seeded-RNG tie-break on hex overflow;
   an entity killed in the attack phase does not get its move). Committing
   to an attack always lands it; retreat means **trading hits for distance**
   — a one-action chaser that strikes you isn't gaining ground that turn.

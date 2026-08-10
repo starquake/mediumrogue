@@ -1468,3 +1468,71 @@ reason to carry the thing.
 
 `World.SeesForTest` went in the same pass — an exported test hook with no
 remaining caller.
+
+---
+
+## Overlap is a travel affordance, not a combat one *(decided 2026-08-10, #412)*
+
+Players stack up to `StackCap` (5) per hex while travelling and **one per hex
+inside a combat bubble**; anything already stacked scatters when the fight
+starts. Chosen from a six-option comparison — @starquake: *"Right now players
+overlap… It feels a bit weird with 5 people on one tile."* … *"Split by bubble
+looks the best"*.
+
+**The tension is genuine and symmetric, which is why the answer is a split
+rather than a rule.** Travel wants overlap: five players through a corridor
+otherwise become a queue, and at a 4-second cadence the rearmost trails ~16
+seconds per chokepoint, in a game whose pitch is walking and chatting. Combat
+does not: `game-identity.md` calls this "spatially a hex-grid tactics game", and
+a blob has no formation, no flanking and no chokepoint to hold. The bubble is a
+line the engine already draws and can read, so it separates the two exactly.
+
+**The reframe that made the decision easy:** stacking was *free and strictly
+better*. A stacked hex takes each single-target hit on a **random member**, so
+the blob spread damage a spread party concentrates, and nothing pushed back. A
+strictly-better option is a default, not a decision — so this proposal adds no
+cost to stacking, it removes stacking exactly where the decision matters.
+
+### The one implementation choice that carries the design
+
+**The cap is a property of the MOVER, not of the hex** — `stackCapFor(m)`, 1
+when `m.bubbleID != 0`. Every other decided answer falls out of that instead of
+being written:
+
+- **Walk-in reinforcement (Q3: admit and scatter)** — a player stepping toward a
+  fight is still in the world domain, so nothing refuses the step. Refusing it
+  would have silently broken walk-in reinforcement, which `game-identity.md`
+  names as an intended core experience.
+- **Timing (Q4: at formation, before the first turn)** — scatter runs on every
+  recompute, and recompute already precedes a bubble's first resolution.
+- **Leaving (Q5: re-allow immediately)** — leaving clears `bubbleID`, which
+  restores the travelling cap with no extra state.
+
+### Decisions
+
+| Question | Answer |
+|---|---|
+| Do monsters scatter too? | **Yes** — an enemy formation is half the value, and a rule applying to one faction invites "why?" |
+| Nowhere to scatter to? | **Allow the stack for that fight** — a bubble that cannot form is a worse failure, and a tolerated stack self-corrects next recompute |
+| Someone walks into a bubble | **Admit and scatter again** |
+| Timing | **At formation, before the first bubble turn** |
+| Leaving a bubble | **Re-allows stacking immediately** |
+| Scope | **One slice** |
+
+### Deliberately no rng
+
+The spec proposed a seeded draw. The build uses fixed `HexNeighbors` order with
+the lowest-id member holding the hex. Scatter runs every turn for every bubble,
+on a schedule that depends on who happens to be standing on whom — an rng draw
+there would consume from a stream on that schedule, and every pinned seed
+downstream would move whenever it changed. The cost is that a party fans out the
+same way each time, which in a tactics game reads as a formation.
+
+### What it did to the numbers
+
+Balance sim, eight seeds, before → after: **15-player deaths/100 turns 0.12 →
+0.21** (the blob's free soak is gone, so damage concentrates — the change
+working), and **solo 2.00 → 1.50** (monster stacks scatter too, so fewer of them
+reach a lone player at once). XP spread at 15 rose 0.65 → 1.09, i.e. party
+members' XP is now less even — worth watching, since "is player 12 just
+watching?" is exactly what that metric asks.
