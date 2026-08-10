@@ -140,6 +140,7 @@ any digit in flavour.
 | **Ironhead Greatmaul**<br>`ironhead-greatmaul` | weapon<br>two-handed | blunt | melee | 9 | melee | — | — | Damage 9<br> |
 | **Leather Armor**<br>`leather-armor` | chest | — | — | — | melee | — | — | +10% Damage Resistance<br> |
 | **Longbow**<br>`longbow` | weapon | sharp | ranged | 3 | 6 | — | — | Damage 3<br>Range 6<br> |
+| **Mender's Locket**<br>`menders-locket` | amulet | — | — | — | melee | — | — | +1 HP per turn<br> |
 | **Minor Salve**<br>`minor-salve` | consumable | — | — | — | melee | — | 3 | +3 HP<br>Stacks to 5<br> |
 | **Misericorde**<br>`misericorde` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>15% chance ×2 Damage<br> |
 | **Oak Wand**<br>`oak-wand` | weapon | blunt | melee | 2 | melee | — | — | Damage 2<br> |
