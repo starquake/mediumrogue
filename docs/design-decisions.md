@@ -1352,3 +1352,41 @@ the stream rather than in the broker deliberately: the broker hands out bare
 channels and has no idea which belongs to whom, while the stream already
 resolved its viewer for own-only bundle fields, and a second copy of
 which-stream-is-whose is what drifts.
+
+---
+
+## Recovery is a fold point, and one event needs five places *(built 2026-08-10, #397)*
+
+`RegenPerTurn` was applied directly — `e.hp = min(e.hp+RegenPerTurn, e.maxHP)` —
+so "+20% recovery" was not expressible at any price. `evRegen` makes it a value
+with an event, structurally the `evAggroRange` fold's twin: a constant that used
+to be untouchable, now foldable through the holder's own cards.
+
+**The decisions, and why.**
+
+- **HP only, not energy.** `EnergyRegenPerTurn` is 5 against HP's 1 and drives
+  the draught economy; folding both at once mixes two balance conversations.
+- **In bubbles as well as out.** Regen itself runs in a bubble (#322 decision
+  11), so exempting the fold would make a modifier behave differently from the
+  thing it modifies — the asymmetry that gets reported as a bug.
+- **Clamped at 0, not 1.** "No recovery this turn" is a legitimate result where
+  a damage or noticeability of 0 is not. The clamp is also what keeps a
+  *drawback* card out: negative regen is gear that costs you health, which is a
+  game-wide design question and not this event's to answer.
+- **The first item carries `+1`, not a percentage — forced, not chosen.**
+  `RegenPerTurn` is 1 and the fold truncates (`v*(100+delta)/100`), so every
+  percentage below +100% floors back to 1. A "+25% recovery" card would
+  validate, load, render in the designer guide and do **nothing**. This is the
+  mirror of #154's flat-vs-percentage finding: there, subtractive mitigation
+  stacked into the ≥1 clamp and had to become a percentage; here the base is so
+  small that a percentage is inert and it has to stay flat. **The lesson both
+  times is that the clamp and the base size decide which form works, not
+  taste.**
+
+**A new event that can appear on GEAR needs FIVE places, not the four CLAUDE.md
+documents.** The fifth is `statlines.go`: `subjectText` falls through to a
+`"Damage"` default, so the Mender's Locket first rendered as **"+1 Damage"** —
+not vague but wrong, naming a stat the item does not touch. This is the second
+time that fall-through has shipped: #271 had a fire flask's DoT rider reading as
+`"−3 Damage"`, i.e. a damage *reduction*, for something that drains HP. The two
+events now share a case and a test pins the rendering.

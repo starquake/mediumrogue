@@ -727,6 +727,24 @@ roll, so it is ARPG-legal on jewelry.
   mitigation than Leather Armor (×0.8 vs ×0.9) bought with a real cost — you are
   noticed sooner. Gear that is only ever better makes the inventory a sorting
   exercise; a cost makes it a decision.
+- **Recovery gear (#397)** — the pipeline's `regen` event: passive HP recovery
+  (`RegenPerTurn`) folds through the wearer's own cards, so gear can speed it
+  up. It applies **in a combat bubble as well as out of one**, because regen
+  itself does (#322 decision 11) — a modifier that behaved differently from the
+  thing it modifies is the asymmetry that reads as a bug. Folds **without rng**
+  (chance conditions rejected at load) and clamps **≥0**: gear can make you
+  recover faster or slower, never turn recovery into a drain. Recovery is the
+  first thing on the pipeline that matters **outside a fight**.
+
+  | Item | Type | Card(s) | Effect | Source |
+  |---|---|---|---|---|
+  | Mender's Locket | amulet | regen +1 | +1 HP per turn (doubles recovery) | ghoul (w1) drop |
+
+  **The card is `+1`, not a percentage, and that is forced.** `RegenPerTurn` is
+  **1** and the fold truncates, so any percentage below +100% floors straight
+  back to 1 — a "+25% recovery" card would validate, load, appear in the
+  designer guide and do **nothing**. Percentage recovery cards become
+  expressible only if the base rate rises.
 - **Damage types (#92, DT1)** — every attack carries exactly **one** of six
   types, and resistances and vulnerabilities are ordinary `take-damage` rule
   cards gated on it (`damageType`). There is no resist subsystem: one
