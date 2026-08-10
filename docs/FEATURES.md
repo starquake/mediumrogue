@@ -1106,6 +1106,17 @@ roll, so it is ARPG-legal on jewelry.
 ### Joining & identity
 - **Start screen — shown on every load** (#303). A **new** player gets the
   creation form (name, class card, species card, Enter — keyboard operable).
+  The name field is **prefilled with a generated name** that fits the picks
+  (#402): the **given name reads the species**, the **surname reads the class**
+  — *Joe Fisticuffs*, *Simon Sparklebang*, *Khyrmin Shadowfart*. It re-rolls
+  whenever you change class or species, and a **🎲 button** rolls another;
+  a name you type yourself is never overwritten by a pick change, though an
+  explicit re-roll does replace it. Surnames are built from two halves
+  (prefix + suffix) so 30 words per class yield ~225 surnames: across 15
+  players that puts a duplicate at roughly 2.5%, where flat pools of a
+  hand-writable size sit near 40%. Not seeded — the name is chosen before
+  joining and never feeds the simulation. A **stored** identity's name wins
+  over the generated one, the same way its class and species already did.
   A **returning** player gets their character card (name, class, species,
   level) with **Continue** as the default and prominent action: Enter or a
   click. Identity (token) persists in localStorage.
