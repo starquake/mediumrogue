@@ -1428,42 +1428,6 @@ func TestStarterInventoryContentPinned(t *testing.T) {
 	if got, want := band.rules[0].then, (effect{kind: effMulPct, n: 105}); got != want {
 		t.Errorf("headband rule effect = %+v, want %+v", got, want)
 	}
-
-	potion, ok := itemDefByID[idHealingPotion]
-	if !ok {
-		t.Fatal("healing-potion not registered")
-	}
-
-	if got, want := potion.itemType, protocol.ItemTypeConsumable; got != want {
-		t.Errorf("potion itemType = %q, want %q", got, want)
-	}
-
-	if got, want := potion.heal, 5; got != want {
-		t.Errorf("potion heal = %d, want %d", got, want)
-	}
-
-	if got, want := len(potion.rules), 0; got != want {
-		t.Errorf("potion rules = %d, want %d (drinking is an action, not a pipeline event)", got, want)
-	}
-
-	// The Kin Archer (#179) carries the same low-weight potion as the rat;
-	// the Goblin (#266) also carries it at weight 1 (the other expansion
-	// kinds carry the Minor Salve / Greater Draught instead).
-	wantTables := map[string]int{idKindRat: 1, idKindWolf: 2, idKindArcher: 1, idKindGoblin: 1}
-
-	for _, def := range monsterDefs {
-		weight := 0
-
-		for _, d := range def.drops {
-			if d.defID == idHealingPotion {
-				weight = d.weight
-			}
-		}
-
-		if got, want := weight, wantTables[def.id]; got != want {
-			t.Errorf("%s potion drop weight = %d, want %d", def.id, got, want)
-		}
-	}
 }
 
 // TestValidateItemDefsPanicsOnDamageTypeShape (#92): every weapon carries

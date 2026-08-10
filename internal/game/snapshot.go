@@ -53,7 +53,7 @@ import (
 // minion). Both are multi-turn state a restart must keep — otherwise a reloaded
 // necromancer hands a free summon and its adds escape the maxLiving cap. A v9
 // snapshot has neither field, so it is preserved-aside + fresh.
-const snapshotVersion = 12
+const snapshotVersion = 13
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or

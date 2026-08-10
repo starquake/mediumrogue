@@ -330,17 +330,6 @@ var itemDefs = []*itemDef{
 		},
 	},
 
-	// Healing Potion (inventory-slots task 2): the first consumable — heal is
-	// a def field consumed by the drink ACTION (inventory.go), not a combat
-	// pipeline event. Registered with the action machinery (its stack/drink
-	// tests need a real consumable); it rides the rat/wolf drop tables at low
-	// weight (task 3 — recovery layer 2 begins).
-	{
-		id: idHealingPotion, name: "Healing Potion", itemType: protocol.ItemTypeConsumable,
-		heal:   5,
-		flavor: "Tastes like a barn floor. Nobody drinks it for the taste.",
-	},
-
 	// Inventory-slots starter armor (task 3, the designer's cards): the first
 	// non-weapon gear. Class gates are gone (gear keystone, #55/#56) — every
 	// class may equip both.
@@ -585,34 +574,6 @@ var itemDefs = []*itemDef{
 		},
 	},
 
-	// Content-expansion consumables (#268): the heal ladder, extending the
-	// shipped Healing Potion (5). heal is applied by the drink action
-	// (inventory.go), clamped to maxHP; each stacks to protocol.ItemStackCap.
-	{
-		// Below the Healing Potion: the cheap bandage you top up with
-		// mid-explore. Common, home/rat-tier.
-		id: idMinorSalve, name: "Minor Salve", itemType: protocol.ItemTypeConsumable,
-		heal:   3,
-		flavor: "Boiled root and candle grease. It works, mostly.",
-	},
-	{
-		// Above the Healing Potion: a real "save it for the boss" heal,
-		// frontier-tier — meaningful because death drops you to the start of
-		// your XP level.
-		id: idGreaterDraught, name: "Greater Draught", itemType: protocol.ItemTypeConsumable,
-		heal:   10,
-		flavor: "Thick as tar and twice as bitter. You feel it knit you back.",
-	},
-	{
-		// The ladder's top rung: a very rare full heal (clamped to maxHP on
-		// drink). Flagged optional in the proposal for the flat power curve,
-		// so it is gated behind the dragon's rare pool (#269) — a once-a-run
-		// relief, not a staple.
-		id: idFullRestorative, name: "Full Restorative", itemType: protocol.ItemTypeConsumable,
-		heal:   999,
-		flavor: "One swallow and the road behind you might as well not have happened.",
-	},
-
 	// Timed-effect foundation proof weapons (#271, slice 1). Both carry an
 	// onHit rider (effects.go) instead of a rule card: the effect they apply is
 	// a lingering, turn-counted modifier, not an instant fold. The Bloodrage
@@ -775,8 +736,6 @@ var monsterDefs = []*monsterDef{
 		maxHP: 4, weapon: idClaws, xp: 8, aggroRadius: protocol.CombatRadius + 1, dropChance: 10,
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 1},
-			// Low-weight potion (inventory-slots task 3): recovery layer 2.
-			{defID: idHealingPotion, weight: 1},
 			// Wooden Buckler (#90): appended LAST so every earlier entry keeps
 			// its cumulative-weight position. Rare here (weight 1) — the wolf
 			// table is its common source.
@@ -789,7 +748,6 @@ var monsterDefs = []*monsterDef{
 			// Content expansion (#269 table B): the Minor Salve rides the
 			// rat table as the low-tier recovery ladder's home rung. Appended
 			// LAST so every earlier entry keeps its cumulative-weight position.
-			{defID: idMinorSalve, weight: 2},
 		},
 		rings: []int{0, 1},
 	},
@@ -810,7 +768,6 @@ var monsterDefs = []*monsterDef{
 			// pre-existing entries keep their cumulative-weight positions and
 			// the pinned killDropSeed/killMissSeed (drops_test.go) survive
 			// where possible.
-			{defID: idHealingPotion, weight: 2},
 			// Duelist's Saber (fast-lane batch task 6, #69 Q5): appended LAST
 			// for the same reason — every earlier entry keeps its
 			// cumulative-weight position, so killDropSeed/killMissSeed
@@ -838,7 +795,6 @@ var monsterDefs = []*monsterDef{
 			// (the drop def, not the seed: seed 0 stays a hit, seed 3 a miss).
 			{defID: idLongbow, weight: 3},
 			{defID: idFrostwardCharm, weight: 1},
-			{defID: idMinorSalve, weight: 2},
 		},
 		rings: []int{1},
 	},
@@ -926,7 +882,6 @@ var monsterDefs = []*monsterDef{
 			{defID: idEmberBrand, weight: 3},
 			{defID: idIronheadGreatmaul, weight: 3},
 			{defID: idIronboundGauntlets, weight: 3},
-			{defID: idGreaterDraught, weight: 1},
 		},
 		rings: []int{2},
 	},
@@ -953,7 +908,6 @@ var monsterDefs = []*monsterDef{
 			{defID: idButchersCleaver, weight: 4},
 			{defID: idPackBow, weight: 8},
 			{defID: idVenomFang, weight: 4},
-			{defID: idHealingPotion, weight: 1},
 			// Content expansion (#269 table B): the shooter's kind is the
 			// common source of the reach-for-damage Longbow. Appended LAST.
 			{defID: idLongbow, weight: 4},
@@ -987,7 +941,6 @@ var monsterDefs = []*monsterDef{
 			// is placed here as a very-rare once-a-run relief behind the
 			// rarest encounter. Appended LAST.
 			{defID: idEmberBrand, weight: 1},
-			{defID: idFullRestorative, weight: 1},
 		},
 		rings: []int{2}, // rare: capped at protocol.DragonCount per world by the ring spawner (6c Task 3)
 	},
@@ -1009,8 +962,6 @@ var monsterDefs = []*monsterDef{
 		maxHP: 6, weapon: idRustyShiv, xp: 12, aggroRadius: protocol.CombatRadius + 1, dropChance: 15,
 		drops: []drop{
 			{defID: idButchersCleaver, weight: 2},
-			{defID: idMinorSalve, weight: 2},
-			{defID: idHealingPotion, weight: 1},
 		},
 		rings: []int{0, 1},
 	},
@@ -1045,7 +996,6 @@ var monsterDefs = []*monsterDef{
 		drops: []drop{
 			{defID: idFrostwardCharm, weight: 3}, // ice answers
 			{defID: idFrostbrand, weight: 3},
-			{defID: idMinorSalve, weight: 2},
 		},
 		rings: []int{1, 2},
 	},
@@ -1070,7 +1020,6 @@ var monsterDefs = []*monsterDef{
 		drops: []drop{
 			{defID: idConsecratedMace, weight: 3}, // the Holy it's weak to
 			{defID: idPilgrimsMantle, weight: 3},
-			{defID: idGreaterDraught, weight: 1},
 			// Offensive-gear slice (#271): the Vampiric Blade (a lifesteal
 			// weapon) on the life-draining wraith — thematic and frontier-elite
 			// tier. Appended LAST so every earlier entry keeps its
@@ -1094,7 +1043,6 @@ var monsterDefs = []*monsterDef{
 		maxHP: 8, weapon: idVenomSting, xp: 16, aggroRadius: 8, dropChance: 30,
 		drops: []drop{
 			{defID: idBloodrageCleaver, weight: 2},
-			{defID: idMinorSalve, weight: 2},
 			// Antivenom (#271, slice 2): the poison monster drops its own cure —
 			// killing a Serpent teaches the counter to its bite. Appended LAST so
 			// every earlier entry keeps its cumulative-weight position (the Serpent
@@ -1119,7 +1067,6 @@ var monsterDefs = []*monsterDef{
 		drops: []drop{
 			{defID: idDraughtOfFury, weight: 3},
 			{defID: idWardingTonic, weight: 3},
-			{defID: idGreaterDraught, weight: 1},
 		},
 		rings: []int{2},
 	},
@@ -1143,9 +1090,7 @@ var monsterDefs = []*monsterDef{
 		// spawn rate to a trickle.
 		id: idKindRisen, name: "Risen",
 		maxHP: 4, weapon: idClaws, xp: 5, aggroRadius: protocol.CombatRadius + 1, dropChance: 5,
-		drops: []drop{
-			{defID: idMinorSalve, weight: 1},
-		},
+		drops: []drop{},
 		rings: []int{2},
 	},
 	{
@@ -1157,11 +1102,8 @@ var monsterDefs = []*monsterDef{
 		// window before the first add. Pure data — the behavior is summon.go's
 		// hook, not a combat-site edit.
 		summon: &summonSpec{minionKind: idKindRisen, everyTurns: 3, maxLiving: 3, count: 1},
-		drops: []drop{
-			{defID: idGreaterDraught, weight: 1},
-			{defID: idMinorSalve, weight: 2},
-		},
-		rings: []int{2},
+		drops:  []drop{},
+		rings:  []int{2},
 	},
 }
 

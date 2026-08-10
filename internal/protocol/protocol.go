@@ -318,7 +318,14 @@ const PotionCooldownTurns = 5
 // PotionRestorePercent is how much of the pool's MAXIMUM a draught returns
 // (#322) — a percentage rather than a flat amount, so it keeps its value as
 // pools grow with level.
-const PotionRestorePercent = 40
+//
+// Lowered 40 -> 25 in #410. At 40 the draught was most of a solo player's
+// answer to danger: the balance sim puts solo deaths at 1.12 per 100 turns
+// there and 2.00 at 25, against the 5.83 recorded when the only healing was a
+// carried potion. Deleting the heal consumables is what surfaced it — the sim
+// had been modelling a 5 HP potion, not the free 40%-of-max button players
+// actually use, so the drift had been invisible.
+const PotionRestorePercent = 25
 
 // EvadeCooldownTurns is how many turns must pass between evades (#322). Here
 // rather than in the skill registry because BOTH sides need it: the server

@@ -137,7 +137,7 @@ test("a backpack item's type stays generic — a weapon has no hand until equipp
 });
 
 test("a consumable backpack stack is never equipped", () => {
-  setInventory([itemView({ id: 1, name: "Healing Potion", type: ItemTypeConsumable, equipped: false, count: 3 })]);
+  setInventory([itemView({ id: 1, name: "Antivenom", type: ItemTypeConsumable, equipped: false, count: 3 })]);
   expect(equipped()).toEqual({});
 });
 

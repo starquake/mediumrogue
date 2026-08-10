@@ -177,7 +177,7 @@ function emptyBackpack(): (BackpackEntry | null)[] {
   return Array.from({ length: BackpackSize }, () => null);
 }
 
-/** typeLabel is the ground-row type text ("healing-potion" -> ground row's
+/** typeLabel is the ground-row type text ("antivenom" -> ground row's
  *  "consumable" -> "consumable"; kept generic for any future hyphenated type). */
 export function typeLabel(type: string): string {
   return type.replace(/-/g, " ");

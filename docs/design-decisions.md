@@ -1390,3 +1390,52 @@ not vague but wrong, naming a stat the item does not touch. This is the second
 time that fall-through has shipped: #271 had a fire flask's DoT rider reading as
 `"−3 Damage"`, i.e. a damage *reduction*, for something that drains HP. The two
 events now share a case and a test pins the rendering.
+
+---
+
+## The heal ladder is deleted, and the draught was the real balance lever *(decided 2026-08-10, #410)*
+
+Four flat heal consumables — Minor Salve (3), Healing Potion (5), Greater
+Draught (10), Full Restorative (full) — are gone. Two recovery layers had
+landed on top of them and nobody re-checked the bottom of the ladder:
+**passive regen** (+1/turn, in combat too, #322 d11) and the **health draught**
+(`R`, free, no slot, infinite on a cooldown).
+
+The draught is a **percentage of max HP** where every consumable was **flat**,
+so the gap widens with level rather than closing: at a level-1 pool of 14 the
+free draught already beat Minor Salve, and at 40 max HP it returns 10 against
+the same 3.
+
+**A world reset was the price and was accepted.** A saved backpack stores item
+instances by `defID` with no check that the def still exists, so deleting the
+definitions required `snapshotVersion` 12 → 13 — and on a version mismatch the
+loader rejects, sets the file aside and starts fresh. The alternative (drop the
+items from every table but keep the definitions, letting existing bottles drain
+away) was offered and declined.
+
+### What the deletion exposed, which matters more than the deletion
+
+The balance sim gave each bot **one 5 HP potion** and had it drink that.
+Deleting the potion forced the sim onto the thing players actually use — the
+free 40%-of-max draught — and solo deaths fell to **1.12 per 100 turns**
+against the 5.83 recorded under the potion model.
+
+**The consumables were never what made solo play dangerous. The sim had simply
+been modelling the wrong healing.** `PotionRestorePercent` drops 40 → 25 here,
+which roughly doubles solo risk to 2.00; the 5.83 is *not* a target, because it
+was measured under a model this change replaced.
+
+**And the guardrail that caught it was itself broken.** `TestGuardrailSoloIsDangerous`
+asserted "solo deaths > 0" from `Seeds: 1`, so it flipped on seed choice rather
+than on balance: seed 283 alone reported 0.00 where eight seeds report 2.00. It
+now runs eight. A balance guardrail a reroll can turn red is not measuring the
+thing it names — and the first read of that red nearly produced a much larger
+tuning change than the evidence supported.
+
+### Dead machinery, kept deliberately
+
+`itemDef.heal` and the drink action's healing branch survive with **no content
+behind them** — nothing registered has a `heal` value, so nothing can exercise
+them. Kept rather than deleted so a future healing consumable is a table entry
+rather than a re-implementation; recorded here so the gap is a decision and not
+an oversight.
