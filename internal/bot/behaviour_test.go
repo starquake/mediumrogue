@@ -177,3 +177,79 @@ func TestDecideNeverAttacksPlayers(t *testing.T) {
 		t.Error("attacked another player")
 	}
 }
+
+// TestDecideIgnoresMonstersFarFromTheLeader is #408: a -follow bot chased
+// whatever it could see and never came back.
+//
+// The drift is one-way and self-reinforcing, which is what makes it worse than
+// it sounds: chasing one monster brings the next into view, and once the bot
+// passes the leader's interest radius the leader is not in its bundle at all,
+// so findLeader cannot even see them. A live 5-bot party ended 34 hexes from
+// the sanctuary, stacked together, permanently lost.
+func TestDecideIgnoresMonstersFarFromTheLeader(t *testing.T) {
+	t.Parallel()
+
+	me := player(1, "botty", 0, testMaxHP)
+	cfg := bot.Config{FollowName: "leader"}
+
+	// The leader is far; a monster sits right next to the bot but nowhere near
+	// the leader. Following wins — the party goes where the leader goes.
+	leaderFar := player(2, "leader", 12, testMaxHP)
+	bundle := protocol.TurnEvent{Entities: []protocol.Entity{me, leaderFar, monster(3, 1)}}
+
+	got, ok := bot.Decide(cfg, me, bundle)
+	if !ok {
+		t.Fatal("issued no intent")
+	}
+
+	if got.Kind == protocol.IntentAttack {
+		t.Errorf("attacked a monster %d hexes from the leader; want to follow instead",
+			protocol.CombatRadius+6)
+	}
+
+	if want := leaderFar.Hex; got.Target != want {
+		t.Errorf("target = %v, want the leader's hex %v", got.Target, want)
+	}
+}
+
+// TestDecideFightsMonstersNearTheLeader is the other half: the leash must not
+// turn the party into passengers. Anything within CombatRadius of the leader
+// could form a bubble with them, so it is the party's fight.
+func TestDecideFightsMonstersNearTheLeader(t *testing.T) {
+	t.Parallel()
+
+	me := player(1, "botty", 0, testMaxHP)
+	cfg := bot.Config{FollowName: "leader"}
+
+	// Leader at 2, monster adjacent to the bot and well inside CombatRadius of
+	// the leader: swing.
+	leader := player(2, "leader", 2, testMaxHP)
+	bundle := protocol.TurnEvent{Entities: []protocol.Entity{me, leader, monster(3, 1)}}
+
+	got, ok := bot.Decide(cfg, me, bundle)
+	if !ok {
+		t.Fatal("issued no intent")
+	}
+
+	if got, want := got.Kind, protocol.IntentAttack; got != want {
+		t.Errorf("kind = %q, want %q — a monster beside the leader is the party's fight", got, want)
+	}
+}
+
+// TestDecideWithoutALeaderStillHunts: the leash is a FOLLOW behaviour. A bot
+// with no -follow (a roamer, or a punchbag) must be unchanged by #408.
+func TestDecideWithoutALeaderStillHunts(t *testing.T) {
+	t.Parallel()
+
+	me := player(1, "botty", 0, testMaxHP)
+	bundle := protocol.TurnEvent{Entities: []protocol.Entity{me, monster(3, 1)}}
+
+	got, ok := bot.Decide(bot.Config{}, me, bundle)
+	if !ok {
+		t.Fatal("issued no intent")
+	}
+
+	if got, want := got.Kind, protocol.IntentAttack; got != want {
+		t.Errorf("kind = %q, want %q — a leaderless bot still hunts", got, want)
+	}
+}
