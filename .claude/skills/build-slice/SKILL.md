@@ -194,9 +194,19 @@ scanning past it.
 - `gh pr ready <n>`, watch CI, then STOP. **Do not merge** — the
   `ready to merge` label is the maintainer's; the `merge-pr` skill handles
   the landing when they add it.
-- **Label**: the build is done and the ball is now on the PR's
-  `ready to merge` gate, so clear the issue's `Build`
-  (`.claude/scripts/board.sh state <n> "Your sign-off"` — the PR gate is where it waits) — don't move it to a
-  `needs:*` maintainer label, because `ready to merge` on the PR is already
+- **State**: the build is done and its PR is open, so move the issue to
+  **`Your review`** — `.claude/scripts/board.sh state <n> "Your review"`.
+
+  **NOT `Your sign-off`** (#419). The two "your" gates around a build are
+  different jobs and `CLAUDE.md` says conflating them is what made the lane
+  useless: `Your sign-off` comes BEFORE a build — approve the spec, plan or
+  mockup so work can start — and `Your review` comes AFTER it, when the work
+  is done and the diff is waiting for `ready to merge`. **Decide-the-design
+  versus review-the-diff.** This step said `Your sign-off` for months, so every
+  finished build landed in the pre-build gate and `Your review` sat empty; a
+  codebase review then read that emptiness as "dead column" and proposed
+  deleting a lane that was in active use.
+
+  Don't add a `needs:*` label on top — `ready to merge` on the PR is already
   that signal and setting both double-counts. On merge the `Closes #NN` PR
   auto-closes the issue.
