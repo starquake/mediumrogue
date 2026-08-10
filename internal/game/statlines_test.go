@@ -22,6 +22,7 @@ func TestStatLinesForShippedContent(t *testing.T) {
 		dmg3, dmg4, dmg6, dmg9 = "Damage 3", "Damage 4", "Damage 6", "Damage 9"
 		rng4                   = "Range 4"
 		aoe1                   = "AoE 1"
+		stack5                 = "Stacks to 5"
 	)
 
 	want := map[string][]string{
@@ -50,10 +51,12 @@ func TestStatLinesForShippedContent(t *testing.T) {
 		idIronPlateArmor:     {"+20% Damage Resistance", "+25% Aggro Range"},
 		// Buff/antidote consumables (#271, slice 2) carry a timed-effect payload,
 		// not rule cards — rendered from the effect's own card plus its duration,
-		// or a fixed cleanse line. A buff potion heals 0, so it has no HP line.
-		idDraughtOfFury: {"+25% Damage for 4 turns"},
-		idWardingTonic:  {"+25% Damage Resistance for 4 turns"},
-		idAntivenom:     {"Cures harmful effects"},
+		// or a fixed cleanse line, then the stack cap — which every consumable
+		// now carries, since #415 moved it off the deleted heal field onto the
+		// item type.
+		idDraughtOfFury: {"+25% Damage for 4 turns", stack5},
+		idWardingTonic:  {"+25% Damage Resistance for 4 turns", stack5},
+		idAntivenom:     {"Cures harmful effects", stack5},
 	}
 
 	for id, wantLines := range want {

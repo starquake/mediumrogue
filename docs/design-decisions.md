@@ -1432,10 +1432,39 @@ now runs eight. A balance guardrail a reroll can turn red is not measuring the
 thing it names — and the first read of that red nearly produced a much larger
 tuning change than the evidence supported.
 
-### Dead machinery, kept deliberately
+### Dead machinery, kept deliberately — then deleted *(reversed 2026-08-10, #415)*
 
-`itemDef.heal` and the drink action's healing branch survive with **no content
-behind them** — nothing registered has a `heal` value, so nothing can exercise
-them. Kept rather than deleted so a future healing consumable is a table entry
-rather than a re-implementation; recorded here so the gap is a decision and not
-an oversight.
+`itemDef.heal` and the drink action's healing branch were kept with **no
+content behind them**, on the reasoning that a future healing consumable would
+otherwise be a re-implementation rather than a table entry.
+
+**That reasoning was wrong, and the maintainer's own description of the future
+item is what showed it.** Asked what might come back, @starquake named *"a
+health-regen +5% or something like that"* — and a regen potion does not touch
+the heal field at all. It is the Warding Tonic's shape over an effect that
+already ships:
+
+```go
+appliesEffect: []appliedEffect{{effectID: idEffectRegen, magnitude: 2, turns: 5}}
+```
+
+`idEffectRegen` is registered and already in live use by **Second Wind** and the
+**Hydra Fangs**' on-hit rider. So the replacement path was a table entry either
+way, the retained machinery bought nothing, and it is gone: the field, the
+drink branch, the `+N HP` stat line and the guide's `Heal` column.
+
+**A percentage is still not expressible, which is the constraint worth
+remembering.** `idEffectRegen` is an `effAdd` — flat HP per turn. And a
+percentage would do nothing anyway: `RegenPerTurn` is 1, the fold truncates, and
+every percentage below +100% floors back to 1 (the same finding that forced the
+Mender's Locket to carry `+1` rather than `+25%`, #397). A recovery potion is
+"+2 HP per turn for 5 turns", not "+5%", until the base rate rises.
+
+The stack-cap stat line was collateral: it hung off the deleted `heal` field, so
+**every consumable that survived #410 — both buff potions and the Antivenom —
+had been showing no stack line at all**. It now keys on the item type, which is
+what it always meant, and renders last, after the payload that is the actual
+reason to carry the thing.
+
+`World.SeesForTest` went in the same pass — an exported test hook with no
+remaining caller.
