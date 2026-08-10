@@ -70,13 +70,21 @@ func TestGuardrailSoloIsDangerousAndPartiesAreSafer(t *testing.T) {
 	t.Parallel()
 
 	rep := game.RunPartySim(game.PartySimConfig{
-		BaseSeed: 283, Sizes: []int{1, 15}, Seeds: 1, Turns: 100,
+		// EIGHT seeds, not one (#410). At Seeds: 1 this asserted "solo deaths
+		// > 0" against a single sample, so it flipped on seed choice rather
+		// than on balance — seed 283 alone reports 0.00 where eight seeds
+		// report 2.00. A guardrail that a reroll can turn red is not measuring
+		// the thing it names.
+		BaseSeed: 283, Sizes: []int{1, 15}, Seeds: 8, Turns: 100,
 	})
 
 	solo, party := rep.Sizes[0], rep.Sizes[1]
 
-	// The boring floor: a solo player who never risks death has no game
-	// (observed: 5.83/100 turns).
+	// The boring floor: a solo player who never risks death has no game.
+	// Observed 2.00/100 turns over eight seeds at PotionRestorePercent 25
+	// (#410). The 5.83 this comment used to cite was measured when the sim
+	// modelled a carried 5 HP potion rather than the free draught, so it is
+	// not a like-for-like figure and is not a target.
 	if got, want := solo.DeathsPer100, 0.0; got <= want {
 		t.Errorf("solo DeathsPer100 = %.2f, want > %.1f (solo play should carry real risk)", got, want)
 	}

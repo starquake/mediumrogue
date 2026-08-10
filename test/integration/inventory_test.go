@@ -33,10 +33,13 @@ const (
 	invHammer3ID    = int64(14)
 	invGroundFangID = int64(20)
 
-	invToken            = "itest-inventory-token"
-	invSnapshotNextID   = 100
-	invWarhammerDef     = "iron-warhammer"
-	invHealingPotionDef = "healing-potion"
+	invToken          = "itest-inventory-token"
+	invSnapshotNextID = 100
+	invWarhammerDef   = "iron-warhammer"
+	// A stacking consumable used as an inventory FIXTURE — this test is about
+	// the pickup/drop/drink loop over real HTTP, not about healing. It was the
+	// Healing Potion until #410 deleted every heal consumable.
+	invStackingConsumableDef = "antivenom"
 )
 
 // invFighterMaxHP is a level-1 fighter's max HP; the crafted snapshot starts
@@ -65,7 +68,7 @@ func craftInventorySnapshot() []byte {
 		// DTO — this fixture carries neither, so only the version moves). The
 		// loader REJECTS a version mismatch by design, so a crafted fixture has
 		// to move with the version — it is not a value to weaken.
-		"version":      12, // #322 added Energy, then the two draught cooldowns
+		"version":      13, // #410 deleted the heal consumables, so orphaned defIDs are rejected
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,
@@ -81,7 +84,7 @@ func craftInventorySnapshot() []byte {
 				protocol.SlotMainHand: {ID: invSwordID, DefID: "iron-sword"},
 			},
 			"backpack": []entry{
-				{Item: inst{ID: invPotionID, DefID: invHealingPotionDef}, Count: 3},
+				{Item: inst{ID: invPotionID, DefID: invStackingConsumableDef}, Count: 3},
 				{Item: inst{ID: invHammer1ID, DefID: invWarhammerDef}, Count: 1},
 				{Item: inst{ID: invHammer2ID, DefID: invWarhammerDef}, Count: 1},
 				{Item: inst{ID: invHammer3ID, DefID: invWarhammerDef}, Count: 1},
@@ -235,11 +238,14 @@ func TestInventoryLoopOverHTTP(t *testing.T) {
 		return ok && p.Count == 2
 	})
 
+	// No heal term since #410: the fixture is an antivenom, which restores
+	// nothing. What this asserts is that the DRINK went through — the stack
+	// decremented above — while HP only moves by passive regen (+1/turn) as
+	// the bundle stream ticks. A heal assertion here would need a healing
+	// consumable, and none exists.
 	e, _ := entityOf(afterDrink, invPlayerID)
-	if got, want := e.HP, invFighterMaxHP-10+5; got < want {
-		// >= not ==: out-of-combat regen (+1/turn) may add on top while the
-		// bundle stream ticks.
-		t.Errorf("HP after drink = %d, want >= %d", got, want)
+	if got, want := e.HP, invFighterMaxHP-10; got < want {
+		t.Errorf("HP after drink = %d, want >= %d (regen only, nothing heals)", got, want)
 	}
 
 	// DROP a warhammer: an entry frees and the hammer joins the ground.

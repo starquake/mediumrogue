@@ -508,7 +508,8 @@ roll, so it is ARPG-legal on jewelry.
 - **The health and energy draughts** (#322): always available, on `R` and `E`.
   **No item, no stack, no inventory slot** — a cooldown is the entire price,
   which is why the intent carries no item id. Each restores
-  `protocol.PotionRestorePercent` (40%) of that pool's **maximum** — a share
+  `protocol.PotionRestorePercent` (**25%**, lowered from 40 in #410) of that
+  pool's **maximum** — a share
   rather than a flat amount, so it keeps its value as pools grow — and cools
   for `protocol.PotionCooldownTurns` (5) turns.
   - **The two cooldowns are independent**: draining energy in a fight must not
@@ -811,8 +812,6 @@ roll, so it is ARPG-legal on jewelry.
   (boots: aggro-range ×0.75), the three resist chest armors above (one type
   halved each), the Ironbound Gauntlets (gloves: blunt ×0.5) and Frostward
   Charm (amulet: ice ×0.5), Headband of Learning (helmet: earn-XP ×1.05), the
-  heal-ladder consumables (Minor Salve +3, Healing Potion +5, Greater Draught
-  +10, Full Restorative to full — each drink clamped to max HP, stacks to 5),
   the timed-effect consumables (#271, slice 2 — **Draught of Fury** +25%
   deal-damage for 4 turns, **Warding Tonic** +25% damage resistance for 4
   turns, **Antivenom** cures harmful effects — see **Timed / lingering
@@ -835,13 +834,11 @@ roll, so it is ARPG-legal on jewelry.
   rides existing kinds so it stays reachable — Ember Brand on troll (w3) /
   dragon (w1), Ironhead Greatmaul on skeleton (w3) / troll (w3), Longbow on
   wolf (w3) / kin archer (w4), Ironbound Gauntlets on skeleton (w2) / troll
-  (w3), Frostward Charm on frost wisp (w3) / wolf (w1); the recovery ladder
-  spreads across the tiers (Minor Salve on rat/wolf/goblin/frost wisp, Greater
-  Draught on wraith/troll, the very-rare Full Restorative on the dragon). The
+  (w3), Frostward Charm on frost wisp (w3) / wolf (w1). The
   timed-effect content (#271, slice 2) routes the same way — the **Antivenom**
   rides the **Serpent** (the poison monster drops its own cure), and the buff
   potions ride the **Hydra**'s own new table (Draught of Fury w3, Warding Tonic
-  w3, Greater Draught w1); both tables are new, so no existing pinned drop seed
+  w3); both tables are new, so no existing pinned drop seed
   moves. The offensive-gear slice (#271) routes its two items on the same
   append-LAST rule, on kinds no seeded drop test pins: the **Ring of Precision**
   on the ghoul (w2 — its assassin/precision tier already carries the Misericorde)
@@ -869,7 +866,7 @@ roll, so it is ARPG-legal on jewelry.
     a partial fit takes what fits and **leaves the remainder** on the ground
     as a smaller stack; nothing fits → **reject** with a clear error the
     client surfaces ("backpack full — drop something first"). Items never
-    auto-equip. The client modal shows a stack as one row ("Healing Potion
+    auto-equip. The client modal shows a stack as one row ("Antivenom
     ×3 · consumable"); **hovering a row reveals the item's details** (#139) in
     the **same stat tooltip the inventory uses** (`gear/StatTooltip`, extracted
     so the character panel and the pickup modal share one component) — name,
@@ -967,7 +964,7 @@ roll, so it is ARPG-legal on jewelry.
   damage-proportional lifesteal (a later slice's new pipeline kind). It is the
   live proof of the `end-of-turn` heal direction the foundation only exercised
   in a white-box test, and its own table carries the buff potions (Draught of
-  Fury, Warding Tonic) plus a Greater Draught.
+  Fury, Warding Tonic).
 
   **The Necromancer is the first SUMMONER** (#271): while in combat (inside a
   bubble) it raises weak **Risen** adds on nearby free hexes, via an

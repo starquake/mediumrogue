@@ -724,7 +724,6 @@ const (
 const (
 	idLeatherArmor       = "leather-armor"
 	idHeadbandOfLearning = "headband-of-learning"
-	idHealingPotion      = "healing-potion"
 )
 
 // Damage-type content-wave ids (#92, DT1): the first resist armors and the
@@ -787,11 +786,7 @@ const (
 // (inventory.go), not a combat event, so the amount is the only thing
 // add-content can vary today (timed buff potions need a timed-effect
 // mechanic — a separate design slice).
-const (
-	idMinorSalve      = "minor-salve"
-	idGreaterDraught  = "greater-draught"
-	idFullRestorative = "full-restorative"
-)
+const ()
 
 // classDefaultIDs returns the item def ids a class starts with at Join: one
 // melee-tagged weapon, plus a ranged/magic-tagged weapon for Rogue and Mage

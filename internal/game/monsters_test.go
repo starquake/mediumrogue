@@ -88,10 +88,6 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		{defID: idEmberStaff, weight: 4},
 		{defID: idAncientDwarvenMattock, weight: 4},
 		{defID: idWarMageStaff, weight: 4},
-		// Appended by the inventory-slots milestone (task 3): the low-weight
-		// healing potion — recovery layer 2. Appended LAST so the pre-existing
-		// entries keep their cumulative-weight positions.
-		{defID: idHealingPotion, weight: 2},
 		// Appended by the fast-lane batch (task 6, #69 Q5): the Duelist's
 		// Saber, wolf's crit% signature drop. Appended LAST for the same
 		// reason — every earlier entry keeps its cumulative-weight position.
@@ -108,14 +104,13 @@ func TestWolfCarriesTodaysExactNumbers(t *testing.T) {
 		// Appended LAST for the same reason.
 		{defID: idWardedGambeson, weight: 3},
 		// Appended by the content expansion (#269 table B): the reach Longbow,
-		// a rare Frostward Charm, and the Minor Salve recovery rung. Appended
+		// and a rare Frostward Charm. Appended
 		// LAST — the new total weight was re-checked against drops_test.go's
 		// killDropSeed pins (the seeds are unchanged: seed 0 still hits, seed 3
 		// still misses; and seed 0 still yields the Butcher's Cleaver, which
 		// stays weight 4 at the head of the table).
 		{defID: idLongbow, weight: 3},
 		{defID: idFrostwardCharm, weight: 1},
-		{defID: idMinorSalve, weight: 2},
 	}
 
 	if got, want := len(wolf.drops), len(wantDrops); got != want {

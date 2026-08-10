@@ -25,8 +25,11 @@ func intentFor(id int64, token, kind string, itemID int64) protocol.IntentReques
 const (
 	defIronSword     = "iron-sword"
 	defIronWarhammer = "iron-warhammer"
-	defHealingPotion = "healing-potion"
-	defVenomFang     = "venom-fang"
+	// A stacking consumable, used purely as an inventory FIXTURE — these tests
+	// are about stacking, dropping and pickup, not about what drinking does.
+	// It was the Healing Potion until #410 deleted every heal consumable.
+	defStackingConsumable = "antivenom"
+	defVenomFang          = "venom-fang"
 )
 
 // pickupIntent builds a pickup IntentRequest (GroundItemID, not ItemID).
@@ -231,9 +234,9 @@ func TestDropStackDropsWhole(t *testing.T) {
 
 	id, token := w.PlaceEntityForTest(target)
 
-	stackID := w.GrantItemForTest(id, defHealingPotion)
-	w.GrantItemForTest(id, defHealingPotion)
-	w.GrantItemForTest(id, defHealingPotion)
+	stackID := w.GrantItemForTest(id, defStackingConsumable)
+	w.GrantItemForTest(id, defStackingConsumable)
+	w.GrantItemForTest(id, defStackingConsumable)
 
 	pack := w.BackpackForTest(id)
 	if got, want := pack[0].Count, 3; got != want {
@@ -255,7 +258,7 @@ func TestDropStackDropsWhole(t *testing.T) {
 	}
 
 	ground := snap.GroundItems[0]
-	if got, want := ground.DefID, defHealingPotion; got != want {
+	if got, want := ground.DefID, defStackingConsumable; got != want {
 		t.Errorf("ground def = %q, want %q", got, want)
 	}
 
@@ -296,7 +299,7 @@ func TestPickupStackPartialFitLeavesRemainder(t *testing.T) {
 	// Backpack: a 4-potion stack in entry 0, three gear items filling the
 	// rest — so the only room for potions is the 1 slot left in that stack.
 	for range 4 {
-		w.GrantItemForTest(id, defHealingPotion)
+		w.GrantItemForTest(id, defStackingConsumable)
 	}
 
 	for range protocol.BackpackSize - 1 {
@@ -305,7 +308,7 @@ func TestPickupStackPartialFitLeavesRemainder(t *testing.T) {
 
 	// A 3-potion stack on the ground: only 1 fits (topping the stack to 5),
 	// 2 remain on the ground.
-	groundID := w.GroundStackForTest(target, defHealingPotion, 3)
+	groundID := w.GroundStackForTest(target, defStackingConsumable, 3)
 
 	if err := w.SubmitIntent(pickupIntent(id, token, groundID)); err != nil {
 		t.Fatalf("SubmitIntent partial pickup: %v", err)
@@ -347,7 +350,7 @@ func TestPickupPriorityMergeThenFreeThenReject(t *testing.T) {
 	id, token := w.PlaceEntityForTest(target)
 
 	// One potion in the backpack; three gear items fill the rest.
-	w.GrantItemForTest(id, defHealingPotion)
+	w.GrantItemForTest(id, defStackingConsumable)
 
 	for range protocol.BackpackSize - 1 {
 		w.GrantItemForTest(id, defIronWarhammer)
@@ -355,7 +358,7 @@ func TestPickupPriorityMergeThenFreeThenReject(t *testing.T) {
 
 	// MERGE: a ground potion merges into the existing stack even though no
 	// entry is free.
-	groundPotion := w.GroundItemForTest(target, defHealingPotion)
+	groundPotion := w.GroundItemForTest(target, defStackingConsumable)
 	if err := w.SubmitIntent(pickupIntent(id, token, groundPotion)); err != nil {
 		t.Fatalf("SubmitIntent pickup (merge): %v", err)
 	}
@@ -463,7 +466,7 @@ func TestStackNeverExceedsCap(t *testing.T) {
 	id, token := w.PlaceEntityForTest(target)
 
 	for range protocol.ItemStackCap {
-		w.GrantItemForTest(id, defHealingPotion)
+		w.GrantItemForTest(id, defStackingConsumable)
 	}
 
 	pack := w.BackpackForTest(id)
@@ -471,7 +474,7 @@ func TestStackNeverExceedsCap(t *testing.T) {
 		t.Fatalf("stack count = %d, want the cap %d", got, want)
 	}
 
-	ground := w.GroundItemForTest(target, defHealingPotion)
+	ground := w.GroundItemForTest(target, defStackingConsumable)
 	if err := w.SubmitIntent(pickupIntent(id, token, ground)); err != nil {
 		t.Fatalf("SubmitIntent pickup: %v", err)
 	}
@@ -481,7 +484,7 @@ func TestStackNeverExceedsCap(t *testing.T) {
 		t.Errorf("capped stack count = %d, want unchanged %d", got, want)
 	}
 
-	if got, want := pack[1].DefID, defHealingPotion; got != want {
+	if got, want := pack[1].DefID, defStackingConsumable; got != want {
 		t.Errorf("backpack[1] = %q, want a NEW potion stack %q", got, want)
 	}
 
@@ -490,9 +493,15 @@ func TestStackNeverExceedsCap(t *testing.T) {
 	}
 }
 
-// TestDrinkHealsDecrementsAndFrees: drinking applies the potion's heal
-// (clamped to max HP), decrements the stack, and frees the entry at zero.
-func TestDrinkHealsDecrementsAndFrees(t *testing.T) {
+// TestDrinkDecrementsAndFrees: drinking spends one unit and frees the slot
+// when the stack empties.
+//
+// It no longer asserts a HEAL. #410 deleted every consumable with a `heal`
+// value, so itemDef.heal and the drink action's healing branch are live
+// machinery with no content behind them — there is nothing registered that
+// could exercise them. Kept as a stacking/consumption test rather than
+// deleted, because that half is still real behaviour.
+func TestDrinkDecrementsAndFrees(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
@@ -502,25 +511,11 @@ func TestDrinkHealsDecrementsAndFrees(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
-	stackID := w.GrantItemForTest(me.EntityID, defHealingPotion)
-	w.GrantItemForTest(me.EntityID, defHealingPotion)
-
-	maxHP := game.MaxHPForTest(protocol.ClassFighter, 1)
-	w.SetHPForTest(me.EntityID, maxHP-7)
+	stackID := w.GrantItemForTest(me.EntityID, defStackingConsumable)
+	w.GrantItemForTest(me.EntityID, defStackingConsumable)
 
 	if err := w.SubmitIntent(intentFor(me.EntityID, me.Token, protocol.IntentDrink, stackID)); err != nil {
 		t.Fatalf("SubmitIntent drink: %v", err)
-	}
-
-	snap := w.Snapshot()
-
-	e, ok := entityOfSnap(snap, me.EntityID)
-	if !ok {
-		t.Fatal("player missing from snapshot")
-	}
-
-	if got, want := e.HP, maxHP-2; got != want { // +5 heal
-		t.Errorf("HP after drink = %d, want %d", got, want)
 	}
 
 	pack := w.BackpackForTest(me.EntityID)
@@ -528,17 +523,9 @@ func TestDrinkHealsDecrementsAndFrees(t *testing.T) {
 		t.Errorf("stack count after drink = %d, want %d", got, want)
 	}
 
-	// Second drink: heal clamps at max HP (only 2 below), stack empties, the
-	// entry frees.
+	// Second drink: the stack empties and the entry frees.
 	if err := w.SubmitIntent(intentFor(me.EntityID, me.Token, protocol.IntentDrink, stackID)); err != nil {
 		t.Fatalf("SubmitIntent drink (second): %v", err)
-	}
-
-	snap = w.Snapshot()
-	e, _ = entityOfSnap(snap, me.EntityID)
-
-	if got, want := e.HP, maxHP; got != want {
-		t.Errorf("HP after clamped drink = %d, want max %d", got, want)
 	}
 
 	pack = w.BackpackForTest(me.EntityID)
@@ -586,7 +573,7 @@ func TestEquipConsumableRejectedAsNotEquippable(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
-	potionID := w.GrantItemForTest(me.EntityID, defHealingPotion)
+	potionID := w.GrantItemForTest(me.EntityID, defStackingConsumable)
 
 	if got, want := w.SubmitIntent(intentFor(me.EntityID, me.Token, protocol.IntentEquip, potionID)),
 		game.ErrNotEquippable; !errors.Is(got, want) {
@@ -629,7 +616,7 @@ func TestDrinkInBubbleConsumesTurn(t *testing.T) {
 	monsterID := fx.monsterID
 	form := fx.form
 
-	stackID := w.GrantItemForTest(idA, defHealingPotion)
+	stackID := w.GrantItemForTest(idA, defStackingConsumable)
 
 	maxHP := game.MaxHPForTest(protocol.ClassFighter, 1)
 	w.SetHPForTest(idA, maxHP-10)
@@ -659,11 +646,13 @@ func TestDrinkInBubbleConsumesTurn(t *testing.T) {
 
 	wolfDamage := game.MonsterDamageForTest(w.MonsterKindForTest(monsterID))
 
-	// +RegenPerTurn since #322 decision 11: a bubble turn tops the pools up as
-	// well as resolving the fight.
-	want := maxHP - 10 + 5 - wolfDamage + protocol.RegenPerTurn
+	// No heal term since #410: the fixture consumable is an antivenom, which
+	// restores nothing — the point of this test is that drinking SPENDS the
+	// turn, not what the drink does. +RegenPerTurn since #322 decision 11: a
+	// bubble turn tops the pools up as well as resolving the fight.
+	want := maxHP - 10 - wolfDamage + protocol.RegenPerTurn
 	if got := entityHP(t, w.Snapshot(), idA); got != want {
-		t.Errorf("HP after bubble resolution = %d, want %d (heal, attack, then the turn's regen)", got, want)
+		t.Errorf("HP after bubble resolution = %d, want %d (drink spends the turn, attack, then regen)", got, want)
 	}
 
 	pack := w.BackpackForTest(idA)

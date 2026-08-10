@@ -512,8 +512,8 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 		t.Fatalf("equip armor: %v", submitErr)
 	}
 
-	stackID := w.GrantItemForTest(me.EntityID, "healing-potion")
-	w.GrantItemForTest(me.EntityID, "healing-potion")
+	stackID := w.GrantItemForTest(me.EntityID, "antivenom")
+	w.GrantItemForTest(me.EntityID, "antivenom")
 	hammerID := w.GrantItemForTest(me.EntityID, "iron-warhammer")
 
 	// Archived character with the same shapes: a second player, swept.
@@ -522,9 +522,9 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 		t.Fatalf("Join sleeper: %v", err)
 	}
 
-	w.GrantItemForTest(gone.EntityID, "healing-potion")
-	w.GrantItemForTest(gone.EntityID, "healing-potion")
-	w.GrantItemForTest(gone.EntityID, "healing-potion")
+	w.GrantItemForTest(gone.EntityID, "antivenom")
+	w.GrantItemForTest(gone.EntityID, "antivenom")
+	w.GrantItemForTest(gone.EntityID, "antivenom")
 	clk.advance(testDisconnectGrace + time.Second)
 
 	if !w.SweepForTest(clk.now()) {
@@ -557,7 +557,7 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 		t.Errorf("restored backpack = %+v, want %+v", post, pre)
 	}
 
-	if got, want := post[0].DefID, "healing-potion"; got != want {
+	if got, want := post[0].DefID, "antivenom"; got != want {
 		t.Errorf("restored backpack[0] = %q, want %q", got, want)
 	}
 
@@ -572,7 +572,7 @@ func TestSnapshotRoundTripInventoryShapes(t *testing.T) {
 	}
 
 	sleeperPack := w2.BackpackForTest(back.EntityID)
-	if got, want := sleeperPack[0].DefID, "healing-potion"; got != want {
+	if got, want := sleeperPack[0].DefID, "antivenom"; got != want {
 		t.Errorf("restored sleeper backpack[0] = %q, want %q", got, want)
 	}
 

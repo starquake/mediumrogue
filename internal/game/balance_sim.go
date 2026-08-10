@@ -130,9 +130,6 @@ func runPartyWorld(cfg PartySimConfig, size int, seed uint64) SizeStats {
 		WorldSeed:       seed,
 		Radius:          cfg.Radius,
 		Ticks:           hub.New(),
-		// Decision 4's potion: every bot starts holding one Healing Potion,
-		// the same knob production exposes as STARTER_CONSUMABLES.
-		StarterConsumables: []string{idHealingPotion},
 	})
 
 	deaths := &deathLog{playerDeaths: make(map[int64]int)}
@@ -268,14 +265,13 @@ func botAct(w *World, id int64) {
 		return
 	}
 
-	// Drink when low and holding a potion.
+	// Drink when low. The always-available health draught (#322), not a carried
+	// potion: #410 deleted the heal consumables, and the draught is what a
+	// player actually reaches for now — free, no slot, 40% of max on a
+	// cooldown. A refusal means it is still cooling, so the bot fights on.
 	if float64(e.hp) < drinkBelowFrac*float64(e.maxHP) {
-		for _, entry := range e.backpack {
-			if entry.count > 0 && entry.inst.defID == idHealingPotion {
-				if err := w.queueDrinkLocked(e, entry.inst.id); err == nil {
-					return
-				}
-			}
+		if err := w.quaffHealthLocked(e); err == nil {
+			return
 		}
 	}
 
