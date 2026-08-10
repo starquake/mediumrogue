@@ -1189,10 +1189,15 @@ async function start(): Promise<void> {
       // is the abandoned character, and reading it here would override the
       // class/species just picked on the creation form with the old
       // character's — the same stale-capture bug as the reclaim above.
-      joinedName = selectedName;
+      // A stored NAME wins over the picker's too (#402) — the same rule the
+      // two lines below have always applied to class and species. It was
+      // invisible until names stopped being the single shared default: with a
+      // generated name in the field, a pre-seeded identity was joining under a
+      // fresh random name instead of the one it stored.
+      joinedName = activeIdentity?.name || selectedName;
       joinedClass = activeIdentity?.class || selectedClass;
       joinedSpecies = activeIdentity?.species || selectedSpecies;
-      me = await join(selectedName, joinedClass, joinedSpecies);
+      me = await join(joinedName, joinedClass, joinedSpecies);
     }
   } catch (err) {
     // A REJECTED reclaim (4xx) means the stored identity itself is dead —

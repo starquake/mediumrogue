@@ -3,7 +3,9 @@ import type { Page } from "@playwright/test";
 
 import { continueIfReturning } from "./helpers";
 
-// Both clients auto-join with the default name "traveler" — that's fine here:
+// Both clients auto-join as "traveler" — the name in the pre-seeded identity
+// (playwright.config.ts's storageStateFor), NOT the start screen's generated
+// default since #402. That's fine here:
 // server-side /invite <name> resolves to the NEAREST player named <name>
 // EXCLUDING the sender (see World.nearestPlayerByNameLocked), so when A
 // invites "traveler" it necessarily targets B, the only other "traveler".

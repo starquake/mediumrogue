@@ -49,7 +49,8 @@ test("chat: cross-client delivery, /here, readable command errors, and map click
   await b.goto("/");
   await continueIfReturning(b);
 
-  // 1. Both auto-join (default name "traveler") and connect.
+  // 1. Both auto-join as "traveler" — the pre-seeded identity's name (#402
+  //    made the start screen's own default a generated one) — and connect.
   await expect.poll(() => a.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
   await expect.poll(() => b.evaluate(() => window.game.me?.id ?? null)).not.toBeNull();
   await expect.poll(() => a.evaluate(() => window.game.connected)).toBe(true);
