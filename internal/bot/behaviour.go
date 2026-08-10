@@ -58,7 +58,19 @@ func Decide(cfg Config, me protocol.Entity, bundle protocol.TurnEvent) (protocol
 		return protocol.IntentRequest{Kind: protocol.IntentQuaffHealth}, true
 	}
 
-	if target, ok := nearestHostile(me, bundle); ok {
+	// The leader is resolved BEFORE the hostile check, because it decides
+	// which hostiles count (#408). Chasing anything visible made -follow a lie:
+	// a bot walked to whatever it could see, that brought the next monster into
+	// view, and once it passed the leader's interest radius the leader was no
+	// longer in its bundle at all — so findLeader could not pull it back even
+	// in principle. A live party ended 34 hexes from the sanctuary, stacked
+	// together, permanently lost.
+	var leader *protocol.Entity
+	if found, ok := findLeader(cfg.FollowName, me, bundle); ok {
+		leader = &found
+	}
+
+	if target, ok := nearestHostile(me, bundle); ok && engageable(target, leader) {
 		// Adjacent: swing. Otherwise close the gap — the server rejects an
 		// out-of-reach attack, and eating a 422 every turn is not a plan.
 		if distance(me.Hex, target.Hex) == 1 {
@@ -70,7 +82,7 @@ func Decide(cfg Config, me protocol.Entity, bundle protocol.TurnEvent) (protocol
 		return protocol.IntentRequest{Kind: protocol.IntentMove, Target: target.Hex}, true
 	}
 
-	if leader, ok := findLeader(cfg.FollowName, me, bundle); ok {
+	if leader != nil {
 		if distance(me.Hex, leader.Hex) > FollowDistance {
 			return protocol.IntentRequest{Kind: protocol.IntentMove, Target: leader.Hex}, true
 		}
@@ -91,6 +103,26 @@ func Decide(cfg Config, me protocol.Entity, bundle protocol.TurnEvent) (protocol
 	}
 
 	return protocol.IntentRequest{}, false
+}
+
+// engageable reports whether target is the party's fight rather than one the
+// bot wandered off to find (#408).
+//
+// The leash is measured from the LEADER, not from the bot: it is the leader's
+// position that the party is meant to hold. protocol.CombatRadius is the reuse
+// rather than a new number — it is exactly the distance at which a bubble
+// forms, so the rule reads "fight anything that could join the leader's
+// fight", and it mirrors the world's own AI, which leashes monsters to their
+// home hex (leashRadiusFor).
+//
+// With no leader (no -follow: a roamer or a punchbag) there is nothing to hold
+// position around, so everything is engageable and the behaviour is unchanged.
+func engageable(target protocol.Entity, leader *protocol.Entity) bool {
+	if leader == nil {
+		return true
+	}
+
+	return distance(leader.Hex, target.Hex) <= protocol.CombatRadius
 }
 
 // nearestHostile finds the closest monster. Only monsters: a dumb bot never
