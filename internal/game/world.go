@@ -1942,9 +1942,7 @@ func (*World) regenPlayersLocked(members []*entity) {
 // conditionHolds would nil-deref the first time one rolled. applyRules' own
 // clamp keeps the result at >= 0. Callers hold w.mu.
 func regenForLocked(e *entity) int {
-	cards := slices.Concat(speciesCards(e.species), equippedRuleCards(e), skillCards(e))
-
-	return applyRules(evRegen, protocol.RegenPerTurn, cards, ruleCtx{attacker: e})
+	return applyRules(evRegen, protocol.RegenPerTurn, allRuleCards(e), ruleCtx{attacker: e})
 }
 
 // resolveBubbleTurnLocked advances one combat bubble a single action-gated turn:
@@ -3032,7 +3030,7 @@ func (w *World) resolveAoELocked(
 // gain it may trigger, and logs the award. Split out of the bubble's XP pass so
 // that loop stays flat.
 func (w *World) awardKillXPLocked(e *entity, totalXP int) {
-	award := applyRules(evEarnXP, totalXP, earnXPCards(e), ruleCtx{})
+	award := applyRules(evEarnXP, totalXP, allRuleCards(e), ruleCtx{})
 	e.xp += award
 	syncMaxHPLocked(e)
 
@@ -3861,12 +3859,20 @@ func kindCards(e *entity) []ruleCard {
 	return k.rules
 }
 
-// earnXPCards returns the cards folded over an XP award for player e:
-// species passives plus every equipped item's rules (canonicalSlotOrder —
-// deterministic), so gear like the Headband of Learning modifies XP the same
-// way species passives do. Shared by the kill award
-// (resolveBubbleTurnLocked) and quest completion payouts (quest.go).
-func earnXPCards(e *entity) []ruleCard {
+// allRuleCards returns EVERY rule card an entity contributes to a fold:
+// species passives, every equipped item's rules (canonicalSlotOrder —
+// deterministic), and learned skills.
+//
+// One function, because the set of card SOURCES grows and the failure mode of
+// having several copies is silent (#414). This assembly was written out three
+// separate times — here, in aggroRadiusForLocked and in regenForLocked — so a
+// fourth source (a party aura, a timed buff contributing cards, a mount) had
+// to be wired into all three by hand, and missing one would simply omit that
+// source from that event forever, with nothing failing.
+//
+// Named for the concept rather than a caller: it was earnXPCards, which is why
+// the other two folds each grew their own copy instead of calling it.
+func allRuleCards(e *entity) []ruleCard {
 	return slices.Concat(speciesCards(e.species), equippedRuleCards(e), skillCards(e))
 }
 
@@ -4299,9 +4305,7 @@ func leashRadiusFor(m *entity) int {
 // or grow the radius without touching this call site. Noticeability is
 // gear-only by design — no species card feeds this event. Callers hold w.mu.
 func aggroRadiusForLocked(rng *mrand.Rand, base int, p *entity) int {
-	cards := slices.Concat(speciesCards(p.species), equippedRuleCards(p), skillCards(p))
-
-	return applyRules(evAggroRange, base, cards, ruleCtx{attacker: p, rng: rng})
+	return applyRules(evAggroRange, base, allRuleCards(p), ruleCtx{attacker: p, rng: rng})
 }
 
 // entityViewsLocked renders every entity for the wire, EXCEPT the own-only
