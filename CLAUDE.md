@@ -240,13 +240,25 @@ drift between calls; use absolute paths or `cd` to the repo root before
   value** (2026-07-28).
 
   **A reorder is survivable, and the procedure is snapshot → reorder → restore
-  → verify** (done once, 2026-08-10: 54 items, clean). Snapshot every item's
+  → re-enable → verify** (done once, 2026-08-10). Snapshot every item's
   `number|status` first; apply `updateProjectV2Field` with the whole option
   list in the new order (its input takes name/color/description and NO id,
-  which is exactly why every value is cleared); restore from the snapshot; then
-  **diff restored-against-snapshot** before calling it done. It works only
-  because `board.sh` resolves options **by name** at call time — every option
-  id changes in a reorder, so anything holding ids would restore nothing.
+  which is exactly why every value is cleared); restore from the snapshot;
+  **re-enable the project's built-in workflows**; then verify BOTH halves —
+  diff restored-against-snapshot AND confirm the workflows are on.
+
+  **The re-enable step is not optional and Claude cannot do it** (#423). The
+  built-in workflows target a Status option **by id**, so a reorder points them
+  at options that no longer exist and GitHub disables them — `Item closed →
+  Done` among them, which is how three merged issues sat in `Your review` with
+  nobody noticing. They are configured in the project UI only, so a reorder
+  hands the maintainer manual work: **say so before agreeing to one.**
+
+  `board.sh` survives a reorder because it resolves options **by name** at call
+  time; anything holding ids — including GitHub's own automations — does not.
+  And note what the first version of this procedure got wrong: verifying item
+  VALUES is not verifying the board. That check passed, byte-identical across
+  54 items, while the automations were already dead.
 
   **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
   an issue state, and **PRs are not board items**. The auto-add workflow must
