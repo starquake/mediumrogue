@@ -1536,3 +1536,36 @@ working), and **solo 2.00 → 1.50** (monster stacks scatter too, so fewer of th
 reach a lone player at once). XP spread at 15 rose 0.65 → 1.09, i.e. party
 members' XP is now less even — worth watching, since "is player 12 just
 watching?" is exactly what that metric asks.
+
+---
+
+## A playtest bot reconnects; only Ctrl-C stops it *(decided 2026-08-11, #430)*
+
+`botclient.Events` now returns a channel that survives a dropped stream,
+reconnecting with backoff (1s doubling to 30s) and closing on **cancellation
+only**. Before this, a drop ended the bot: the member logged one line, the
+process exited 0, and an unattended party vanished with nothing on screen
+saying so.
+
+**A dropped stream is ORDINARY, which is the whole point.** It was first seen
+as a mystery — five bots ending in the same second after 3.5 hours, no deploy,
+the server healthy afterwards — and that framing made it look like a rare edge
+case. It is not: pushing a rebase to a `deploy:dev` PR restarts development and
+drops every stream, which happens several times a day while a PR is in flight.
+The interval between drops is not hours, it is "however often development
+redeploys".
+
+**The fix belongs in `botclient`, not `cmd/bot`.** Every caller would otherwise
+write the same reconnect loop, and the one that forgot would be the one that
+died overnight. The browser has behaved this way from the start — `EventSource`
+auto-retries with `Last-Event-ID` plus a liveness watchdog — so this closes an
+asymmetry between two clients of the same stream rather than inventing a
+policy.
+
+**The first open still fails loudly**, and that asymmetry is deliberate: a
+typo'd URL or a refused token should stop a bot at startup, not leave it
+retrying forever against an address that will never answer. Only a stream that
+once worked is reconnected.
+
+Retries are unbounded while the process lives. A playtest bot has no reason to
+give up — giving up is precisely the behaviour being removed.

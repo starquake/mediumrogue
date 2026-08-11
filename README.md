@@ -60,8 +60,10 @@ go run ./cmd/bot -count 5 -follow YourName   # five bots, mixed classes
 ```
 
 Invite them from your own client (`/invite bot1` …) and they join. Ctrl-C
-ends every stream cleanly. They are deliberately dumb — no skills, no focus
-fire, no retreat.
+ends every stream cleanly — and **only** Ctrl-C: a bot reconnects by itself
+when its event stream drops (#430), so a deploy restarting the server under an
+unattended party costs a few seconds rather than ending the session. They are
+deliberately dumb — no skills, no focus fire, no retreat.
 
 ## Verify
 
