@@ -584,8 +584,21 @@ roll, so it is ARPG-legal on jewelry.
   regenerates on the same pass, at `EnergyRegenPerTurn`. Monsters never regen;
   only the Hydra heals, via its bite card.
 - **HUD stats line** (item 9, playtest batch 2; XP portion reworked for the
-  quadratic curve, fast-lane batch): `Lv L · (xp into this level)/(XP needed
-  this level) XP · (q, r)` — my entity's hex, live per turn bundle.
+  quadratic curve, fast-lane batch): `Class · Species · Lv L · hp/maxHp HP ·
+  (xp into this level)/(XP needed this level) XP · (q, r)` — my entity's hex,
+  live per turn bundle. (The HP portion is #201; this line also went stale
+  about it before #428.)
+  - **Class and species lead it** (#428): you picked them on the start screen
+    and then the client showed them **nowhere** in-session — the only surface
+    carrying them was the returning-player card, which you see *before* you
+    rejoin. They come first because they never change, so the numbers that do
+    keep a stable left edge to read against.
+  - The words are **derived** from the protocol ids by capitalizing
+    (`displayLabel`, `client/src/identity/labels.ts`), not held in a lookup
+    table: all six ids capitalize to exactly the names the start screen's cards
+    print, and a table would be a second copy of the vocabulary with nothing
+    keeping the two in step. `labels.test.ts` pins the six against those card
+    names, so an id that ever stops capitalizing cleanly fails the build.
 - **The start screen's buttons are bound the moment it is revealed** (#317):
   its listeners attach when the screen is shown, not when the code later awaits
   them — the awaits do not run until the engine and the whole map have loaded,

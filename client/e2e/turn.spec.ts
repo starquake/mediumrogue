@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { displayLabel } from "../src/identity/labels";
 import { XPCurveBase } from "../src/protocol.gen";
 
 import { E2E_WORLD_RADIUS, continueIfReturning } from "./helpers";
@@ -57,9 +58,15 @@ test("a fresh player starts at level 1 with 0 XP, exposed on window.game and the
   const meId = await page.evaluate(() => window.game.me?.id ?? -1);
   const hp = await page.evaluate((id) => window.game.hp[id] ?? 0, meId);
   const maxHp = await page.evaluate((id) => window.game.maxHp[id] ?? 0, meId);
-  // #201: the line now carries the player's own HP between level and XP.
+  // #201: the line carries the player's own HP between level and XP.
+  // #428: and opens with class and species, which were previously visible
+  // nowhere once you were in the world.
+  const cls = await page.evaluate(() => window.game.class);
+  const species = await page.evaluate(() => window.game.species);
+  expect(cls).not.toBe("");
+  expect(species).not.toBe("");
   await expect(page.locator("#stats")).toHaveText(
-    `Lv 1 · ${hp}/${maxHp} HP · 0/${XPCurveBase} XP · (${hex?.q}, ${hex?.r})`,
+    `${displayLabel(cls)} · ${displayLabel(species)} · Lv 1 · ${hp}/${maxHp} HP · 0/${XPCurveBase} XP · (${hex?.q}, ${hex?.r})`,
   );
 });
 

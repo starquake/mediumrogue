@@ -51,6 +51,7 @@ import {
   submitUseSkill,
 } from "./net/session";
 import { generateName } from "./identity/names";
+import { displayLabel } from "./identity/labels";
 import { answerInvite, mountInvitePrompt } from "./party/InvitePrompt";
 import { mountRoster } from "./party/RosterPanel";
 import { setParty, setPendingInvite } from "./party/store";
@@ -2213,7 +2214,13 @@ async function start(): Promise<void> {
         const xpNext = XPCurveBase * mine.level * mine.level;
         // Position readout (item 9, playtest batch 2): live per bundle, so
         // it never drifts from the server-authoritative hex even mid-tween.
-        statsEl.textContent = `Lv ${mine.level} · ${mine.hp}/${mine.maxHp} HP · ${mine.xp - xpFloor}/${xpNext - xpFloor} XP · (${mine.hex.q}, ${mine.hex.r})`;
+        // Class and species lead the line (#428): they were shown on the
+        // start screen and then nowhere at all once you were in the world —
+        // the returning-player card was the only in-client surface carrying
+        // them, and you only see that BEFORE you rejoin. They sit ahead of
+        // level because they never change, so the numbers that do change keep
+        // a stable left edge to read against.
+        statsEl.textContent = `${displayLabel(mine.class)} · ${displayLabel(mine.species)} · Lv ${mine.level} · ${mine.hp}/${mine.maxHp} HP · ${mine.xp - xpFloor}/${xpNext - xpFloor} XP · (${mine.hex.q}, ${mine.hex.r})`;
 
         // #202: my level rose since the last bundle → flash the banner.
         // prevLevel 0 guards the first bundle (fresh/reclaimed join).
