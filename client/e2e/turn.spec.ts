@@ -5,12 +5,41 @@ import { XPCurveBase } from "../src/protocol.gen";
 
 import { E2E_WORLD_RADIUS, continueIfReturning } from "./helpers";
 
+/**
+ * hexToRgb converts a CSS hex colour to the `rgb(r, g, b)` form getComputedStyle
+ * returns, so a palette variable can be compared against a resolved colour.
+ */
+function hexToRgb(hex: string): string {
+  const h = hex.replace("#", "");
+  const n = Number.parseInt(h, 16);
+
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
+
 test("client connects and the turn counter advances live", async ({ page }) => {
   await page.goto("/");
   await continueIfReturning(page);
 
   // The SSE stream must connect and report itself in the UI.
   await expect(page.locator("#status")).toHaveAttribute("data-connected", "true");
+
+  // #433: a healthy connection reads GREEN, never the accent crimson. The HUD
+  // used to show a red dot beside the word "connected" while a dropped stream
+  // was the dimmest thing on screen. Compared against the --ok and --accent
+  // tokens rather than literal hexes, so retuning the palette does not fail the
+  // build but re-introducing the alarm does.
+  const dot = await page.evaluate(() => {
+    const el = document.querySelector("#status");
+
+    return el === null ? "" : getComputedStyle(el, "::before").color;
+  });
+  const token = (name: string): Promise<string> =>
+    page.evaluate(
+      (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(),
+      name,
+    );
+  expect(dot).toBe(hexToRgb(await token("--ok")));
+  expect(dot).not.toBe(hexToRgb(await token("--accent")));
 
   // The turn counter must advance — proving clock → hub → SSE → EventSource
   // → DOM. TURN_INTERVAL is 250ms in the e2e server.

@@ -29,6 +29,12 @@
         --dim: #7d5560;
         --bg: #0f0a0c;
         --accent: #a32741;
+        /* Semantic status colour (#433), deliberately NOT the accent: a
+           status light answers fine/broken, and painting "fine" in the brand
+           hue is what made "connected" read as an alarm. Muted sage rather
+           than a signal green, so it sits in a crimson-on-near-black palette
+           without fighting it. */
+        --ok: #6f9e78;
         /* Body face carries every readable string, DOM and canvas alike;
            the display face is spent only on titles. Canvas text cannot read
            these — render/damage.ts and render/entities.ts name the family
@@ -127,12 +133,21 @@
         color: var(--dim);
         font-size: 0.85rem;
       }
+      /* Traffic-light reading (#433): green is fine, crimson is not. It used to
+         be a filled ACCENT-crimson dot for CONNECTED and a dim hollow ring for
+         a dropped stream — so the healthy state read as an alarm ("● connected"
+         in red) while the failure state was the least visible thing on the HUD.
+
+         This is the one place the brand accent has to lose. Status is a
+         semantic axis (fine / broken), not a decorative one, and painting
+         "fine" in the same hue as every button is what collapsed the two. */
       #status[data-connected="true"]::before {
         content: "● ";
-        color: #a32741;
+        color: var(--ok);
       }
       #status[data-connected="false"]::before {
-        content: "○ ";
+        content: "● ";
+        color: var(--accent);
       }
       #stats {
         margin-top: 0.25rem;

@@ -2684,6 +2684,10 @@ let bootAttempt = 0;
 function boot(): void {
   start().catch((err: unknown) => {
     bootAttempt += 1;
+    // Keep the dot honest on the boot-failure path too (#433): this used to
+    // set only the text, so "can't reach the server" could render beside
+    // whatever dot was last painted.
+    statusEl.dataset["connected"] = "false";
     statusEl.textContent = `can't reach the server — retrying… (attempt ${bootAttempt}: ${String(err)})`;
     window.setTimeout(boot, 2000);
   });
