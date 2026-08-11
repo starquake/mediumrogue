@@ -972,37 +972,46 @@ func TestValidateItemDefsPanicsOnNonWeaponCombatStats(t *testing.T) {
 
 // TestValidateItemDefsHealRules: a consumable must have heal > 0; gear must
 // never set heal.
-func TestValidateItemDefsHealRules(t *testing.T) {
+func TestValidateItemDefsPayloadRules(t *testing.T) {
 	t.Parallel()
 
-	t.Run("consumable without heal", func(t *testing.T) {
+	t.Run("consumable with no payload", func(t *testing.T) {
 		t.Parallel()
 
 		defer func() {
 			if r := recover(); r == nil {
-				t.Error("validateItemDefs did not panic on a heal-less consumable")
+				t.Error("validateItemDefs did not panic on an inert consumable")
 			}
 		}()
 
 		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeConsumable}})
 	})
 
-	t.Run("gear with heal", func(t *testing.T) {
+	t.Run("gear carrying a drink payload", func(t *testing.T) {
 		t.Parallel()
 
 		defer func() {
 			if r := recover(); r == nil {
-				t.Error("validateItemDefs did not panic on a healing hat")
+				t.Error("validateItemDefs did not panic on a payload-carrying hat")
 			}
 		}()
 
-		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeHelmet, heal: 3}})
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeHelmet,
+			appliesEffect: []appliedEffect{{effectID: idEffectRegen, magnitude: 1, turns: 1}},
+		}})
 	})
 
 	t.Run("valid consumable", func(t *testing.T) {
 		t.Parallel()
 
-		validateItemDefs([]*itemDef{{id: "x", itemType: protocol.ItemTypeConsumable, heal: 5}}) // must not panic
+		// A consumable must DO something; since #415 that means a timed
+		// effect or a cleanse, which is also the shape a re-introduced
+		// healing potion would take (idEffectRegen, HP over turns).
+		validateItemDefs([]*itemDef{{
+			id: "x", itemType: protocol.ItemTypeConsumable,
+			appliesEffect: []appliedEffect{{effectID: idEffectRegen, magnitude: 2, turns: 5}},
+		}}) // must not panic
 	})
 }
 

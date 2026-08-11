@@ -321,10 +321,10 @@ func pickupAnnounce(playerName, itemName string, count int) string {
 	return playerName + " picked up " + itemName
 }
 
-// drinkItemLocked drinks one unit of an owned consumable stack: it heals the
-// def's heal (clamped to max HP), then applies the def's timed-effect payload
-// (#271, slice 2) — cleansing harmful effects (cleansesHarmful) and applying
-// any self-buffs (appliesEffect) to the drinker — and decrements the stack; an
+// drinkItemLocked drinks one unit of an owned consumable stack: it applies the
+// def's timed-effect payload (#271, slice 2) — cleansing harmful effects
+// (cleansesHarmful) and applying any self-buffs (appliesEffect) to the
+// drinker — and decrements the stack; an
 // emptied stack frees its backpack entry. Only a consumable drinks (gear is
 // ErrNotDrinkable). Callers hold w.mu.
 //
@@ -348,8 +348,6 @@ func (w *World) drinkItemLocked(e *entity, itemID int64) error {
 	if idx < 0 {
 		return ErrItemNotOwned // consumables only live in the backpack; defensive
 	}
-
-	e.hp = min(e.hp+def.heal, e.maxHP)
 
 	cleared := 0
 	if def.cleansesHarmful {

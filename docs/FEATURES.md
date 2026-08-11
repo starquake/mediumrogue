@@ -462,7 +462,7 @@ The vocabulary:
 | offensive card (`deal-damage`) | **damage** — `+10% Melee Damage`, `×2 Damage vs Adjacent` |
 | lifesteal card (`deal-damage` + `lifesteal`) | its own affix — `+25% Lifesteal` (always a benefit, never a drawback) |
 | utility card (`earn-xp`, `aggro-range`) | names its own subject — `+5% XP`, `−20% Aggro Range` |
-| base stats (not cards) | `Damage 4`, `Range 4`, `AoE 1`, `+5 HP`, `Stacks to 5` |
+| base stats (not cards) | `Damage 4`, `Range 4`, `AoE 1` — plus `Stacks to 5`, appended last on every consumable |
 
 Resistance carries its own direction, so nothing is inferred from which slot
 an item occupies, and there is no double negative to decode. Percentages show
@@ -877,8 +877,9 @@ roll, so it is ARPG-legal on jewelry.
     raw stats side by side. `GroundItemView` carries the same detail fields as
     `ItemView`; `window.game.pickupModal.rows` exposes `damage`/`rangeHex`/
     `aoeRadius`.
-  - **drink** — a consumable: applies its heal (clamped to max HP) and
-    decrements the stack; an emptied stack frees its entry.
+  - **drink** — a consumable: applies its timed-effect payload (a self-buff, a
+    cleanse) and decrements the stack; an emptied stack frees its entry. There
+    is no flat heal — #410 deleted the heal consumables and #415 the field.
 - **Keybindings** — `I` or `C` toggles the character panel, `Esc` closes it (a genuine
   no-op while already closed, never a toggle); both share the control keys'
   typing-focus guard (`client/src/input/keys.ts`), so typing "i"/Escape into

@@ -59,11 +59,7 @@ type itemDef struct {
 	damage      int
 	rangeHex    int // 0 = melee/adjacent (weapon-type items only)
 	aoeRadius   int // 0 = single target
-	// heal is a consumable's HP restore on drink (clamped to maxHP);
-	// validateItemDefs requires heal > 0 for a consumable and 0 for any gear
-	// def — drinking is an action (task 2), not a combat pipeline event.
-	heal  int
-	rules []ruleCard
+	rules       []ruleCard
 	// onHit are the timed effects (#271, effects.go) this weapon applies when a
 	// melee hit with it lands — a poison DoT on the victim, or a self-buff on
 	// the attacker (appliedEffect.toSelf). Weapons only (validateItemDefs); the
@@ -1070,28 +1066,24 @@ func validateWeaponTags(def *itemDef) {
 }
 
 // validateConsumablePayload panics on a malformed consumable payload (#271,
-// slice 2, generalizing the old heal-only check): a consumable must DO
-// something — heal, apply a timed effect (appliesEffect), or cleanse harmful
-// effects (cleansesHarmful) — and heal may not be negative. A non-consumable
-// must carry NO payload at all: heal, appliesEffect, and cleansesHarmful are
-// all drink fields (the drink ACTION, drinkItemLocked, applies them), never
-// combat pipeline events, so none may leak onto equipped gear.
+// slice 2): a consumable must DO something — apply a timed effect
+// (appliesEffect) or cleanse harmful effects (cleansesHarmful). A
+// non-consumable must carry NO payload at all: both are drink fields (the
+// drink ACTION, drinkItemLocked, applies them), never combat pipeline events,
+// so neither may leak onto equipped gear.
+//
+// There is no flat-heal field any more (#415). #410 deleted the four heal
+// consumables, and the replacement for a healing potion is a timed effect
+// carrying idEffectRegen — HP over turns, the shape Second Wind and the Hydra
+// Fangs already use — which needs nothing here.
 func validateConsumablePayload(def *itemDef) {
 	if def.itemType == protocol.ItemTypeConsumable {
-		if def.heal < 0 {
-			panic("game: consumable " + def.id + " must not have negative heal")
-		}
-
-		if def.heal == 0 && len(def.appliesEffect) == 0 && !def.cleansesHarmful {
+		if len(def.appliesEffect) == 0 && !def.cleansesHarmful {
 			panic("game: consumable " + def.id +
-				" does nothing (needs heal, appliesEffect, or cleansesHarmful)")
+				" does nothing (needs appliesEffect or cleansesHarmful)")
 		}
 
 		return
-	}
-
-	if def.heal != 0 {
-		panic("game: gear item " + def.id + " must not set heal (consumables only)")
 	}
 
 	if len(def.appliesEffect) != 0 {

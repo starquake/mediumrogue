@@ -112,46 +112,46 @@ any digit in flavour.
 
 ## Every item today
 
-| Item | Type | Damage type | Tags | Damage | Range | AoE | Heal | Stat lines |
-|---|---|---|---|---|---|---|---|---|
-| **Ancient Dwarven Mattock**<br>`ancient-dwarven-mattock` | weapon | blunt | melee | 4 | melee | — | — | Damage 4<br>+3 Damage (Dwarf)<br> |
-| **Antivenom**<br>`antivenom` | consumable | — | — | — | melee | — | — | Cures harmful effects<br> |
-| **Bloodrage Cleaver**<br>`bloodrage-cleaver` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
-| **Butcher's Cleaver**<br>`butchers-cleaver` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+3 Damage vs Below 50% HP<br> |
-| **Consecrated Mace**<br>`consecrated-mace` | weapon | holy | melee | 4 | melee | — | — | Damage 4<br> |
-| **Dagger**<br>`dagger` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
-| **Draught of Fury**<br>`draught-of-fury` | consumable | — | — | — | melee | — | — | +25% Damage for 4 turns<br> |
-| **Duelist's Saber**<br>`duelists-saber` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>10% chance ×2 Damage<br> |
-| **Ember Brand**<br>`ember-brand` | weapon | fire | melee | 4 | melee | — | — | Damage 4<br> |
-| **Ember Focus**<br>`ember-focus` | weapon | fire | magic | 3 | 4 | 1 | — | Damage 3<br>Range 4<br>AoE 1<br> |
-| **Ember Staff**<br>`ember-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Adjacent<br> |
-| **Frostbrand**<br>`frostbrand` | weapon | ice | melee | 4 | melee | — | — | Damage 4<br> |
-| **Frostward Charm**<br>`frostward-charm` | amulet | — | — | — | melee | — | — | +50% Ice Resistance<br> |
-| **Headband of Learning**<br>`headband-of-learning` | helmet | — | — | — | melee | — | — | +5% XP<br> |
-| **Infernal Chain Mail**<br>`infernal-chain-mail` | chest | — | — | — | melee | — | — | +50% Fire Resistance<br> |
-| **Iron Kite Shield**<br>`iron-kite-shield` | shield | — | — | — | melee | — | — | +20% Damage Resistance<br> |
-| **Iron Plate Armor**<br>`iron-plate-armor` | chest | — | — | — | melee | — | — | +20% Damage Resistance<br>⚠ +25% Aggro Range<br> |
-| **Iron Sword**<br>`iron-sword` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br> |
-| **Iron Warhammer**<br>`iron-warhammer` | weapon | blunt | melee | 5 | melee | — | — | Damage 5<br> |
-| **Ironbound Gauntlets**<br>`ironbound-gauntlets` | gloves | — | — | — | melee | — | — | +50% Blunt Resistance<br> |
-| **Ironhead Greatmaul**<br>`ironhead-greatmaul` | weapon<br>two-handed | blunt | melee | 9 | melee | — | — | Damage 9<br> |
-| **Leather Armor**<br>`leather-armor` | chest | — | — | — | melee | — | — | +10% Damage Resistance<br> |
-| **Longbow**<br>`longbow` | weapon | sharp | ranged | 3 | 6 | — | — | Damage 3<br>Range 6<br> |
-| **Mender's Locket**<br>`menders-locket` | amulet | — | — | — | melee | — | — | +1 HP per turn<br> |
-| **Misericorde**<br>`misericorde` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>15% chance ×2 Damage<br> |
-| **Oak Wand**<br>`oak-wand` | weapon | blunt | melee | 2 | melee | — | — | Damage 2<br> |
-| **Pack Bow**<br>`pack-bow` | weapon | sharp | ranged | 3 | 4 | — | — | Damage 3<br>Range 4<br>+3 Damage with an Ally<br> |
-| **Padded Boots**<br>`padded-boots` | boots | — | — | — | melee | — | — | −25% Aggro Range<br> |
-| **Pilgrim's Mantle**<br>`pilgrims-mantle` | chest | — | — | — | melee | — | — | +50% Chaos Resistance<br> |
-| **Ring of Precision**<br>`ring-of-precision` | ring | — | — | — | melee | — | — | 10% chance ×2 Damage<br> |
-| **Shortbow**<br>`shortbow` | weapon | sharp | ranged | 4 | 4 | — | — | Damage 4<br>Range 4<br> |
-| **Vampiric Blade**<br>`vampiric-blade` | weapon | sharp | melee | 4 | melee | — | — | Damage 4<br>+25% Lifesteal<br> |
-| **Venom Fang**<br>`venom-fang` | weapon | sharp | melee | 3 | melee | — | — | Damage 3<br>+4 Damage vs Full HP<br> |
-| **Staff of the War Mage**<br>`war-mage-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | — | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Below 6 HP<br> |
-| **Warded Gambeson**<br>`warded-gambeson` | chest | — | — | — | melee | — | — | +50% Sharp Resistance<br> |
-| **Warding Tonic**<br>`warding-tonic` | consumable | — | — | — | melee | — | — | +25% Damage Resistance for 4 turns<br> |
-| **Wooden Buckler**<br>`wooden-buckler` | shield | — | — | — | melee | — | — | +10% Damage Resistance<br> |
-| **Wyrmslayer Greatsword**<br>`wyrmslayer-greatsword` | weapon<br>two-handed | holy | melee | 9 | melee | — | — | Damage 9<br>+50% Damage vs Dragons<br> |
+| Item | Type | Damage type | Tags | Damage | Range | AoE | Stat lines |
+|---|---|---|---|---|---|---|---|
+| **Ancient Dwarven Mattock**<br>`ancient-dwarven-mattock` | weapon | blunt | melee | 4 | melee | — | Damage 4<br>+3 Damage (Dwarf)<br> |
+| **Antivenom**<br>`antivenom` | consumable | — | — | — | melee | — | Cures harmful effects<br>Stacks to 5<br> |
+| **Bloodrage Cleaver**<br>`bloodrage-cleaver` | weapon | sharp | melee | 4 | melee | — | Damage 4<br> |
+| **Butcher's Cleaver**<br>`butchers-cleaver` | weapon | sharp | melee | 3 | melee | — | Damage 3<br>+3 Damage vs Below 50% HP<br> |
+| **Consecrated Mace**<br>`consecrated-mace` | weapon | holy | melee | 4 | melee | — | Damage 4<br> |
+| **Dagger**<br>`dagger` | weapon | sharp | melee | 4 | melee | — | Damage 4<br> |
+| **Draught of Fury**<br>`draught-of-fury` | consumable | — | — | — | melee | — | +25% Damage for 4 turns<br>Stacks to 5<br> |
+| **Duelist's Saber**<br>`duelists-saber` | weapon | sharp | melee | 4 | melee | — | Damage 4<br>10% chance ×2 Damage<br> |
+| **Ember Brand**<br>`ember-brand` | weapon | fire | melee | 4 | melee | — | Damage 4<br> |
+| **Ember Focus**<br>`ember-focus` | weapon | fire | magic | 3 | 4 | 1 | Damage 3<br>Range 4<br>AoE 1<br> |
+| **Ember Staff**<br>`ember-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Adjacent<br> |
+| **Frostbrand**<br>`frostbrand` | weapon | ice | melee | 4 | melee | — | Damage 4<br> |
+| **Frostward Charm**<br>`frostward-charm` | amulet | — | — | — | melee | — | +50% Ice Resistance<br> |
+| **Headband of Learning**<br>`headband-of-learning` | helmet | — | — | — | melee | — | +5% XP<br> |
+| **Infernal Chain Mail**<br>`infernal-chain-mail` | chest | — | — | — | melee | — | +50% Fire Resistance<br> |
+| **Iron Kite Shield**<br>`iron-kite-shield` | shield | — | — | — | melee | — | +20% Damage Resistance<br> |
+| **Iron Plate Armor**<br>`iron-plate-armor` | chest | — | — | — | melee | — | +20% Damage Resistance<br>⚠ +25% Aggro Range<br> |
+| **Iron Sword**<br>`iron-sword` | weapon | sharp | melee | 4 | melee | — | Damage 4<br> |
+| **Iron Warhammer**<br>`iron-warhammer` | weapon | blunt | melee | 5 | melee | — | Damage 5<br> |
+| **Ironbound Gauntlets**<br>`ironbound-gauntlets` | gloves | — | — | — | melee | — | +50% Blunt Resistance<br> |
+| **Ironhead Greatmaul**<br>`ironhead-greatmaul` | weapon<br>two-handed | blunt | melee | 9 | melee | — | Damage 9<br> |
+| **Leather Armor**<br>`leather-armor` | chest | — | — | — | melee | — | +10% Damage Resistance<br> |
+| **Longbow**<br>`longbow` | weapon | sharp | ranged | 3 | 6 | — | Damage 3<br>Range 6<br> |
+| **Mender's Locket**<br>`menders-locket` | amulet | — | — | — | melee | — | +1 HP per turn<br> |
+| **Misericorde**<br>`misericorde` | weapon | sharp | melee | 4 | melee | — | Damage 4<br>15% chance ×2 Damage<br> |
+| **Oak Wand**<br>`oak-wand` | weapon | blunt | melee | 2 | melee | — | Damage 2<br> |
+| **Pack Bow**<br>`pack-bow` | weapon | sharp | ranged | 3 | 4 | — | Damage 3<br>Range 4<br>+3 Damage with an Ally<br> |
+| **Padded Boots**<br>`padded-boots` | boots | — | — | — | melee | — | −25% Aggro Range<br> |
+| **Pilgrim's Mantle**<br>`pilgrims-mantle` | chest | — | — | — | melee | — | +50% Chaos Resistance<br> |
+| **Ring of Precision**<br>`ring-of-precision` | ring | — | — | — | melee | — | 10% chance ×2 Damage<br> |
+| **Shortbow**<br>`shortbow` | weapon | sharp | ranged | 4 | 4 | — | Damage 4<br>Range 4<br> |
+| **Vampiric Blade**<br>`vampiric-blade` | weapon | sharp | melee | 4 | melee | — | Damage 4<br>+25% Lifesteal<br> |
+| **Venom Fang**<br>`venom-fang` | weapon | sharp | melee | 3 | melee | — | Damage 3<br>+4 Damage vs Full HP<br> |
+| **Staff of the War Mage**<br>`war-mage-staff` | weapon<br>two-handed | fire | magic | 6 | 4 | 1 | Damage 6<br>Range 4<br>AoE 1<br>×2 Damage vs Below 6 HP<br> |
+| **Warded Gambeson**<br>`warded-gambeson` | chest | — | — | — | melee | — | +50% Sharp Resistance<br> |
+| **Warding Tonic**<br>`warding-tonic` | consumable | — | — | — | melee | — | +25% Damage Resistance for 4 turns<br>Stacks to 5<br> |
+| **Wooden Buckler**<br>`wooden-buckler` | shield | — | — | — | melee | — | +10% Damage Resistance<br> |
+| **Wyrmslayer Greatsword**<br>`wyrmslayer-greatsword` | weapon<br>two-handed | holy | melee | 9 | melee | — | Damage 9<br>+50% Damage vs Dragons<br> |
 
 ⚠ marks a **drawback** — a stat that makes its holder worse. Sign alone can't
 say: `+25% Aggro Range` is a cost, `+5% XP` is not.

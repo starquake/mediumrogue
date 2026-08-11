@@ -497,10 +497,8 @@ func TestStackNeverExceedsCap(t *testing.T) {
 // when the stack empties.
 //
 // It no longer asserts a HEAL. #410 deleted every consumable with a `heal`
-// value, so itemDef.heal and the drink action's healing branch are live
-// machinery with no content behind them — there is nothing registered that
-// could exercise them. Kept as a stacking/consumption test rather than
-// deleted, because that half is still real behaviour.
+// value and #415 deleted the field itself, so drinking never restores HP
+// directly. Kept as a stacking/consumption test, which is what it now is.
 func TestDrinkDecrementsAndFrees(t *testing.T) {
 	t.Parallel()
 

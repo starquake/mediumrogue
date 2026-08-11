@@ -43,7 +43,7 @@ type statLine struct {
 }
 
 // baseStatLines renders the numbers that are NOT rule cards: a weapon's
-// damage/reach and a consumable's heal. They are the pipeline's INPUT rather
+// damage and reach. They are the pipeline's INPUT rather
 // than modifiers within it (see #175), so they have no card to derive from —
 // but a tooltip that omitted them would be worse than the prose it replaced.
 func baseStatLines(def *itemDef) []statLine {
@@ -61,11 +61,6 @@ func baseStatLines(def *itemDef) []statLine {
 		out = append(out, statLine{text: "AoE " + strconv.Itoa(def.aoeRadius)})
 	}
 
-	if def.heal != 0 {
-		out = append(out, statLine{text: "+" + strconv.Itoa(def.heal) + " HP"})
-		out = append(out, statLine{text: "Stacks to " + strconv.Itoa(protocol.ItemStackCap)})
-	}
-
 	return out
 }
 
@@ -80,6 +75,15 @@ func statLinesFor(def *itemDef) []statLine {
 	}
 
 	out = append(out, consumableEffectStatLines(def)...)
+
+	// The stack cap goes LAST, after the payload that is the actual reason to
+	// carry the thing. It used to hang off the deleted heal field (#415), so
+	// every consumable that survived #410 — both buff potions and the
+	// Antivenom — showed no stack line at all. Keying it on the item TYPE is
+	// what the line always meant.
+	if def.itemType == protocol.ItemTypeConsumable {
+		out = append(out, statLine{text: "Stacks to " + strconv.Itoa(protocol.ItemStackCap)})
+	}
 
 	return out
 }
