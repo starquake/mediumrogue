@@ -313,10 +313,15 @@ drift between calls; use absolute paths or `cd` to the repo root before
   **A block may be answered on GitHub OR in chat** (#399) — the issue is the
   RECORD, the interface is the maintainer's choice, and Claude offers both when
   a ticket carries more than two or three open questions. Answered in chat,
-  Claude **writes the answers back to the issue** before acting on them: a
-  decisions table, the date, a verbatim quote of anything whose wording carries
-  reasoning a table flattens, and what became moot. An answer that stays in the
-  transcript is not on the record. See `design-slice` for the full shape.
+  Claude **writes the answers back into the issue BODY** before acting on them:
+  a decisions table, the date, a verbatim quote of anything whose wording
+  carries reasoning a table flattens, and what became moot. An answer that
+  stays in the transcript is not on the record — and an answer that lands only
+  in a COMMENT is barely better (#441): the body goes on asking the question,
+  so whoever opens the ticket reads a document that is already wrong. The body
+  is the living spec and is rewritten as decisions land; the comment thread is
+  append-only history. A `> 🤖 **Next steps**` comment announces the change; it
+  does not substitute for making it. See `design-slice` for the full shape.
 - **One issue = one deliverable.** A ticket needing several PRs *in different
   states* is several tickets: split it into **sub-issues** (the board carries
   `Parent issue` and `Sub-issues progress`, and the auto-add-sub-issues workflow
