@@ -118,8 +118,9 @@ func run(ctx context.Context, url, name, class, species, token, follow *string, 
 		slog.Info("bot: acted", "turn", bundle.Turn, "kind", intent.Kind, "hp", self.HP)
 	}
 
-	// The channel closes on cancellation or on a dropped stream. Cancellation
-	// is Ctrl-C — the ordinary way a bot stops — so only the drop is an error.
+	// Since #430 the channel closes on CANCELLATION ONLY — botclient reconnects
+	// across drops itself. errStreamEnded is kept as an unreachable backstop:
+	// a bot that stops for an unnameable reason is the failure #430 was about.
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return nil
 	}

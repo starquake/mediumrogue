@@ -17,11 +17,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	neturl "net/url"
 	"strings"
+	"time"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
+)
+
+// Reconnect backoff (#430). A dropped SSE stream is an ORDINARY event, not a
+// failure: every `deploy:dev` push restarts development and drops every
+// connected stream, which happens several times a day while a PR is in flight.
+// Before this, that ended a playtest party silently — the process exited 0 and
+// nothing on screen said the bots were gone.
+const (
+	reconnectInitialDelay = time.Second
+	reconnectMaxDelay     = 30 * time.Second
 )
 
 var (
@@ -147,6 +159,10 @@ func (c *Client) Turns(ctx context.Context) (<-chan protocol.TurnEvent, error) {
 // Events is Turns plus chat, for a bot that must react to what players say —
 // accepting a party invite, above all.
 func (c *Client) Events(ctx context.Context) (<-chan Event, error) {
+	// The FIRST open still fails loudly, and that asymmetry is deliberate: a
+	// typo'd URL or a refused token should stop a bot at startup rather than
+	// leave it retrying forever against an address that will never answer.
+	// Only a stream that once worked and then dropped is reconnected.
 	//nolint:bodyclose // closed by the streaming goroutine below.
 	resp, err := c.openStream(ctx)
 	if err != nil {
@@ -155,19 +171,7 @@ func (c *Client) Events(ctx context.Context) (<-chan Event, error) {
 
 	out := make(chan Event)
 
-	go func() {
-		defer close(out)
-		defer func() { _ = resp.Body.Close() }()
-
-		scanFrames(bufio.NewReader(resp.Body), func(ev Event) bool {
-			select {
-			case out <- ev:
-				return true
-			case <-ctx.Done():
-				return false
-			}
-		})
-	}()
+	go c.streamWithReconnect(ctx, resp, out)
 
 	return out, nil
 }
@@ -306,4 +310,81 @@ func (c *Client) post(ctx context.Context, path string, body any) (*http.Respons
 	}
 
 	return resp, nil
+}
+
+// streamWithReconnect consumes one stream after another on a single channel,
+// reconnecting across drops until ctx is cancelled (#430). The consumer sees
+// one uninterrupted channel and needs no reconnect logic of its own — which is
+// why this lives here rather than in cmd/bot: every caller would otherwise
+// write the same loop, and the one that forgot would be the one that died
+// overnight.
+//
+// The channel closes on CANCELLATION ONLY. That is the contract cmd/bot reads
+// to tell Ctrl-C from a drop, and it is now true rather than approximately
+// true.
+func (c *Client) streamWithReconnect(ctx context.Context, resp *http.Response, out chan<- Event) {
+	defer close(out)
+
+	delay := reconnectInitialDelay
+
+	for {
+		consumeStream(ctx, resp, out)
+
+		if ctx.Err() != nil {
+			return
+		}
+
+		slog.Info("botclient: event stream dropped, reconnecting",
+			"entity", c.identity.EntityID, "in", delay)
+
+		if !sleepCtx(ctx, delay) {
+			return
+		}
+
+		next, err := c.openStream(ctx) //nolint:bodyclose // closed by consumeStream.
+		if err != nil {
+			// Still down. Keep the backoff growing and try again — a bot has
+			// no reason to give up while its process lives, and a server that
+			// is mid-restart is exactly the case this exists for.
+			slog.Warn("botclient: reconnect failed", "entity", c.identity.EntityID, "err", err)
+
+			delay = min(delay*2, reconnectMaxDelay)
+
+			continue
+		}
+
+		slog.Info("botclient: event stream reconnected", "entity", c.identity.EntityID)
+
+		resp = next
+		delay = reconnectInitialDelay
+	}
+}
+
+// consumeStream reads one response to exhaustion, forwarding frames to out.
+func consumeStream(ctx context.Context, resp *http.Response, out chan<- Event) {
+	defer func() { _ = resp.Body.Close() }()
+
+	scanFrames(bufio.NewReader(resp.Body), func(ev Event) bool {
+		select {
+		case out <- ev:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	})
+}
+
+// sleepCtx waits for d, reporting false if ctx was cancelled first — so a
+// Ctrl-C during a backoff stops the bot immediately rather than after the full
+// delay.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
