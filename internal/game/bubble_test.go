@@ -21,15 +21,16 @@ func inCombat(t *testing.T, snap protocol.TurnEvent, id int64) bool {
 	return e.InCombat
 }
 
-// walkableNeighborsN returns the first n distinct walkable neighbors of from,
-// so a test can place several entities on distinct adjacent hexes.
+// walkableNeighborsN returns the first n distinct walkable and UNOCCUPIED
+// neighbors of from, so a test can place several entities on distinct adjacent
+// hexes. Unoccupied matters — see isFreeHex (world_test.go) and #435.
 func walkableNeighborsN(t *testing.T, w *game.World, from protocol.Hex, n int) []protocol.Hex {
 	t.Helper()
 
 	var out []protocol.Hex
 
 	for _, nb := range game.HexNeighbors(from) {
-		if isWalkable(w, nb) {
+		if isFreeHex(t, w, nb) {
 			out = append(out, nb)
 
 			if len(out) == n {
@@ -38,7 +39,7 @@ func walkableNeighborsN(t *testing.T, w *game.World, from protocol.Hex, n int) [
 		}
 	}
 
-	t.Fatalf("need %d walkable neighbors around %v, found %d", n, from, len(out))
+	t.Fatalf("need %d free walkable neighbors around %v, found %d", n, from, len(out))
 
 	return nil
 }

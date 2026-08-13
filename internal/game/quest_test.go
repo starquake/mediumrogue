@@ -632,6 +632,15 @@ func TestLateJoinerPaidInFull(t *testing.T) {
 
 	step(t, w) // settle turn: bob and monster1 join the existing bubble
 
+	// Re-seat monster1 beside alice AFTER the settle turn (#435). Placing it
+	// before that turn and attacking after assumed it would still be there —
+	// but a monster picks the nearest player, and since #412 the party no
+	// longer stands on one hex, so it can legitimately step toward bob instead
+	// and leave alice's reach. This test is about a late joiner being paid in
+	// full, not about where a monster walked: it should STATE the geometry it
+	// needs rather than inherit it from a lucky seed.
+	w.SetHexForTest(monster1, walkableNeighbor(t, w, w.EntityHexForTest(alice.EntityID)))
+
 	if err := w.SubmitIntent(entityAttackIntent(alice.EntityID, alice.Token, monster1)); err != nil {
 		t.Fatalf("SubmitIntent(melee): %v", err)
 	}

@@ -522,14 +522,44 @@ func walkableNeighbor(t *testing.T, w *game.World, from protocol.Hex) protocol.H
 	t.Helper()
 
 	for _, n := range game.HexNeighbors(from) {
-		if isWalkable(w, n) {
+		if isFreeHex(t, w, n) {
 			return n
 		}
 	}
 
-	t.Fatalf("no walkable neighbor around %v", from)
+	t.Fatalf("no free walkable neighbor around %v", from)
 
 	return protocol.Hex{}
+}
+
+// isFreeHex reports whether h is walkable AND unoccupied.
+//
+// Occupancy is not fussiness, it is the difference between a valid fixture and
+// an impossible one (#435). These helpers exist to find somewhere to PUT an
+// entity, and the placement hooks do not check: dropping a monster onto a hex a
+// player already holds creates opposing co-occupancy, a board state the real
+// game cannot produce through movement.
+//
+// That went unnoticed for as long as nothing separated such a stack. #412 —
+// one entity per hex inside a combat bubble — separates it, which turned a
+// dormant fixture bug into a ~1-3% flake: another player spawns on a neighbour
+// (spawn hexes are random, since NewWorld draws the runtime seed from
+// crypto/rand and most tests never pin it), the monster lands on top, scatter
+// pushes it one hex further, and the attack that follows is out of range.
+func isFreeHex(t *testing.T, w *game.World, h protocol.Hex) bool {
+	t.Helper()
+
+	if !isWalkable(w, h) {
+		return false
+	}
+
+	for _, e := range w.Snapshot().Entities {
+		if e.Hex == h {
+			return false
+		}
+	}
+
+	return true
 }
 
 func isWalkable(w *game.World, h protocol.Hex) bool {
