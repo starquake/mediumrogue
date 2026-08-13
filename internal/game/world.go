@@ -1816,7 +1816,7 @@ func (w *World) hitViewsLocked(visible map[int64]bool) []protocol.HitView {
 	return hits
 }
 
-// occupiedForLocked applies blockedFor's opposing/StackCap rule to hex h against
+// occupiedForLocked applies blockedFor's opposing/stack-cap rule to hex h against
 // the world's live entity positions rather than a resolution-phase byHex board,
 // so a submit-time validation (useSkillLocked, #196) can judge the same
 // "blocked" the move phase will. m itself is excluded — a caster never blocks
@@ -1830,7 +1830,7 @@ func (w *World) occupiedForLocked(m *entity, h protocol.Hex) bool {
 		}
 	}
 
-	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
+	return hasOpposing(occs, m) || len(occs) >= stackCapFor(m)
 }
 
 // resolveWorldTurnLocked advances the world domain one turn: the phased combat
@@ -3742,9 +3742,9 @@ func hasOpposing(occs []*entity, m *entity) bool {
 }
 
 // blockedFor reports whether hex h is closed to m on the evolving board (byHex):
-// held by an opposing entity, or already full at StackCap. Terrain is not its
-// business — w.terrain never mutates, so a step that was walkable when the route
-// was queued still is; only occupancy can turn a queued step away.
+// held by an opposing entity, or already full at m's stack cap. Terrain is not
+// its business — w.terrain never mutates, so a step that was walkable when the
+// route was queued still is; only occupancy can turn a queued step away.
 //
 // This is the single definition of "blocked": movePhaseLocked's wait rule and
 // the #96 re-path predicate both read it, and they must agree — a re-route built
@@ -3752,7 +3752,32 @@ func hasOpposing(occs []*entity, m *entity) bool {
 func blockedFor(m *entity, byHex map[protocol.Hex][]*entity, h protocol.Hex) bool {
 	occs := byHex[h]
 
-	return hasOpposing(occs, m) || len(occs) >= protocol.StackCap
+	return hasOpposing(occs, m) || len(occs) >= stackCapFor(m)
+}
+
+// stackCapFor is how many entities may share a hex, from the MOVER's point of
+// view: 1 inside a combat bubble, protocol.StackCap outside one (#412).
+//
+// Travel wants the blob — five players through a corridor otherwise become a
+// queue, and at a 4-second cadence the rearmost trails ~16 seconds per
+// chokepoint. Combat does not: a stack has no formation, no flanking and no
+// chokepoint to hold, and stacking there was strictly BETTER than spreading,
+// because a single-target hit on a stacked hex picks a random member and so
+// spreads damage a spread party would concentrate. A strictly-better option is
+// a default, not a decision.
+//
+// Keying on the mover rather than on the hex is what makes walk-in
+// reinforcement work without a special case: a world-domain player stepping
+// toward a fight is not in a bubble yet, so nothing refuses the step. They
+// arrive stacked and scatterStacksLocked (bubble.go) separates them on the
+// recompute that follows — "admit and scatter", the decided answer, falling out
+// of the rule instead of being written into it.
+func stackCapFor(m *entity) int {
+	if m.bubbleID != 0 {
+		return 1
+	}
+
+	return protocol.StackCap
 }
 
 func opposingOccupants(occs []*entity, m *entity) []*entity {
