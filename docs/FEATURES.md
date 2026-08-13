@@ -638,6 +638,22 @@ roll, so it is ARPG-legal on jewelry.
   that whole window, dropping any click that landed in it with no feedback.
   `window.game.startBoundAtTiles` records how much map was on stage at bind
   time (0 = bound first) so the ordering is testable without racing it.
+- **The connection dot is semantic, not decorative** (#433): `#status` reads
+  **green** (`--ok`) when connected and the **accent crimson** when not, both
+  as a filled dot. It used to be the reverse in effect — connected was the
+  filled accent crimson and a dropped stream a dim hollow ring — so the HUD
+  showed a red dot beside the word "connected" while the failure state was the
+  least visible thing on screen.
+  - `--ok` is its own palette token rather than a reused `--accent` or a
+    literal: status answers fine/broken, and painting "fine" in the brand hue
+    is what collapsed the two axes. Muted sage, so it sits in a
+    crimson-on-near-black palette without fighting it.
+  - The **boot-failure** path (`can't reach the server — retrying…`) now sets
+    `data-connected="false"` too. It previously set only the text, so that
+    message could render beside whatever dot was last painted.
+  - `turn.spec.ts` asserts the dot resolves to `--ok` and **not** to
+    `--accent`, against the tokens rather than literal hexes — retuning the
+    palette stays green, re-introducing the alarm goes red.
 - **Client liveness on the HUD** (#170): the stats line ends with the last
   turn the client **received**, and — only when the client has fallen behind
   — a `⚠ stuck` marker. Two counters make that visible: `turnReceived` is
