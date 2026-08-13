@@ -1569,3 +1569,39 @@ once worked is reconnected.
 
 Retries are unbounded while the process lives. A playtest bot has no reason to
 give up — giving up is precisely the behaviour being removed.
+
+---
+
+## A refused attack becomes a wait, not silence *(decided 2026-08-13, #407)*
+
+When a playtest bot's attack is refused, it now submits a **wait** (a move onto
+its own hex) instead of submitting nothing.
+
+**The refusal itself is correct and expected.** A whole party picks the same
+victim from the same turn bundle; it dies during that turn's resolution; every
+intent aimed at it lands stale and is refused with 422 — which is #130's fix,
+that path used to 500. Measured across three playtest sessions it is **3.4%–11%
+of attacks**, bursty rather than steady, because the party decides together.
+
+**What was wrong was the consequence.** `Decide`'s contract says a bot in a
+bubble ALWAYS returns an intent, because a silent bot burns `COMBAT_PATIENCE`
+for every other member — worse for the party than no bot at all. `Decide` kept
+that promise and the **submit layer broke it**: a rejected intent is
+indistinguishable from no intent as far as the bubble is concerned, so the bot
+lost the whole turn.
+
+The fix lives at the submit layer for that reason. `Decide` stays a pure
+function of the bundle — the property that makes it testable without a world —
+and `FallbackAfterRefusal` is a separate pure function beside it, so the
+behaviour is still covered by unit tests rather than only by running a bot.
+
+**Only an ATTACK gets a fallback.** Anything else refused is a genuine surprise,
+and inventing an action there would hide a bug rather than absorb a known race.
+The handled case drops to DEBUG logging, since an expected, handled race is not
+a warning; the unexpected ones stay WARN.
+
+**What this does NOT fix, measured rather than assumed:** turn-to-turn gaps
+across the original run were median 4s, max 5s, with nothing approaching the 30s
+patience timeout. So the honest cost was a wasted combat turn, not a stalled
+fight. It may still bite in a slower bubble with a human in it, which is exactly
+the case bots exist to simulate.

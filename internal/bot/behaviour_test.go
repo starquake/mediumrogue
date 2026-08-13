@@ -253,3 +253,63 @@ func TestDecideWithoutALeaderStillHunts(t *testing.T) {
 		t.Errorf("kind = %q, want %q — a leaderless bot still hunts", got, want)
 	}
 }
+
+// TestFallbackAfterRefusal (#407): a refused ATTACK becomes a wait, so the bot
+// still says something that turn.
+//
+// This is the fix's whole point. Decide's contract is that a bot in a bubble
+// ALWAYS returns an intent, because silence burns COMBAT_PATIENCE for every
+// other member — and Decide kept that promise while the submit layer broke it,
+// dropping 3.4%-11% of attack turns on the floor when the target died first.
+func TestFallbackAfterRefusal(t *testing.T) {
+	t.Parallel()
+
+	me := protocol.Entity{ID: 7, Hex: protocol.Hex{Q: 2, R: -1}}
+
+	t.Run("a refused attack waits on its own hex", func(t *testing.T) {
+		t.Parallel()
+
+		got, ok := bot.FallbackAfterRefusal(protocol.IntentRequest{Kind: protocol.IntentAttack}, me)
+		if !ok {
+			t.Fatal("FallbackAfterRefusal(attack) = false, want a fallback")
+		}
+
+		if got, want := got.Kind, protocol.IntentMove; got != want {
+			t.Errorf("fallback kind = %q, want %q", got, want)
+		}
+
+		if got, want := got.Target, me.Hex; got != want {
+			t.Errorf("fallback target = %v, want %v (the bot's own hex)", got, want)
+		}
+	})
+
+	// Anything else refused is a real surprise. Inventing an action there would
+	// paper over a bug instead of absorbing a known race.
+	for _, kind := range []string{protocol.IntentMove, protocol.IntentDrink, protocol.IntentUseSkill} {
+		t.Run("no fallback for "+kind, func(t *testing.T) {
+			t.Parallel()
+
+			if _, ok := bot.FallbackAfterRefusal(protocol.IntentRequest{Kind: kind}, me); ok {
+				t.Errorf("FallbackAfterRefusal(%q) = true, want no fallback", kind)
+			}
+		})
+	}
+}
+
+// TestWaitIntentIsTheBotsOwnHex pins the one intent that is always legal and
+// always does nothing — shared by Decide and the submit-refusal path, so it
+// cannot drift between them.
+func TestWaitIntentIsTheBotsOwnHex(t *testing.T) {
+	t.Parallel()
+
+	me := protocol.Entity{ID: 3, Hex: protocol.Hex{Q: -4, R: 5}}
+
+	got := bot.WaitIntent(me)
+	if got, want := got.Kind, protocol.IntentMove; got != want {
+		t.Errorf("WaitIntent kind = %q, want %q", got, want)
+	}
+
+	if got, want := got.Target, me.Hex; got != want {
+		t.Errorf("WaitIntent target = %v, want %v", got, want)
+	}
+}
