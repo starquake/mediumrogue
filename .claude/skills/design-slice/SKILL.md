@@ -26,10 +26,32 @@ PR-level gate you never set — see `merge-pr`.
 
 ## Step 1 — The issue
 
-- If the slice has no issue yet, create one from the design-slice template
-  (`.github/ISSUE_TEMPLATE/design-slice.md`) with the 🤖 attribution header.
-  If an issue exists but free-form, restructure its body into the template's
-  sections (it's your own issue to edit; otherwise propose the edit).
+- If the slice has no issue yet, create one **from the template's sections** —
+  `.github/ISSUE_TEMPLATE/design-slice.md` — plus the 🤖 attribution header.
+
+  **Read that file and fill it in; do not write a design issue from memory.**
+  `gh issue create --body/--body-file` **bypasses templates entirely** (they
+  are a web-UI and interactive-CLI affordance; `--template` is starting text
+  for an interactive editor and does not combine with `--body`). So nothing
+  fails when the structure goes missing — which is how #441 happened: five
+  design issues filed as hand-rolled prose, none containing the `Decisions`
+  section, none carrying the template's own instruction to delete answered
+  questions.
+
+  The practical shape: read the template, fill its sections, write the result
+  to a file, and pass `--body-file`. If an issue exists but free-form,
+  restructure its body into those sections (it's your own issue to edit;
+  otherwise propose the edit).
+- **The BODY is the living spec; the COMMENTS are the history.** Opposite
+  editing rules, and confusing them is a real failure mode (#441):
+  - The **body** is always current — rewrite it freely, and when a question is
+    answered MOVE it into `Decisions` and DELETE it from `Open questions`. A
+    body that still asks a settled question is the bug.
+  - The **comments** are append-only — never edit one in place, post a new
+    `> 🤖 **Next steps**` each time the state changes.
+  - An answer that arrives in chat is **written into the body**, not merely
+    acknowledged in a comment. "Recorded on the ticket" means the reader of the
+    ticket sees it as decided, not as still-open with a reply buried below.
 - Read the codebase before writing: name real symbols (files, functions,
   consts). A spec that says `slotForType` beats one that says "the slot
   logic".
