@@ -24,6 +24,42 @@ import (
 )
 
 // errStreamEnded is the stream dropping while the bot still wanted it — as
+// submitFallback handles a refused intent: the world saying no to something
+// that was well-formed when it was chosen (#407).
+//
+// A refused ATTACK is the common case and it is not an error — the target died
+// during the previous turn's resolution, and 422 is the correct answer (#130's
+// fix; that path used to 500). What was wrong was the CONSEQUENCE: the bot
+// submitted nothing at all that turn, so a rejected intent was indistinguishable
+// from a silent bot as far as the bubble's patience clock was concerned. It now
+// falls back to a wait, restoring Decide's always-act contract at the layer that
+// actually talks to the server — Decide itself stays a pure function of the
+// bundle, which is what makes it testable.
+//
+// Logged at DEBUG once handled, because a handled, expected race is not a
+// warning; anything else refused stays a WARN.
+func submitFallback(
+	ctx context.Context, client *botclient.Client,
+	me protocol.JoinResponse, self protocol.Entity,
+	refused protocol.IntentRequest, err error,
+) {
+	wait, ok := bot.FallbackAfterRefusal(refused, self)
+	if !ok {
+		slog.Warn("bot: intent refused", "kind", refused.Kind, "err", err)
+
+		return
+	}
+
+	slog.Debug("bot: attack refused, waiting instead", "kind", refused.Kind, "err", err)
+
+	wait.EntityID, wait.Token = me.EntityID, me.Token
+	if waitErr := client.Submit(ctx, wait); waitErr != nil {
+		// The wait itself failing IS a surprise: a move onto your own hex is
+		// always legal. Worth seeing.
+		slog.Warn("bot: wait after refused attack also refused", "err", waitErr)
+	}
+}
+
 // opposed to Ctrl-C, which is a clean exit.
 var errStreamEnded = errors.New("bot: event stream ended")
 
@@ -107,10 +143,7 @@ func run(ctx context.Context, url, name, class, species, token, follow *string, 
 
 		intent.EntityID, intent.Token = me.EntityID, me.Token
 		if err := client.Submit(ctx, intent); err != nil {
-			// A refusal is normal — the world saying no to a well-formed
-			// intent (a hex that filled, a cooldown). Log and take the next
-			// turn rather than dying on it.
-			slog.Warn("bot: intent refused", "kind", intent.Kind, "err", err)
+			submitFallback(ctx, client, me, self, intent, err)
 
 			continue
 		}

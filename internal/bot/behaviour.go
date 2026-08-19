@@ -93,13 +93,13 @@ func Decide(cfg Config, me protocol.Entity, bundle protocol.TurnEvent) (protocol
 		// arrives standing on top of the leader. Moving onto its own hex
 		// replaces that route with an empty one (queueMoveLocked), which is
 		// what actually halts the bot at FollowDistance.
-		return protocol.IntentRequest{Kind: protocol.IntentMove, Target: me.Hex}, true
+		return WaitIntent(me), true
 	}
 
 	// Nothing to do. Inside a bubble that still has to be SAID, or the turn
 	// stalls on this bot's patience.
 	if inBubble(me, bundle) {
-		return protocol.IntentRequest{Kind: protocol.IntentMove, Target: me.Hex}, true
+		return WaitIntent(me), true
 	}
 
 	return protocol.IntentRequest{}, false
@@ -186,4 +186,38 @@ func abs(n int) int {
 	}
 
 	return n
+}
+
+// WaitIntent is the bot's "I am here and I am acting" move: a step onto its own
+// hex. It is the one intent that is always legal and always does nothing.
+//
+// Two callers need exactly this, which is why it is a function rather than a
+// literal repeated per site: Decide reaches for it when there is nothing better
+// to do, and the submit loop falls back to it when the server refuses an attack
+// (#407). Both are the same promise — that a bot in a bubble always says
+// something, because silence burns COMBAT_PATIENCE for every other member.
+func WaitIntent(me protocol.Entity) protocol.IntentRequest {
+	return protocol.IntentRequest{Kind: protocol.IntentMove, Target: me.Hex}
+}
+
+// FallbackAfterRefusal answers "the server said no — is there something else to
+// say this turn?".
+//
+// An ATTACK refusal is ordinary and frequent (#407): the target died during the
+// previous turn's resolution, so the intent was well-formed when it was chosen
+// and stale by the time it landed. Measured across three playtest sessions it
+// is 3.4%-11% of attacks — bursty, because a whole party picks the same victim
+// from the same bundle. Left unhandled the bot submits NOTHING that turn, which
+// is exactly the silence Decide's contract exists to prevent: Decide keeps the
+// promise and the submit layer used to break it.
+//
+// Anything else refused is a real surprise and gets no fallback — inventing an
+// action to paper over an unexpected rejection would hide bugs rather than
+// absorb a known race.
+func FallbackAfterRefusal(refused protocol.IntentRequest, me protocol.Entity) (protocol.IntentRequest, bool) {
+	if refused.Kind != protocol.IntentAttack {
+		return protocol.IntentRequest{}, false
+	}
+
+	return WaitIntent(me), true
 }
