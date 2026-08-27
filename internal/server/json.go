@@ -42,8 +42,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, dst
 	if err := dec.Decode(dst); err != nil {
 		// A body past the size cap is a size violation, not a syntax error:
 		// report 413 so the client blames its payload size, not its encoding.
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			respondError(w, logger, http.StatusRequestEntityTooLarge, "request body too large")
 
 			return false

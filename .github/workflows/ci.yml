@@ -27,7 +27,7 @@ jobs:
       # version MUST match GOLANGCI_VERSION in the Makefile — bump both together.
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.13.1
 
   test:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
