@@ -224,3 +224,18 @@ func TestWaterIsTransparent(t *testing.T) {
 		t.Errorf("sight across water blocked = %v, want %v (unwalkable but transparent)", got, want)
 	}
 }
+
+// TestMudIsTransparent (#437): mud is walkable ground, and it is also open
+// ground — a bog hides nothing. That is what keeps #436's ambush honest: you
+// see the mud, you just do not see what is buried in it.
+func TestMudIsTransparent(t *testing.T) {
+	t.Parallel()
+
+	a, b := protocol.Hex{Q: 0, R: 0}, protocol.Hex{Q: 4, R: 0}
+	bog := flatTerrain(protocol.TerrainMud,
+		protocol.Hex{Q: 1, R: 0}, protocol.Hex{Q: 2, R: 0}, protocol.Hex{Q: 3, R: 0})
+
+	if got, want := sightBlocked(a, b, protocol.CombatRadius, bog), false; got != want {
+		t.Errorf("sight across mud blocked = %v, want %v (open ground, like grass)", got, want)
+	}
+}

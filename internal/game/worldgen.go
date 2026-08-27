@@ -134,13 +134,42 @@ func latticeValue(seed uint64, gx, gy int) float64 {
 	return float64(h>>11) / float64(uint64(1)<<53)
 }
 
+// terrainWalkable reports whether a terrain is ground an entity can stand on.
+//
+// The single source of the rule: World.walkableLocked (movement, from the
+// live terrain map) and reachableWalkable (connectivity and the spawn-
+// candidate filter, from a MapResponse) both read it, so the two can never
+// disagree about a terrain. They held separate copies of the same literal
+// until mud made it a five-way choice (#437).
+//
+// Deliberately NOT the sight predicate — water is unwalkable and transparent,
+// which is the pairing TestWaterIsTransparent exists to pin.
+func terrainWalkable(t protocol.Terrain) bool {
+	switch t {
+	case protocol.TerrainGrass, protocol.TerrainForest, protocol.TerrainMud:
+		return true
+	case protocol.TerrainWater, protocol.TerrainRock:
+		return false
+	}
+
+	// No default clause, deliberately: the exhaustive linter then fails the
+	// build when a sixth terrain is added and not classified here, which is
+	// the whole point of routing both call sites through one predicate.
+	//
+	// Reached only by the zero Terrain — an off-map hex, absence rather than
+	// ground. walkableLocked short-circuits on its map lookup before it can
+	// get here and generated tiles always carry a real terrain, so this is
+	// defensive rather than live.
+	return false
+}
+
 // reachableWalkable returns the set of walkable hexes connected to the origin,
 // via BFS over hex neighbours. Spawn placement restricts to this set so a
 // player is never stranded on an island or across water.
 func reachableWalkable(m protocol.MapResponse) map[protocol.Hex]bool {
 	walkable := make(map[protocol.Hex]bool, len(m.Tiles))
 	for _, t := range m.Tiles {
-		if t.Terrain == protocol.TerrainGrass || t.Terrain == protocol.TerrainForest {
+		if terrainWalkable(t.Terrain) {
 			walkable[t.Hex] = true
 		}
 	}

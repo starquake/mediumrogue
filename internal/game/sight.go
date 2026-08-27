@@ -138,8 +138,9 @@ func rayObstacles(a, b protocol.Hex, terrainAt func(protocol.Hex) protocol.Terra
 			return true, 0
 		case protocol.TerrainForest:
 			forestCost += protocol.ForestSightCost
-		case protocol.TerrainGrass, protocol.TerrainWater:
-			// Grass is open; water is unwalkable but transparent.
+		case protocol.TerrainGrass, protocol.TerrainWater, protocol.TerrainMud:
+			// Grass is open; water is unwalkable but transparent; mud is a
+			// bog, which is open ground — you see it, not what is in it.
 		default:
 			// Unreachable: every protocol terrain is listed above, and the
 			// exhaustive linter fails the build if a new one is not.
