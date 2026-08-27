@@ -780,6 +780,13 @@ func TileCountForTest(radius int) int {
 	return tileCount(radius)
 }
 
+// ClearingRadiusForTest exposes clearingRadius, the forced-walkable circle at
+// the origin, so a generation test can assert what may and may not appear
+// inside the spawn clearing without duplicating the number (#437).
+func ClearingRadiusForTest() int {
+	return clearingRadius
+}
+
 // TerrainWalkableForTest exposes terrainWalkable — the one predicate both
 // walkableLocked and reachableWalkable read — so a test can pin the walkable
 // set directly rather than inferring it from a generated map (#437).

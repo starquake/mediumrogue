@@ -18,12 +18,23 @@ const (
 	forestLevel    = 0.55
 	clearingRadius = 2
 	moistureSalt   = 0x1234_5678_9ABC_DEF0
+
+	// Mud (#437) is a band of wet LOW ground: land just above the waterline
+	// that is also moist. No third noise field — reusing elevation and
+	// moisture is what puts bogs on the fringes of water, where a swamp
+	// belongs and reads correctly without explanation.
+	//
+	// mudLevel is the tuned quantity: it sets how much mud the world has, and
+	// (from #436) therefore how many skeletons it has. See
+	// TestMudCoverageIsOccasional for the band it is held to.
+	mudLevel    = 0.44
+	mudMoisture = 0.55
 )
 
 // GenerateMap builds a deterministic procedural world of the given hex radius
-// from seed: a rock-rimmed hexagon of coherent biomes (grass, forest, water,
-// rock) derived from two value-noise fields (elevation, moisture), with a
-// forced walkable clearing at the origin. Same (seed, radius) → identical map.
+// from seed: a rock-rimmed hexagon of coherent biomes (grass, forest, mud,
+// water, rock) derived from two value-noise fields (elevation, moisture), with
+// a forced walkable clearing at the origin. Same (seed, radius) → identical map.
 func GenerateMap(seed uint64, radius int) protocol.MapResponse {
 	tiles := make([]protocol.Tile, 0, tileCount(radius))
 	origin := protocol.Hex{Q: 0, R: 0}
@@ -44,7 +55,10 @@ func GenerateMap(seed uint64, radius int) protocol.MapResponse {
 
 // terrainAt classifies one hex: the rim is rock; the origin clearing is grass;
 // otherwise elevation carves water (low) and mountains (high), and within land
-// moisture separates forest (moist) from grass (dry).
+// moisture separates mud (moist and low-lying), forest (moist) and grass (dry).
+//
+// The clearing returns before any noise is sampled, so ring 0 never generates
+// mud — which is also what keeps the home clearing free of #436's ambushers.
 func terrainAt(seed uint64, radius int, h protocol.Hex) protocol.Terrain {
 	origin := protocol.Hex{Q: 0, R: 0}
 	switch {
@@ -68,6 +82,12 @@ func terrainAt(seed uint64, radius int, h protocol.Hex) protocol.Terrain {
 	}
 
 	moisture := fbm(seed^moistureSalt, fx, fy)
+	// Mud before forest: the two overlap in moisture, and low wet ground is a
+	// bog rather than a wood. Ordering is the whole distinction.
+	if moisture > mudMoisture && elevation < mudLevel {
+		return protocol.TerrainMud
+	}
+
 	if moisture > forestLevel {
 		return protocol.TerrainForest
 	}

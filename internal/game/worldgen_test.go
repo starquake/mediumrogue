@@ -44,7 +44,8 @@ func TestGenerateMapShape(t *testing.T) {
 	origin := protocol.Hex{Q: 0, R: 0}
 	valid := map[protocol.Terrain]bool{
 		protocol.TerrainGrass: true, protocol.TerrainForest: true,
-		protocol.TerrainWater: true, protocol.TerrainRock: true,
+		protocol.TerrainMud: true, protocol.TerrainWater: true,
+		protocol.TerrainRock: true,
 	}
 	counts := map[protocol.Terrain]int{}
 	seen := map[protocol.Hex]bool{}
@@ -83,9 +84,10 @@ func TestGenerateMapShape(t *testing.T) {
 		t.Errorf("origin terrain = %q, want walkable", terrainAtOrigin)
 	}
 
-	// A real world has all four terrains.
+	// A real world has all five terrains.
 	for _, terr := range []protocol.Terrain{
-		protocol.TerrainGrass, protocol.TerrainForest, protocol.TerrainWater, protocol.TerrainRock,
+		protocol.TerrainGrass, protocol.TerrainForest, protocol.TerrainMud,
+		protocol.TerrainWater, protocol.TerrainRock,
 	} {
 		if counts[terr] == 0 {
 			t.Errorf("map has no %s tiles", terr)
