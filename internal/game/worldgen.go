@@ -18,12 +18,23 @@ const (
 	forestLevel    = 0.55
 	clearingRadius = 2
 	moistureSalt   = 0x1234_5678_9ABC_DEF0
+
+	// Mud (#437) is a band of wet LOW ground: land just above the waterline
+	// that is also moist. No third noise field — reusing elevation and
+	// moisture is what puts bogs on the fringes of water, where a swamp
+	// belongs and reads correctly without explanation.
+	//
+	// mudLevel is the tuned quantity: it sets how much mud the world has, and
+	// (from #436) therefore how many skeletons it has. See
+	// TestMudCoverageIsOccasional for the band it is held to.
+	mudLevel    = 0.44
+	mudMoisture = 0.55
 )
 
 // GenerateMap builds a deterministic procedural world of the given hex radius
-// from seed: a rock-rimmed hexagon of coherent biomes (grass, forest, water,
-// rock) derived from two value-noise fields (elevation, moisture), with a
-// forced walkable clearing at the origin. Same (seed, radius) → identical map.
+// from seed: a rock-rimmed hexagon of coherent biomes (grass, forest, mud,
+// water, rock) derived from two value-noise fields (elevation, moisture), with
+// a forced walkable clearing at the origin. Same (seed, radius) → identical map.
 func GenerateMap(seed uint64, radius int) protocol.MapResponse {
 	tiles := make([]protocol.Tile, 0, tileCount(radius))
 	origin := protocol.Hex{Q: 0, R: 0}
@@ -44,7 +55,10 @@ func GenerateMap(seed uint64, radius int) protocol.MapResponse {
 
 // terrainAt classifies one hex: the rim is rock; the origin clearing is grass;
 // otherwise elevation carves water (low) and mountains (high), and within land
-// moisture separates forest (moist) from grass (dry).
+// moisture separates mud (moist and low-lying), forest (moist) and grass (dry).
+//
+// The clearing returns before any noise is sampled, so ring 0 never generates
+// mud — which is also what keeps the home clearing free of #436's ambushers.
 func terrainAt(seed uint64, radius int, h protocol.Hex) protocol.Terrain {
 	origin := protocol.Hex{Q: 0, R: 0}
 	switch {
@@ -68,6 +82,12 @@ func terrainAt(seed uint64, radius int, h protocol.Hex) protocol.Terrain {
 	}
 
 	moisture := fbm(seed^moistureSalt, fx, fy)
+	// Mud before forest: the two overlap in moisture, and low wet ground is a
+	// bog rather than a wood. Ordering is the whole distinction.
+	if moisture > mudMoisture && elevation < mudLevel {
+		return protocol.TerrainMud
+	}
+
 	if moisture > forestLevel {
 		return protocol.TerrainForest
 	}
@@ -134,13 +154,42 @@ func latticeValue(seed uint64, gx, gy int) float64 {
 	return float64(h>>11) / float64(uint64(1)<<53)
 }
 
+// terrainWalkable reports whether a terrain is ground an entity can stand on.
+//
+// The single source of the rule: World.walkableLocked (movement, from the
+// live terrain map) and reachableWalkable (connectivity and the spawn-
+// candidate filter, from a MapResponse) both read it, so the two can never
+// disagree about a terrain. They held separate copies of the same literal
+// until mud made it a five-way choice (#437).
+//
+// Deliberately NOT the sight predicate — water is unwalkable and transparent,
+// which is the pairing TestWaterIsTransparent exists to pin.
+func terrainWalkable(t protocol.Terrain) bool {
+	switch t {
+	case protocol.TerrainGrass, protocol.TerrainForest, protocol.TerrainMud:
+		return true
+	case protocol.TerrainWater, protocol.TerrainRock:
+		return false
+	}
+
+	// No default clause, deliberately: the exhaustive linter then fails the
+	// build when a sixth terrain is added and not classified here, which is
+	// the whole point of routing both call sites through one predicate.
+	//
+	// Reached only by the zero Terrain — an off-map hex, absence rather than
+	// ground. walkableLocked short-circuits on its map lookup before it can
+	// get here and generated tiles always carry a real terrain, so this is
+	// defensive rather than live.
+	return false
+}
+
 // reachableWalkable returns the set of walkable hexes connected to the origin,
 // via BFS over hex neighbours. Spawn placement restricts to this set so a
 // player is never stranded on an island or across water.
 func reachableWalkable(m protocol.MapResponse) map[protocol.Hex]bool {
 	walkable := make(map[protocol.Hex]bool, len(m.Tiles))
 	for _, t := range m.Tiles {
-		if t.Terrain == protocol.TerrainGrass || t.Terrain == protocol.TerrainForest {
+		if terrainWalkable(t.Terrain) {
 			walkable[t.Hex] = true
 		}
 	}

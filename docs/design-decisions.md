@@ -1605,3 +1605,83 @@ across the original run were median 4s, max 5s, with nothing approaching the 30s
 patience timeout. So the honest cost was a wasted combat turn, not a stalled
 fight. It may still bite in a slower bubble with a human in it, which is exactly
 the case bots exist to simulate.
+
+## Mud is grass that looks different, and terrain cannot promise coverage *(built 2026-08-27, #437)*
+
+The fifth terrain, and the first added since the original four. It exists
+because #436 needs ground for skeletons to bury in, but it had to stand as its
+own deliverable: adding a terrain touches four rules that must agree, and
+bundling that into an ambush mechanic would have hidden it.
+
+**Mud is mechanically grass.** Walkable, no movement cost, transparent to
+sight. The no-cost part is not a balance choice — everything in this game moves
+exactly one hex per turn, so a movement *cost* is a mechanic the engine does not
+have. Mud that slowed you would be its own slice, with a turn economy attached.
+Transparency is a real choice and it is load-bearing for #436: you see the mud,
+you just do not see what is buried in it. A bog that also blocked sight would
+make the ambush unfair twice over.
+
+**One walkability predicate, and no default clause.** `walkableLocked` and
+`reachableWalkable` each held their own copy of `grass || forest`. Two copies
+of a two-way choice is survivable; two copies of a five-way choice is a bug
+waiting for the sixth terrain. Both now read `terrainWalkable`, which lists
+every terrain and deliberately has **no `default`** — so `exhaustive` fails the
+build when a terrain is added and left unclassified, in that switch and in
+sight.go's. That guard was verified by adding a sixth terrain and watching both
+fire, rather than assumed from the linter's documentation.
+
+### The spec asked for two different amounts of mud
+
+The decisions table said **"occasional patches, similar weight to forest"**.
+Those are not the same request: forest is ~27% of walkable land. The generation
+section's proposed `mudLevel = 0.36` delivered 4.6% — neither reading, and the
+gap between the two halves is roughly sevenfold.
+
+Resolved by treating **"occasional patches" as binding** and measuring instead
+of trusting the proposed constant. `mudLevel = 0.44` gives ~9% of land typical
+(5–14% by seed) against forest's 27%: clearly occasional, clearly present.
+
+### Terrain derived from noise cannot guarantee per-ring coverage
+
+This is the finding worth keeping, because it outlives the tuning.
+
+#436 makes skeletons spawn **only** in mud, in rings 1 and 2. So mud has to
+appear in those rings, and mud follows the water, which the seed decides. The
+obvious move is to raise `mudLevel` until every ring always has some — and it
+does not work:
+
+| `mudLevel` | mud (median, of land) | seeds with an empty ring 1 |
+|---|---|---|
+| 0.36 | 4.6% | 5 in 44 |
+| 0.44 | 10.3% | 2 in 200 |
+| 0.46 | 12.3% | 1 in 500 |
+| 0.50 | 16.2% | 0 in 500, min ring-1 count 1 |
+
+The failure rate falls and **never reaches zero**, and by 0.50 mud has stopped
+reading as occasional patches. There is no threshold that buys a guarantee;
+there is only a threshold that makes the exception rare enough to accept.
+
+So the guard test asserts what it can honestly assert — mud in rings 1 and 2
+across a fixed seed spread — and its comment says plainly that this is a
+regression guard on the tuning and **not** a promise about an arbitrary world.
+A test that passes on ten chosen seeds is not evidence about the other 490.
+
+The residual belongs to #436, which owns the consequence: either accept that a
+rare world has no skeletons in ring 1 (recoverable by changing `WORLD_SEED`),
+or give a mud-only kind a fallback when its ring has none. Widening the band in
+#437 would only move the problem somewhere less visible.
+
+### The client had no compile-time guard, and three seams failed silently
+
+`protocol.gen.ts` emits `type Terrain = string`, not a union, so nothing on the
+client is checked against the terrain set. Every renderer seam has an
+unknown-terrain fallback, and all three of them are **rock**: `TERRAIN_COLORS`
+falls back to `ROCK_COLOR`, `grainTexture`'s final `else` is the stone fracture,
+and `buildScatter`'s `!== TerrainGrass` branch flecks it like stone. Shipping
+mud without touching the client would have drawn grey stone at the water's edge
+with no error anywhere.
+
+That is the argument for the mockup gate on looks-driven work, and it is worth
+stating as a general property rather than as a mud anecdote: **on the client,
+adding to the terrain set is a silent change**. The compiler will not find the
+next one either.

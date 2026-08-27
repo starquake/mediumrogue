@@ -780,6 +780,20 @@ func TileCountForTest(radius int) int {
 	return tileCount(radius)
 }
 
+// ClearingRadiusForTest exposes clearingRadius, the forced-walkable circle at
+// the origin, so a generation test can assert what may and may not appear
+// inside the spawn clearing without duplicating the number (#437).
+func ClearingRadiusForTest() int {
+	return clearingRadius
+}
+
+// TerrainWalkableForTest exposes terrainWalkable — the one predicate both
+// walkableLocked and reachableWalkable read — so a test can pin the walkable
+// set directly rather than inferring it from a generated map (#437).
+func TerrainWalkableForTest(t protocol.Terrain) bool {
+	return terrainWalkable(t)
+}
+
 // PickDropForTest exposes pickDropFrom over a named monster kind's own drop
 // table, seeded from a single uint64 (stream 0), so a content test can
 // enumerate the weighted-drop distribution over a fixed seed range without

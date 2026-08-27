@@ -140,22 +140,32 @@ export interface Hex {
 export type Terrain = string;
 /**
  * The terrain set. Rock is impassable and rings the world edge; water is
- * impassable but open; grass and forest are walkable.
+ * impassable but open; grass, forest and mud are walkable. Mud (#437) is
+ * mechanically grass — it differs in look, and in what buries there (#436).
  */
 export const TerrainGrass: Terrain = "grass";
 /**
  * The terrain set. Rock is impassable and rings the world edge; water is
- * impassable but open; grass and forest are walkable.
+ * impassable but open; grass, forest and mud are walkable. Mud (#437) is
+ * mechanically grass — it differs in look, and in what buries there (#436).
  */
 export const TerrainForest: Terrain = "forest";
 /**
  * The terrain set. Rock is impassable and rings the world edge; water is
- * impassable but open; grass and forest are walkable.
+ * impassable but open; grass, forest and mud are walkable. Mud (#437) is
+ * mechanically grass — it differs in look, and in what buries there (#436).
+ */
+export const TerrainMud: Terrain = "mud";
+/**
+ * The terrain set. Rock is impassable and rings the world edge; water is
+ * impassable but open; grass, forest and mud are walkable. Mud (#437) is
+ * mechanically grass — it differs in look, and in what buries there (#436).
  */
 export const TerrainWater: Terrain = "water";
 /**
  * The terrain set. Rock is impassable and rings the world edge; water is
- * impassable but open; grass and forest are walkable.
+ * impassable but open; grass, forest and mud are walkable. Mud (#437) is
+ * mechanically grass — it differs in look, and in what buries there (#436).
  */
 export const TerrainRock: Terrain = "rock";
 /**

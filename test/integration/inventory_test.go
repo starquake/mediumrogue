@@ -68,7 +68,7 @@ func craftInventorySnapshot() []byte {
 		// DTO — this fixture carries neither, so only the version moves). The
 		// loader REJECTS a version mismatch by design, so a crafted fixture has
 		// to move with the version — it is not a value to weaken.
-		"version":      13, // #410 deleted the heal consumables, so orphaned defIDs are rejected
+		"version":      14, // #437 added mud, which re-renders the map from the same seed
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,

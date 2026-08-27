@@ -3519,7 +3519,7 @@ func (w *World) allPlayersLocked() []*entity {
 func (w *World) walkableLocked(h protocol.Hex) bool {
 	t, ok := w.terrain[h]
 
-	return ok && (t == protocol.TerrainGrass || t == protocol.TerrainForest)
+	return ok && terrainWalkable(t)
 }
 
 func (w *World) occupancyLocked(h protocol.Hex) int {
