@@ -53,7 +53,14 @@ import (
 // minion). Both are multi-turn state a restart must keep — otherwise a reloaded
 // necromancer hands a free summon and its adds escape the maxLiving cap. A v9
 // snapshot has neither field, so it is preserved-aside + fresh.
-const snapshotVersion = 13
+// v14 (mud, #437): no DTO changed — the TERRAIN did. Mud is derived from the
+// world seed like every other tile, so the same seed now renders a different
+// map: hexes that were grass or forest just above the waterline are bogs. A
+// v13 snapshot would restore entities into a world whose ground has silently
+// moved under them (nothing is stranded — mud only replaces walkable terrain
+// with walkable terrain — but the map is no longer the one that was saved).
+// Bumped so the change is an explicit reset rather than a mysterious shift.
+const snapshotVersion = 14
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or

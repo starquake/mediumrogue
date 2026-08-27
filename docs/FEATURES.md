@@ -45,6 +45,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
   | **Rock** | hard-blocks — a single rock hex on the line ends the ray |
   | **Forest** | **softens**: each forest hex on the line costs `ForestSightCost` (2) hexes of effective range |
   | **Water** | unwalkable but **transparent** — you can see across a lake |
+  | **Mud** | walkable and **transparent** — a bog is open ground |
   | **Grass** | open |
 
   Only what lies **strictly between** counts, so adjacent entities always see
@@ -1272,9 +1273,32 @@ roll, so it is ARPG-legal on jewelry.
 
 ### World
 - **Procedural generation**: seeded value-noise biomes (elevation+moisture →
-  grass/forest/water), rock rim, forced origin clearing, spawns restricted
+  grass/forest/mud/water), rock rim, forced origin clearing, spawns restricted
   to the origin-connected walkable region. Fixed default seed → identical
   world every restart. The camera follows the player (see Movement).
+- **Mud (#437)** — the fifth terrain, and the ground #436's skeletons bury in.
+  Walkable at **no movement cost** (everything moves exactly one hex per turn,
+  so a movement cost is a mechanic the engine does not have) and **transparent**
+  to sight: mechanically it is grass, differing only in look and in what buries
+  there. Generated as land just above the waterline that is also moist —
+  `mudLevel` (0.44) over `mudMoisture` (0.55), checked before the forest rule
+  — which places bogs on the fringes of water without a third noise field.
+
+  | Constant | Value |
+  |---|---|
+  | `mudLevel` (elevation ceiling) | 0.44 |
+  | `mudMoisture` (moisture floor) | 0.55 |
+  | `waterLevel` | 0.30 |
+  | `forestLevel` | 0.55 |
+
+  Coverage is **~5–14% of walkable land depending on seed** (~9% typical),
+  against forest's ~27%. The home clearing never generates mud — `terrainAt`
+  returns before sampling noise — so a spawn hex can never hide an ambusher.
+  Walkability lives in ONE predicate, `terrainWalkable` (`worldgen.go`), which
+  both movement (`walkableLocked`) and the spawn-candidate filter
+  (`reachableWalkable`) read; it deliberately has no `default` clause so the
+  `exhaustive` linter fails the build if a sixth terrain is ever left
+  unclassified.
 
 ### World persistence (milestone 10a, default OFF)
 - **Periodic + shutdown JSON snapshot** behind `SNAPSHOT_PATH` (default `""`
@@ -1414,7 +1438,7 @@ roll, so it is ARPG-legal on jewelry.
   and `--on-accent` (`#fbeef1`). The last exists because the old lime accent was
   light enough to carry near-black label text and bordeaux is not — anything
   sitting ON the accent takes `--on-accent`, never `--bg`.
-  - **The world keeps its own colours.** Terrain (grass, forest, water, rock),
+  - **The world keeps its own colours.** Terrain (grass, forest, mud, water, rock),
     entity dots, HP bars and the combat ring are *semantic*, not chrome: green
     means healthy, red means monster, gold means committed. Only the canvas
     values that exist to match the page background moved with it (the damage
@@ -1531,7 +1555,8 @@ roll, so it is ARPG-legal on jewelry.
     `EDGE_DIRECTIONS` (`hex.ts`) maps each `hexCorners` edge to the neighbour it
     faces, pinned geometrically by `hex.test.ts`.
   - **Grain**: a procedural tiling texture per land terrain — speckle on grass,
-    mottle on forest, fracture on rock — sharing ONE fill matrix so it tiles in
+    mottle on forest, wet mottle (mottle plus darker standing-water ellipses)
+    on mud, fracture on rock — sharing ONE fill matrix so it tiles in
     world space. Per-hex tiling would print a repeat inside every cell, i.e.
     the grid this removes. Generated at runtime, so `TERRAIN_COLORS` stays the
     single source of truth and nothing extra enters the bundle.
