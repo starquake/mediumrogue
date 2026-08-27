@@ -14,7 +14,7 @@ ABS_BIN   := $(abspath $(BIN_DIR))
 
 # golangci-lint version + binary path. Must match `with: version:` in the lint
 # job of .github/workflows/ci.yml — bump both together.
-GOLANGCI_VERSION := v2.12.2
+GOLANGCI_VERSION := v2.13.1
 GOLANGCI_BIN     := $(BIN_DIR)/golangci-lint
 
 # tygo is built from tools/ (where dependabot tracks its version).
