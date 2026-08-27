@@ -88,6 +88,7 @@ import {
   SpeciesHuman,
   TerrainForest,
   TerrainGrass,
+  TerrainMud,
   TurnSeconds,
   WeaponTagMagic,
   WeaponTagRanged,
@@ -834,12 +835,14 @@ async function start(): Promise<void> {
   // limit is felt on the things that matter and not just on the scenery.
   const fogLayer = createFogLayer();
 
-  // Walkability lookup for the combat movement overlay: grass and forest are
-  // walkable (the same rule the server's map applies); everything else —
-  // water, rock, off-map — is not. Static for the map's lifetime.
+  // Walkability lookup for the combat movement overlay: grass, forest and mud
+  // are walkable (the same rule the server's terrainWalkable applies);
+  // everything else — water, rock, off-map — is not. Static for the map's
+  // lifetime. Mud is mechanically grass, so it must be in here or the overlay
+  // would refuse moves the server accepts (#437).
   const walkable = new Set<string>();
   for (const tile of map.tiles) {
-    if (tile.terrain === TerrainGrass || tile.terrain === TerrainForest) {
+    if (tile.terrain === TerrainGrass || tile.terrain === TerrainForest || tile.terrain === TerrainMud) {
       walkable.add(`${tile.hex.q},${tile.hex.r}`);
     }
   }

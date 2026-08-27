@@ -1,7 +1,7 @@
 import { Texture } from "pixi.js";
 
 import type { Terrain } from "../protocol.gen";
-import { TerrainForest, TerrainGrass } from "../protocol.gen";
+import { TerrainForest, TerrainGrass, TerrainMud } from "../protocol.gen";
 import { hexNoise } from "./terrain";
 
 // grain.ts (#296): the per-terrain surface texture, generated at runtime.
@@ -22,6 +22,12 @@ const SPECKLE_COUNT = 420;
 const SPECKLE_SPREAD = 0.34;
 const MOTTLE_COUNT = 150;
 const MOTTLE_SPREAD = 0.5;
+// Mud reuses mottle at a wider spread, plus a few darker ellipses reading as
+// standing water. Without them a bog is just brown grass (#437).
+const WET_MOTTLE_COUNT = 170;
+const WET_MOTTLE_SPREAD = 0.56;
+const POOL_COUNT = 18;
+const POOL_DARKEN = 0.6;
 const FRACTURE_COUNT = 22;
 const FLECK_COUNT = 190;
 
@@ -50,6 +56,32 @@ function paintMottle(ctx: CanvasRenderingContext2D, base: number): void {
     ctx.fillStyle = css(base, 1 - MOTTLE_SPREAD / 2 + rnd(i, 7) * MOTTLE_SPREAD);
     ctx.beginPath();
     ctx.arc(rnd(i, 4) * GRAIN_PX, rnd(i, 5) * GRAIN_PX, 1.2 + rnd(i, 6) * 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function paintWetMottle(ctx: CanvasRenderingContext2D, base: number): void {
+  for (let i = 0; i < WET_MOTTLE_COUNT; i++) {
+    ctx.fillStyle = css(base, 1 - WET_MOTTLE_SPREAD / 2 + rnd(i, 15) * WET_MOTTLE_SPREAD);
+    ctx.beginPath();
+    ctx.arc(rnd(i, 16) * GRAIN_PX, rnd(i, 17) * GRAIN_PX, 1.4 + rnd(i, 18) * 3.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Flattened, randomly rotated puddles: the tell that this ground is wet
+  // rather than merely a different brown.
+  ctx.fillStyle = css(base, POOL_DARKEN);
+  for (let i = 0; i < POOL_COUNT; i++) {
+    ctx.beginPath();
+    ctx.ellipse(
+      rnd(i, 19) * GRAIN_PX,
+      rnd(i, 20) * GRAIN_PX,
+      2.4 + rnd(i, 21) * 2.6,
+      1.4 + rnd(i, 22) * 1.6,
+      rnd(i, 23) * Math.PI,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 }
@@ -92,6 +124,7 @@ export function grainTexture(terrain: Terrain, base: number): Texture {
 
   if (terrain === TerrainGrass) paintSpeckle(ctx, base);
   else if (terrain === TerrainForest) paintMottle(ctx, base);
+  else if (terrain === TerrainMud) paintWetMottle(ctx, base);
   else paintFracture(ctx, base);
 
   const texture = Texture.from(canvas);

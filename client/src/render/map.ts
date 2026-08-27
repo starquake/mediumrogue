@@ -1,7 +1,7 @@
 import { Container, Graphics, Matrix, Texture } from "pixi.js";
 
 import type { MapResponse, Terrain } from "../protocol.gen";
-import { TerrainForest, TerrainGrass, TerrainWater } from "../protocol.gen";
+import { TerrainForest, TerrainGrass, TerrainMud, TerrainWater } from "../protocol.gen";
 import { DIRECTIONS, EDGE_DIRECTIONS, hexCorners, hexToPixel, HEX_SIZE } from "./hex";
 import { grainTexture } from "./grain";
 import { buildScatter } from "./scatter";
@@ -14,6 +14,10 @@ const ROCK_COLOR = 0x45443f;
 const TERRAIN_COLORS: Record<Terrain, number> = {
   [TerrainGrass]: 0x35513a,
   [TerrainForest]: 0x22391f,
+  // Mud (#437): "peat", the middle of three candidates the maintainer picked
+  // from. Warm brown so it never reads as rock's grey-olive, muted enough to
+  // sit in the palette rather than on top of it.
+  [TerrainMud]: 0x4b3a27,
   [TerrainWater]: 0x1d3d5c,
 };
 const OUTLINE = { width: 1, color: 0x0f0a0c, alpha: 0.8 };

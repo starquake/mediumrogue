@@ -1,7 +1,7 @@
 import { Graphics } from "pixi.js";
 
 import type { MapResponse } from "../protocol.gen";
-import { TerrainForest, TerrainGrass } from "../protocol.gen";
+import { TerrainForest, TerrainGrass, TerrainMud } from "../protocol.gen";
 import { hexToPixel, HEX_SIZE } from "./hex";
 import { hexKey, hexNoise, MAX_WATER_DEPTH } from "./terrain";
 
@@ -114,12 +114,14 @@ export function buildScatter(map: MapResponse, depths: Map<string, number>): Gra
       glints(g, x, y, q, r, depth);
     } else if (tile.terrain === TerrainForest) {
       tufts(g, x, y, q, r);
-    } else if (tile.terrain !== TerrainGrass) {
+    } else if (tile.terrain !== TerrainGrass && tile.terrain !== TerrainMud) {
       // Rock, and anything this client does not recognise — which already
       // renders in the rock colour (map.ts's ROCK_COLOR fallback), so it gets
       // the stone treatment to match. GRASS is deliberately bare: it already
       // reads through grain and per-hex noise, and tufting it would turn open
-      // ground into visual noise.
+      // ground into visual noise. MUD is bare for the same reason (#437): its
+      // character is in the grain's puddles, and flecking it would have given
+      // a bog the stone treatment.
       flecks(g, x, y, q, r);
     }
   }
