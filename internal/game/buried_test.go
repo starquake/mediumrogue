@@ -1,6 +1,8 @@
 package game_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -273,4 +275,52 @@ func TestBuriedNeverReburies(t *testing.T) {
 	if got, want := w.BuriedForTest(id), false; got != want {
 		t.Errorf("re-buried after walking away = %v, want %v — burial is a spawn state, never restored", got, want)
 	}
+}
+
+// TestBuriedKindCoverageGuard is #436's answer to a risk #437 proved cannot be
+// tuned away: mud follows the water, the seed decides where the water goes, so
+// roughly 1 world in 200-500 leaves a ring with no mud — and therefore no
+// skeletons in it, silently.
+//
+// seed 17 is one of those worlds, found while measuring #437's tuning across
+// 500 seeds. It is a PIN: if mud generation is ever retuned, this seed may
+// start passing, and the fix is to RE-DERIVE a failing seed, never to weaken
+// the assertion — a guard that no longer has anything to catch is not a guard.
+func TestBuriedKindCoverageGuard(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a world with mud in every skeleton ring boots", func(t *testing.T) {
+		t.Parallel()
+
+		if err := newBuriedWorld(t).ValidateBuriedKindCoverage(); err != nil {
+			t.Errorf("ValidateBuriedKindCoverage() on the standard test seed = %v, want nil", err)
+		}
+	})
+
+	t.Run("a world missing mud in a skeleton ring refuses to boot", func(t *testing.T) {
+		t.Parallel()
+
+		w := game.NewWorld(game.WorldConfig{
+			Interval:        time.Hour,
+			CombatPatience:  testCombatPatience,
+			BubblePoll:      testBubblePoll,
+			DisconnectGrace: testDisconnectGrace,
+			WorldSeed:       17,
+			Radius:          24,
+			Ticks:           hub.New(),
+		})
+
+		err := w.ValidateBuriedKindCoverage()
+		if got, want := err, game.ErrRingHasNoMud; !errors.Is(got, want) {
+			t.Fatalf("err = %v, want %v", got, want)
+		}
+
+		// The message has to be actionable: whoever hits this is an operator
+		// with a bad seed, not a developer with a stack trace.
+		for _, want := range []string{"skeleton", "ring 1", "seed 17", "WORLD_SEED"} {
+			if got := err.Error(); !strings.Contains(got, want) {
+				t.Errorf("err.Error() = %q, should contain %q", got, want)
+			}
+		}
+	})
 }

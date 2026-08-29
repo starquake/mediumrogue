@@ -68,6 +68,17 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	world := newWorld(cfg, ticks)
 	world.SetLogger(logger)
 
+	// #436: a world whose rings cannot support a mud-only kind refuses to
+	// start rather than quietly spawning none of it. Checked before the
+	// snapshot branch so it runs on every boot, including `-check`, which
+	// makes `make smoke` a way to validate a candidate WORLD_SEED without
+	// starting a server.
+	if err := world.ValidateBuriedKindCoverage(); err != nil {
+		logger.Error("world", "err", err)
+
+		return exitErr
+	}
+
 	// A snapshot restore already brings back the persisted monster
 	// population (a restart must not respawn a healed, repositioned
 	// population mid-expedition) — only spawn a fresh one when persistence
