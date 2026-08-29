@@ -2,8 +2,10 @@ package game_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/starquake/mediumrogue/internal/game"
+	"github.com/starquake/mediumrogue/internal/hub"
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
@@ -148,41 +150,38 @@ func TestMudNeverGeneratesInTheHomeClearing(t *testing.T) {
 	}
 }
 
-// TestMudCoversEverySkeletonRing is #437's guard for #436.
+// TestMudCoversEverySkeletonRing is #437's guard for #436, and since #436
+// landed it is driven by the REGISTRY rather than by a hardcoded {1, 2}.
 //
-// #436 makes skeletons spawn ONLY in mud, and the Skeleton's rings are {1, 2}.
-// Mud follows the water, which the seed decides — so a world whose low ground
-// all sits in ring 0 would silently have no skeletons in ring 1. Nothing would
-// fail; the kind would just quietly not be there.
+// It now asserts the production check itself — ValidateBuriedKindCoverage,
+// the thing that actually refuses to boot — across the tuning seed spread.
+// That is strictly better than re-implementing the rule here: the guard and
+// the shipped behaviour cannot drift apart, and retuning a burying kind's
+// rings updates both at once.
 //
-// WHAT THIS PROVES, EXACTLY: that the tuned mudLevel puts mud in rings 1 and 2
-// for these ten seeds. It is a regression guard on the tuning, and it is NOT a
-// guarantee about an arbitrary world. Measured over 500 seeds while tuning,
-// roughly 1 in 200–500 still comes up with an empty ring 1, and raising
+// WHAT THIS PROVES, EXACTLY: that the tuned mudLevel supports every burying
+// kind's rings for these ten seeds. It is a regression guard on the tuning,
+// and it is NOT a guarantee about an arbitrary world. Measured over 500 seeds
+// while tuning, roughly 1 in 200-500 still comes up short, and raising
 // mudLevel far enough to erase that (past 0.50) makes mud stop reading as
-// occasional patches without ever reaching zero risk. That residual is a real
-// consequence of deriving terrain from noise and is #436's to handle — see the
-// issue thread; do not "fix" it by widening the band here.
-//
-// #436 should REPLACE this with the same assertion driven by the mud-only
-// kind's own rings field, so retuning the skeleton cannot outdate the guard.
+// occasional patches without ever reaching zero risk. That residual is why
+// #436 added the startup check — do not "fix" it by widening the band here.
 func TestMudCoversEverySkeletonRing(t *testing.T) {
 	t.Parallel()
 
-	const radius = 24
-
-	// Hardcoded here because no kind is mud-only until #436 lands; that is
-	// the ticket that makes this readable from the registry instead.
-	wantRings := []int{1, 2}
-
 	for _, seed := range mudSeeds {
-		_, perRing := mudStats(seed, radius)
+		w := game.NewWorld(game.WorldConfig{
+			Interval:        time.Hour,
+			CombatPatience:  testCombatPatience,
+			BubblePoll:      testBubblePoll,
+			DisconnectGrace: testDisconnectGrace,
+			WorldSeed:       seed,
+			Radius:          24,
+			Ticks:           hub.New(),
+		})
 
-		for _, ring := range wantRings {
-			if got, want := perRing[ring] > 0, true; got != want {
-				t.Errorf("seed %d: ring %d has no mud (counts %v) — a mud-only kind would be silently absent there",
-					seed, ring, perRing)
-			}
+		if err := w.ValidateBuriedKindCoverage(); err != nil {
+			t.Errorf("seed %d: %v", seed, err)
 		}
 	}
 }

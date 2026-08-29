@@ -1685,3 +1685,74 @@ That is the argument for the mockup gate on looks-driven work, and it is worth
 stating as a general property rather than as a mud anecdote: **on the client,
 adding to the terrain set is a silent change**. The compiler will not find the
 next one either.
+
+## An ambush needs a telegraph, and a guard must check the set it guards *(built 2026-08-29, #436)*
+
+Skeletons spawn buried in mud and claw out when you come within four hexes.
+The mechanic is small; two decisions inside it are not.
+
+**The empty hex is the point.** `InterestRadius` answers "is anything there?"
+honestly at 20 hexes, which made travel safe-by-inspection: every threat was
+visible before it could reach you, so route choice was the whole of the risk. A
+buried ambusher makes an empty-looking bog a *question* — cheap tension in
+exactly the part of the game the pitch is built around. It also gives the
+Skeleton a verb, where before it was "sharp-resistant HP".
+
+**Off the wire, not hidden on the client.** A buried monster never becomes an
+entity view at all — the same server-authoritative treatment the interest cull
+gets. "Sent with a hidden flag" would have been simpler and would have passed a
+client-side test; it also would have meant anyone reading the SSE stream could
+see every ambush in the world. The test therefore reads the RAW bundle, because
+that is the only assertion the weaker design would fail.
+
+**One helpless turn is the whole counterplay.** The monster emerges *visible*
+and cannot act until the following turn. An ambush that emerged and swung in
+the same turn is not tension, it is damage you could not have avoided — the
+difference between a threat you get to answer and a dice roll you already lost.
+
+### The zero value froze every monster in the world
+
+Worth recording because the bug was invisible in isolation and obvious in
+aggregate. The emergence guard was first written as:
+
+```go
+if m.buried || w.turn <= m.emergingUntilTurn { continue }
+```
+
+`emergingUntilTurn` is zero for everything that never buried, and `w.turn`
+starts at zero — so on turn 0 *every monster in the world* read as still
+clawing its way out. Five unrelated AI tests failed at once, which is the only
+reason it was caught; nothing about the burial tests would have shown it.
+
+The fix is a naming one as much as a logic one: `canActFromTurn`, compared with
+`<`, so the zero value means "can act" rather than "cannot". **When a piece of
+state means "an exception is in progress", make the zero value the ordinary
+case.** An "until" form has to be wrong at zero; a "from" form cannot be.
+
+### Terrain from noise cannot promise coverage, so the world refuses to boot
+
+#437 established that per-ring mud coverage is unguaranteeable: raising
+`mudLevel` lowers the empty-ring rate and never reaches zero, and by the time it
+is 0-in-500 mud has stopped being occasional patches. Since a burying kind is a
+mud-only kind, roughly 1 world in 200–500 would silently have no skeletons in
+ring 1 — a third of the difficulty curve missing a kind, with nothing failing.
+
+Three shapes were offered: accept it silently, fall back to ordinary ground, or
+refuse to boot. The maintainer chose **refuse to boot**. The reasoning that
+makes it right is that the failure is *silent and permanent* for that world,
+while the fix is *trivial and one-time*: change `WORLD_SEED`.
+
+**It is an error, not a `panic`, and the distinction is worth keeping.**
+`mustValidateContent` panics because a bad content table is a programming
+defect that must never reach a running process. An unlucky seed is *operator
+input* — the same category as `WORLD_RADIUS`, which this repo already answers
+with a clean error. A panic would also have taken down the balance harness,
+which builds worlds across many seeds and has no stake in burial.
+
+**And the guard checks the set the spawner actually draws from.** The obvious
+implementation asks "is there mud in this ring?" against the reachable region;
+the spawner draws from walkable-minus-sanctuary, which is a *different set*. A
+guard built on the wrong set passes while the thing it guards fails — which is
+precisely the failure #437's original guard had, and the reason this ticket
+exists. Mirroring `spawnCandidatesByRingLocked` is not fussiness; it is the
+difference between a check and a decoration.
