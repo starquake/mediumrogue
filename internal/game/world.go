@@ -1860,9 +1860,71 @@ func (w *World) occupiedForLocked(m *entity, h protocol.Hex) bool {
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.regenPlayersLocked(members)
+	w.revealBuriedLocked()
 	w.resolveCombatLocked(members, w.allPlayersLocked(), domainWorld)
 	w.checkReachQuestsLocked()
 	w.advanceTurnLocked()
+}
+
+// revealBuriedLocked unburies every buried monster (#436) that a living player
+// has come within protocol.BuriedRevealRadius of, and starts its one-turn
+// crawl out.
+//
+// Runs BEFORE the turn's combat/AI pass, so a monster revealed this turn is
+// already visible on this turn's bundle — and, because canActFromTurn is set
+// to the NEXT turn, is visible and helpless for exactly one turn before it can
+// swing. That helpless turn is the counterplay: an ambush with no telegraph is
+// just damage you could not have avoided.
+//
+// Straight hex distance, not line of sight: the monster is underground, so
+// there is nothing to see through — what reveals it is a footstep overhead.
+// That also makes walking ONTO its hex a reveal (distance 0), which is why a
+// buried monster never needs to block its own tile.
+//
+// Never re-buries. Once out, out.
+//
+// Callers hold w.mu.
+func (w *World) revealBuriedLocked() {
+	players := w.allPlayersLocked()
+	if len(players) == 0 {
+		return
+	}
+
+	// Sorted, so the pass is a deterministic function of world state rather
+	// than of map iteration order — the same discipline the rng sites follow,
+	// kept here even though this draws no randomness.
+	for _, m := range w.unburiedOrBuriedMonstersLocked() {
+		if !m.buried {
+			continue
+		}
+
+		for _, p := range players {
+			if p.hp > 0 && HexDistance(p.hex, m.hex) <= protocol.BuriedRevealRadius {
+				m.buried = false
+				m.canActFromTurn = w.turn + 1
+
+				break
+			}
+		}
+	}
+}
+
+// unburiedOrBuriedMonstersLocked returns every monster, buried or not, sorted
+// by id — the population revealBuriedLocked scans. Named for what it includes
+// because the ordinary slices in this file deliberately exclude the buried.
+// Callers hold w.mu.
+func (w *World) unburiedOrBuriedMonstersLocked() []*entity {
+	out := make([]*entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster {
+			out = append(out, e)
+		}
+	}
+
+	slices.SortFunc(out, byEntityID)
+
+	return out
 }
 
 // advanceTurnLocked increments the turn counter at the end of a resolution

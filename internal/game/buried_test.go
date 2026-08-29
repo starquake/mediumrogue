@@ -9,10 +9,11 @@ import (
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
 
-// newBuriedWorld builds a full-size world (radius 24, the deployed value) so
+// newBuriedWorld builds a full-size world on the shared testSeed (radius 24,
+// the deployed value) so
 // the ring bands and mud coverage match production — burial is a spawn rule
 // that depends on both, and a small map collapses toward ring 0.
-func newBuriedWorld(t *testing.T, seed uint64) *game.World {
+func newBuriedWorld(t *testing.T) *game.World {
 	t.Helper()
 
 	return game.NewWorld(game.WorldConfig{
@@ -20,7 +21,7 @@ func newBuriedWorld(t *testing.T, seed uint64) *game.World {
 		CombatPatience:  testCombatPatience,
 		BubblePoll:      testBubblePoll,
 		DisconnectGrace: testDisconnectGrace,
-		WorldSeed:       seed,
+		WorldSeed:       testSeed,
 		Radius:          24,
 		Ticks:           hub.New(),
 	})
@@ -54,7 +55,7 @@ func TestBuriedIsOnlySetForOptedInKinds(t *testing.T) {
 func TestBuriedMonsterSpawnsOnMudOnly(t *testing.T) {
 	t.Parallel()
 
-	w := newBuriedWorld(t, 0xC0FFEE)
+	w := newBuriedWorld(t)
 	w.SpawnMonsters(120)
 
 	seen := 0
@@ -88,7 +89,7 @@ func TestBuriedMonsterSpawnsOnMudOnly(t *testing.T) {
 func TestBuriedMonsterIsAbsentFromTheWire(t *testing.T) {
 	t.Parallel()
 
-	w := newBuriedWorld(t, 0xC0FFEE)
+	w := newBuriedWorld(t)
 
 	join, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
@@ -111,22 +112,33 @@ func TestBuriedMonsterIsAbsentFromTheWire(t *testing.T) {
 	}
 }
 
-// TestBuriedMonsterNeitherFormsNorJoinsABubble: dormancy's combat half. A
-// buried monster adjacent to a player must not drag them into a fight.
+// TestBuriedMonsterNeitherFormsNorJoinsABubble: dormancy's combat half.
+//
+// Placed at 5 hexes — deliberately INSIDE CombatRadius (6), so an ordinary
+// monster there would form a bubble, and OUTSIDE BuriedRevealRadius (4), so
+// the reveal pass leaves it alone. That gap is the only distance at which
+// dormancy is observable in isolation; adjacent would just be testing the
+// reveal.
 func TestBuriedMonsterNeitherFormsNorJoinsABubble(t *testing.T) {
 	t.Parallel()
 
-	w := newBuriedWorld(t, 0xC0FFEE)
+	w := newBuriedWorld(t)
 
 	join, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
+	const dormantDistance = protocol.BuriedRevealRadius + 1 // 5: past the reveal, inside CombatRadius
+
 	at := w.EntityHexForTest(join.EntityID)
-	id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + 1, R: at.R}, "skeleton")
+	id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + dormantDistance, R: at.R}, "skeleton")
 	w.SetBuriedForTest(id, true)
 	w.ResolveTurnForTest()
+
+	if got, want := w.BuriedForTest(id), true; got != want {
+		t.Fatalf("still buried at %d hexes = %v, want %v (the test's own premise)", dormantDistance, got, want)
+	}
 
 	if got, want := inCombatOnWire(w.SnapshotFor(join.Token), join.EntityID), false; got != want {
 		t.Errorf("player in combat with a buried monster = %v, want %v", got, want)
@@ -154,4 +166,111 @@ func inCombatOnWire(ev protocol.TurnEvent, id int64) bool {
 	}
 
 	return false
+}
+
+// TestBuriedRevealsAtExactlyTheRadiusAndNotBeyond pins both sides of the
+// boundary. Only the far case can fail silently — a reveal that never fires
+// looks exactly like a world with no ambushers in it.
+func TestBuriedRevealsAtExactlyTheRadiusAndNotBeyond(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		distance   int
+		wantBuried bool
+	}{
+		{"inside the radius", protocol.BuriedRevealRadius - 1, false},
+		{"exactly at the radius", protocol.BuriedRevealRadius, false},
+		{"one hex beyond", protocol.BuriedRevealRadius + 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newBuriedWorld(t)
+
+			join, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
+			if err != nil {
+				t.Fatalf("Join: %v", err)
+			}
+
+			at := w.EntityHexForTest(join.EntityID)
+			id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + tc.distance, R: at.R}, "skeleton")
+			w.SetBuriedForTest(id, true)
+
+			w.ResolveTurnForTest()
+
+			if got, want := w.BuriedForTest(id), tc.wantBuried; got != want {
+				t.Errorf("buried at distance %d = %v, want %v", tc.distance, got, want)
+			}
+		})
+	}
+}
+
+// TestEmergingMonsterCannotActOnTheRevealTurnButCanOnTheNext is the
+// counterplay: the crawl-out is a real beat you get to react to. A monster
+// that emerged and swung in the same turn would be damage you could not have
+// avoided.
+func TestEmergingMonsterCannotActOnTheRevealTurnButCanOnTheNext(t *testing.T) {
+	t.Parallel()
+
+	w := newBuriedWorld(t)
+
+	join, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	at := w.EntityHexForTest(join.EntityID)
+	id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + protocol.BuriedRevealRadius, R: at.R}, "skeleton")
+	w.SetBuriedForTest(id, true)
+
+	before := w.EntityHexForTest(id)
+
+	// The reveal turn: it comes out, and is visible — but frozen mid-crawl.
+	w.ResolveTurnForTest()
+
+	if got, want := w.BuriedForTest(id), false; got != want {
+		t.Fatalf("buried after the reveal turn = %v, want %v", got, want)
+	}
+
+	if got, want := w.EntityHexForTest(id), before; got != want {
+		t.Errorf("moved on its own emergence turn: %v -> %v, want it rooted while it climbs out", before, got)
+	}
+
+	// The next turn: it is a normal skeleton and closes on the player.
+	w.ResolveTurnForTest()
+
+	wasDist := game.HexDistance(before, at)
+	if got := game.HexDistance(w.EntityHexForTest(id), at); got >= wasDist {
+		t.Errorf("distance to player after the turn AFTER emerging = %d, want < %d (it should act now)", got, wasDist)
+	}
+}
+
+// TestBuriedNeverRebuiles: once out, out. A monster that could re-bury when
+// you walked away would turn every retreat into a reset.
+func TestBuriedNeverReburies(t *testing.T) {
+	t.Parallel()
+
+	w := newBuriedWorld(t)
+
+	join, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	at := w.EntityHexForTest(join.EntityID)
+	id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + protocol.BuriedRevealRadius, R: at.R}, "skeleton")
+	w.SetBuriedForTest(id, true)
+	w.ResolveTurnForTest()
+
+	// Teleport it far beyond the reveal radius and keep the clock running.
+	w.SetHexForTest(id, protocol.Hex{Q: at.Q + protocol.InterestRadius - 1, R: at.R})
+
+	for range 3 {
+		w.ResolveTurnForTest()
+	}
+
+	if got, want := w.BuriedForTest(id), false; got != want {
+		t.Errorf("re-buried after walking away = %v, want %v — burial is a spawn state, never restored", got, want)
+	}
 }
