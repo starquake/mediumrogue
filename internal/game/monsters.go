@@ -36,6 +36,7 @@ const (
 const (
 	idKindGoblin    = "goblin"
 	idKindSkeleton  = "skeleton"
+	idKindWoodwose  = "woodwose"
 	idKindFrostWisp = "frost-wisp"
 	idKindWraith    = "wraith"
 )
@@ -117,15 +118,39 @@ type monsterDef struct {
 	dropChance  int // percent, this kind's own roll (protocol.DropChancePercent retired)
 	drops       []drop
 	rings       []int // which difficulty rings (0..protocol.RingCount-1) this kind spawns in
-	// buriesOnSpawn makes this kind spawn BURIED in mud (#436): absent from
-	// the wire, dormant, and revealed only when a player comes within
-	// protocol.BuriedRevealRadius. A kind that buries is thereby a MUD-ONLY
-	// kind — SpawnMonsters will not place it on any other terrain.
+	// spawnTerrain confines this kind to ONE terrain at spawn (#436, #437,
+	// generalised for #438). The empty Terrain means "anywhere walkable",
+	// which is every kind but the two terrain-signature ones.
+	//
+	// This is what makes "each terrain has a signature threat" content rather
+	// than code: the skeleton is the bog's (mud), the Woodwose is the wood's
+	// (forest), and a third costs one field. SpawnMonsters filters the
+	// candidate KIND POOL by the hex's terrain, so a confined kind's frequency
+	// becomes a function of that terrain's coverage.
+	//
+	// A confined kind needs its terrain present in every ring it spawns in, or
+	// it is silently absent there — ValidateSpawnTerrainCoverage refuses to
+	// boot such a world.
+	spawnTerrain protocol.Terrain
+	// buriesOnSpawn makes this kind spawn BURIED (#436): absent from the wire,
+	// dormant, and revealed only when a player comes within
+	// protocol.BuriedRevealRadius. Requires spawnTerrain — there has to be
+	// something to bury in (validateMonsterTerrain).
 	//
 	// A def property, never a per-kind special case: "buried ambusher" is
 	// content any future kind can opt into (a trapdoor spider, a bog wraith).
 	buriesOnSpawn bool
-	rules         []ruleCard // future kind passives; empty at launch
+	// movesOnlyUnseen makes this kind a STALKER (#438): in the WORLD domain it
+	// skips its move on any turn a player can see its hex, and advances freely
+	// when none can. Targeting, aggro and leash are untouched, and inside a
+	// combat bubble it fights normally — a creature that froze mid-fight
+	// whenever you looked at it would be a puzzle, not an enemy, and it would
+	// interact badly with the WeGo commit.
+	//
+	// Deterministic geometry (seesLocked, a raycast over terrain), never a
+	// stealth roll or a perception contest — the ARPG gate.
+	movesOnlyUnseen bool
+	rules           []ruleCard // future kind passives; empty at launch
 	// summon, when non-nil, makes this kind a SUMMONER (#271, summon.go): while
 	// in combat it periodically raises minions of summon.minionKind on nearby
 	// free hexes, bounded by summon.maxLiving and paced by summon.everyTurns.
@@ -352,6 +377,7 @@ func validateMonsterDefs(defs []*monsterDef) {
 		validateMonsterRings(def, covered)
 		validateRuleCards(def.id, def.rules)
 		validateMonsterSummon(def)
+		validateMonsterTerrain(def)
 	}
 
 	for r := range protocol.RingCount {
@@ -399,6 +425,16 @@ func validateMonsterAggroRadius(def *monsterDef) {
 // greater than the kind's base aggro radius (def.aggroRadius if set, else
 // protocol.MonsterAggroRadius) — a leash at or inside the aggro radius
 // would drop every chase the moment it starts.
+// validateMonsterTerrain enforces the one invariant that couples the two
+// terrain-signature fields: a kind cannot BURY without a spawnTerrain to bury
+// in. Burial reads as "hidden under the ground you are standing on", and a
+// burying kind free to spawn anywhere would be hiding in open grass (#438).
+func validateMonsterTerrain(def *monsterDef) {
+	if def.buriesOnSpawn && def.spawnTerrain == "" {
+		panic("game: monster kind " + def.id + " buries on spawn but has no spawnTerrain to bury in")
+	}
+}
+
 func validateMonsterLeashRadius(def *monsterDef) {
 	if def.leashRadius == 0 {
 		return

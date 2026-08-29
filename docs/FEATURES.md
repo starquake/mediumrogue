@@ -1276,6 +1276,50 @@ roll, so it is ARPG-legal on jewelry.
   grass/forest/mud/water), rock rim, forced origin clearing, spawns restricted
   to the origin-connected walkable region. Fixed default seed → identical
   world every restart. The camera follows the player (see Movement).
+- **Terrain-signature kinds (#436, #438)** — a kind whose def sets
+  `spawnTerrain` spawns on that terrain and **nowhere else**. Two exist:
+
+  | Kind | Terrain | Signature behaviour |
+  |---|---|---|
+  | **Skeleton** | mud | spawns **buried**, crawls out when you come close |
+  | **Woodwose** | forest | **advances only while no player can see it** |
+
+  Placement filters the candidate **kind pool** by the hex's terrain, so
+  ordinary ground still spawns something — and a confined kind's frequency
+  becomes a function of its terrain's coverage (mud ~9% of land, forest ~27%).
+  **A world that cannot support one refuses to start**:
+  `ValidateSpawnTerrainCoverage` checks every confined kind's own `rings` at
+  boot and exits naming the kind, terrain, ring and seed. It runs under
+  `rogue -check` too, so **`make smoke` validates a candidate `WORLD_SEED`
+  without starting a server**.
+
+- **The Woodwose (#438)** — the forest's signature threat, and the first
+  terrain-*aware* monster behaviour:
+
+  | Rule | Behaviour |
+  |---|---|
+  | **Holds while seen** | in the **world domain**, it skips its move on any turn a player can see its hex |
+  | **Advances while unseen** | closes normally when none can |
+  | **Fights normally in a bubble** | a creature that froze mid-fight whenever you looked at it would be a puzzle, not an enemy — and it would interact badly with the WeGo commit |
+  | **No roll of any kind** | `seesLocked` is deterministic geometry, a raycast over terrain. **Not** a stealth check and **not** a perception contest |
+
+  **Forest is the difficulty knob, and it was already there.** A player sees a
+  monster at `CombatRadius` (6); the monster aggroes at its own reach
+  (`aggroRadius` 8). Both pay `ForestSightCost` (2) per intervening tree, so
+  the band where it is *aggroed but unseen* — and therefore closing — sits at
+  7–8 hexes on open grass and shifts to **5–6 behind a single belt of trees**.
+  Keep it in view and it cannot close; step behind trees and it gains ground.
+
+  Counter-intuitively, **more forest is not more stalking**: at four
+  intervening trees the cost is 8 and *both* budgets fail, so the creature is
+  blinded too and simply wanders.
+
+  Stats are pitched just above the Skeleton, its nearest neighbour: **16 HP,
+  Bone Club, 35 XP, aggro 8, 30% drop chance, rings 1–2.** Its table leads with
+  the **Longbow** — the counter-signal this roster uses (Skeleton → Ironhead
+  Greatmaul): the answer to a thing that closes while unwatched is to kill it
+  before it arrives.
+
 - **Buried monsters (#436)** — a kind whose def sets `buriesOnSpawn` spawns
   **underground in mud**, and is not in the world until you disturb it:
 
@@ -1290,18 +1334,10 @@ roll, so it is ARPG-legal on jewelry.
   4 is inside both `CombatRadius` (6) and the Skeleton's `aggroRadius` (8), so
   emerging leads straight into the fight rather than into a stare-down.
 
-  **A burying kind is a mud-only kind**: `SpawnMonsters` filters the candidate
-  KIND POOL by the hex's terrain, so ordinary ground still spawns something.
-  Its frequency therefore becomes a function of mud coverage. **The Skeleton is
-  the only kind that buries today** — it is a def property, so a trapdoor
-  spider or a bog wraith can opt in without touching combat.
-
-  **A world that cannot support it refuses to start.** Mud follows the water
-  and the seed decides where the water goes, so a ring can end up with none —
-  roughly 1 seed in 200–500. `ValidateBuriedKindCoverage` checks every burying
-  kind's own `rings` at boot and exits with the kind, the ring and the seed
-  named. It runs under `rogue -check` too, so **`make smoke` validates a
-  candidate `WORLD_SEED` without starting a server**.
+  **The Skeleton is the only kind that buries today** — it is a def property,
+  so a trapdoor spider or a bog wraith can opt in without touching combat.
+  Burial requires a `spawnTerrain` (there has to be something to bury in), which
+  content validation enforces at process start.
 
 - **Mud (#437)** — the fifth terrain, and the ground #436's skeletons bury in.
   Walkable at **no movement cost** (everything moves exactly one hex per turn,

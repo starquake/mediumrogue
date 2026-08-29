@@ -982,7 +982,8 @@ var monsterDefs = []*monsterDef{
 		},
 		rings: []int{1, 2},
 		// #436: every skeleton spawns buried in mud and crawls out when you
-		// get close. This one flag is what makes it a mud-only kind.
+		// get close. The bog is its signature terrain.
+		spawnTerrain:  protocol.TerrainMud,
 		buriesOnSpawn: true,
 	},
 	{
@@ -1074,6 +1075,38 @@ var monsterDefs = []*monsterDef{
 		rings: []int{2},
 	},
 
+	// The Woodwose (#438) — the forest's signature threat, and the second
+	// terrain-confined kind after the skeleton's bog.
+	//
+	// It advances ONLY while no player can see its hex, and holds still while
+	// one can. Forest is the only terrain that already carried a combat rule
+	// (ForestSightCost cuts sight from 6 hexes to ~4 through one belt of
+	// trees), and nothing exploited it — this turns that rule into a decision:
+	// keep it in view and it cannot close; step behind trees and it gains
+	// ground. You are not dodging an ambush, you are managing one.
+	//
+	// Pitched just above the Skeleton (14 HP, 30 XP), its nearest neighbour:
+	// slightly tougher and worth slightly more, because a thing that closes
+	// whenever you look away is harder to keep at arm's length. Its club is
+	// the Skeleton's, deliberately — a wild man swings a torn branch, and
+	// reusing the natural weapon keeps it pitched at that neighbour rather
+	// than introducing a new damage profile alongside a new behaviour.
+	//
+	// The Longbow leads its table as the counter-signal this roster uses
+	// (Skeleton -> Ironhead Greatmaul): the answer to a thing that closes
+	// while unwatched is to kill it before it arrives.
+	{
+		id: idKindWoodwose, name: "Woodwose",
+		maxHP: 16, weapon: idBoneClub, xp: 35, aggroRadius: 8, dropChance: 30,
+		drops: []drop{
+			{defID: idLongbow, weight: 3},        // reach — kill it before it closes
+			{defID: idPaddedBoots, weight: 2},    // its own soft-footedness
+			{defID: idPilgrimsMantle, weight: 2}, // a wanderer's cloak
+		},
+		rings:           []int{1, 2},
+		spawnTerrain:    protocol.TerrainForest,
+		movesOnlyUnseen: true,
+	},
 	// In-combat-spawn foundation proof pair (#271): the Necromancer is the
 	// first SUMMONER — while bubbled it raises weak Risen adds on nearby free
 	// hexes (summon.go's tickSummonsLocked, an end-of-turn hook), bounded by a

@@ -1756,3 +1756,62 @@ guard built on the wrong set passes while the thing it guards fails — which is
 precisely the failure #437's original guard had, and the reason this ticket
 exists. Mirroring `spawnCandidatesByRingLocked` is not fussiness; it is the
 difference between a check and a decoration.
+
+## Each terrain has a signature threat, and the sight rule was already the knob *(built 2026-08-29, #438)*
+
+The Woodwose advances only while no player can see it, and holds still while
+one can. It is the forest's signature kind, the second after the bog's skeleton.
+
+**The direction, stated deliberately rather than discovered later.** With #436
+making skeletons mud-only and this making the Woodwose forest-only, the roster
+now has a shape: **each terrain has a signature threat**. Water and rock have
+none — water has no walkable threat and rock is unwalkable — and that is a
+decision, not an oversight. Writing it down is what makes the next kind a
+question with an answer ("which terrain is unclaimed?") rather than a blank
+page.
+
+**So terrain confinement is one field, not two mechanics.** #436 shipped
+`buriesOnSpawn` doing double duty: burial *and* mud-only placement. This slice
+split them — `spawnTerrain` confines, `buriesOnSpawn` buries — because the
+Woodwose needs the first without the second. The coverage guard generalised the
+same way. That is the wildfire gate working as intended: the third
+terrain-signature kind is now a content row, not a code change.
+
+### The mechanic spends a rule the engine already had
+
+Forest was the only terrain already carrying a combat rule — `ForestSightCost`
+cuts effective sight from 6 hexes to ~4 through one belt of trees — and
+**nothing exploited it**. No monster kind was terrain-aware at all.
+
+The two sight budgets are what make this work, and they were already different:
+a player sees a monster at `CombatRadius` (6), while a monster aggroes at its
+own `aggroRadius` (8). The gap between them is the band where a stalker is
+*aggroed but unseen*, and therefore closing. Trees cost both budgets the same
+2 per hex, so a belt of forest slides that band from 7–8 hexes on open grass to
+5–6 in the woods. Keep it in view and it cannot close; break line of sight and
+it gains ground. **You are not dodging an ambush, you are managing one.**
+
+**More forest is not more stalking**, which is the intuitive and wrong reading
+— and the first version of the test asserted it. At four intervening trees the
+cost is 8 and *both* budgets fail: the creature is blinded too and just
+wanders. The mechanic lives in a band, not on a gradient.
+
+### Why it is world-domain only
+
+Inside a combat bubble the Woodwose fights like anything else. A creature that
+froze mid-fight whenever someone looked at it would be a puzzle rather than an
+enemy, and it would interact badly with the WeGo commit — you would be choosing
+actions against something whose movement depends on where everyone happens to
+be standing when the turn resolves. `thinkWanderLocked` is world-domain only
+for exactly the same reason.
+
+### It is geometry, not a stealth check
+
+`seesLocked` is a deterministic raycast over terrain. There is no roll, and no
+comparison of the creature's number against yours — no perception contest, no
+stealth skill, no opposed check. That is what keeps it on the ARPG side of the
+line the project drew: a TTRPG version of this creature would be a Stealth vs.
+Perception roll, and it would feel completely different — sometimes you fail to
+see a thing standing in the open, which is not the fantasy here. **The tell is
+coupling**, and there is none: whether you see it is a fact about the terrain
+between you.

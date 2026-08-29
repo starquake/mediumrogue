@@ -1866,6 +1866,59 @@ func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.advanceTurnLocked()
 }
 
+// sitsOutTurnLocked reports whether m does nothing at all this turn — the one
+// place that answers "does this monster act?", so a third reason to sit still
+// lands here rather than as a third guard inside the AI loop.
+//
+// Callers hold w.mu.
+func (w *World) sitsOutTurnLocked(m *entity, domain simDomain) bool {
+	// Buried is dormant (#436): no aggro, no chase, no leash walk, no idle
+	// drift. And on the turn it claws out it is visible but still cannot act —
+	// that one turn of helplessness IS the telegraph that makes the ambush fair.
+	if m.buried || w.turn < m.canActFromTurn {
+		return true
+	}
+
+	// A stalker (#438) holds still on any turn a player can see it, and
+	// advances when none can. WORLD DOMAIN ONLY: inside a bubble it fights
+	// normally, because a creature that froze mid-fight whenever you looked at
+	// it would be a puzzle rather than an enemy, and it would interact badly
+	// with the WeGo commit — you would be choosing actions against something
+	// whose movement depends on where everyone happens to be standing.
+	// thinkWanderLocked is world-domain only for the same reason.
+	return domain == domainWorld && w.stalkerHeldLocked(m)
+}
+
+// stalkerHeldLocked reports whether m is a stalker (#438) that any living
+// player can currently see, and so must not move this turn.
+//
+// Uses seesLocked exactly as combat does — deterministic geometry, a raycast
+// over terrain, budgeted at CombatRadius. That is the whole design: this is
+// NOT a stealth check and NOT a perception contest (no roll, no stat compared
+// against a stat), which is what keeps it on the ARPG side of the line.
+//
+// It also means FOREST does the work. ForestSightCost cuts effective sight
+// from 6 hexes to ~4 through one belt of trees and ~2 through two, so in the
+// deep woods a stalker closes to knife-range before it has to stop — while on
+// open grass you can hold it at six. The terrain rule that already existed is
+// the difficulty knob; nothing new was needed.
+//
+// Callers hold w.mu.
+func (w *World) stalkerHeldLocked(m *entity) bool {
+	k := kindOf(m)
+	if k == nil || !k.movesOnlyUnseen {
+		return false
+	}
+
+	for _, p := range w.allPlayersLocked() {
+		if p.hp > 0 && w.seesLocked(p.hex, m.hex) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // revealBuriedLocked unburies every buried monster (#436) that a living player
 // has come within protocol.BuriedRevealRadius of, and starts its one-turn
 // crawl out.
@@ -3336,11 +3389,7 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 			continue
 		}
 
-		// Buried is dormant (#436): no aggro, no chase, no leash walk, no
-		// idle drift. And on the turn it claws out it is visible but still
-		// cannot act — that one turn of helplessness IS the telegraph that
-		// makes the ambush fair.
-		if m.buried || w.turn < m.canActFromTurn {
+		if w.sitsOutTurnLocked(m, domain) {
 			continue
 		}
 

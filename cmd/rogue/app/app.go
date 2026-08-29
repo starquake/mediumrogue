@@ -73,7 +73,7 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	// snapshot branch so it runs on every boot, including `-check`, which
 	// makes `make smoke` a way to validate a candidate WORLD_SEED without
 	// starting a server.
-	if err := world.ValidateBuriedKindCoverage(); err != nil {
+	if err := world.ValidateSpawnTerrainCoverage(); err != nil {
 		logger.Error("world", "err", err)
 
 		return exitErr
