@@ -173,14 +173,14 @@ type entityDTO struct {
 	// non-summoner, every un-summoned monster).
 	SummonCooldown int   `json:"summonCooldown,omitempty"`
 	SummonerID     int64 `json:"summonerId,omitempty"`
-	// Buried/EmergingUntilTurn are the burial state (#436, v15). Both must
+	// Buried/CanActFromTurn are the burial state (#436, v15). Both must
 	// survive a restart or every ambush in the world would spring itself:
 	// a restored monster that lost Buried is simply standing there, and one
-	// that lost EmergingUntilTurn gets to act on the turn it is meant to be
+	// that lost CanActFromTurn gets to act on the turn it is meant to be
 	// clawing out. Omitted when zero — every player and every kind that does
 	// not bury.
-	Buried            bool  `json:"buried,omitempty"`
-	EmergingUntilTurn int64 `json:"emergingUntilTurn,omitempty"`
+	Buried         bool  `json:"buried,omitempty"`
+	CanActFromTurn int64 `json:"canActFromTurn,omitempty"`
 }
 
 // timedEffectDTO mirrors timedEffect (effects.go) for the wire-decoupled disk
@@ -452,7 +452,7 @@ func entityToDTO(e *entity) entityDTO {
 		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
 		ActiveReadyTurn: e.activeReadyTurn, Effects: timedEffectsToDTO(e.effects),
 		SummonCooldown: e.summonCooldown, SummonerID: e.summonerID,
-		Buried: e.buried, EmergingUntilTurn: e.emergingUntilTurn,
+		Buried: e.buried, CanActFromTurn: e.canActFromTurn,
 	}
 }
 
@@ -501,7 +501,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,
 		activeReadyTurn: ed.ActiveReadyTurn, effects: timedEffectsFromDTO(ed.Effects),
 		summonCooldown: ed.SummonCooldown, summonerID: ed.SummonerID,
-		buried: ed.Buried, emergingUntilTurn: ed.EmergingUntilTurn,
+		buried: ed.Buried, canActFromTurn: ed.CanActFromTurn,
 	}
 }
 

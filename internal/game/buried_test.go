@@ -79,3 +79,79 @@ func TestBuriedMonsterSpawnsOnMudOnly(t *testing.T) {
 		t.Skip("no skeletons placed on this seed; nothing to assert")
 	}
 }
+
+// TestBuriedMonsterIsAbsentFromTheWire reads the RAW turn bundle, not the
+// client's view of it. That is the whole point: a buried monster is omitted
+// server-side, so nothing a client — or anyone reading the SSE stream —
+// receives can reveal it. A "sent but flagged hidden" design would pass a
+// client-side assertion and fail this one.
+func TestBuriedMonsterIsAbsentFromTheWire(t *testing.T) {
+	t.Parallel()
+
+	w := newBuriedWorld(t, 0xC0FFEE)
+
+	join, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	// Right next to the player, so only burial can be keeping it off the wire
+	// — not the interest cull, not line of sight.
+	at := w.EntityHexForTest(join.EntityID)
+	id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + 1, R: at.R}, "skeleton")
+
+	if got, want := entityOnWire(w.SnapshotFor(join.Token), id), true; got != want {
+		t.Fatalf("unburied monster on the wire = %v, want %v (the test's own premise)", got, want)
+	}
+
+	w.SetBuriedForTest(id, true)
+
+	if got, want := entityOnWire(w.SnapshotFor(join.Token), id), false; got != want {
+		t.Errorf("buried monster on the wire = %v, want %v — it must be omitted entirely", got, want)
+	}
+}
+
+// TestBuriedMonsterNeitherFormsNorJoinsABubble: dormancy's combat half. A
+// buried monster adjacent to a player must not drag them into a fight.
+func TestBuriedMonsterNeitherFormsNorJoinsABubble(t *testing.T) {
+	t.Parallel()
+
+	w := newBuriedWorld(t, 0xC0FFEE)
+
+	join, err := w.Join("", "alice", protocol.ClassFighter, protocol.SpeciesHuman)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+
+	at := w.EntityHexForTest(join.EntityID)
+	id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + 1, R: at.R}, "skeleton")
+	w.SetBuriedForTest(id, true)
+	w.ResolveTurnForTest()
+
+	if got, want := inCombatOnWire(w.SnapshotFor(join.Token), join.EntityID), false; got != want {
+		t.Errorf("player in combat with a buried monster = %v, want %v", got, want)
+	}
+}
+
+// entityOnWire reports whether an entity id appears in a rendered bundle.
+func entityOnWire(ev protocol.TurnEvent, id int64) bool {
+	for _, e := range ev.Entities {
+		if e.ID == id {
+			return true
+		}
+	}
+
+	return false
+}
+
+// inCombatOnWire reads a player's own InCombat flag out of a rendered bundle,
+// which is how a client learns it — no test-only accessor needed.
+func inCombatOnWire(ev protocol.TurnEvent, id int64) bool {
+	for _, e := range ev.Entities {
+		if e.ID == id {
+			return e.InCombat
+		}
+	}
+
+	return false
+}

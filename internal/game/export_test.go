@@ -797,9 +797,9 @@ func (w *World) BuriedForTest(id int64) bool {
 	return ok && e.buried
 }
 
-// EmergingUntilTurnForTest exposes the turn a just-unburied monster stops
-// being unable to act (#436) — 0 for anything that never buried.
-func (w *World) EmergingUntilTurnForTest(id int64) int64 {
+// CanActFromTurnForTest exposes the first turn a just-unburied monster may
+// act again (#436) — 0 for anything that never buried.
+func (w *World) CanActFromTurnForTest(id int64) int64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -808,7 +808,7 @@ func (w *World) EmergingUntilTurnForTest(id int64) int64 {
 		return 0
 	}
 
-	return e.emergingUntilTurn
+	return e.canActFromTurn
 }
 
 // SetBuriedForTest forces an entity's burial state, so a reveal/dormancy test

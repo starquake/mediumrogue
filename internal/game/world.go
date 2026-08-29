@@ -254,12 +254,15 @@ type entity struct {
 	// no bubble), and cleared for good the first time a player comes within
 	// protocol.BuriedRevealRadius. Never re-set — once out, out.
 	buried bool
-	// emergingUntilTurn is the last world turn on which a just-unburied
-	// monster still cannot act: it is clawing its way out. Set to the turn of
-	// the reveal, so the monster is VISIBLE for one turn before it can do
-	// anything — the telegraph that makes the ambush fair. Zero for anything
-	// that never buried.
-	emergingUntilTurn int64
+	// canActFromTurn is the FIRST world turn on which a just-unburied monster
+	// may act again: it spends the reveal turn clawing its way out, visible
+	// but helpless, which is the telegraph that makes the ambush fair.
+	//
+	// Set to w.turn+1 at the reveal, so the comparison is `w.turn < canActFromTurn`
+	// and the ZERO VALUE correctly means "can act". An "until" form would have
+	// read `w.turn <= 0` as dormant at turn 0 and frozen every monster in the
+	// world — which is exactly what it did before the AI tests caught it.
+	canActFromTurn int64
 	// monsterKind is the monster-kind registry id (content.go's monsterDefs,
 	// e.g. "wolf"); empty for players. Set at spawn (SpawnMonsters,
 	// SpawnMonsterAt, PlaceMonsterForTest); kindOf resolves it back to the
@@ -3271,6 +3274,14 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 			continue
 		}
 
+		// Buried is dormant (#436): no aggro, no chase, no leash walk, no
+		// idle drift. And on the turn it claws out it is visible but still
+		// cannot act — that one turn of helplessness IS the telegraph that
+		// makes the ambush fair.
+		if m.buried || w.turn < m.canActFromTurn {
+			continue
+		}
+
 		if domain == domainWorld && w.thinkReturnHomeLocked(m) {
 			continue // beyond leash or already returning: this turn is a step home
 		}
@@ -3466,6 +3477,15 @@ func (w *World) entityViewsLocked() []protocol.Entity {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 
 	for _, e := range w.entities {
+		// A buried monster (#436) never becomes a view at all — not sent and
+		// hidden, not sent with a flag, simply absent. The same
+		// server-authoritative treatment the InterestRadius cull gets, and for
+		// the same reason: anything on the wire can be read straight off the
+		// SSE stream, so a client-side secret is not a secret.
+		if e.buried {
+			continue
+		}
+
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
 			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, Reach: monsterReachLocked(e),

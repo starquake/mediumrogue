@@ -38,7 +38,11 @@ type bubble struct {
 func (w *World) recomputeBubblesLocked(now time.Time) {
 	var comps [][]*entity
 
-	for _, comp := range connectedComponents(w.entitiesSlice(), w.seesLocked) {
+	// A buried monster (#436) is not in the world as far as combat is
+	// concerned: it forms no bubble and joins none. Filtered HERE rather than
+	// inside connectedComponents so the graph function stays a pure
+	// geometry/visibility question with no game-state opinion in it.
+	for _, comp := range connectedComponents(w.unburiedEntitiesSliceLocked(), w.seesLocked) {
 		if hasOpposingPair(comp) {
 			comps = append(comps, comp)
 
@@ -103,11 +107,20 @@ func (w *World) recomputeBubblesLocked(now time.Time) {
 	w.scatterStacksLocked()
 }
 
-// entitiesSlice returns every entity sorted by id, so component grouping and
-// bubble-id assignment are deterministic. Callers hold w.mu.
-func (w *World) entitiesSlice() []*entity {
+// unburiedEntitiesSliceLocked returns every entity combat is allowed to see —
+// everything except the buried (#436) — sorted by id, so component grouping
+// and bubble-id assignment are deterministic rather than map-order dependent.
+//
+// It replaced an unfiltered entitiesSlice, which had no callers left once
+// burial landed. Callers hold w.mu.
+func (w *World) unburiedEntitiesSliceLocked() []*entity {
 	out := make([]*entity, 0, len(w.entities))
+
 	for _, e := range w.entities {
+		if e.buried {
+			continue
+		}
+
 		out = append(out, e)
 	}
 
