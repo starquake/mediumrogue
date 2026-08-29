@@ -188,6 +188,19 @@ const serverEnv = (port: number, monsters?: number, extra?: Record<string, strin
   // covered where it belongs, by internal/game's boundary tests. A spec whose
   // subject IS the radius should override this.
   WORLD_RADIUS: String(E2E_WORLD_RADIUS),
+  // Pinned since #436, and it is NOT arbitrary. Burying kinds spawn only in
+  // mud, and the server now refuses to boot a world whose skeleton rings have
+  // none (ValidateBuriedKindCoverage). That check is comfortable at the
+  // deployed radius 24 — it rejects roughly 1 seed in 200-500 — but a
+  // radius-10 world has far less area to put mud in, so it rejects about 1 in
+  // 3, and the config DEFAULT seed is one of them: every e2e server exited 1
+  // before this line existed.
+  //
+  // Seed 3 has mud in rings 1 and 2 at radius 10 and the largest walkable
+  // region among the candidates checked, which also suits the low-monster
+  // specs. Re-derive it (any seed satisfying the check at this radius) if mud
+  // generation is ever retuned — do not reach for the guard.
+  WORLD_SEED: "3",
   ...(monsters ? { MONSTER_COUNT: String(monsters) } : {}),
   ...(extra ?? {}),
 });

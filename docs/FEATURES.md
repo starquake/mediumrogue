@@ -1276,6 +1276,33 @@ roll, so it is ARPG-legal on jewelry.
   grass/forest/mud/water), rock rim, forced origin clearing, spawns restricted
   to the origin-connected walkable region. Fixed default seed → identical
   world every restart. The camera follows the player (see Movement).
+- **Buried monsters (#436)** — a kind whose def sets `buriesOnSpawn` spawns
+  **underground in mud**, and is not in the world until you disturb it:
+
+  | Rule | Behaviour |
+  |---|---|
+  | **Off the wire** | omitted from the turn bundle entirely — not sent-and-hidden. Nothing a client or an SSE reader receives can reveal it |
+  | **Dormant** | no aggro, no chase, no leash walk, no idle drift; forms and joins no combat bubble |
+  | **Reveal** | any living player within `BuriedRevealRadius` (**4**), by straight hex distance — it is underground, so line of sight is not the question. Walking onto its hex is distance 0, so it never needs to block its own tile |
+  | **Emergence** | it is **visible but cannot act for exactly one turn** while it climbs out. That turn is the counterplay — an ambush with no telegraph is just damage you could not have avoided |
+  | **Never re-buries** | once out, out; otherwise every retreat would be a reset |
+
+  4 is inside both `CombatRadius` (6) and the Skeleton's `aggroRadius` (8), so
+  emerging leads straight into the fight rather than into a stare-down.
+
+  **A burying kind is a mud-only kind**: `SpawnMonsters` filters the candidate
+  KIND POOL by the hex's terrain, so ordinary ground still spawns something.
+  Its frequency therefore becomes a function of mud coverage. **The Skeleton is
+  the only kind that buries today** — it is a def property, so a trapdoor
+  spider or a bog wraith can opt in without touching combat.
+
+  **A world that cannot support it refuses to start.** Mud follows the water
+  and the seed decides where the water goes, so a ring can end up with none —
+  roughly 1 seed in 200–500. `ValidateBuriedKindCoverage` checks every burying
+  kind's own `rings` at boot and exits with the kind, the ring and the seed
+  named. It runs under `rogue -check` too, so **`make smoke` validates a
+  candidate `WORLD_SEED` without starting a server**.
+
 - **Mud (#437)** — the fifth terrain, and the ground #436's skeletons bury in.
   Walkable at **no movement cost** (everything moves exactly one hex per turn,
   so a movement cost is a mechanic the engine does not have) and **transparent**

@@ -249,6 +249,20 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
+	// buried marks a monster that spawned underground (#436) and has not been
+	// disturbed: omitted from the wire entirely, dormant (no aggro, no wander,
+	// no bubble), and cleared for good the first time a player comes within
+	// protocol.BuriedRevealRadius. Never re-set — once out, out.
+	buried bool
+	// canActFromTurn is the FIRST world turn on which a just-unburied monster
+	// may act again: it spends the reveal turn clawing its way out, visible
+	// but helpless, which is the telegraph that makes the ambush fair.
+	//
+	// Set to w.turn+1 at the reveal, so the comparison is `w.turn < canActFromTurn`
+	// and the ZERO VALUE correctly means "can act". An "until" form would have
+	// read `w.turn <= 0` as dormant at turn 0 and frozen every monster in the
+	// world — which is exactly what it did before the AI tests caught it.
+	canActFromTurn int64
 	// monsterKind is the monster-kind registry id (content.go's monsterDefs,
 	// e.g. "wolf"); empty for players. Set at spawn (SpawnMonsters,
 	// SpawnMonsterAt, PlaceMonsterForTest); kindOf resolves it back to the
@@ -1846,9 +1860,71 @@ func (w *World) occupiedForLocked(m *entity, h protocol.Hex) bool {
 // landing a player next to an un-bubbled monster — credits no XP to anyone.
 func (w *World) resolveWorldTurnLocked(members []*entity) {
 	w.regenPlayersLocked(members)
+	w.revealBuriedLocked()
 	w.resolveCombatLocked(members, w.allPlayersLocked(), domainWorld)
 	w.checkReachQuestsLocked()
 	w.advanceTurnLocked()
+}
+
+// revealBuriedLocked unburies every buried monster (#436) that a living player
+// has come within protocol.BuriedRevealRadius of, and starts its one-turn
+// crawl out.
+//
+// Runs BEFORE the turn's combat/AI pass, so a monster revealed this turn is
+// already visible on this turn's bundle — and, because canActFromTurn is set
+// to the NEXT turn, is visible and helpless for exactly one turn before it can
+// swing. That helpless turn is the counterplay: an ambush with no telegraph is
+// just damage you could not have avoided.
+//
+// Straight hex distance, not line of sight: the monster is underground, so
+// there is nothing to see through — what reveals it is a footstep overhead.
+// That also makes walking ONTO its hex a reveal (distance 0), which is why a
+// buried monster never needs to block its own tile.
+//
+// Never re-buries. Once out, out.
+//
+// Callers hold w.mu.
+func (w *World) revealBuriedLocked() {
+	players := w.allPlayersLocked()
+	if len(players) == 0 {
+		return
+	}
+
+	// Sorted, so the pass is a deterministic function of world state rather
+	// than of map iteration order — the same discipline the rng sites follow,
+	// kept here even though this draws no randomness.
+	for _, m := range w.unburiedOrBuriedMonstersLocked() {
+		if !m.buried {
+			continue
+		}
+
+		for _, p := range players {
+			if p.hp > 0 && HexDistance(p.hex, m.hex) <= protocol.BuriedRevealRadius {
+				m.buried = false
+				m.canActFromTurn = w.turn + 1
+
+				break
+			}
+		}
+	}
+}
+
+// unburiedOrBuriedMonstersLocked returns every monster, buried or not, sorted
+// by id — the population revealBuriedLocked scans. Named for what it includes
+// because the ordinary slices in this file deliberately exclude the buried.
+// Callers hold w.mu.
+func (w *World) unburiedOrBuriedMonstersLocked() []*entity {
+	out := make([]*entity, 0, len(w.entities))
+
+	for _, e := range w.entities {
+		if e.kind == protocol.EntityMonster {
+			out = append(out, e)
+		}
+	}
+
+	slices.SortFunc(out, byEntityID)
+
+	return out
 }
 
 // advanceTurnLocked increments the turn counter at the end of a resolution
@@ -3260,6 +3336,14 @@ func (w *World) thinkMonstersLocked(rng *mrand.Rand, members, targets []*entity,
 			continue
 		}
 
+		// Buried is dormant (#436): no aggro, no chase, no leash walk, no
+		// idle drift. And on the turn it claws out it is visible but still
+		// cannot act — that one turn of helplessness IS the telegraph that
+		// makes the ambush fair.
+		if m.buried || w.turn < m.canActFromTurn {
+			continue
+		}
+
 		if domain == domainWorld && w.thinkReturnHomeLocked(m) {
 			continue // beyond leash or already returning: this turn is a step home
 		}
@@ -3455,6 +3539,15 @@ func (w *World) entityViewsLocked() []protocol.Entity {
 	entities := make([]protocol.Entity, 0, len(w.entities))
 
 	for _, e := range w.entities {
+		// A buried monster (#436) never becomes a view at all — not sent and
+		// hidden, not sent with a flag, simply absent. The same
+		// server-authoritative treatment the InterestRadius cull gets, and for
+		// the same reason: anything on the wire can be read straight off the
+		// SSE stream, so a client-side secret is not a secret.
+		if e.buried {
+			continue
+		}
+
 		entities = append(entities, protocol.Entity{
 			ID: e.id, Hex: e.hex, Kind: e.kind, Name: entityNameLocked(e), Class: e.class, Species: e.species,
 			HP: e.hp, MaxHP: e.maxHP, InCombat: e.bubbleID != 0, Reach: monsterReachLocked(e),

@@ -68,7 +68,7 @@ func craftInventorySnapshot() []byte {
 		// DTO — this fixture carries neither, so only the version moves). The
 		// loader REJECTS a version mismatch by design, so a crafted fixture has
 		// to move with the version — it is not a value to weaken.
-		"version":      14, // #437 added mud, which re-renders the map from the same seed
+		"version":      15, // #436 added burial state to the entity DTO
 		"worldSeed":    persistSeed,
 		"worldRadius":  persistRadius,
 		"turn":         5,

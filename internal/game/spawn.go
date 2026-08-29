@@ -1,6 +1,8 @@
 package game
 
 import (
+	"errors"
+	"fmt"
 	mrand "math/rand/v2"
 	"slices"
 
@@ -65,7 +67,21 @@ func (w *World) SpawnMonsters(n int) {
 			continue
 		}
 
-		kindID, ok := pickSpawnKind(rng, kindsByRing[r], dragonsPlaced)
+		// A burying kind is a MUD-ONLY kind (#436), so the candidate pool is
+		// filtered by the hex's terrain rather than the placement being
+		// retried: dropping the kind here lets ordinary ground still spawn
+		// something, where skipping the hex would silently thin the world
+		// everywhere mud is not. The consequence — a burying kind's frequency
+		// becomes a function of mud coverage — is stated on the ticket.
+		//
+		// Order-preserving, because pickSpawnKind draws from it with the
+		// seeded rng and determinism is load-bearing.
+		ringKinds := kindsByRing[r]
+		if w.terrain[h] != protocol.TerrainMud {
+			ringKinds = excludeBuryingKinds(ringKinds)
+		}
+
+		kindID, ok := pickSpawnKind(rng, ringKinds, dragonsPlaced)
 		if !ok {
 			continue // ring exhausted of spawnable kinds (dragon-only ring, cap reached)
 		}
@@ -77,9 +93,88 @@ func (w *World) SpawnMonsters(n int) {
 		k := monsterDefByID[kindID]
 
 		w.nextID++
-		w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
+		e := newMonsterEntity(w.nextID, h, k)
+		// Set HERE and nowhere else: burial is a SPAWN state, so a monster
+		// raised mid-fight by a summoner (summon.go) or placed by a test must
+		// never inherit it. newMonsterEntity is shared with both.
+		e.buried = k.buriesOnSpawn
+		w.entities[w.nextID] = e
 		placed++
 	}
+}
+
+// excludeBuryingKinds returns kinds with every mud-only (burying) kind
+// removed, order preserved — the terrain filter SpawnMonsters applies to
+// every hex that is not mud (#436). Mirrors excludeKind, which does the same
+// job for the dragon cap.
+func excludeBuryingKinds(kinds []string) []string {
+	out := make([]string, 0, len(kinds))
+
+	for _, id := range kinds {
+		if !monsterDefByID[id].buriesOnSpawn {
+			out = append(out, id)
+		}
+	}
+
+	return out
+}
+
+// ErrRingHasNoMud is returned by ValidateBuriedKindCoverage when a world's
+// terrain cannot support a mud-only kind somewhere it is meant to spawn.
+var ErrRingHasNoMud = errors.New("difficulty ring contains no mud for a mud-only monster kind")
+
+// ValidateBuriedKindCoverage reports whether this world's terrain can actually
+// support every mud-only (burying) kind in every ring that kind spawns in.
+//
+// WHY THIS EXISTS (#436, decided 2026-08-29). Burying kinds spawn only in mud,
+// mud is generated from noise that follows the water, and nothing ties where
+// the water goes to the ring bands. So a seed can leave a ring with no mud —
+// and that ring then has no skeletons at all, silently, with nothing failing.
+// Measured over 500 seeds while tuning #437, roughly 1 in 200-500 does exactly
+// that, and no threshold removes the risk without making mud stop reading as
+// occasional patches. The maintainer's call was to fail loudly rather than let
+// a world quietly lose a third of a kind's range.
+//
+// An ERROR, not a panic, and that is deliberate. mustValidateContent panics
+// because a bad content table is a defect that must never reach a running
+// process; an unlucky WORLD_SEED is operator input, which this repo already
+// treats as a clean error (config.ErrNonPositiveRadius). Panicking here would
+// also take down the balance harness, which builds worlds across many seeds
+// and has nothing to do with this.
+//
+// The candidate set mirrors spawnCandidatesByRingLocked exactly — walkable
+// terrain minus the sanctuary — rather than approximating it. A guard that
+// checks a different set from the one the spawner draws from is a guard that
+// can pass while the thing it guards fails.
+func (w *World) ValidateBuriedKindCoverage() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	mudRings := make(map[int]bool, protocol.RingCount)
+
+	for _, t := range w.worldMap.Tiles {
+		if t.Terrain != protocol.TerrainMud || !w.walkableLocked(t.Hex) || w.tooCloseToSanctuaryLocked(t.Hex) {
+			continue
+		}
+
+		mudRings[ringOf(t.Hex, w.radius)] = true
+	}
+
+	for i := range monsterDefs {
+		def := monsterDefs[i]
+		if !def.buriesOnSpawn {
+			continue
+		}
+
+		for _, r := range def.rings {
+			if !mudRings[r] {
+				return fmt.Errorf("%w: kind %q spawns in ring %d, which has no mud at world seed %d (radius %d) — "+
+					"choose a different WORLD_SEED", ErrRingHasNoMud, def.id, r, w.worldSeed, w.radius)
+			}
+		}
+	}
+
+	return nil
 }
 
 // tooCloseToMonsterLocked reports whether h is occupied by, or within

@@ -787,6 +787,86 @@ func ClearingRadiusForTest() int {
 	return clearingRadius
 }
 
+// BuriedForTest reports whether the entity with id is still buried (#436).
+func (w *World) BuriedForTest(id int64) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e, ok := w.entities[id]
+
+	return ok && e.buried
+}
+
+// CanActFromTurnForTest exposes the first turn a just-unburied monster may
+// act again (#436) — 0 for anything that never buried.
+func (w *World) CanActFromTurnForTest(id int64) int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	e, ok := w.entities[id]
+	if !ok {
+		return 0
+	}
+
+	return e.canActFromTurn
+}
+
+// SetBuriedForTest forces an entity's burial state, so a reveal/dormancy test
+// can engineer the exact board it needs instead of seed-hunting a spawn.
+func (w *World) SetBuriedForTest(id int64, buried bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if e, ok := w.entities[id]; ok {
+		e.buried = buried
+	}
+}
+
+// MonsterIDsForTest returns every living monster's id, sorted, so a spawn
+// test can walk the world without depending on map order.
+func (w *World) MonsterIDsForTest() []int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	ids := make([]int64, 0, len(w.entities))
+
+	for id, e := range w.entities {
+		if e.kind == protocol.EntityMonster {
+			ids = append(ids, id)
+		}
+	}
+
+	slices.Sort(ids)
+
+	return ids
+}
+
+// TerrainAtForTest exposes the world's terrain at one hex (#436/#437).
+func (w *World) TerrainAtForTest(h protocol.Hex) protocol.Terrain {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.terrain[h]
+}
+
+// MonsterKindIDsForTest returns every registered monster-kind id, in registry
+// order, so a content test can walk the registry rather than a hand-copied list.
+func MonsterKindIDsForTest() []string {
+	ids := make([]string, 0, len(monsterDefs))
+	for i := range monsterDefs {
+		ids = append(ids, monsterDefs[i].id)
+	}
+
+	return ids
+}
+
+// KindBuriesOnSpawnForTest reports whether a monster kind opts into burial (#436).
+func KindBuriesOnSpawnForTest(kind string) bool {
+	k, ok := monsterDefByID[kind]
+
+	return ok && k.buriesOnSpawn
+}
+
 // TerrainWalkableForTest exposes terrainWalkable — the one predicate both
 // walkableLocked and reachableWalkable read — so a test can pin the walkable
 // set directly rather than inferring it from a generated map (#437).
