@@ -227,6 +227,12 @@ const (
 	WeaponTagMagic  = "magic"
 )
 
+// BuriedRevealRadius is how close a player must come (in hexes) before a
+// buried monster (#436) claws its way out. Deliberately INSIDE both
+// CombatRadius (6) and the Skeleton's own aggroRadius (8), so emerging leads
+// straight into the fight it was waiting for rather than into a stare-down.
+const BuriedRevealRadius = 4
+
 // ForestSightCost is what one forest hex between two entities costs a line of
 // sight, in hexes of effective range (#95). Rock blocks sight outright;
 // forest SOFTENS it — you see a long way over open grass and only a short way

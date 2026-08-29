@@ -65,7 +65,21 @@ func (w *World) SpawnMonsters(n int) {
 			continue
 		}
 
-		kindID, ok := pickSpawnKind(rng, kindsByRing[r], dragonsPlaced)
+		// A burying kind is a MUD-ONLY kind (#436), so the candidate pool is
+		// filtered by the hex's terrain rather than the placement being
+		// retried: dropping the kind here lets ordinary ground still spawn
+		// something, where skipping the hex would silently thin the world
+		// everywhere mud is not. The consequence — a burying kind's frequency
+		// becomes a function of mud coverage — is stated on the ticket.
+		//
+		// Order-preserving, because pickSpawnKind draws from it with the
+		// seeded rng and determinism is load-bearing.
+		ringKinds := kindsByRing[r]
+		if w.terrain[h] != protocol.TerrainMud {
+			ringKinds = excludeBuryingKinds(ringKinds)
+		}
+
+		kindID, ok := pickSpawnKind(rng, ringKinds, dragonsPlaced)
 		if !ok {
 			continue // ring exhausted of spawnable kinds (dragon-only ring, cap reached)
 		}
@@ -77,9 +91,30 @@ func (w *World) SpawnMonsters(n int) {
 		k := monsterDefByID[kindID]
 
 		w.nextID++
-		w.entities[w.nextID] = newMonsterEntity(w.nextID, h, k)
+		e := newMonsterEntity(w.nextID, h, k)
+		// Set HERE and nowhere else: burial is a SPAWN state, so a monster
+		// raised mid-fight by a summoner (summon.go) or placed by a test must
+		// never inherit it. newMonsterEntity is shared with both.
+		e.buried = k.buriesOnSpawn
+		w.entities[w.nextID] = e
 		placed++
 	}
+}
+
+// excludeBuryingKinds returns kinds with every mud-only (burying) kind
+// removed, order preserved — the terrain filter SpawnMonsters applies to
+// every hex that is not mud (#436). Mirrors excludeKind, which does the same
+// job for the dragon cap.
+func excludeBuryingKinds(kinds []string) []string {
+	out := make([]string, 0, len(kinds))
+
+	for _, id := range kinds {
+		if !monsterDefByID[id].buriesOnSpawn {
+			out = append(out, id)
+		}
+	}
+
+	return out
 }
 
 // tooCloseToMonsterLocked reports whether h is occupied by, or within

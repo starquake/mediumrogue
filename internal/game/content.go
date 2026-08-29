@@ -981,6 +981,9 @@ var monsterDefs = []*monsterDef{
 			{defID: idIronWarhammer, weight: 2},
 		},
 		rings: []int{1, 2},
+		// #436: every skeleton spawns buried in mud and crawls out when you
+		// get close. This one flag is what makes it a mud-only kind.
+		buriesOnSpawn: true,
 	},
 	{
 		// The missing ice attacker (Frost Touch, ice), Fire-vulnerable — the

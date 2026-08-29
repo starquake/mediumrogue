@@ -249,6 +249,17 @@ type entity struct {
 	hex   protocol.Hex
 	token string
 	kind  string
+	// buried marks a monster that spawned underground (#436) and has not been
+	// disturbed: omitted from the wire entirely, dormant (no aggro, no wander,
+	// no bubble), and cleared for good the first time a player comes within
+	// protocol.BuriedRevealRadius. Never re-set — once out, out.
+	buried bool
+	// emergingUntilTurn is the last world turn on which a just-unburied
+	// monster still cannot act: it is clawing its way out. Set to the turn of
+	// the reveal, so the monster is VISIBLE for one turn before it can do
+	// anything — the telegraph that makes the ambush fair. Zero for anything
+	// that never buried.
+	emergingUntilTurn int64
 	// monsterKind is the monster-kind registry id (content.go's monsterDefs,
 	// e.g. "wolf"); empty for players. Set at spawn (SpawnMonsters,
 	// SpawnMonsterAt, PlaceMonsterForTest); kindOf resolves it back to the

@@ -60,7 +60,11 @@ import (
 // moved under them (nothing is stranded — mud only replaces walkable terrain
 // with walkable terrain — but the map is no longer the one that was saved).
 // Bumped so the change is an explicit reset rather than a mysterious shift.
-const snapshotVersion = 14
+// v15 (buried skeletons, #436): entityDTO gains Buried and EmergingUntilTurn.
+// A v14 snapshot has neither, so every buried monster would restore standing
+// on the surface — every ambush in the world sprung at once, silently. The
+// version gate preserves-aside + fresh instead.
+const snapshotVersion = 15
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or
@@ -169,6 +173,14 @@ type entityDTO struct {
 	// non-summoner, every un-summoned monster).
 	SummonCooldown int   `json:"summonCooldown,omitempty"`
 	SummonerID     int64 `json:"summonerId,omitempty"`
+	// Buried/EmergingUntilTurn are the burial state (#436, v15). Both must
+	// survive a restart or every ambush in the world would spring itself:
+	// a restored monster that lost Buried is simply standing there, and one
+	// that lost EmergingUntilTurn gets to act on the turn it is meant to be
+	// clawing out. Omitted when zero — every player and every kind that does
+	// not bury.
+	Buried            bool  `json:"buried,omitempty"`
+	EmergingUntilTurn int64 `json:"emergingUntilTurn,omitempty"`
 }
 
 // timedEffectDTO mirrors timedEffect (effects.go) for the wire-decoupled disk
@@ -440,6 +452,7 @@ func entityToDTO(e *entity) entityDTO {
 		Learned: e.learned, SkillPoints: e.skillPoints, PointsGrantedLevel: e.pointsGrantedLevel,
 		ActiveReadyTurn: e.activeReadyTurn, Effects: timedEffectsToDTO(e.effects),
 		SummonCooldown: e.summonCooldown, SummonerID: e.summonerID,
+		Buried: e.buried, EmergingUntilTurn: e.emergingUntilTurn,
 	}
 }
 
@@ -488,6 +501,7 @@ func entityFromDTO(ed entityDTO) *entity {
 		learned: ed.Learned, skillPoints: ed.SkillPoints, pointsGrantedLevel: ed.PointsGrantedLevel,
 		activeReadyTurn: ed.ActiveReadyTurn, effects: timedEffectsFromDTO(ed.Effects),
 		summonCooldown: ed.SummonCooldown, summonerID: ed.SummonerID,
+		buried: ed.Buried, emergingUntilTurn: ed.EmergingUntilTurn,
 	}
 }
 

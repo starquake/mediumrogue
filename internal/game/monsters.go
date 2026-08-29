@@ -116,8 +116,16 @@ type monsterDef struct {
 	leashRadius int
 	dropChance  int // percent, this kind's own roll (protocol.DropChancePercent retired)
 	drops       []drop
-	rings       []int      // which difficulty rings (0..protocol.RingCount-1) this kind spawns in
-	rules       []ruleCard // future kind passives; empty at launch
+	rings       []int // which difficulty rings (0..protocol.RingCount-1) this kind spawns in
+	// buriesOnSpawn makes this kind spawn BURIED in mud (#436): absent from
+	// the wire, dormant, and revealed only when a player comes within
+	// protocol.BuriedRevealRadius. A kind that buries is thereby a MUD-ONLY
+	// kind — SpawnMonsters will not place it on any other terrain.
+	//
+	// A def property, never a per-kind special case: "buried ambusher" is
+	// content any future kind can opt into (a trapdoor spider, a bog wraith).
+	buriesOnSpawn bool
+	rules         []ruleCard // future kind passives; empty at launch
 	// summon, when non-nil, makes this kind a SUMMONER (#271, summon.go): while
 	// in combat it periodically raises minions of summon.minionKind on nearby
 	// free hexes, bounded by summon.maxLiving and paced by summon.everyTurns.
