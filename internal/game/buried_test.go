@@ -212,6 +212,14 @@ func TestBuriedRevealsAtExactlyTheRadiusAndNotBeyond(t *testing.T) {
 // counterplay: the crawl-out is a real beat you get to react to. A monster
 // that emerged and swung in the same turn would be damage you could not have
 // avoided.
+//
+// The geometry is PINNED — player, monster, and the grass between them — and
+// that is not tidiness. The first version let the player spawn wherever Join
+// put them, which is random per run: it passed locally and failed in CI, then
+// reproduced 2-in-20 with -count. At an unlucky spawn the hex the skeleton
+// would step to is water or rock, so it cannot close and the assertion fires
+// on terrain rather than on the mechanic. Pinning the lane removes the only
+// variable that was never part of the subject.
 func TestEmergingMonsterCannotActOnTheRevealTurnButCanOnTheNext(t *testing.T) {
 	t.Parallel()
 
@@ -222,11 +230,21 @@ func TestEmergingMonsterCannotActOnTheRevealTurnButCanOnTheNext(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 
-	at := w.EntityHexForTest(join.EntityID)
-	id := w.PlaceMonsterKindForTest(protocol.Hex{Q: at.Q + protocol.BuriedRevealRadius, R: at.R}, "skeleton")
+	// A known-walkable lane from the origin outwards, so the skeleton's step
+	// toward the player is always legal ground.
+	player := protocol.Hex{Q: 0, R: 0}
+	for q := range protocol.BuriedRevealRadius + 1 {
+		w.SetTerrainForTest(protocol.Hex{Q: q, R: 0}, protocol.TerrainGrass)
+	}
+
+	start := protocol.Hex{Q: protocol.BuriedRevealRadius, R: 0}
+
+	w.SetHexForTest(join.EntityID, player)
+
+	id := w.PlaceMonsterKindForTest(start, "skeleton")
 	w.SetBuriedForTest(id, true)
 
-	before := w.EntityHexForTest(id)
+	revealTurn := w.Turn()
 
 	// The reveal turn: it comes out, and is visible — but frozen mid-crawl.
 	w.ResolveTurnForTest()
@@ -235,16 +253,20 @@ func TestEmergingMonsterCannotActOnTheRevealTurnButCanOnTheNext(t *testing.T) {
 		t.Fatalf("buried after the reveal turn = %v, want %v", got, want)
 	}
 
-	if got, want := w.EntityHexForTest(id), before; got != want {
-		t.Errorf("moved on its own emergence turn: %v -> %v, want it rooted while it climbs out", before, got)
+	if got, want := w.EntityHexForTest(id), start; got != want {
+		t.Errorf("moved on its own emergence turn: %v -> %v, want it rooted while it climbs out", start, got)
+	}
+
+	// Exactly one turn of helplessness — not zero, not two.
+	if got, want := w.CanActFromTurnForTest(id), revealTurn+1; got != want {
+		t.Errorf("canActFromTurn = %d, want %d (the turn after the reveal)", got, want)
 	}
 
 	// The next turn: it is a normal skeleton and closes on the player.
 	w.ResolveTurnForTest()
 
-	wasDist := game.HexDistance(before, at)
-	if got := game.HexDistance(w.EntityHexForTest(id), at); got >= wasDist {
-		t.Errorf("distance to player after the turn AFTER emerging = %d, want < %d (it should act now)", got, wasDist)
+	if got, want := game.HexDistance(w.EntityHexForTest(id), player), protocol.BuriedRevealRadius; got >= want {
+		t.Errorf("distance to player after the turn AFTER emerging = %d, want < %d (it should act now)", got, want)
 	}
 }
 
