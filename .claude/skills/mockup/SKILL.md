@@ -7,7 +7,7 @@ description: >
   it LOOKS (new panel, HUD element, map styling, filter, tooltip layout).
   Builds an HTML mockup, screenshots it with the repo's Playwright, commits
   the image under docs/mockups/, and embeds it inline in the design issue
-  with the exact URL form that renders on this PRIVATE repo. The maintainer
+  with the documented /raw/ URL form. The maintainer
   approves the screenshot BEFORE any real UI is built — trigger this before
   writing any UI code for looks-driven work, even if the user doesn't ask
   for a mockup explicitly.
@@ -91,3 +91,25 @@ turn. The maintainer says yes/no to the screenshot. No real UI code before that.
 Iterate the HTML + re-screenshot on the same filename if they want changes (same
 URL keeps rendering the new commit's blob at the branch ref) — the state stays
 put while they're the ones deciding.
+
+## Why the `/raw/` form, and what it cost to learn
+
+Moved here from `CLAUDE.md` (2026-08-30) — history that only matters while you
+are authoring an embed.
+
+The `/raw/` github.com route was originally **required** because the repo was
+private: only github.com routes carry the viewer's session, so a
+`raw.githubusercontent.com` embed rendered as a broken icon for everyone
+(verified 2026-07-16, PR #120). The repo went **public on 2026-07-28**, so both
+forms now resolve — the rule stays anyway, because one documented form means no
+per-embed decision, and churning image URLs is how these embeds broke last time.
+
+GitHub has no upload API for issue attachments, which is why the repo is the
+image host at all.
+
+**Scale of the rot, measured 2026-08-29:** a full sweep of every issue and PR
+(449 items, 28 unique `/raw/` URLs) found **9 dead embeds across 8 items** —
+#131 ×4, #148, #161, #184, #188, #308, #385 — not the 3 an earlier partial sweep
+reported. Four of them were on a `qol/*` branch, which is what disproved the
+"`feat/*` rots, `design/*` survives" framing: the rule is simply **any branch
+that gets deleted**. Every image was still on `main`; only the URLs were stale.

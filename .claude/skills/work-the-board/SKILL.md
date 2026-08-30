@@ -670,3 +670,56 @@ they're back, and the next pass should be prompt. The runtime clamps to
 whose every pass re-reads the same labels is burning turns; the queue being
 long is information *for them*, not a reason to keep spinning. They can
 restart it in one word.
+
+## Board mechanics — setup, scope, and the reorder trap
+
+Moved here from `CLAUDE.md` (2026-08-30): this is operational detail you need
+only when actually driving the board, so it loads with this skill rather than
+sitting in every session's context. `CLAUDE.md` keeps the *rules* — what the
+states mean, which are gates, and that `ready to merge` is never yours to grant.
+
+**Access.** The board needs the `project` auth scope — `gh auth refresh -s project`.
+A `repo`-only token reads issues fine and fails on every board call, which is the
+first thing to check when a board command errors. A user-level project must also be
+**linked to the repository** (`linkProjectV2ToRepository`) or it never appears under
+the repo at all — which reads exactly like "there is no project".
+
+**Two built-in workflows carry their weight**, and both are configured in the
+project UI, not the API (there is no create/update mutation, only read and delete):
+
+- **Item added → Backlog** — without it a newly filed issue lands in GitHub's
+  built-in **No Status** bucket, which is not one of our states and cannot be deleted.
+- **Item closed → Done** — the automation the pass's closed-not-`Done` sweep exists
+  to catch. When it breaks, nothing announces it; merged work just accumulates in
+  `Your review` (#423).
+
+**The auto-add workflow must filter `is:issue`** or it drags every new PR onto the
+board unstatused (seen with #323, #324 and #325 before the filter was corrected). A
+PR that slips through is removed with `gh project item-delete`.
+
+### Reordering the Status column is survivable, but it is not free
+
+**Reordering a single-select REPLACES every option and CLEARS every item's value**
+(learned the hard way, 2026-07-28). `updateProjectV2Field` takes the whole option
+list as name/color/description with **no id**, which is exactly why every value is
+wiped. The procedure is **snapshot → reorder → restore → re-enable → verify**:
+
+1. Snapshot every item's `number|status` first.
+2. Apply the reorder with the full option list in the new order.
+3. Restore every value from the snapshot.
+4. **Re-enable the project's built-in workflows.**
+5. Verify **BOTH** halves — diff restored-against-snapshot AND confirm the
+   workflows are back on.
+
+**Step 4 is not optional and Claude cannot do it** (#423). The built-in workflows
+target a Status option **by id**, so a reorder points them at options that no longer
+exist and GitHub disables them — `Item closed → Done` among them. They are
+configured in the project UI only, so a reorder hands the maintainer manual work:
+**say so before agreeing to one.**
+
+Note what the first version of this procedure got wrong: **verifying item VALUES is
+not verifying the board.** That check passed, byte-identical across 54 items, while
+the automations were already dead.
+
+`board.sh` survives a reorder because it resolves options **by name** at call time;
+anything holding ids — including GitHub's own automations — does not.

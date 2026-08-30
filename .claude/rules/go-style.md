@@ -1,5 +1,5 @@
 ---
-description: Go style rules for the topbanana project
+description: Go style rules for the mediumrogue project
 globs:
   - "**/*.go"
 ---
