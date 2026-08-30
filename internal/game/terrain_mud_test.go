@@ -153,7 +153,7 @@ func TestMudNeverGeneratesInTheHomeClearing(t *testing.T) {
 // TestMudCoversEverySkeletonRing is #437's guard for #436, and since #436
 // landed it is driven by the REGISTRY rather than by a hardcoded {1, 2}.
 //
-// It now asserts the production check itself — ValidateBuriedKindCoverage,
+// It now asserts the production check itself — ValidateSpawnTerrainCoverage,
 // the thing that actually refuses to boot — across the tuning seed spread.
 // That is strictly better than re-implementing the rule here: the guard and
 // the shipped behaviour cannot drift apart, and retuning a burying kind's
@@ -180,7 +180,7 @@ func TestMudCoversEverySkeletonRing(t *testing.T) {
 			Ticks:           hub.New(),
 		})
 
-		if err := w.ValidateBuriedKindCoverage(); err != nil {
+		if err := w.ValidateSpawnTerrainCoverage(); err != nil {
 			t.Errorf("seed %d: %v", seed, err)
 		}
 	}

@@ -178,6 +178,7 @@ its weapon carries.
 | **Skeleton**<br>`skeleton` | 14 | Bone Club | 3 | melee | blunt | 30 | 8 | 35 | +50% Sharp Resistance<br> |
 | **Troll**<br>`troll` | 30 | Maul | 6 | melee | blunt | 60 | 8 | 50 | ⚠ −50% Fire Resistance<br> |
 | **Wolf**<br>`wolf` | 10 | Fangs | 3 | melee | sharp | 20 | 10 | 30 | — |
+| **Woodwose**<br>`woodwose` | 16 | Bone Club | 3 | melee | blunt | 35 | 8 | 30 | — |
 | **Wraith**<br>`wraith` | 26 | Talons | 4 | melee | chaos | 70 | 8 | 45 | +50% Sharp Resistance<br>+50% Blunt Resistance<br>⚠ −50% Holy Resistance<br> |
 
 ## Before you send a proposal

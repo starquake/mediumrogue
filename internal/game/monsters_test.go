@@ -12,9 +12,9 @@ import (
 // Kin Archer, the first ranged kind), by four in #266 (the goblin,
 // skeleton, frost wisp and wraith), by one in #271 slice 1 (the Serpent, the DoT
 // proof), by one in #271 slice 2 (the Hydra, the regen proof), and by two in
-// #271's summoner slice (the Necromancer and the Risen add it raises);
-// re-derived deliberately, since adding a kind is exactly what this test is
-// meant to notice.
+// #271's summoner slice (the Necromancer and the Risen add it raises), then
+// #438's Woodwose; re-derived deliberately each time, since adding a kind is
+// exactly what this test is meant to notice.
 func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 	t.Parallel()
 
@@ -24,6 +24,7 @@ func TestMonsterRegistryHasTheExpectedKinds(t *testing.T) {
 		idKindGoblin: true, idKindSkeleton: true, idKindFrostWisp: true, idKindWraith: true,
 		idKindSerpent: true, idKindHydra: true,
 		idKindNecromancer: true, idKindRisen: true,
+		idKindWoodwose: true,
 	}
 
 	if got, want := len(monsterDefs), len(want); got != want {

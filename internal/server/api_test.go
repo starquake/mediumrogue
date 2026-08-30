@@ -95,7 +95,7 @@ var handledElsewhere = map[string]string{
 	"ErrUnknownSimClass": "balance harness composition — offline tool, no request",
 	// Startup only: cmd/rogue/app checks this once, before the listener exists,
 	// and exits non-zero. No request can ever be in flight to receive it (#436).
-	"ErrRingHasNoMud": "world terrain cannot support a mud-only kind — startup check, refuses to boot",
+	"ErrRingLacksSpawnTerrain": "world terrain cannot support a mud-only kind — startup check, refuses to boot",
 }
 
 // TestIntentErrorStatus drives every mapped sentinel through the real

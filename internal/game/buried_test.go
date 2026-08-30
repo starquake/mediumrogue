@@ -314,8 +314,8 @@ func TestBuriedKindCoverageGuard(t *testing.T) {
 	t.Run("a world with mud in every skeleton ring boots", func(t *testing.T) {
 		t.Parallel()
 
-		if err := newBuriedWorld(t).ValidateBuriedKindCoverage(); err != nil {
-			t.Errorf("ValidateBuriedKindCoverage() on the standard test seed = %v, want nil", err)
+		if err := newBuriedWorld(t).ValidateSpawnTerrainCoverage(); err != nil {
+			t.Errorf("ValidateSpawnTerrainCoverage() on the standard test seed = %v, want nil", err)
 		}
 	})
 
@@ -332,8 +332,8 @@ func TestBuriedKindCoverageGuard(t *testing.T) {
 			Ticks:           hub.New(),
 		})
 
-		err := w.ValidateBuriedKindCoverage()
-		if got, want := err, game.ErrRingHasNoMud; !errors.Is(got, want) {
+		err := w.ValidateSpawnTerrainCoverage()
+		if got, want := err, game.ErrRingLacksSpawnTerrain; !errors.Is(got, want) {
 			t.Fatalf("err = %v, want %v", got, want)
 		}
 

@@ -860,6 +860,13 @@ func MonsterKindIDsForTest() []string {
 	return ids
 }
 
+// KindMovesOnlyUnseenForTest reports whether a monster kind is a stalker (#438).
+func KindMovesOnlyUnseenForTest(kind string) bool {
+	k, ok := monsterDefByID[kind]
+
+	return ok && k.movesOnlyUnseen
+}
+
 // KindBuriesOnSpawnForTest reports whether a monster kind opts into burial (#436).
 func KindBuriesOnSpawnForTest(kind string) bool {
 	k, ok := monsterDefByID[kind]
