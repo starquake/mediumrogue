@@ -193,9 +193,9 @@ drift between calls; use absolute paths or `cd` to the repo root before
   labels, so the maintainer can drag a card from the board (web or mobile) and
   Claude can set the same value from the CLI. **Gate states**
   (`Your input` / `Your sign-off` / `Your review`) stop the work and are the
-  maintainer's; **work states** (`Spec` / `Plan` / `Build`) mean proceed and are Claude's.
-  The test is the wording itself: **if the state says "your", it is a gate.**
-  `Backlog` is "filed, no baton yet"; `Done` is closed/merged.
+  maintainer's; **work states** (`Spec` / `Plan` / `Build`) mean proceed and are
+  Claude's. The test is the wording itself: **if the state says "your", it is a
+  gate.** `Backlog` is "filed, no baton yet"; `Done` is closed/merged.
 
   **The columns are batons, NOT a pipeline.** Left to right they read:
 
@@ -203,86 +203,33 @@ drift between calls; use absolute paths or `cd` to the repo root before
   Backlog · Your input · Spec · Plan · Your sign-off · Build · Your review · Done
   ```
 
-  That is the column ORDER, not a required traversal, and reading it as one is
-  the mistake this section exists to prevent:
-
-  - **`Your input` is an INTERRUPT, not a stage.** Any work state raises it —
-    `Spec → Your input`, `Plan → Your input`, `Build → Your input` are all
-    normal, and so is the return. A question arriving mid-build is the field
-    doing its job, not a regression. It sits beside `Backlog` because it is the
-    one gate belonging to no particular stage (moved there 2026-08-10).
-  - **Movement is bidirectional**, so a card moving LEFT is routine. Nothing
-    validates transitions; the field answers one question only — *who acts
-    next* — and that answer legitimately changes hands repeatedly.
-  - **Stages are skippable.** `Backlog → Your input` is the common route when a
-    decision is needed before spec work is worth doing; `Backlog → Build` suits
-    a bug. `Spec` and `Plan` are for the slices that need them.
-
-  Build progress is NOT carried here — the plan's ticked checkboxes and the
-  branch are the progress record (`build-slice`), which is why one value per
-  issue suffices even when a ticket bounces between `Build` and `Your input`.
+  That is the column ORDER, not a required traversal. `Your input` is an
+  INTERRUPT rather than a stage (any work state raises it, and the return is
+  normal); movement is **bidirectional**, so a card moving LEFT is routine; and
+  stages are **skippable** (`Backlog → Build` suits a bug). Build progress is
+  NOT carried here — the plan's ticked checkboxes and the branch are the
+  progress record (`build-slice`).
 
   **The two "your" gates around a build are different jobs, and conflating them
   is what made the lane useless** (2026-07-28): `Your sign-off` comes **before**
   the build — approve the spec, plan or mockup so work can start. `Your review`
   comes **after** it — the work is done, its PR is open, and it is waiting for
   `ready to merge`. Decide-the-design versus review-the-diff.
+
   **A position in the flow is a STATUS; a property of the ticket is a LABEL.**
   That is the whole rule, and it answers this class of question without a new
   column. `hold` is a label because it is an override, `ready to merge` because
   it is an approval — and **`needs: spec` / `needs: build`** because they name
-  which ROUTE a ticket takes, not where it sits. Claude applies one when filing
-  (it did the investigation, so it has already made the call) and states the
-  reason in the body, so the maintainer can drag straight from the board card
-  without opening anything — and disagree by dragging elsewhere, which is the
-  override. Reaching for a new Status option instead is the expensive answer:
-  reordering a single-select **replaces every option and clears every item's
-  value** (2026-07-28).
-
-  **A reorder is survivable, and the procedure is snapshot → reorder → restore
-  → re-enable → verify** (done once, 2026-08-10). Snapshot every item's
-  `number|status` first; apply `updateProjectV2Field` with the whole option
-  list in the new order (its input takes name/color/description and NO id,
-  which is exactly why every value is cleared); restore from the snapshot;
-  **re-enable the project's built-in workflows**; then verify BOTH halves —
-  diff restored-against-snapshot AND confirm the workflows are on.
-
-  **The re-enable step is not optional and Claude cannot do it** (#423). The
-  built-in workflows target a Status option **by id**, so a reorder points them
-  at options that no longer exist and GitHub disables them — `Item closed →
-  Done` among them, which is how three merged issues sat in `Your review` with
-  nobody noticing. They are configured in the project UI only, so a reorder
-  hands the maintainer manual work: **say so before agreeing to one.**
-
-  `board.sh` survives a reorder because it resolves options **by name** at call
-  time; anything holding ids — including GitHub's own automations — does not.
-  And note what the first version of this procedure got wrong: verifying item
-  VALUES is not verifying the board. That check passed, byte-identical across
-  54 items, while the automations were already dead.
+  which ROUTE a ticket takes, not where it sits. Reaching for a new Status
+  option instead is the expensive answer: reordering a single-select **replaces
+  every option and clears every item's value** (2026-07-28).
 
   **`ready to merge` remains a PR LABEL** — it is a pull-request approval, not
-  an issue state, and **PRs are not board items**. The auto-add workflow must
-  filter `is:issue` or it drags every new PR onto the board unstatused (seen
-  with #323, #324 and #325 before the filter was corrected); a PR that slips
-  through is removed with `gh project item-delete`.
-  Two board **workflows** carry their weight and are configured in the project
-  UI, not the API — there is no create/update mutation, only read and delete:
-  **Item added → Backlog** (otherwise a newly filed issue lands in GitHub's
-  built-in **No Status** bucket, which is not one of our states and cannot be
-  deleted) and **Item closed → Done**.
-  Board access needs the `project` scope — `gh auth refresh -s project`; a
-  `repo`-only token reads issues fine and fails on every board call. A
-  user-level project also has to be **linked to the repository**
-  (`linkProjectV2ToRepository`) or it never appears under the repo at all,
-  which reads exactly like "there is no project".
-  Read and write it through **`.claude/scripts/board.sh`**, which holds the
-  project and field node ids in one place rather than pasted into every skill,
-  and resolves each **status option by NAME** at call time. That is deliberate:
-  reordering the board's columns REPLACES every option — new ids, and every
-  item's value silently cleared (learned the hard way, 2026-07-28). Names are
-  the stable handle; ids are not. If a reorder ever wipes the board, the values
-  have to be snapshotted first and restored after — the script cannot do it for
-  you:
+  an issue state, and **PRs are not board items**.
+
+  Read and write the board through **`.claude/scripts/board.sh`**, which holds
+  the project/field ids in one place and resolves each status option **by NAME**
+  at call time:
 
   ```bash
   .claude/scripts/board.sh list "Build"        # issue numbers awaiting a build
@@ -290,38 +237,15 @@ drift between calls; use absolute paths or `cd` to the repo root before
   .claude/scripts/board.sh state 322 "Build"   # move the baton
   ```
 
-  It needs the `project` scope (`gh auth refresh -s project`); a token with
-  only `repo` can read issues but not the board, which is the first thing to
-  check if a board command fails. The design/mockup/build skills move the state
-  at each pause.
-  **The whole board can be driven async through comments + the Status field**:
-  the `work-the-board` skill runs one triage-and-advance pass — replying to
-  comments, doing the work-state work, building slices the maintainer authorised
-  (a `go`/`build`/`approved` comment or a move to `Build`), and merging PRs that
-  carry `ready to merge` — while **stopping at every maintainer gate**, at most
-  **one build per pass**, and skipping anything labelled **`hold`** (still a
-  label — it is an override, not a position in the flow).
-  Design direction and `ready to merge` are never Claude's to decide/grant.
-  Every open ticket also carries an auto-maintained `> 🤖 **Next steps**`
-  comment stating its state and the actions available to move it, so a
-  commenter can always see the next step without knowing the workflow, and —
-  when it's waiting on the maintainer — a **copy-paste answer block** they can
-  fill in instead of writing prose. **Post a NEW one whenever the state changes
-  — never edit the previous in place**: the thread is the ticket's history, and
-  appending keeps it readable in order. Nothing changed since the last one? Post
-  nothing.
-  **A block may be answered on GitHub OR in chat** (#399) — the issue is the
-  RECORD, the interface is the maintainer's choice, and Claude offers both when
-  a ticket carries more than two or three open questions. Answered in chat,
-  Claude **writes the answers back into the issue BODY** before acting on them:
-  a decisions table, the date, a verbatim quote of anything whose wording
-  carries reasoning a table flattens, and what became moot. An answer that
-  stays in the transcript is not on the record — and an answer that lands only
-  in a COMMENT is barely better (#441): the body goes on asking the question,
-  so whoever opens the ticket reads a document that is already wrong. The body
-  is the living spec and is rewritten as decisions land; the comment thread is
-  append-only history. A `> 🤖 **Next steps**` comment announces the change; it
-  does not substitute for making it. See `design-slice` for the full shape.
+  **Design direction and `ready to merge` are never Claude's to decide or
+  grant.** Every open ticket also carries an auto-maintained
+  `> 🤖 **Next steps**` comment stating its state and the actions available;
+  post a NEW one whenever the state changes — never edit the previous in place.
+
+  The board's operational detail — the reorder-recovery procedure, the GraphQL
+  point budget, the required `project` auth scope, the built-in workflows and
+  their failure modes, and the answer-block conventions — lives in the
+  **`work-the-board` skill**, which loads when you actually drive the board.
 - **One issue = one deliverable.** A ticket needing several PRs *in different
   states* is several tickets: split it into **sub-issues** (the board carries
   `Parent issue` and `Sub-issues progress`, and the auto-add-sub-issues workflow
@@ -358,29 +282,24 @@ drift between calls; use absolute paths or `cd` to the repo root before
   screenshot it, and get approval **before** implementing the real UI (a CRT
   filter was built and rejected post-hoc; a paper-doll inventory was approved
   from a mockup and built once). Screenshots live in the repo —
-  `docs/mockups/`, dated filenames, committed on the work branch — and are
-  embedded inline in the design issue's Mockup section via the
-  **github.com `/raw/` route**
-  (`![mockup](https://github.com/starquake/mediumrogue/raw/<branch>/docs/mockups/<file>.png)`).
-  GitHub has no upload API for issue attachments, so the repo is the image
-  host. **Keep the `/raw/` form.** It was originally required because the repo
-  was private — only github.com routes carry the viewer's session, so a
-  `raw.githubusercontent.com` embed rendered as a broken icon for everyone
-  (verified 2026-07-16, PR #120). The repo went **public on 2026-07-28**, so
-  that constraint has lifted and both forms now resolve; the rule stays anyway,
-  because one documented form means no per-embed decision, and churning image
-  URLs is how these embeds broke the last time.
-  **The ref in that path is two-step**, and the second step is where it breaks
-  (#393): a `/raw/<branch>/` embed **dies when the branch is deleted on merge**
-  — retroactively, in a comment nobody is looking at. Embed from the **work
-  branch** while the design is in flight (the image is not on `main` yet; that
-  is the whole point of approving before the build), then the **PR that merges
-  the mockup repoints the embed to `/raw/main/…`**. Not the commit SHA: PRs are
-  squash-merged, so the original commit is not in `main`'s history and a SHA
-  embed is a slower version of the same rot. `mockup` states this rule and
-  `build-slice` carries the merge-time half — it is repeated here because it is
-  the step that gets skipped: every `feat/*` embed tested was a 404 (#385,
-  #161, #308), and `design/*` ones survived only by never being merged.
+  `docs/mockups/`, dated filenames — and are embedded in the design issue via
+  the **github.com `/raw/` route**, which is the one documented form:
+  `![mockup](https://github.com/starquake/mediumrogue/raw/<ref>/docs/mockups/<file>.png)`.
+
+  **The ref is two-step, and the second step is where it breaks** (#393). Embed
+  from the **work branch** while the design is in flight (the image is not on
+  `main` yet — that is the point of approving before the build), then **the PR
+  that merges the mockup repoints the embed to `/raw/main/…`**. Not a commit
+  SHA: PRs are squash-merged, so the original commit is not in `main`'s history
+  and a SHA embed is a slower version of the same rot.
+
+  **It is ANY branch that gets deleted, not `feat/*`** (corrected 2026-08-29): a
+  full sweep found 9 dead embeds across 8 items, including four on a `qol/*`
+  branch. `design/*` embeds survived only because those branches were never
+  merged. The rot is silent and retroactive — nothing fails, an old comment just
+  stops rendering — so the repoint is the step to check, not to trust.
+  `mockup` owns the authoring half and `build-slice` the merge-time repoint.
+
 - **AI-authored GitHub content is marked as such**: any issue, pull request, or
   comment Claude creates on the maintainer's behalf (via `gh issue create`,
   `gh pr create`, `gh issue comment`/`gh pr comment --body-file`) opens with a
