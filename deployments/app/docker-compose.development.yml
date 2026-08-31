@@ -6,7 +6,12 @@ services:
     container_name: mediumrogue-development
     environment:
       - LISTEN_ADDR=0.0.0.0:8080
-      - TURN_INTERVAL=4s
+      # #458 experiment: halved from 4s. The client derives playback from a
+      # RATIO (PlaybackSeconds/TurnSeconds) scaled by the interval on the wire,
+      # so 2s gives 1s input + 1s playback with no code change, and the combat
+      # floor already scales with w.interval by design. Staging stays at 4s and
+      # is the control for how the faster cadence feels.
+      - TURN_INTERVAL=2s
       - HEARTBEAT_INTERVAL=15s
       # The big world (#286): radius 120 ≈ 43.6k hexes, ~1 monster per ~44
       # hexes — the density all three envs share. Dev is a throwaway sandbox —
