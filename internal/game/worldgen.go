@@ -2,6 +2,7 @@ package game
 
 import (
 	"math"
+	"os"
 
 	"github.com/starquake/mediumrogue/internal/protocol"
 )
@@ -27,9 +28,7 @@ const (
 	// mudLevel is the tuned quantity: it sets how much mud the world has, and
 	// (from #436) therefore how many skeletons it has. See
 	// TestMudCoverageIsOccasional for the band it is held to.
-	//nolint:unused // #458 experiment: used by the retained noise generator.
-	mudLevel = 0.44
-	//nolint:unused // #458 experiment: used by the retained noise generator.
+	mudLevel    = 0.44
 	mudMoisture = 0.55
 )
 
@@ -38,17 +37,28 @@ const (
 // water, rock) derived from two value-noise fields (elevation, moisture), with
 // a forced walkable clearing at the origin. Same (seed, radius) → identical map.
 func GenerateMap(seed uint64, radius int) protocol.MapResponse {
-	// #458 EXPERIMENT BRANCH: graph-first generation replaces the noise world
-	// outright here. Staging still runs the noise generator and is the control;
-	// development runs this. Not intended to merge as-is — see worldgen_graph.go.
+	// #458 EXPERIMENT BRANCH: graph-first generation is the default here, so
+	// development runs a graph world while staging keeps the noise world as the
+	// control. Not intended to merge as-is — see worldgen_graph.go.
+	//
+	// WORLDGEN=noise selects the original generator. That exists for the TEST
+	// SUITE, not for deployment: most of this package's tests are about leash
+	// behaviour, spawn fallback and combat geometry, and merely need SOME
+	// walkable world. Coupling them to an experimental generator makes them
+	// fail for reasons that have nothing to do with what they assert — three
+	// leash tests failed with "no walkable neighbor" purely because a graph
+	// world has rock in most directions. The graph generator has its own tests
+	// (worldgen_graph_test.go) instead.
+	if os.Getenv("WORLDGEN") == "noise" {
+		return generateNoiseMap(seed, radius)
+	}
+
 	return generateGraphMap(seed, radius)
 }
 
 // generateNoiseMap is the original generator, kept intact on this EXPERIMENT
 // branch so the two can be compared and so reverting is a one-line change in
 // GenerateMap. Staging runs this; development runs the graph generator.
-//
-//nolint:unused // #458 experiment: kept deliberately as the control and the revert path.
 func generateNoiseMap(seed uint64, radius int) protocol.MapResponse {
 	tiles := make([]protocol.Tile, 0, tileCount(radius))
 	origin := protocol.Hex{Q: 0, R: 0}
