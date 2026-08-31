@@ -14,10 +14,11 @@ services:
       - WORLD_RADIUS=120
       - WORLD_SEED=42
       - MONSTER_COUNT=1000
-      # #458 EXPERIMENT — graph-first worldgen knobs. Every one has a sensible
-      # default in code; uncomment and restart the container to retune the
-      # world without rebuilding the image. Staging still runs the noise
-      # generator, so it is the control to compare against.
+      # Worldgen tuning knobs (#458). Every one has a sensible default in
+      # code; uncomment and restart the container to retune the world without
+      # rebuilding the image. The graph generator is now the ONLY generator —
+      # the noise generator it replaced was deleted when it graduated (#466),
+      # so there is no longer a control env to compare against.
       #
       # Node counts scale with ring AREA (roughly 1:3:5 at radius 120) — flat
       # counts leave the frontier ring almost entirely impassable.

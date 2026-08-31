@@ -1815,3 +1815,80 @@ Perception roll, and it would feel completely different — sometimes you fail t
 see a thing standing in the open, which is not the fantasy here. **The tell is
 coupling**, and there is none: whether you see it is a fact about the terrain
 between you.
+
+## Worldgen: a graph of areas, not an open landmass (#458, graduated #466)
+
+The world was one large landmass. The request was Diablo/Grim Dawn-style
+**branching paths** — which needs space that is *not* walkable, so that where
+you can go is a choice rather than a direction.
+
+### Threshold-tuning the noise generator cannot produce corridors
+
+Tried first, because it would have been the cheap answer. It does not work:
+tightening the walkable thresholds toward a corridor-like ~40% walkable
+collapsed the origin-connected region to **0.1% of the map**. Noise thresholds
+control *how much* is walkable, never *how it is connected* — the walkable set
+fragments into islands long before it becomes corridor-shaped. Connectivity
+has to be constructed, not tuned into existence.
+
+The generator therefore places **nodes per difficulty ring, connects them
+outward from the origin, and carves** blobs and corridors along those edges.
+Structure first, terrain second: biomes are painted onto whatever got carved.
+
+### Density scales with area; corridor width does not
+
+The first version worked at exactly one world size. Flat node counts left the
+outer ring with 145 walkable hexes out of 24,455, and the same absolute tuning
+produced **91.4% walkable at radius 24** — more open than the noise world it
+was replacing. Node counts now scale with ring **area** against a
+`referenceRadius` of 120.
+
+The distinction that matters: **counts scale, widths do not.** A corridor's
+half-width is a gameplay quantity tied to `CombatRadius` — how a fight fits in
+a passage — and must not change with world size. Lake size and placement are
+neither: they are scenery with a placement *bound*, and leaving that bound
+absolute meant every seed at radius ≤ 24 generated **no water at all**, because
+a 12-hex rim margin confined lakes to the densest part of a small map.
+
+### Both structural metrics misled; the playtest decided it
+
+Worth recording as a caution rather than a result. **Mean node degree** was the
+first measure of "branchiness" and does not measure it — a graph can raise mean
+degree while every added edge is a shortcut, which makes the world *less*
+branching. It was replaced with a **detour factor** (path length over straight
+distance), which is the right shape of metric and still did not settle
+anything: the world that played well scored ×1.00–1.16, a range the metric
+called nearly indistinguishable from open ground.
+
+What decided it was **walking the world on the development deployment** against
+staging running the old generator. The lesson is not that metrics are useless
+but that neither of these was load-bearing: no threshold on either would have
+approved the map that turned out to be good, and a build gated on one would
+have rejected it.
+
+### What graduation cost
+
+Deleting the scaffolding first — the `WORLDGEN=noise` switch and the `TestMain`
+pin that aimed the suite at the old generator — is what surfaced the real work,
+and shipping with them in place would have shipped something the suite never
+exercised. Four kinds of breakage came out of it:
+
+- **A genuine crash.** A world too small to hold any node but the origin
+  (radius 2) indexed `nodes[1]` on a one-element slice. `TestQuestBoardTinyWorldDoesNotPanic`
+  existed for exactly this and caught it — and its panic aborted the test
+  binary, hiding four other failures until it was fixed.
+- **Pins re-derived, never weakened.** Seed 17 no longer lacks ring-1 mud, so
+  the spawn-coverage guard had nothing to catch; seed **472** replaces it (27
+  of seeds 1–8000 fail on the skeleton, 65 on the woodwose). The leash world's
+  seed was re-pinned for the same reason: its fixture needs a walkable hex
+  exactly 7 away and strictly collinear away from home, and corridors offer
+  that ray far less often than blobs did.
+- **A latent flake, finally reproducible.** `isWalkable` in the tests kept its
+  own `grass || forest` copy and was never updated for mud, so a monster that
+  happened to spawn on mud failed it. It was intermittent because spawn
+  placement draws from the world's **per-boot crypto-random seed**, not from
+  `WORLD_SEED` — 3 failures in 25 shuffled runs, 0 in 30 after pointing the
+  helper at `terrainWalkable`. The bridge to do that had existed since #437.
+- **Bands that held.** Mud came out at ~11% of land (4.6–21% by seed) against
+  the noise generator's ~9%, inside the existing pinned band — which was left
+  as it was rather than widened.

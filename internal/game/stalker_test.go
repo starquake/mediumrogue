@@ -143,9 +143,11 @@ func TestOnlyOptedInKindsStalk(t *testing.T) {
 }
 
 // TestSpawnTerrainCoverageGuardNamesTheKind: #436's guard, generalised. Seed
-// 17 has no ring-1 mud (measured across 500 seeds while tuning #437), so the
-// skeleton is the one it catches — a PIN, to be re-derived rather than
-// weakened if terrain generation is ever retuned.
+// 472 has no ring-1 mud, so the skeleton is the one it catches — a PIN,
+// re-derived (never weakened) whenever terrain generation is retuned. Seed 17
+// held this role until the graph generator (#458) landed and gave it ring-1
+// mud; 472 is the new smallest seed that fails, measured by scanning 1..8000
+// at radius 24, where 27 seeds fail on the skeleton and 65 on the woodwose.
 func TestSpawnTerrainCoverageGuardNamesTheKind(t *testing.T) {
 	t.Parallel()
 
@@ -154,7 +156,7 @@ func TestSpawnTerrainCoverageGuardNamesTheKind(t *testing.T) {
 		CombatPatience:  testCombatPatience,
 		BubblePoll:      testBubblePoll,
 		DisconnectGrace: testDisconnectGrace,
-		WorldSeed:       17,
+		WorldSeed:       472,
 		Radius:          24,
 		Ticks:           hub.New(),
 	})
@@ -164,7 +166,7 @@ func TestSpawnTerrainCoverageGuardNamesTheKind(t *testing.T) {
 		t.Fatalf("err = %v, want %v", got, want)
 	}
 
-	for _, want := range []string{"skeleton", "mud", "ring 1", "seed 17", "WORLD_SEED"} {
+	for _, want := range []string{"skeleton", "mud", "ring 1", "seed 472", "WORLD_SEED"} {
 		if got := err.Error(); !strings.Contains(got, want) {
 			t.Errorf("err.Error() = %q, should contain %q", got, want)
 		}

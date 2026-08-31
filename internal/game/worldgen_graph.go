@@ -44,8 +44,6 @@ const (
 
 	// lakePlacementTries is how many centres to try before giving up on a lake.
 	lakePlacementTries = 60
-	// lakeRimMargin keeps lakes off the world edge.
-	lakeRimMargin = 12
 
 	// referenceRadius is the world size the default node COUNTS are tuned for.
 	// Counts scale with AREA (radius squared) so structural density is constant
@@ -63,9 +61,17 @@ const (
 	// farther than any possible hex distance, for a nearest-node search.
 	unreachable = 1 << 30
 
-	// lakeMinRadius/lakeRadiusSpread size the solid lakes dropped into the void.
-	lakeMinRadius    = 6
-	lakeRadiusSpread = 7
+	// Lake SIZE and PLACEMENT scale with the world, unlike the corridor widths
+	// above. A corridor's width is a gameplay quantity; a lake is scenery, and
+	// lakeRimMargin is a placement BOUND — absolute, it excluded the whole map
+	// once the world was small enough. At radius 24 a 12-hex margin confined
+	// lakes to the inner half, which is where the graph is densest, so every
+	// seed at radius <= 24 generated NO water at all.
+	lakeRimFrac    = 0.10
+	lakeMinFrac    = 0.05
+	lakeSpreadFrac = 0.06
+	// lakeMinSize floors the above so a small world still gets real lakes.
+	lakeMinSize = 2
 
 	// pixelPitchQ is the flat-top layout's pixel distance per hex along q.
 	pixelPitchQ = 1.5
@@ -290,6 +296,16 @@ func addGraphSpurs(
 ) ([]graphNode, [][2]int) {
 	origin := protocol.Hex{Q: 0, R: 0}
 
+	// A world too small to hold any node but the origin has nothing to hang a
+	// spur off: the ring candidates are all rejected by the rimMargin check, so
+	// nodes is length 1 and the pick below would index nodes[1]. Returning
+	// BEFORE the loop (rather than skipping inside it) leaves rng consumption
+	// untouched for every world that does have nodes, so seeded maps are
+	// byte-identical.
+	if len(nodes) < 2 {
+		return nodes, edges
+	}
+
 	for range t.deadEnds {
 		from := 1 + int(rng()*float64(len(nodes)-1))
 		off := polarHex(float64(t.spurLen), rng()*2*math.Pi)
@@ -358,7 +374,6 @@ func carveGraph(rng func() float64, nodes []graphNode, edges [][2]int, radius in
 // lakeHexes places a few solid lakes in the void. Solid regions, never
 // per-hex randomness: speckled water destroys the read of the map entirely.
 func lakeHexes(rng func() float64, walk map[protocol.Hex]bool, radius int, t graphTuning) map[protocol.Hex]bool {
-	origin := protocol.Hex{Q: 0, R: 0}
 	lakes := make(map[protocol.Hex]bool)
 
 	for range t.lakes {
@@ -367,19 +382,74 @@ func lakeHexes(rng func() float64, walk map[protocol.Hex]bool, radius int, t gra
 			continue
 		}
 
-		r := lakeMinRadius + int(rng()*lakeRadiusSpread)
+		paintLake(lakes, walk, centre, lakeScale(lakeMinFrac, radius)+int(rng()*float64(lakeScale(lakeSpreadFrac, radius))), radius)
+	}
 
-		for dq := -r; dq <= r; dq++ {
-			for dr := -r; dr <= r; dr++ {
-				h := protocol.Hex{Q: centre.Q + dq, R: centre.R + dr}
-				if HexDistance(centre, h) <= r && HexDistance(origin, h) <= radius-1 && !walk[h] {
-					lakes[h] = true
-				}
-			}
+	// Guarantee water. A world smaller than one node blob (radius <= ~12) is
+	// almost entirely walkable, so the strict all-neighbours-void test in
+	// voidCentre never finds a centre and the world generates with NO water —
+	// which broke every test that needs a non-walkable hex. This pass runs
+	// ONLY when the normal placement produced nothing, so worlds that place
+	// lakes normally (every radius >= 16) are unaffected, byte for byte.
+	if len(lakes) == 0 {
+		if centre, ok := anyNonWalkable(rng, walk, radius); ok {
+			paintLake(lakes, walk, centre, lakeScale(lakeMinFrac, radius), radius)
 		}
 	}
 
 	return lakes
+}
+
+// paintLake fills the non-walkable hexes within r of centre, staying inside
+// the world. It never overwrites walkable ground: a lake is dropped INTO the
+// void, so a corridor that happens to pass nearby is left intact.
+func paintLake(lakes, walk map[protocol.Hex]bool, centre protocol.Hex, r, radius int) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	for dq := -r; dq <= r; dq++ {
+		for dr := -r; dr <= r; dr++ {
+			h := protocol.Hex{Q: centre.Q + dq, R: centre.R + dr}
+			if HexDistance(centre, h) <= r && HexDistance(origin, h) <= radius && !walk[h] {
+				lakes[h] = true
+			}
+		}
+	}
+}
+
+// anyNonWalkable finds a non-walkable hex to seat the guarantee lake on. It
+// SCANS rather than sampling: at these radii non-walkable hexes are so scarce
+// that random sampling missed them (and sampling to radius-1 never even
+// reached the rim ring, which at radius <= 11 is the only void there is).
+// Candidates are collected in deterministic q/r order, so the rng draw that
+// picks among them is reproducible.
+func anyNonWalkable(rng func() float64, walk map[protocol.Hex]bool, radius int) (protocol.Hex, bool) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	var candidates []protocol.Hex
+
+	for q := -radius; q <= radius; q++ {
+		for r := -radius; r <= radius; r++ {
+			h := protocol.Hex{Q: q, R: r}
+			// Strictly inside the rim: graphTerrainAt returns rock for
+			// dist == radius BEFORE consulting lakes, so a rim-seated lake
+			// paints nothing at all.
+			if HexDistance(origin, h) < radius && !walk[h] {
+				candidates = append(candidates, h)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return protocol.Hex{}, false
+	}
+
+	return candidates[int(rng()*float64(len(candidates)))], true
+}
+
+// lakeScale converts a lake fraction of referenceRadius into hexes for this
+// world, floored so small worlds still get water.
+func lakeScale(frac float64, radius int) int {
+	return max(lakeMinSize, int(frac*float64(radius)))
 }
 
 // voidCentre finds a hex well inside the impassable void, so a lake is not
@@ -391,7 +461,9 @@ func voidCentre(rng func() float64, walk map[protocol.Hex]bool, radius int) (pro
 	origin := protocol.Hex{Q: 0, R: 0}
 
 	for range lakePlacementTries {
-		h := polarHex(rng()*float64(radius-lakeRimMargin), rng()*2*math.Pi)
+		rim := lakeScale(lakeRimFrac, radius)
+
+		h := polarHex(rng()*float64(radius-rim), rng()*2*math.Pi)
 
 		inVoid := true
 
@@ -403,7 +475,7 @@ func voidCentre(rng func() float64, walk map[protocol.Hex]bool, radius int) (pro
 			}
 		}
 
-		if inVoid && !walk[h] && HexDistance(origin, h) <= radius-lakeRimMargin {
+		if inVoid && !walk[h] && HexDistance(origin, h) <= radius-rim {
 			return h, true
 		}
 	}

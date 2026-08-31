@@ -562,10 +562,16 @@ func isFreeHex(t *testing.T, w *game.World, h protocol.Hex) bool {
 	return true
 }
 
+// isWalkable defers to the production predicate via TerrainWalkableForTest.
+// It used to carry its own "grass or forest" copy, which mud (#437) made
+// wrong: a monster that spawned on mud failed the check. That showed up as an
+// INTERMITTENT failure rather than a constant one, because spawn placement is
+// drawn from the world's per-boot crypto-random seed, so whether any monster
+// landed on mud varied run to run (3 of 25 shuffled runs before this fix).
 func isWalkable(w *game.World, h protocol.Hex) bool {
 	for _, tile := range w.Map().Tiles {
 		if tile.Hex == h {
-			return tile.Terrain == protocol.TerrainGrass || tile.Terrain == protocol.TerrainForest
+			return game.TerrainWalkableForTest(tile.Terrain)
 		}
 	}
 

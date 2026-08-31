@@ -92,12 +92,15 @@ func mudStats(seed uint64, radius int) (mudPct float64, perRing map[int]int) {
 }
 
 // TestMudCoverageIsOccasional pins how MUCH mud generation produces, so a
-// later tweak to mudLevel cannot silently flood the world or erase mud
-// altogether. The decision (#437) was "occasional patches" — measured at
-// ~9% of walkable land on this seed spread, against forest's ~27%.
+// later tweak to graphMudLevel cannot silently flood the world or erase mud
+// altogether. The decision (#437) was "occasional patches" — re-measured for
+// the graph generator (#458) at ~11% of walkable land on this seed spread,
+// against forest's ~30%; it was ~9% against ~27% under the noise generator,
+// so the bands below still hold and were NOT widened to accommodate it.
 //
-// Bands, not exact values: mud varies a lot seed to seed (5%–15% across
-// these ten), which is the terrain following the water rather than a bug.
+// Bands, not exact values: mud varies a lot seed to seed (4.6%–20.9% across
+// these ten). That spread is the terrain following the carved space, and is
+// expected rather than a defect.
 // From #436 this knob also sets how many skeletons the world has, so moving
 // it is a balance change and should have to update this test deliberately.
 func TestMudCoverageIsOccasional(t *testing.T) {
@@ -124,13 +127,13 @@ func TestMudCoverageIsOccasional(t *testing.T) {
 
 	if mean := sum / float64(len(mudSeeds)); mean < meanMin || mean > meanMax {
 		t.Errorf("mean mud across %d seeds = %.2f%% of land, want within [%.1f, %.1f] — "+
-			"retune mudLevel, or update this band deliberately if the change is intended",
+			"retune graphMudLevel, or update this band deliberately if the change is intended",
 			len(mudSeeds), mean, meanMin, meanMax)
 	}
 }
 
-// TestMudNeverGeneratesInTheHomeClearing: terrainAt returns from the clearing
-// before it samples any noise, so the spawn circle is always plain grass. It
+// TestMudNeverGeneratesInTheHomeClearing: graphTerrainAt returns from the
+// clearing before it samples any noise, so the spawn circle is always plain grass. It
 // matters beyond tidiness — #436 buries ambushers in mud, and the hexes a
 // player spawns on must not be able to hide one.
 func TestMudNeverGeneratesInTheHomeClearing(t *testing.T) {
@@ -159,11 +162,11 @@ func TestMudNeverGeneratesInTheHomeClearing(t *testing.T) {
 // the shipped behaviour cannot drift apart, and retuning a burying kind's
 // rings updates both at once.
 //
-// WHAT THIS PROVES, EXACTLY: that the tuned mudLevel supports every burying
+// WHAT THIS PROVES, EXACTLY: that the tuned graphMudLevel supports every burying
 // kind's rings for these ten seeds. It is a regression guard on the tuning,
 // and it is NOT a guarantee about an arbitrary world. Measured over 500 seeds
 // while tuning, roughly 1 in 200-500 still comes up short, and raising
-// mudLevel far enough to erase that (past 0.50) makes mud stop reading as
+// graphMudLevel far enough to erase that makes mud stop reading as
 // occasional patches without ever reaching zero risk. That residual is why
 // #436 added the startup check — do not "fix" it by widening the band here.
 func TestMudCoversEverySkeletonRing(t *testing.T) {
