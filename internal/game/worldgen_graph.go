@@ -40,7 +40,12 @@ const (
 	defDeadEnds    = 10
 	defSpurLen     = 16
 	defMinLoopDist = 30
-	defLakes       = 5
+	defLakes       = 14
+
+	// lakePlacementTries is how many centres to try before giving up on a lake.
+	lakePlacementTries = 60
+	// lakeRimMargin keeps lakes off the world edge.
+	lakeRimMargin = 12
 
 	// referenceRadius is the world size the default node COUNTS are tuned for.
 	// Counts scale with AREA (radius squared) so structural density is constant
@@ -76,8 +81,8 @@ const (
 	// the noise generator's: a graph world carves a fraction of the map, so a
 	// biome that is merely uncommon world-wide can be absent from a whole ring
 	// and fail ValidateSpawnTerrainCoverage (#436/#438).
-	graphForestLevel = 0.58
-	graphMudLevel    = 0.46
+	graphForestLevel = 0.60
+	graphMudLevel    = 0.555
 )
 
 // graphTuning holds the knobs.
@@ -357,8 +362,8 @@ func lakeHexes(rng func() float64, walk map[protocol.Hex]bool, radius int, t gra
 	lakes := make(map[protocol.Hex]bool)
 
 	for range t.lakes {
-		centre := polarHex(rng()*float64(radius-10), rng()*2*math.Pi)
-		if walk[centre] {
+		centre, ok := voidCentre(rng, walk, radius)
+		if !ok {
 			continue
 		}
 
@@ -375,6 +380,35 @@ func lakeHexes(rng func() float64, walk map[protocol.Hex]bool, radius int, t gra
 	}
 
 	return lakes
+}
+
+// voidCentre finds a hex well inside the impassable void, so a lake is not
+// eaten by the corridor it was dropped on. Retries rather than skipping:
+// picking a single random centre left 3 of 4 seeds with NO water at all,
+// because roughly half of every world is walkable and a lake overlapping a
+// corridor loses most of its hexes.
+func voidCentre(rng func() float64, walk map[protocol.Hex]bool, radius int) (protocol.Hex, bool) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	for range lakePlacementTries {
+		h := polarHex(rng()*float64(radius-lakeRimMargin), rng()*2*math.Pi)
+
+		inVoid := true
+
+		for _, n := range HexNeighbors(h) {
+			if walk[n] {
+				inVoid = false
+
+				break
+			}
+		}
+
+		if inVoid && !walk[h] && HexDistance(origin, h) <= radius-lakeRimMargin {
+			return h, true
+		}
+	}
+
+	return protocol.Hex{}, false
 }
 
 // paintGraphTerrain assigns biomes to the carved space and fills the void.
