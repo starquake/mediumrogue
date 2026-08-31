@@ -36,6 +36,15 @@ const (
 // water, rock) derived from two value-noise fields (elevation, moisture), with
 // a forced walkable clearing at the origin. Same (seed, radius) → identical map.
 func GenerateMap(seed uint64, radius int) protocol.MapResponse {
+	// #458 EXPERIMENT BRANCH: graph-first generation replaces the noise world
+	// outright here. Staging still runs the noise generator and is the control;
+	// development runs this. Not intended to merge as-is — see worldgen_graph.go.
+	return generateGraphMap(seed, radius)
+}
+
+// generateNoiseMap is the original generator, kept intact on this branch so the
+// two can be compared and so reverting is a one-line change.
+func generateNoiseMap(seed uint64, radius int) protocol.MapResponse {
 	tiles := make([]protocol.Tile, 0, tileCount(radius))
 	origin := protocol.Hex{Q: 0, R: 0}
 

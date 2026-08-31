@@ -14,6 +14,24 @@ services:
       - WORLD_RADIUS=120
       - WORLD_SEED=42
       - MONSTER_COUNT=1000
+      # #458 EXPERIMENT — graph-first worldgen knobs. Every one has a sensible
+      # default in code; uncomment and restart the container to retune the
+      # world without rebuilding the image. Staging still runs the noise
+      # generator, so it is the control to compare against.
+      #
+      # Node counts scale with ring AREA (roughly 1:3:5 at radius 120) — flat
+      # counts leave the frontier ring almost entirely impassable.
+      # - WORLDGEN_NODES_R0=5
+      # - WORLDGEN_NODES_R1=15
+      # - WORLDGEN_NODES_R2=26
+      # - WORLDGEN_NODE_RADIUS=10     # size of the open area at each node
+      # - WORLDGEN_PATH_RADIUS=4      # corridor half-width; 4 => ~9 hexes wide
+      # - WORLDGEN_SPUR_RADIUS=6      # size of a dead-end pocket
+      # - WORLDGEN_LOOPS=6            # extra links; FEWER means more detour
+      # - WORLDGEN_MIN_LOOP_DIST=30   # loops must be long: a short one is a shortcut
+      # - WORLDGEN_DEAD_ENDS=10
+      # - WORLDGEN_SPUR_LEN=16
+      # - WORLDGEN_LAKES=5
       - SNAPSHOT_PATH=/data/world.json
       - SNAPSHOT_INTERVAL=60s
     volumes:
