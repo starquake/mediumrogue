@@ -1,6 +1,7 @@
 package game //nolint:testpackage // white-box: exercises the unexported graph generator; see sight_test.go.
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -147,33 +148,32 @@ const (
 
 func testGraphHub() *hub.Hub { return hub.New() }
 
-// TestGraphWorldKeepsTheSanctuaryClear: no monster spawns within
-// protocol.SanctuaryRadius of the origin, which is where every player arrives.
+// TestJoiningPlayerIsNotInstantlyAttacked is the assertion that matters, and
+// it replaces a weaker one that passed while the game was broken.
 //
-// Worth pinning on THIS generator specifically. tooCloseToSanctuaryLocked is
-// only a preference: spawnCandidatesByRingLocked drops both spawn guards
-// entirely when no walkable hex satisfies them, so a world whose walkable space
-// is scarce or badly placed could legitimately spawn monsters on the doorstep.
-// A graph world carves a fraction of the map, so that fallback is far closer to
-// reach than it is with the noise generator.
+// The first version of this test asserted "no monster within SanctuaryRadius of
+// the ORIGIN". That passed — and @starquake still got attacked the moment they
+// joined, because it tested the wrong thing. Players spawn anywhere within the
+// sanctuary, combat starts at CombatRadius, and a monster at distance 6 is
+// legally outside the sanctuary while being one hex from a player at its edge.
 //
-// Not parallel: it selects the graph generator through the environment, which
-// TestMain otherwise pins to noise.
-func TestGraphWorldKeepsTheSanctuaryClear(t *testing.T) {
-	t.Setenv("WORLDGEN", "graph")
-
-	const monsters = 1000 // the deployed MONSTER_COUNT
-
-	// Every size that actually runs. Small worlds matter MORE here: the
-	// fallback drops both spawn guards when no walkable hex satisfies them, and
-	// scarce walkable space is what brings that within reach.
-	for _, radius := range []int{10, 24, 120} {
-		assertSanctuaryClear(t, radius, monsters)
+// So this joins real players and asks the real question. Both generators are
+// covered because the bug was in NEITHER: it reproduced identically on the
+// noise world, 25 of 25 joins inside combat range.
+//
+//nolint:paralleltest // t.Setenv selects the generator and cannot be parallel.
+func TestJoiningPlayerIsNotInstantlyAttacked(t *testing.T) {
+	for _, mode := range []string{"graph", "noise"} {
+		t.Setenv("WORLDGEN", mode)
+		assertJoinsAreSafe(t, mode, 120, 1000)
+		assertJoinsAreSafe(t, mode, 24, 200)
 	}
 }
 
-func assertSanctuaryClear(t *testing.T, radius, monsters int) {
+func assertJoinsAreSafe(t *testing.T, mode string, radius, monsters int) {
 	t.Helper()
+
+	const joins = 25
 
 	w := NewWorld(WorldConfig{
 		Interval:        testGraphInterval,
@@ -186,29 +186,41 @@ func assertSanctuaryClear(t *testing.T, radius, monsters int) {
 	})
 	w.SpawnMonsters(monsters)
 
-	origin := protocol.Hex{Q: 0, R: 0}
-	spawned, inside := 0, 0
+	for i := range joins {
+		join, err := w.Join("", fmt.Sprintf("p%d", i), protocol.ClassFighter, protocol.SpeciesHuman)
+		if err != nil {
+			t.Fatalf("%s radius %d: join %d: %v", mode, radius, i, err)
+		}
 
+		if d, ok := nearestMonsterDistance(w, join.EntityID); ok && d <= protocol.CombatRadius {
+			t.Errorf("%s radius %d: player %d joined %d hexes from a monster, inside CombatRadius (%d)",
+				mode, radius, i, d, protocol.CombatRadius)
+		}
+	}
+}
+
+// nearestMonsterDistance reports how far the nearest living monster is from an
+// entity, and whether there was one at all.
+func nearestMonsterDistance(w *World, id int64) (int, bool) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	self, ok := w.entities[id]
+	if !ok {
+		return 0, false
+	}
+
+	nearest, found := 0, false
+
 	for _, e := range w.entities {
-		if e.kind != protocol.EntityMonster {
+		if e.kind != protocol.EntityMonster || e.hp <= 0 {
 			continue
 		}
 
-		spawned++
-
-		if HexDistance(origin, e.hex) <= protocol.SanctuaryRadius {
-			inside++
-
-			t.Errorf("radius %d: monster %d spawned at %v, %d hexes from the origin — inside the sanctuary (%d)",
-				radius, e.id, e.hex, HexDistance(origin, e.hex), protocol.SanctuaryRadius)
+		if d := HexDistance(self.hex, e.hex); !found || d < nearest {
+			nearest, found = d, true
 		}
 	}
-	w.mu.Unlock()
 
-	if spawned == 0 {
-		t.Fatalf("radius %d: no monsters spawned; the assertion is vacuous", radius)
-	}
-
-	t.Logf("radius %d: %d monsters spawned, %d inside the sanctuary", radius, spawned, inside)
+	return nearest, found
 }
