@@ -256,6 +256,17 @@ drift between calls; use absolute paths or `cd` to the repo root before
   state lives on the PRs as labels and checks. `Your review` accordingly means
   "everything this issue needs is in a PR awaiting merge"; if work remains after
   that PR, the issue stays in `Build`.
+- **Some things are TRIED before they are specified** — the `experiment` skill.
+  An experiment answers *"does this work?"*, where a design slice answers
+  *"what should this be?"*. Its one rule: **the success criterion is written
+  down before the build**, and it says what would make the answer no. Without
+  that an experiment can only produce a result that gets rationalised
+  afterwards. It ships to development on the `deploy:dev` label (staging keeps
+  running `main`, so it is the control), and then either **graduates** — the
+  branch cleaned in place, its scaffolding deleted, closing its own build
+  ticket — or is **killed with its finding written into
+  `docs/design-decisions.md`**, because a rejection nobody recorded gets
+  re-proposed.
 - **Milestone slices are designed before they're built**: the spec and the
   implementation plan live **in the GitHub issue** (the "Design slice" issue
   template, `.github/ISSUE_TEMPLATE/design-slice.md`) — write the spec,

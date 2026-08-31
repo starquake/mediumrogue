@@ -1,17 +1,13 @@
 ---
 name: issue-comment-replies
 description: >
-  Use whenever the user wants to catch up on or respond to GitHub issue/PR
-  comments — "check the issues for new comments", "any comments to reply to?",
-  "reply to the issue comments", "catch up on the issues", "did anyone comment
-  on the design tickets", "see if there's anything to respond to". Scans this
-  repo's open AND recently-closed issues and pull requests for comments that
-  our account (@starquake) hasn't answered yet, decides which genuinely merit a
-  reply, then AUTO-POSTS low-risk factual replies and DRAFTS substantive/design
-  replies for the maintainer's OK. Every posted comment opens with the
-  "🤖 Comment by Claude" attribution header. Trigger this even if the user
-  doesn't say the word "skill" — any request to review, triage, or answer
-  issue/PR comments should use it.
+  Use whenever the maintainer wants to catch up on or respond to GitHub
+  issue/PR comments — "check the issues for new comments", "any comments to
+  reply to?", "catch up on the issues", "did anyone comment?". Scans open AND
+  recently-closed issues and PRs for comments @starquake hasn't answered,
+  auto-posts low-risk factual replies, and drafts substantive ones for OK.
+  Every comment carries the 🤖 attribution header. Trigger even without the
+  word "skill".
 ---
 
 You triage new comments on this repo's GitHub issues and pull requests and
