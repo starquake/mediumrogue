@@ -25,7 +25,62 @@ import (
 // Every knob is an env var so a world can be retuned by restarting the
 // container rather than rebuilding the image.
 
-// graphTuning holds the knobs. Defaults are the mockup's "target" panel.
+// Default tuning. Node counts scale with RING AREA — the bands hold roughly
+// 4.9k / 14.5k / 24.1k hexes at radius 120, a 1:3:5 ratio — because flat counts
+// leave the frontier ring all but impassable, which is the tier the hardest
+// monsters live in.
+const (
+	defNodesRing0  = 5
+	defNodesRing1  = 15
+	defNodesRing2  = 26
+	defNodeRadius  = 10
+	defPathRadius  = 4
+	defSpurRadius  = 6
+	defLoops       = 6
+	defDeadEnds    = 10
+	defSpurLen     = 16
+	defMinLoopDist = 30
+	defLakes       = 5
+
+	// referenceRadius is the world size the default node COUNTS are tuned for.
+	// Counts scale with AREA (radius squared) so structural density is constant
+	// at any world size; the radii below stay ABSOLUTE, because a corridor's
+	// width is a gameplay quantity tied to CombatRadius, not to world size.
+	//
+	// Without this the generator only worked at one size: at radius 24 the
+	// blobs swamped the map and produced 91% walkable — more open than the
+	// noise world it replaces.
+	referenceRadius = 120
+
+	// rimMargin keeps generated nodes clear of the impassable rock rim.
+	rimMargin = 3
+
+	// farther than any possible hex distance, for a nearest-node search.
+	unreachable = 1 << 30
+
+	// lakeMinRadius/lakeRadiusSpread size the solid lakes dropped into the void.
+	lakeMinRadius    = 6
+	lakeRadiusSpread = 7
+
+	// pixelPitchQ is the flat-top layout's pixel distance per hex along q.
+	pixelPitchQ = 1.5
+
+	// corridorJitter keeps a carved edge from being a drawn line. Small on
+	// purpose: large perpendicular displacement disconnected corridors from
+	// their endpoints when it was tried in the mockup.
+	corridorJitter = 2.0
+
+	pctScale = 100
+
+	// Biome thresholds for carved space. Deliberately generous compared with
+	// the noise generator's: a graph world carves a fraction of the map, so a
+	// biome that is merely uncommon world-wide can be absent from a whole ring
+	// and fail ValidateSpawnTerrainCoverage (#436/#438).
+	graphForestLevel = 0.58
+	graphMudLevel    = 0.46
+)
+
+// graphTuning holds the knobs.
 type graphTuning struct {
 	nodesRing0, nodesRing1, nodesRing2 int
 	nodeRadius, pathRadius, spurRadius int
@@ -40,17 +95,17 @@ func graphTuningFromEnv() graphTuning {
 		// hold roughly 4.9k / 14.5k / 24.1k hexes — a 1:3:5 ratio — so flat
 		// counts leave the frontier ring almost entirely impassable, which is
 		// where the hardest monsters are meant to live.
-		nodesRing0:  envInt("WORLDGEN_NODES_R0", 5),
-		nodesRing1:  envInt("WORLDGEN_NODES_R1", 15),
-		nodesRing2:  envInt("WORLDGEN_NODES_R2", 26),
-		nodeRadius:  envInt("WORLDGEN_NODE_RADIUS", 10),
-		pathRadius:  envInt("WORLDGEN_PATH_RADIUS", 4),
-		spurRadius:  envInt("WORLDGEN_SPUR_RADIUS", 6),
-		loops:       envInt("WORLDGEN_LOOPS", 6),
-		deadEnds:    envInt("WORLDGEN_DEAD_ENDS", 10),
-		spurLen:     envInt("WORLDGEN_SPUR_LEN", 16),
-		minLoopDist: envInt("WORLDGEN_MIN_LOOP_DIST", 30),
-		lakes:       envInt("WORLDGEN_LAKES", 5),
+		nodesRing0:  envInt("WORLDGEN_NODES_R0", defNodesRing0),
+		nodesRing1:  envInt("WORLDGEN_NODES_R1", defNodesRing1),
+		nodesRing2:  envInt("WORLDGEN_NODES_R2", defNodesRing2),
+		nodeRadius:  envInt("WORLDGEN_NODE_RADIUS", defNodeRadius),
+		pathRadius:  envInt("WORLDGEN_PATH_RADIUS", defPathRadius),
+		spurRadius:  envInt("WORLDGEN_SPUR_RADIUS", defSpurRadius),
+		loops:       envInt("WORLDGEN_LOOPS", defLoops),
+		deadEnds:    envInt("WORLDGEN_DEAD_ENDS", defDeadEnds),
+		spurLen:     envInt("WORLDGEN_SPUR_LEN", defSpurLen),
+		minLoopDist: envInt("WORLDGEN_MIN_LOOP_DIST", defMinLoopDist),
+		lakes:       envInt("WORLDGEN_LAKES", defLakes),
 	}
 }
 
@@ -83,19 +138,26 @@ func generateGraphMap(seed uint64, radius int) protocol.MapResponse {
 	return paintGraphTerrain(seed, radius, walk, lakeHexes(rng, walk, radius, t))
 }
 
-// newGraphRand is a small deterministic PCG-alike; worldgen must not consume
-// the world's own rng streams.
+// newGraphRand is a deterministic SplitMix64 stream, reusing worldgen.go's
+// published finalizer constants rather than introducing a second set. Worldgen
+// must not consume the world's own rng streams, so it carries its own.
+//
+// The shift amounts are positions inside the published finalizer rather than
+// tunable quantities, exactly as in latticeValue — naming them would describe
+// nothing.
+//
+//nolint:revive,gosec // add-constant: finalizer shifts; wraparound intentional.
 func newGraphRand(seed uint64) func() float64 {
-	state := seed*6364136223846793005 + 1442695040888963407
+	state := seed
 
 	return func() float64 {
-		state = state*6364136223846793005 + 1442695040888963407
-		x := state
-		x ^= x >> 33
-		x *= 0xff51afd7ed558ccd
-		x ^= x >> 33
+		state += goldenRatio64
+		z := state
+		z = (z ^ (z >> 30)) * splitMixMulA
+		z = (z ^ (z >> 27)) * splitMixMulB
+		z ^= z >> 31
 
-		return float64(x>>11) / float64(uint64(1)<<53)
+		return float64(z>>11) / float64(uint64(1)<<53)
 	}
 }
 
@@ -120,16 +182,14 @@ func axialFromPolar(pixels, angle float64) protocol.Hex {
 func polarHex(hexes, angle float64) protocol.Hex {
 	origin := protocol.Hex{Q: 0, R: 0}
 
-	//nolint:revive // add-constant: 1.5 is the flat-top q-axis pixel pitch.
-	guess := axialFromPolar(hexes*1.5, angle)
+	guess := axialFromPolar(hexes*pixelPitchQ, angle)
 
 	actual := HexDistance(origin, guess)
 	if actual == 0 {
 		return guess
 	}
 
-	//nolint:revive // add-constant: 1.5 again, same pitch.
-	return axialFromPolar(hexes*1.5*hexes/float64(actual), angle)
+	return axialFromPolar(hexes*pixelPitchQ*hexes/float64(actual), angle)
 }
 
 // placeGraphNodes seeds the origin plus n nodes in each difficulty ring, so
@@ -137,7 +197,13 @@ func polarHex(hexes, angle float64) protocol.Hex {
 func placeGraphNodes(rng func() float64, radius int, t graphTuning) []graphNode {
 	origin := protocol.Hex{Q: 0, R: 0}
 	nodes := []graphNode{{hex: origin}}
-	counts := [protocol.RingCount]int{t.nodesRing0, t.nodesRing1, t.nodesRing2}
+
+	// Area scaling, floored at one node per ring so a tiny world still has a
+	// path out of the origin rather than an unreachable frontier.
+	scale := float64(radius*radius) / float64(referenceRadius*referenceRadius)
+	scaled := func(n int) int { return max(1, int(math.Round(float64(n)*scale))) }
+
+	counts := [protocol.RingCount]int{scaled(t.nodesRing0), scaled(t.nodesRing1), scaled(t.nodesRing2)}
 
 	for ring := range protocol.RingCount {
 		inner := float64(ring) * float64(radius) / float64(protocol.RingCount)
@@ -145,7 +211,7 @@ func placeGraphNodes(rng func() float64, radius int, t graphTuning) []graphNode 
 
 		for range counts[ring] {
 			h := polarHex(inner+rng()*(outer-inner), rng()*2*math.Pi)
-			if HexDistance(origin, h) <= radius-3 {
+			if HexDistance(origin, h) <= radius-rimMargin {
 				nodes = append(nodes, graphNode{hex: h})
 			}
 		}
@@ -164,7 +230,7 @@ func connectGraphNodes(rng func() float64, nodes []graphNode, t graphTuning) [][
 	edges := make([][2]int, 0, len(nodes)+t.loops)
 
 	for i := 1; i < len(nodes); i++ {
-		best, bestDist := -1, 1<<30
+		best, bestDist := -1, unreachable
 
 		for j := range nodes {
 			if i == j || HexDistance(origin, nodes[j].hex) >= HexDistance(origin, nodes[i].hex) {
@@ -181,6 +247,15 @@ func connectGraphNodes(rng func() float64, nodes []graphNode, t graphTuning) [][
 		}
 	}
 
+	return append(edges, longLoops(rng, nodes, t)...)
+}
+
+// longLoops adds alternate routes between DISTANT nodes. Length is the whole
+// point: a link between adjacent nodes is a shortcut that makes travel more
+// direct, which is the opposite of what this generator exists for.
+func longLoops(rng func() float64, nodes []graphNode, t graphTuning) [][2]int {
+	out := make([][2]int, 0, t.loops)
+
 	for range t.loops {
 		i := 1 + int(rng()*float64(len(nodes)-1))
 		best, bestDist := -1, -1
@@ -196,11 +271,11 @@ func connectGraphNodes(rng func() float64, nodes []graphNode, t graphTuning) [][
 		}
 
 		if best >= 0 {
-			edges = append(edges, [2]int{i, best})
+			out = append(out, [2]int{i, best})
 		}
 	}
 
-	return edges
+	return out
 }
 
 // addGraphSpurs hangs dead ends off existing nodes — the places a reward would
@@ -215,7 +290,7 @@ func addGraphSpurs(
 		off := polarHex(float64(t.spurLen), rng()*2*math.Pi)
 		tip := protocol.Hex{Q: nodes[from].hex.Q + off.Q, R: nodes[from].hex.R + off.R}
 
-		if HexDistance(origin, tip) > radius-3 {
+		if HexDistance(origin, tip) > radius-rimMargin {
 			continue
 		}
 
@@ -261,7 +336,7 @@ func carveGraph(rng func() float64, nodes []graphNode, edges [][2]int, radius in
 			// A little jitter so a corridor is not a drawn line. Kept small:
 			// large perpendicular displacement disconnected the corridor from
 			// its endpoints when this was tried in the mockup.
-			jitter := (rng() - 0.5) * 2
+			jitter := (rng() - 0.5) * corridorJitter
 			carve(protocol.Hex{
 				Q: a.Q + int(math.Round(float64(b.Q-a.Q)*f+jitter)),
 				R: a.R + int(math.Round(float64(b.R-a.R)*f+jitter)),
@@ -287,8 +362,7 @@ func lakeHexes(rng func() float64, walk map[protocol.Hex]bool, radius int, t gra
 			continue
 		}
 
-		//nolint:revive // add-constant: lake radius range, tuned by eye.
-		r := 6 + int(rng()*7)
+		r := lakeMinRadius + int(rng()*lakeRadiusSpread)
 
 		for dq := -r; dq <= r; dq++ {
 			for dr := -r; dr <= r; dr++ {
@@ -358,9 +432,9 @@ func graphTerrainAt(
 	moisture := fbm(seed^moistureSalt, fx, fy)
 
 	switch {
-	case moisture > 0.58:
+	case moisture > graphForestLevel:
 		return protocol.TerrainForest
-	case moisture > 0.46:
+	case moisture > graphMudLevel:
 		return protocol.TerrainMud
 	default:
 		return protocol.TerrainGrass
@@ -388,7 +462,6 @@ func (w *World) WorldShape() (walkablePct, connectedPct float64, byRing [protoco
 		return 0, 0, byRing
 	}
 
-	//nolint:revive // add-constant: percentage conversion.
-	return 100 * float64(walkable) / float64(len(w.worldMap.Tiles)),
-		100 * float64(len(w.spawnable)) / float64(walkable), byRing
+	return pctScale * float64(walkable) / float64(len(w.worldMap.Tiles)),
+		pctScale * float64(len(w.spawnable)) / float64(walkable), byRing
 }

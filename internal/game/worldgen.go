@@ -27,7 +27,9 @@ const (
 	// mudLevel is the tuned quantity: it sets how much mud the world has, and
 	// (from #436) therefore how many skeletons it has. See
 	// TestMudCoverageIsOccasional for the band it is held to.
-	mudLevel    = 0.44
+	//nolint:unused // #458 experiment: used by the retained noise generator.
+	mudLevel = 0.44
+	//nolint:unused // #458 experiment: used by the retained noise generator.
 	mudMoisture = 0.55
 )
 
@@ -42,8 +44,11 @@ func GenerateMap(seed uint64, radius int) protocol.MapResponse {
 	return generateGraphMap(seed, radius)
 }
 
-// generateNoiseMap is the original generator, kept intact on this branch so the
-// two can be compared and so reverting is a one-line change.
+// generateNoiseMap is the original generator, kept intact on this EXPERIMENT
+// branch so the two can be compared and so reverting is a one-line change in
+// GenerateMap. Staging runs this; development runs the graph generator.
+//
+//nolint:unused // #458 experiment: kept deliberately as the control and the revert path.
 func generateNoiseMap(seed uint64, radius int) protocol.MapResponse {
 	tiles := make([]protocol.Tile, 0, tileCount(radius))
 	origin := protocol.Hex{Q: 0, R: 0}
@@ -68,6 +73,8 @@ func generateNoiseMap(seed uint64, radius int) protocol.MapResponse {
 //
 // The clearing returns before any noise is sampled, so ring 0 never generates
 // mud — which is also what keeps the home clearing free of #436's ambushers.
+//
+//nolint:unused // #458 experiment: reached only by generateNoiseMap, kept as above.
 func terrainAt(seed uint64, radius int, h protocol.Hex) protocol.Terrain {
 	origin := protocol.Hex{Q: 0, R: 0}
 	switch {
