@@ -18,7 +18,7 @@ This file is the what-is-real summary: mechanics, systems, knobs.*
 ## 1. Game mechanics (what players experience)
 
 ### Time: WeGo turns & combat bubbles
-- One shared **world turn every 4 s** (2 s input window, ~2 s playback).
+- One shared **world turn every 4 s** (~2 s of input time, ~2 s playback).
   No input = stand still; queued click-to-move paths auto-advance. Latency
   and reflexes are irrelevant by design. The input window is client pacing,
   not a server deadline: an intent that arrives while a turn is resolving
@@ -1983,7 +1983,7 @@ roll, so it is ARPG-legal on jewelry.
 
 | Constant | Value | |
 |---|---|---|
-| `TurnSeconds` / `InputWindowSeconds` / `PlaybackSeconds` | 4 / 2 / 2 | turn anatomy |
+| `TurnSeconds` / `PlaybackSeconds` | 4 / 2 | turn anatomy — the input window is the remainder, not a constant (#464) |
 | `CombatRadius` | 6 | bubble trigger distance |
 | `StackCap` | 5 | max friendly entities per hex |
 | `BackpackSize` / `ItemStackCap` | 4 / 5 | backpack entries · max identical consumables per stack |
