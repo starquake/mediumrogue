@@ -4,8 +4,16 @@
 // generated file must never be edited by hand.
 package protocol
 
-// Turn cadence. One world turn every TurnSeconds: an input window, an instant
-// server resolution, then a playback window on the client. Inside a combat
+// Turn cadence. One world turn every TurnSeconds: intents accumulate, the
+// server resolves instantly on the tick, then the client plays the result back
+// over PlaybackSeconds.
+//
+// There is deliberately NO input-window constant. The window is whatever time
+// remains before the next tick — the server has no submission deadline, and
+// SubmitIntent accepts an intent right up to (and during) resolution, applying
+// it to the following turn (#99). An InputWindowSeconds constant existed until
+// #464: it enforced nothing, was read by no Go or client code, and being
+// exported through tygo it read as a rule the server applied. Inside a combat
 // time bubble the cadence is suspended and turns are action-gated instead.
 const (
 	// TurnSeconds is the full world-turn period out of combat. Lowered 5→4
@@ -13,9 +21,6 @@ const (
 	// window felt slow) — the plan's §9 "feel-test the cadence" decision
 	// landing at 2 s input / 2 s playback.
 	TurnSeconds = 4
-	// InputWindowSeconds is the slice of the turn in which intents are accepted.
-	// Lowered 3→2 alongside TurnSeconds (see above).
-	InputWindowSeconds = 2
 	// PlaybackSeconds is the client-side animation window after resolution.
 	PlaybackSeconds = 2
 )

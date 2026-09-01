@@ -19,11 +19,6 @@ generated file must never be edited by hand.
  */
 export const TurnSeconds = 4;
 /**
- * InputWindowSeconds is the slice of the turn in which intents are accepted.
- * Lowered 3→2 alongside TurnSeconds (see above).
- */
-export const InputWindowSeconds = 2;
-/**
  * PlaybackSeconds is the client-side animation window after resolution.
  */
 export const PlaybackSeconds = 2;
