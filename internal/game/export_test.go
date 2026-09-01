@@ -874,6 +874,32 @@ func KindBuriesOnSpawnForTest(kind string) bool {
 	return ok && k.buriesOnSpawn
 }
 
+// NearestMonsterDistanceForTest reports how far the nearest living monster is
+// from an entity, and whether there was one at all (#460).
+func (w *World) NearestMonsterDistanceForTest(id int64) (int, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	self, ok := w.entities[id]
+	if !ok {
+		return 0, false
+	}
+
+	nearest, found := 0, false
+
+	for _, e := range w.entities {
+		if e.kind != protocol.EntityMonster || e.hp <= 0 {
+			continue
+		}
+
+		if d := HexDistance(self.hex, e.hex); !found || d < nearest {
+			nearest, found = d, true
+		}
+	}
+
+	return nearest, found
+}
+
 // TerrainWalkableForTest exposes terrainWalkable — the one predicate both
 // walkableLocked and reachableWalkable read — so a test can pin the walkable
 // set directly rather than inferring it from a generated map (#437).

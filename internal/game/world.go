@@ -4448,6 +4448,27 @@ func (w *World) thinkWanderLocked(rng *mrand.Rand, m *entity, targets []*entity)
 			continue
 		}
 
+		// The sanctuary is a PERMANENT monster-free zone, and the spawn-time
+		// guard alone does not keep it one: nothing stopped idle drift walking
+		// a monster in afterwards. Measured on a radius-120 world with
+		// MONSTER_COUNT=1000, seed 42 — 0 monsters inside the exclusion at
+		// turn 0, 2 by turn 100, 5 by turn 300. That is ~20 minutes at the 4s
+		// turn, so a long-lived server accumulates them and a joining player
+		// meets one (#460, reported again after the spawn-time fix landed).
+		//
+		// The condition is "inside, and not walking OUT" rather than a flat
+		// "inside": a monster that got in by CHASING a player would otherwise
+		// find every neighbour refused and stand there forever. Allowing the
+		// outward step lets it leave on its own, so the zone self-heals.
+		//
+		// Deliberately NOT applied to the chase step: blocking that would let
+		// a player kite anything to the origin and stand safe, which is a new
+		// mechanic rather than a bug fix. See the PR for that question.
+		if w.tooCloseToSanctuaryLocked(h) &&
+			HexDistance(protocol.Hex{Q: 0, R: 0}, h) <= HexDistance(protocol.Hex{Q: 0, R: 0}, m.hex) {
+			continue
+		}
+
 		options = append(options, h)
 	}
 
