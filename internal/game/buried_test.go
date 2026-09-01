@@ -327,7 +327,7 @@ func TestBuriedKindCoverageGuard(t *testing.T) {
 			CombatPatience:  testCombatPatience,
 			BubblePoll:      testBubblePoll,
 			DisconnectGrace: testDisconnectGrace,
-			WorldSeed:       17,
+			WorldSeed:       472,
 			Radius:          24,
 			Ticks:           hub.New(),
 		})
@@ -339,7 +339,7 @@ func TestBuriedKindCoverageGuard(t *testing.T) {
 
 		// The message has to be actionable: whoever hits this is an operator
 		// with a bad seed, not a developer with a stack trace.
-		for _, want := range []string{"skeleton", "ring 1", "seed 17", "WORLD_SEED"} {
+		for _, want := range []string{"skeleton", "ring 1", "seed 472", "WORLD_SEED"} {
 			if got := err.Error(); !strings.Contains(got, want) {
 				t.Errorf("err.Error() = %q, should contain %q", got, want)
 			}

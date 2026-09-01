@@ -19,6 +19,14 @@ import (
 // so a beyond-leash displacement (rat leash = MonsterLeashMultiplier ×
 // (CombatRadius+1) = 14 hexes) plus a margin fits inside the walkable map —
 // a radius-12 map's origin-anchored geometry tops out around 12 hexes.
+// newLeashWorld's seed is a PIN, re-derived for the graph generator (#458).
+// walkableHexAwayFrom needs a walkable hex exactly 7 away from the rat and
+// strictly collinear away from its home — outside CombatRadius so no bubble
+// forms, inside the rat's aggro so a chase is genuinely on the table, which
+// pins the distance to exactly 7. Corridors offer that ray far less often than
+// the old noise blobs did: 0xC0FFEE stopped offering it, and 5 of 14 seeds
+// tried cannot satisfy it either. Re-derive rather than relax the helper — the
+// collinearity is what makes "stepped home, did not chase" provable.
 func newLeashWorld(t *testing.T) *game.World {
 	t.Helper()
 
@@ -27,7 +35,7 @@ func newLeashWorld(t *testing.T) *game.World {
 		CombatPatience:  testCombatPatience,
 		BubblePoll:      testBubblePoll,
 		DisconnectGrace: testDisconnectGrace,
-		WorldSeed:       0xC0FFEE,
+		WorldSeed:       1,
 		Radius:          20,
 		Ticks:           hub.New(),
 	})

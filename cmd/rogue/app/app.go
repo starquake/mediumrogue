@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -67,6 +68,8 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	ticks := hub.New()
 	world := newWorld(cfg, ticks)
 	world.SetLogger(logger)
+
+	logWorldShape(logger, world)
 
 	// #436: a world whose rings cannot support a mud-only kind refuses to
 	// start rather than quietly spawning none of it. Checked before the
@@ -360,4 +363,20 @@ func saveSnapshot(logger *slog.Logger, path string, world *game.World) {
 	}
 
 	logger.Info("snapshot: saved", logKeyPath, path)
+}
+
+// logWorldShape reports the generated world's shape at startup (#458
+// experiment), so the graph generator can be tuned by restarting the container
+// with different WORLDGEN_* values instead of tuning blind.
+func logWorldShape(logger *slog.Logger, world *game.World) {
+	const oneDecimal = 10
+
+	pct, conn, byRing := world.WorldShape()
+
+	logger.Info("worldgen",
+		"walkable_pct", math.Round(pct*oneDecimal)/oneDecimal,
+		"connected_pct", math.Round(conn*oneDecimal)/oneDecimal,
+		"walkable_ring0", byRing[0],
+		"walkable_ring1", byRing[1],
+		"walkable_ring2", byRing[2])
 }

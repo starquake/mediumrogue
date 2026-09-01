@@ -1,0 +1,573 @@
+package game
+
+import (
+	"math"
+	"os"
+	"strconv"
+
+	"github.com/starquake/mediumrogue/internal/protocol"
+)
+
+// worldgen_graph.go (#458, EXPERIMENT) — graph-first world generation.
+//
+// THIS BRANCH REPLACES THE NOISE GENERATOR OUTRIGHT. It is not flag-gated:
+// staging runs the noise world and is the control, development runs this and
+// is the experiment, and comparing the two by walking them is the point.
+// Nothing here is meant to merge as-is.
+//
+// The shape (#458): place nodes per difficulty ring, connect each to a node
+// nearer the origin (a spanning tree, so the world is connected by
+// construction), add a few long loops and dead-end spurs, then carve walkable
+// corridors along every edge and blobs at every node. Everything not carved is
+// impassable — which is the whole point, since the noise generator's world is
+// 82.8% walkable and has no negative space doing structural work.
+//
+// Every knob is an env var so a world can be retuned by restarting the
+// container rather than rebuilding the image.
+
+// Default tuning. Node counts scale with RING AREA — the bands hold roughly
+// 4.9k / 14.5k / 24.1k hexes at radius 120, a 1:3:5 ratio — because flat counts
+// leave the frontier ring all but impassable, which is the tier the hardest
+// monsters live in.
+const (
+	defNodesRing0  = 5
+	defNodesRing1  = 15
+	defNodesRing2  = 26
+	defNodeRadius  = 10
+	defPathRadius  = 4
+	defSpurRadius  = 6
+	defLoops       = 6
+	defDeadEnds    = 10
+	defSpurLen     = 16
+	defMinLoopDist = 30
+	defLakes       = 14
+
+	// lakePlacementTries is how many centres to try before giving up on a lake.
+	lakePlacementTries = 60
+
+	// referenceRadius is the world size the default node COUNTS are tuned for.
+	// Counts scale with AREA (radius squared) so structural density is constant
+	// at any world size; the radii below stay ABSOLUTE, because a corridor's
+	// width is a gameplay quantity tied to CombatRadius, not to world size.
+	//
+	// Without this the generator only worked at one size: at radius 24 the
+	// blobs swamped the map and produced 91% walkable — more open than the
+	// noise world it replaces.
+	referenceRadius = 120
+
+	// rimMargin keeps generated nodes clear of the impassable rock rim.
+	rimMargin = 3
+
+	// farther than any possible hex distance, for a nearest-node search.
+	unreachable = 1 << 30
+
+	// Lake SIZE and PLACEMENT scale with the world, unlike the corridor widths
+	// above. A corridor's width is a gameplay quantity; a lake is scenery, and
+	// lakeRimMargin is a placement BOUND — absolute, it excluded the whole map
+	// once the world was small enough. At radius 24 a 12-hex margin confined
+	// lakes to the inner half, which is where the graph is densest, so every
+	// seed at radius <= 24 generated NO water at all.
+	lakeRimFrac    = 0.10
+	lakeMinFrac    = 0.05
+	lakeSpreadFrac = 0.06
+	// lakeMinSize floors the above so a small world still gets real lakes.
+	lakeMinSize = 2
+
+	// pixelPitchQ is the flat-top layout's pixel distance per hex along q.
+	pixelPitchQ = 1.5
+
+	// corridorJitter keeps a carved edge from being a drawn line. Small on
+	// purpose: large perpendicular displacement disconnected corridors from
+	// their endpoints when it was tried in the mockup.
+	corridorJitter = 2.0
+
+	pctScale = 100
+
+	// Biome thresholds for carved space. Deliberately generous compared with
+	// the noise generator's: a graph world carves a fraction of the map, so a
+	// biome that is merely uncommon world-wide can be absent from a whole ring
+	// and fail ValidateSpawnTerrainCoverage (#436/#438).
+	graphForestLevel = 0.60
+	graphMudLevel    = 0.555
+)
+
+// graphTuning holds the knobs.
+type graphTuning struct {
+	nodesRing0, nodesRing1, nodesRing2 int
+	nodeRadius, pathRadius, spurRadius int
+	loops, deadEnds, spurLen           int
+	minLoopDist                        int
+	lakes                              int
+}
+
+func graphTuningFromEnv() graphTuning {
+	return graphTuning{
+		// Node counts scale with RING AREA, not flat. At radius 120 the bands
+		// hold roughly 4.9k / 14.5k / 24.1k hexes — a 1:3:5 ratio — so flat
+		// counts leave the frontier ring almost entirely impassable, which is
+		// where the hardest monsters are meant to live.
+		nodesRing0:  envInt("WORLDGEN_NODES_R0", defNodesRing0),
+		nodesRing1:  envInt("WORLDGEN_NODES_R1", defNodesRing1),
+		nodesRing2:  envInt("WORLDGEN_NODES_R2", defNodesRing2),
+		nodeRadius:  envInt("WORLDGEN_NODE_RADIUS", defNodeRadius),
+		pathRadius:  envInt("WORLDGEN_PATH_RADIUS", defPathRadius),
+		spurRadius:  envInt("WORLDGEN_SPUR_RADIUS", defSpurRadius),
+		loops:       envInt("WORLDGEN_LOOPS", defLoops),
+		deadEnds:    envInt("WORLDGEN_DEAD_ENDS", defDeadEnds),
+		spurLen:     envInt("WORLDGEN_SPUR_LEN", defSpurLen),
+		minLoopDist: envInt("WORLDGEN_MIN_LOOP_DIST", defMinLoopDist),
+		lakes:       envInt("WORLDGEN_LAKES", defLakes),
+	}
+}
+
+func envInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+
+	return fallback
+}
+
+type graphNode struct {
+	hex  protocol.Hex
+	spur bool
+}
+
+// generateGraphMap builds the world. Same signature contract as the noise
+// generator: same (seed, radius) always produces the same map.
+func generateGraphMap(seed uint64, radius int) protocol.MapResponse {
+	t := graphTuningFromEnv()
+	rng := newGraphRand(seed)
+
+	nodes := placeGraphNodes(rng, radius, t)
+	edges := connectGraphNodes(rng, nodes, t)
+	nodes, edges = addGraphSpurs(rng, nodes, edges, radius, t)
+	walk := carveGraph(rng, nodes, edges, radius, t)
+
+	return paintGraphTerrain(seed, radius, walk, lakeHexes(rng, walk, radius, t))
+}
+
+// newGraphRand is a deterministic SplitMix64 stream, reusing worldgen.go's
+// published finalizer constants rather than introducing a second set. Worldgen
+// must not consume the world's own rng streams, so it carries its own.
+//
+// The shift amounts are positions inside the published finalizer rather than
+// tunable quantities, exactly as in latticeValue — naming them would describe
+// nothing.
+//
+//nolint:revive,gosec // add-constant: finalizer shifts; wraparound intentional.
+func newGraphRand(seed uint64) func() float64 {
+	state := seed
+
+	return func() float64 {
+		state += goldenRatio64
+		z := state
+		z = (z ^ (z >> 30)) * splitMixMulA
+		z = (z ^ (z >> 27)) * splitMixMulB
+		z ^= z >> 31
+
+		return float64(z>>11) / float64(uint64(1)<<53)
+	}
+}
+
+// axialFromPolar converts a PIXEL distance and angle to the nearest axial hex,
+// using the flat-top layout's standard inverse.
+func axialFromPolar(pixels, angle float64) protocol.Hex {
+	x, y := pixels*math.Cos(angle), pixels*math.Sin(angle)
+
+	//nolint:revive // add-constant: the 2/3 and sqrt(3)/3 are the axial conversion itself.
+	return protocol.Hex{Q: int(math.Round(x * 2 / 3)), R: int(math.Round(-x/3 + y*math.Sqrt(3)/3))}
+}
+
+// polarHex places a hex at approximately the given HEX distance from the
+// origin along an angle.
+//
+// The correction step is load-bearing. Pixel distance and hex distance differ
+// by a direction-dependent factor (1.5 along q, sqrt(3) along r), so feeding a
+// hex distance straight into the pixel conversion places nodes at roughly 2/3
+// of the intended range — which put every ring-2 node inside ring 1 and left
+// the frontier all but impassable. Measuring the first guess and rescaling
+// lands within a hex or two at every angle.
+func polarHex(hexes, angle float64) protocol.Hex {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	guess := axialFromPolar(hexes*pixelPitchQ, angle)
+
+	actual := HexDistance(origin, guess)
+	if actual == 0 {
+		return guess
+	}
+
+	return axialFromPolar(hexes*pixelPitchQ*hexes/float64(actual), angle)
+}
+
+// placeGraphNodes seeds the origin plus n nodes in each difficulty ring, so
+// paths lead outward through the existing difficulty bands.
+func placeGraphNodes(rng func() float64, radius int, t graphTuning) []graphNode {
+	origin := protocol.Hex{Q: 0, R: 0}
+	nodes := []graphNode{{hex: origin}}
+
+	// Area scaling, floored at one node per ring so a tiny world still has a
+	// path out of the origin rather than an unreachable frontier.
+	scale := float64(radius*radius) / float64(referenceRadius*referenceRadius)
+	scaled := func(n int) int { return max(1, int(math.Round(float64(n)*scale))) }
+
+	counts := [protocol.RingCount]int{scaled(t.nodesRing0), scaled(t.nodesRing1), scaled(t.nodesRing2)}
+
+	for ring := range protocol.RingCount {
+		inner := float64(ring) * float64(radius) / float64(protocol.RingCount)
+		outer := float64(ring+1) * float64(radius) / float64(protocol.RingCount)
+
+		for range counts[ring] {
+			h := polarHex(inner+rng()*(outer-inner), rng()*2*math.Pi)
+			if HexDistance(origin, h) <= radius-rimMargin {
+				nodes = append(nodes, graphNode{hex: h})
+			}
+		}
+	}
+
+	return nodes
+}
+
+// connectGraphNodes links every node to the nearest node CLOSER to the origin
+// — a spanning tree rooted at the origin, so the world is connected by
+// construction — then adds long loops. Loops are deliberately long: a link
+// between adjacent nodes is a shortcut that makes travel more direct, which is
+// the opposite of what this generator is for.
+func connectGraphNodes(rng func() float64, nodes []graphNode, t graphTuning) [][2]int {
+	origin := protocol.Hex{Q: 0, R: 0}
+	edges := make([][2]int, 0, len(nodes)+t.loops)
+
+	for i := 1; i < len(nodes); i++ {
+		best, bestDist := -1, unreachable
+
+		for j := range nodes {
+			if i == j || HexDistance(origin, nodes[j].hex) >= HexDistance(origin, nodes[i].hex) {
+				continue
+			}
+
+			if d := HexDistance(nodes[i].hex, nodes[j].hex); d < bestDist {
+				bestDist, best = d, j
+			}
+		}
+
+		if best >= 0 {
+			edges = append(edges, [2]int{i, best})
+		}
+	}
+
+	return append(edges, longLoops(rng, nodes, t)...)
+}
+
+// longLoops adds alternate routes between DISTANT nodes. Length is the whole
+// point: a link between adjacent nodes is a shortcut that makes travel more
+// direct, which is the opposite of what this generator exists for.
+func longLoops(rng func() float64, nodes []graphNode, t graphTuning) [][2]int {
+	out := make([][2]int, 0, t.loops)
+
+	for range t.loops {
+		i := 1 + int(rng()*float64(len(nodes)-1))
+		best, bestDist := -1, -1
+
+		for j := 1; j < len(nodes); j++ {
+			if i == j {
+				continue
+			}
+
+			if d := HexDistance(nodes[i].hex, nodes[j].hex); d >= t.minLoopDist && d > bestDist {
+				bestDist, best = d, j
+			}
+		}
+
+		if best >= 0 {
+			out = append(out, [2]int{i, best})
+		}
+	}
+
+	return out
+}
+
+// addGraphSpurs hangs dead ends off existing nodes — the places a reward would
+// live, and the reason exploration is a choice rather than a route.
+func addGraphSpurs(
+	rng func() float64, nodes []graphNode, edges [][2]int, radius int, t graphTuning,
+) ([]graphNode, [][2]int) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	// A world too small to hold any node but the origin has nothing to hang a
+	// spur off: the ring candidates are all rejected by the rimMargin check, so
+	// nodes is length 1 and the pick below would index nodes[1]. Returning
+	// BEFORE the loop (rather than skipping inside it) leaves rng consumption
+	// untouched for every world that does have nodes, so seeded maps are
+	// byte-identical.
+	if len(nodes) < 2 {
+		return nodes, edges
+	}
+
+	for range t.deadEnds {
+		from := 1 + int(rng()*float64(len(nodes)-1))
+		off := polarHex(float64(t.spurLen), rng()*2*math.Pi)
+		tip := protocol.Hex{Q: nodes[from].hex.Q + off.Q, R: nodes[from].hex.R + off.R}
+
+		if HexDistance(origin, tip) > radius-rimMargin {
+			continue
+		}
+
+		nodes = append(nodes, graphNode{hex: tip, spur: true})
+		edges = append(edges, [2]int{len(nodes) - 1, from})
+	}
+
+	return nodes, edges
+}
+
+// carveGraph opens the walkable set: a blob at every node, and a corridor
+// along every edge. Everything else stays impassable.
+func carveGraph(rng func() float64, nodes []graphNode, edges [][2]int, radius int, t graphTuning) map[protocol.Hex]bool {
+	origin := protocol.Hex{Q: 0, R: 0}
+	walk := make(map[protocol.Hex]bool)
+
+	carve := func(centre protocol.Hex, r int) {
+		for dq := -r; dq <= r; dq++ {
+			for dr := -r; dr <= r; dr++ {
+				h := protocol.Hex{Q: centre.Q + dq, R: centre.R + dr}
+				if HexDistance(centre, h) <= r && HexDistance(origin, h) <= radius-1 {
+					walk[h] = true
+				}
+			}
+		}
+	}
+
+	for _, n := range nodes {
+		r := t.nodeRadius
+		if n.spur {
+			r = t.spurRadius
+		}
+
+		carve(n.hex, r)
+	}
+
+	for _, e := range edges {
+		a, b := nodes[e[0]].hex, nodes[e[1]].hex
+
+		steps := max(1, HexDistance(a, b))
+		for s := 0; s <= steps; s++ {
+			f := float64(s) / float64(steps)
+			// A little jitter so a corridor is not a drawn line. Kept small:
+			// large perpendicular displacement disconnected the corridor from
+			// its endpoints when this was tried in the mockup.
+			jitter := (rng() - 0.5) * corridorJitter
+			carve(protocol.Hex{
+				Q: a.Q + int(math.Round(float64(b.Q-a.Q)*f+jitter)),
+				R: a.R + int(math.Round(float64(b.R-a.R)*f+jitter)),
+			}, t.pathRadius)
+		}
+	}
+
+	// The origin clearing must always be walkable — players spawn there.
+	carve(origin, clearingRadius)
+
+	return walk
+}
+
+// lakeHexes places a few solid lakes in the void. Solid regions, never
+// per-hex randomness: speckled water destroys the read of the map entirely.
+func lakeHexes(rng func() float64, walk map[protocol.Hex]bool, radius int, t graphTuning) map[protocol.Hex]bool {
+	lakes := make(map[protocol.Hex]bool)
+
+	for range t.lakes {
+		centre, ok := voidCentre(rng, walk, radius)
+		if !ok {
+			continue
+		}
+
+		paintLake(lakes, walk, centre, lakeScale(lakeMinFrac, radius)+int(rng()*float64(lakeScale(lakeSpreadFrac, radius))), radius)
+	}
+
+	// Guarantee water. A world smaller than one node blob (radius <= ~12) is
+	// almost entirely walkable, so the strict all-neighbours-void test in
+	// voidCentre never finds a centre and the world generates with NO water —
+	// which broke every test that needs a non-walkable hex. This pass runs
+	// ONLY when the normal placement produced nothing, so worlds that place
+	// lakes normally (every radius >= 16) are unaffected, byte for byte.
+	if len(lakes) == 0 {
+		if centre, ok := anyNonWalkable(rng, walk, radius); ok {
+			paintLake(lakes, walk, centre, lakeScale(lakeMinFrac, radius), radius)
+		}
+	}
+
+	return lakes
+}
+
+// paintLake fills the non-walkable hexes within r of centre, staying inside
+// the world. It never overwrites walkable ground: a lake is dropped INTO the
+// void, so a corridor that happens to pass nearby is left intact.
+func paintLake(lakes, walk map[protocol.Hex]bool, centre protocol.Hex, r, radius int) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	for dq := -r; dq <= r; dq++ {
+		for dr := -r; dr <= r; dr++ {
+			h := protocol.Hex{Q: centre.Q + dq, R: centre.R + dr}
+			if HexDistance(centre, h) <= r && HexDistance(origin, h) <= radius && !walk[h] {
+				lakes[h] = true
+			}
+		}
+	}
+}
+
+// anyNonWalkable finds a non-walkable hex to seat the guarantee lake on. It
+// SCANS rather than sampling: at these radii non-walkable hexes are so scarce
+// that random sampling missed them (and sampling to radius-1 never even
+// reached the rim ring, which at radius <= 11 is the only void there is).
+// Candidates are collected in deterministic q/r order, so the rng draw that
+// picks among them is reproducible.
+func anyNonWalkable(rng func() float64, walk map[protocol.Hex]bool, radius int) (protocol.Hex, bool) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	var candidates []protocol.Hex
+
+	for q := -radius; q <= radius; q++ {
+		for r := -radius; r <= radius; r++ {
+			h := protocol.Hex{Q: q, R: r}
+			// Strictly inside the rim: graphTerrainAt returns rock for
+			// dist == radius BEFORE consulting lakes, so a rim-seated lake
+			// paints nothing at all.
+			if HexDistance(origin, h) < radius && !walk[h] {
+				candidates = append(candidates, h)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return protocol.Hex{}, false
+	}
+
+	return candidates[int(rng()*float64(len(candidates)))], true
+}
+
+// lakeScale converts a lake fraction of referenceRadius into hexes for this
+// world, floored so small worlds still get water.
+func lakeScale(frac float64, radius int) int {
+	return max(lakeMinSize, int(frac*float64(radius)))
+}
+
+// voidCentre finds a hex well inside the impassable void, so a lake is not
+// eaten by the corridor it was dropped on. Retries rather than skipping:
+// picking a single random centre left 3 of 4 seeds with NO water at all,
+// because roughly half of every world is walkable and a lake overlapping a
+// corridor loses most of its hexes.
+func voidCentre(rng func() float64, walk map[protocol.Hex]bool, radius int) (protocol.Hex, bool) {
+	origin := protocol.Hex{Q: 0, R: 0}
+
+	for range lakePlacementTries {
+		rim := lakeScale(lakeRimFrac, radius)
+
+		h := polarHex(rng()*float64(radius-rim), rng()*2*math.Pi)
+
+		inVoid := true
+
+		for _, n := range HexNeighbors(h) {
+			if walk[n] {
+				inVoid = false
+
+				break
+			}
+		}
+
+		if inVoid && !walk[h] && HexDistance(origin, h) <= radius-rim {
+			return h, true
+		}
+	}
+
+	return protocol.Hex{}, false
+}
+
+// paintGraphTerrain assigns biomes to the carved space and fills the void.
+//
+// Biome choice reuses the noise fields so grass/forest/mud form coherent
+// patches rather than per-hex speckle — and, critically, so that EVERY RING
+// GETS EVERY BIOME. ValidateSpawnTerrainCoverage (#436/#438) refuses to boot a
+// world whose rings lack the terrain a confined kind spawns on, so a graph
+// world that painted, say, all-grass corridors would not start at all.
+func paintGraphTerrain(
+	seed uint64, radius int, walk, lakes map[protocol.Hex]bool,
+) protocol.MapResponse {
+	origin := protocol.Hex{Q: 0, R: 0}
+	tiles := make([]protocol.Tile, 0, tileCount(radius))
+
+	for q := -radius; q <= radius; q++ {
+		for r := -radius; r <= radius; r++ {
+			h := protocol.Hex{Q: q, R: r}
+
+			d := HexDistance(origin, h)
+			if d > radius {
+				continue
+			}
+
+			tiles = append(tiles, protocol.Tile{Hex: h, Terrain: graphTerrainAt(seed, h, d, radius, walk, lakes)})
+		}
+	}
+
+	return protocol.MapResponse{Radius: radius, Tiles: tiles}
+}
+
+func graphTerrainAt(
+	seed uint64, h protocol.Hex, dist, radius int, walk, lakes map[protocol.Hex]bool,
+) protocol.Terrain {
+	switch {
+	case dist == radius:
+		return protocol.TerrainRock
+	case !walk[h]:
+		if lakes[h] {
+			return protocol.TerrainWater
+		}
+
+		return protocol.TerrainRock
+	case dist <= clearingRadius:
+		return protocol.TerrainGrass
+	}
+
+	fx := float64(h.Q) * noiseScale
+	fy := (float64(h.R) + float64(h.Q)*0.5) * noiseScale
+
+	// Two independent fields, same as the noise generator, so biomes form
+	// patches. Thresholds are deliberately generous: the carved space is a
+	// fraction of the map, so a biome that is rare across the whole world can
+	// be absent from a ring entirely and fail the coverage guard.
+	moisture := fbm(seed^moistureSalt, fx, fy)
+
+	switch {
+	case moisture > graphForestLevel:
+		return protocol.TerrainForest
+	case moisture > graphMudLevel:
+		return protocol.TerrainMud
+	default:
+		return protocol.TerrainGrass
+	}
+}
+
+// WorldShape reports the generated world's shape, for a startup log line.
+// Tuning by restarting the container is only useful if you can see what the
+// last restart produced. Deliberately cheap — walkable share and connectivity,
+// no detour BFS.
+func (w *World) WorldShape() (walkablePct, connectedPct float64, byRing [protocol.RingCount]int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	walkable := 0
+
+	for _, t := range w.worldMap.Tiles {
+		if terrainWalkable(t.Terrain) {
+			walkable++
+			byRing[ringOf(t.Hex, w.radius)]++
+		}
+	}
+
+	if walkable == 0 {
+		return 0, 0, byRing
+	}
+
+	return pctScale * float64(walkable) / float64(len(w.worldMap.Tiles)),
+		pctScale * float64(len(w.spawnable)) / float64(walkable), byRing
+}

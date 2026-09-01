@@ -1272,10 +1272,35 @@ roll, so it is ARPG-legal on jewelry.
   fresh level-1 character in the old one's place.
 
 ### World
-- **Procedural generation**: seeded value-noise biomes (elevation+moisture →
-  grass/forest/mud/water), rock rim, forced origin clearing, spawns restricted
-  to the origin-connected walkable region. Fixed default seed → identical
-  world every restart. The camera follows the player (see Movement).
+- **Procedural generation (#458)**: a **graph of areas**, not an open
+  landmass. Nodes are placed per difficulty ring, connected outward from the
+  origin, then carved into walkable blobs and corridors with **impassable
+  ground between them** — so the world is a branching network of paths and
+  pockets rather than one continuous field. Roughly **44-48% of a radius-120
+  world is walkable**. Biomes (grass/forest/mud) are painted onto the carved
+  space by seeded value-noise moisture; lakes are dropped into the void; a
+  rock rim closes the edge and the origin clearing is forced walkable. Spawns
+  are restricted to the origin-connected walkable region. Fixed default seed →
+  identical world every restart. The camera follows the player (see Movement).
+
+  | Knob | Default | What it does |
+  |---|---|---|
+  | `WORLDGEN_NODES_R0/R1/R2` | 5 / 15 / 26 | nodes per difficulty ring, **scaled by ring AREA** |
+  | `WORLDGEN_NODE_RADIUS` | 10 | size of the open area at each node |
+  | `WORLDGEN_PATH_RADIUS` | 4 | corridor half-width (~9 hexes wide) |
+  | `WORLDGEN_SPUR_RADIUS` / `_LEN` | 6 / 16 | size and length of a dead-end pocket |
+  | `WORLDGEN_LOOPS` | 6 | extra links; **fewer means more detour** |
+  | `WORLDGEN_MIN_LOOP_DIST` | 30 | loops must be long — a short one is a shortcut |
+  | `WORLDGEN_DEAD_ENDS` | 10 | number of spurs |
+  | `WORLDGEN_LAKES` | 14 | lakes dropped into the void |
+
+  **Node counts scale with ring area; corridor widths do not** — a corridor's
+  width is a gameplay quantity tied to `CombatRadius`, while density has to
+  stay constant at any world size. Lake size and placement scale too: an
+  absolute lake margin excluded the whole map on small worlds, so every seed
+  at radius ≤ 24 generated no water at all. A world of **radius ≤ 11 still
+  has none** — it fits inside a single node blob, so there is no void to put
+  a lake in.
 - **Terrain-signature kinds (#436, #438)** — a kind whose def sets
   `spawnTerrain` spawns on that terrain and **nowhere else**. Two exist:
 
@@ -1286,7 +1311,7 @@ roll, so it is ARPG-legal on jewelry.
 
   Placement filters the candidate **kind pool** by the hex's terrain, so
   ordinary ground still spawns something — and a confined kind's frequency
-  becomes a function of its terrain's coverage (mud ~9% of land, forest ~27%).
+  becomes a function of its terrain's coverage (mud ~11% of land, forest ~30%).
   **A world that cannot support one refuses to start**:
   `ValidateSpawnTerrainCoverage` checks every confined kind's own `rings` at
   boot and exits naming the kind, terrain, ring and seed. It runs under
@@ -1343,20 +1368,18 @@ roll, so it is ARPG-legal on jewelry.
   Walkable at **no movement cost** (everything moves exactly one hex per turn,
   so a movement cost is a mechanic the engine does not have) and **transparent**
   to sight: mechanically it is grass, differing only in look and in what buries
-  there. Generated as land just above the waterline that is also moist —
-  `mudLevel` (0.44) over `mudMoisture` (0.55), checked before the forest rule
-  — which places bogs on the fringes of water without a third noise field.
+  there. Painted onto the carved walkable space by a single moisture field,
+  checked after forest, so bogs form patches inside the corridors and blobs.
 
   | Constant | Value |
   |---|---|
-  | `mudLevel` (elevation ceiling) | 0.44 |
-  | `mudMoisture` (moisture floor) | 0.55 |
-  | `waterLevel` | 0.30 |
-  | `forestLevel` | 0.55 |
+  | `graphForestLevel` (moisture floor for forest) | 0.60 |
+  | `graphMudLevel` (moisture floor for mud) | 0.555 |
 
-  Coverage is **~5–14% of walkable land depending on seed** (~9% typical),
-  against forest's ~27%. The home clearing never generates mud — `terrainAt`
-  returns before sampling noise — so a spawn hex can never hide an ambusher.
+  Coverage is **~4.6–21% of walkable land depending on seed** (~11% typical),
+  against forest's ~30%. The home clearing never generates mud —
+  `graphTerrainAt` returns before sampling noise — so a spawn hex can never
+  hide an ambusher.
   Walkability lives in ONE predicate, `terrainWalkable` (`worldgen.go`), which
   both movement (`walkableLocked`) and the spawn-candidate filter
   (`reachableWalkable`) read; it deliberately has no `default` clause so the

@@ -13,86 +13,20 @@ import (
 // always have room regardless of the noise there.
 const (
 	noiseScale     = 0.11
-	waterLevel     = 0.30
-	mountainLevel  = 0.78
-	forestLevel    = 0.55
 	clearingRadius = 2
 	moistureSalt   = 0x1234_5678_9ABC_DEF0
-
-	// Mud (#437) is a band of wet LOW ground: land just above the waterline
-	// that is also moist. No third noise field — reusing elevation and
-	// moisture is what puts bogs on the fringes of water, where a swamp
-	// belongs and reads correctly without explanation.
-	//
-	// mudLevel is the tuned quantity: it sets how much mud the world has, and
-	// (from #436) therefore how many skeletons it has. See
-	// TestMudCoverageIsOccasional for the band it is held to.
-	mudLevel    = 0.44
-	mudMoisture = 0.55
 )
 
 // GenerateMap builds a deterministic procedural world of the given hex radius
 // from seed: a rock-rimmed hexagon of coherent biomes (grass, forest, mud,
 // water, rock) derived from two value-noise fields (elevation, moisture), with
 // a forced walkable clearing at the origin. Same (seed, radius) → identical map.
+// GenerateMap builds a deterministic procedural world of the given hex radius
+// from seed: a graph of areas connected outward from the origin, carved into
+// walkable corridors and blobs with impassable ground between them (#458).
+// Same (seed, radius) → identical map.
 func GenerateMap(seed uint64, radius int) protocol.MapResponse {
-	tiles := make([]protocol.Tile, 0, tileCount(radius))
-	origin := protocol.Hex{Q: 0, R: 0}
-
-	for q := -radius; q <= radius; q++ {
-		for r := -radius; r <= radius; r++ {
-			h := protocol.Hex{Q: q, R: r}
-			if HexDistance(origin, h) > radius {
-				continue
-			}
-
-			tiles = append(tiles, protocol.Tile{Hex: h, Terrain: terrainAt(seed, radius, h)})
-		}
-	}
-
-	return protocol.MapResponse{Radius: radius, Tiles: tiles}
-}
-
-// terrainAt classifies one hex: the rim is rock; the origin clearing is grass;
-// otherwise elevation carves water (low) and mountains (high), and within land
-// moisture separates mud (moist and low-lying), forest (moist) and grass (dry).
-//
-// The clearing returns before any noise is sampled, so ring 0 never generates
-// mud — which is also what keeps the home clearing free of #436's ambushers.
-func terrainAt(seed uint64, radius int, h protocol.Hex) protocol.Terrain {
-	origin := protocol.Hex{Q: 0, R: 0}
-	switch {
-	case HexDistance(origin, h) == radius:
-		return protocol.TerrainRock
-	case HexDistance(origin, h) <= clearingRadius:
-		return protocol.TerrainGrass
-	}
-
-	// Sample the noise fields in a lightly sheared axial plane so regions are
-	// spatially coherent across neighbouring hexes.
-	fx := float64(h.Q) * noiseScale
-	fy := (float64(h.R) + float64(h.Q)*0.5) * noiseScale
-
-	elevation := fbm(seed, fx, fy)
-	switch {
-	case elevation < waterLevel:
-		return protocol.TerrainWater
-	case elevation > mountainLevel:
-		return protocol.TerrainRock
-	}
-
-	moisture := fbm(seed^moistureSalt, fx, fy)
-	// Mud before forest: the two overlap in moisture, and low wet ground is a
-	// bog rather than a wood. Ordering is the whole distinction.
-	if moisture > mudMoisture && elevation < mudLevel {
-		return protocol.TerrainMud
-	}
-
-	if moisture > forestLevel {
-		return protocol.TerrainForest
-	}
-
-	return protocol.TerrainGrass
+	return generateGraphMap(seed, radius)
 }
 
 // fbm sums two octaves of value noise weighted 2:1 (the "2" and "3" below)

@@ -64,7 +64,12 @@ import (
 // A v14 snapshot has neither, so every buried monster would restore standing
 // on the surface — every ambush in the world sprung at once, silently. The
 // version gate preserves-aside + fresh instead.
-const snapshotVersion = 15
+// v16 (graph worldgen, #458/#466): the same (seed, radius) now generates a
+// completely different map — corridors and blobs with impassable ground
+// between them, where the noise generator produced one open landmass. Every
+// saved entity position would restore onto terrain that no longer exists,
+// stranding monsters and players inside solid rock.
+const snapshotVersion = 16
 
 // errSnapshotMismatch is RestoreState's sentinel for a snapshot that does not
 // describe this process's world: a different snapshotVersion, world seed, or

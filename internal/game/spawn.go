@@ -237,9 +237,43 @@ func (w *World) tooCloseToPlayerLocked(h protocol.Hex) bool {
 // player-proximity guard. Reads no entity state; named -Locked and given a
 // receiver for symmetry with the other spawn guards it's always applied
 // alongside. Callers hold w.mu.
-func (*World) tooCloseToSanctuaryLocked(h protocol.Hex) bool {
-	return HexDistance(protocol.Hex{Q: 0, R: 0}, h) <= protocol.SanctuaryRadius
+func (w *World) tooCloseToSanctuaryLocked(h protocol.Hex) bool {
+	return HexDistance(protocol.Hex{Q: 0, R: 0}, h) <= w.sanctuaryExclusionLocked()
 }
+
+// sanctuaryExclusionLocked is how far from the origin a monster may not spawn,
+// clamped to something the world can actually afford.
+//
+// On a world large enough it is SanctuaryRadius + CombatRadius; see
+// sanctuarySpawnExclusion for why that sum and not SanctuaryRadius alone.
+//
+// The clamp matters because the guard is only a PREFERENCE: if no walkable hex
+// satisfies it, spawnCandidatesByRingLocked drops it entirely. On a radius-10
+// world an 11-hex exclusion covers the entire map, so the guard would be
+// dropped and monsters would spawn ON the origin — strictly worse than the
+// narrow protection it replaced. Half the radius keeps a small world's
+// protection proportional instead of absent.
+func (w *World) sanctuaryExclusionLocked() int {
+	return min(sanctuarySpawnExclusion, w.radius/2)
+}
+
+// sanctuarySpawnExclusion is how far from the origin a monster may not spawn.
+//
+// SanctuaryRadius alone is NOT enough, and the arithmetic is the whole bug:
+// a player joins anywhere within SanctuaryRadius (5) of the origin, combat
+// starts at CombatRadius (6), so a monster sitting at distance 6 — legally
+// outside the sanctuary — is one hex from a player who spawned at the
+// sanctuary's edge. spawnHexLocked tries to avoid that in its first tier, but
+// falls through to a tier that ignores the check when no sanctuary hex is
+// clear, which with a realistic MONSTER_COUNT is always.
+//
+// Measured before the fix, at radius 120 with MONSTER_COUNT=1000: 13 monsters
+// inside this radius and 25 of 25 joins landing within CombatRadius, closest
+// one hex — on BOTH the graph and the noise generator.
+//
+// 5 + 6 = 11 is the minimum that guarantees a player spawning anywhere in the
+// sanctuary starts out of combat range.
+const sanctuarySpawnExclusion = protocol.SanctuaryRadius + protocol.CombatRadius
 
 // spawnCandidatesByRingLocked gathers every walkable candidate hex (the
 // safe/unguarded-fallback tiers SpawnMonsters' doc comment describes),
