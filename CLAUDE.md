@@ -175,6 +175,7 @@ drift between calls; use absolute paths or `cd` to the repo root before
   (`git checkout main && git pull --ff-only`) only *after* the agents finish,
   never mid-run — inspect `git status`/`git diff` before any reset, since the
   files sitting there may be an agent's live work.
+- **Self-review before ready:** read the whole branch diff as a reviewer, fix defects in their own commit, and ask about judgement calls as line comments answered `fix`/`skip`/`ticket` (`build-slice`, "Review the whole diff").
 - **Merge gate:** only merge a PR carrying the **`ready to merge`** label —
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and
