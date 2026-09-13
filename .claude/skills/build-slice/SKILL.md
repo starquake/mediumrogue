@@ -236,13 +236,21 @@ posted through @starquake's account.` — then says what is wrong, gives the
 recommended fix, and ends with the three words the maintainer can reply with:
 
 - **`fix`**: Claude fixes it as recommended (or as the reply amends), pushes,
-  and replies with the commit.
+  replies with the commit, and resolves the thread.
 - **`skip`**: Claude leaves it, replies to acknowledge, and resolves the thread.
 - **`ticket`**: Claude files it as a backlog issue, replies with the link, and
   resolves the thread.
 
+**Every one of the three ends with the thread resolved, because an unresolved
+conversation blocks the merge** — the `main` ruleset requires review-thread
+resolution, with no bypass actors, so not even the maintainer's token (which
+`gh` uses) can land a PR past an open thread. A `fix` that pushes without
+resolving leaves its own PR unmergeable.
+
 Any other reply is a question or an extra comment: answer it in the thread, and
-act on it only when it asks for a change. A finding with nothing to anchor to
+act on it only when it asks for a change. Leave that thread open — it is the
+maintainer's to resolve, and it holds the merge until they do, which is the
+point. A finding with nothing to anchor to
 (something missing) goes on the file's first changed line, saying so. Watch the
 PR's review comments for replies (poll
 `repos/<owner>/<repo>/pulls/comments?since=<time>`), rather than waiting to be
