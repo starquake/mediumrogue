@@ -230,8 +230,10 @@ Ask by posting a review comment on the line the finding is about:
 gh api repos/<owner>/<repo>/pulls/<n>/comments -f commit_id="$(git rev-parse HEAD)" -f path=<file> -F line=<line> -f side=RIGHT -f body="$(cat finding.md)"
 ```
 
-The comment says what is wrong, gives the recommended fix, and ends with the
-three words the maintainer can reply with:
+The comment opens with the comment attribution header (CLAUDE.md) —
+`> 🤖 **Comment by Claude** (AI pair-programmer working with @starquake) —
+posted through @starquake's account.` — then says what is wrong, gives the
+recommended fix, and ends with the three words the maintainer can reply with:
 
 - **`fix`**: Claude fixes it as recommended (or as the reply amends), pushes,
   and replies with the commit.
@@ -245,6 +247,21 @@ act on it only when it asks for a change. A finding with nothing to anchor to
 PR's review comments for replies (poll
 `repos/<owner>/<repo>/pulls/comments?since=<time>`), rather than waiting to be
 told.
+
+**Every reply carries the header too, and the watch skips anything that starts
+with `> 🤖`.** `gh` posts as the maintainer's account, so the author field
+cannot tell a finding or an acknowledgement from a real reply: an unmarked one
+comes back in the next poll as a new comment, gets answered, and that answer
+comes back in turn — a loop talking to itself. The header is the only thing
+that tells them apart, and it is the same filter `work-the-board`'s monitor
+already applies to review comments, so the loop's watch skips them as well.
+
+```bash
+gh api "repos/<owner>/<repo>/pulls/comments?since=$since&per_page=100" \
+  --jq '.[] | select(.pull_request_url | endswith("/<n>"))
+        | select((.body | startswith("> 🤖")) | not)
+        | "\(.id) in_reply_to=\(.in_reply_to_id // "-") \(.path):\(.line // 0): \(.body | .[0:80])"'
+```
 
 Replying and resolving are two different APIs. A reply goes to the thread's
 first comment over REST; resolving has **no REST endpoint** and needs GraphQL
