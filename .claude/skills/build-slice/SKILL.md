@@ -137,6 +137,9 @@ Structure, always:
    compressed paragraph: gate green, determinism, e2e, docs. These are claims
    already verified by running them; prose restating them adds nothing a
    reviewer must read.
+3. **`## Found in review`** — the output of *Review the whole diff* below: each
+   defect fixed, with its commit, and how many judgement calls are waiting as
+   review comments — or that there were none of either.
 
 **The same rule governs COMMENTS, and it is easier to break there.** When the
 maintainer asks a direct question — *"are you going to fix it?"*, *"can linting
@@ -191,7 +194,104 @@ scanning past it.
   and an attack-highlight case passed their own CI, then failed a docs-only PR
   and stalled two others — both were unreachable-nearest-monster races a load run
   reproduces immediately). If it can't survive the load run, fix it now, not after.
-- `gh pr ready <n>`, watch CI, then STOP. **Do not merge** — the
+
+## Review the whole diff
+
+Before handing a PR over, read the change back as a reviewer would: the whole
+branch against main (`git fetch origin && git diff origin/main...HEAD`), not
+just the last commit. The build, lint and test gates prove it compiles and
+passes. They cannot see:
+
+- **Leftovers**: code, names, comments and docs from an earlier iteration, or
+  from a design that changed along the way. A lint catches an unused function;
+  it does not catch a comment describing behaviour that is gone.
+- **The ticket**: each settled decision, and any approved mockup, against what
+  the code actually does.
+- **States and inputs**: what every key, button or call does in every state of
+  the thing built; what crosses between threads or processes; what a held input
+  does when the screen or state changes under it.
+- **Tests** that assert the decisions, not the current implementation.
+- **Contracts**: anything the project treats as one (compatibility, fidelity,
+  public API) that the change could move.
+
+Sort each finding into one of two kinds:
+
+- **A defect** has one right answer: a bug, leftover code or a stale comment, a
+  name from an earlier iteration, a test that does not test what it says. Fix
+  it without asking, in its own commit.
+- **A judgement call** changes what the user sees or how it behaves, departs
+  from the ticket's decisions or an approved mockup, widens or narrows the
+  scope, or touches a contract. Do not fix it; ask. **When unsure which kind a
+  finding is, it is a judgement call.**
+
+Ask by posting a review comment on the line the finding is about:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<n>/comments -f commit_id="$(git rev-parse HEAD)" -f path=<file> -F line=<line> -f side=RIGHT -f body="$(cat finding.md)"
+```
+
+The comment opens with the comment attribution header (CLAUDE.md) —
+`> 🤖 **Comment by Claude** (AI pair-programmer working with @starquake) —
+posted through @starquake's account.` — then says what is wrong, gives the
+recommended fix, and ends with the three words the maintainer can reply with:
+
+- **`fix`**: Claude fixes it as recommended (or as the reply amends), pushes,
+  replies with the commit, and resolves the thread.
+- **`skip`**: Claude leaves it, replies to acknowledge, and resolves the thread.
+- **`ticket`**: Claude files it as a backlog issue, replies with the link, and
+  resolves the thread.
+
+**Every one of the three ends with the thread resolved, because an unresolved
+conversation blocks the merge** — the `main` ruleset requires review-thread
+resolution, with no bypass actors, so not even the maintainer's token (which
+`gh` uses) can land a PR past an open thread. A `fix` that pushes without
+resolving leaves its own PR unmergeable.
+
+Any other reply is a question or an extra comment: answer it in the thread, and
+act on it only when it asks for a change. Leave that thread open — it is the
+maintainer's to resolve, and it holds the merge until they do, which is the
+point. A finding with nothing to anchor to
+(something missing) goes on the file's first changed line, saying so. Watch the
+PR's review comments for replies (poll
+`repos/<owner>/<repo>/pulls/comments?since=<time>`), rather than waiting to be
+told.
+
+**Every reply carries the header too, and the watch skips anything that starts
+with `> 🤖`.** `gh` posts as the maintainer's account, so the author field
+cannot tell a finding or an acknowledgement from a real reply: an unmarked one
+comes back in the next poll as a new comment, gets answered, and that answer
+comes back in turn — a loop talking to itself. The header is the only thing
+that tells them apart, and it is the same filter `work-the-board`'s monitor
+already applies to review comments, so the loop's watch skips them as well.
+
+```bash
+gh api "repos/<owner>/<repo>/pulls/comments?since=$since&per_page=100" \
+  --jq '.[] | select(.pull_request_url | endswith("/<n>"))
+        | select((.body | startswith("> 🤖")) | not)
+        | "\(.id) in_reply_to=\(.in_reply_to_id // "-") \(.path):\(.line // 0): \(.body | .[0:80])"'
+```
+
+Replying and resolving are two different APIs. A reply goes to the thread's
+first comment over REST; resolving has **no REST endpoint** and needs GraphQL
+with the thread's node id:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<n>/comments/<comment-id>/replies -f body="..."
+
+gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<n>) {
+  reviewThreads(first:100) { nodes { id isResolved comments(first:1) { nodes { databaseId } } } } } } }'
+gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<thread-id>"}) { thread { isResolved } } }'
+```
+
+The PR description gets a **"Found in review"** section (see *The PR body*
+above): each defect fixed, with its commit, and how many judgement calls are
+waiting as comments, or that there were none of either.
+
+## Hand over
+
+- `gh pr ready <n>`, watch CI, then stop building. **Keep watching the review
+  threads** from the step above — a `fix`, `skip` or `ticket` reply is work
+  you owe, not something to wait to be told about. **Do not merge** — the
   `ready to merge` label is the maintainer's; the `merge-pr` skill handles
   the landing when they add it.
 - **State**: the build is done and its PR is open, so move the issue to
