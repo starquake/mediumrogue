@@ -46,10 +46,11 @@ world snapshot. Health endpoint on every env: `GET /healthz`.
   CI `workflow_run` success when `head_branch` starts with `v`, resolves the
   semver tag → digest, cosign-verifies, deploys, health-checks.
 - **development** — the `deploy:dev` label on a **same-repo** PR fires
-  `deploy-development` directly (a `pull_request: labeled/synchronize` event). It
-  **builds the PR head** into a `pr-<n>` image (no cosign — dev is a throwaway
-  sandbox), deploys, health-checks. Single dev slot: a newer labeled push
-  cancels an in-flight dev deploy (`concurrency: cancel-in-progress`).
+  `deploy-development` directly (a `pull_request_target: labeled/synchronize`
+  event, so `main`'s copy of `deploy.yml` runs, not the PR's). It **builds the
+  PR head** into a `pr-<n>` image (no cosign — dev is a throwaway sandbox),
+  deploys, health-checks. Single dev slot: a newer labeled push waits for an
+  in-flight dev deploy to finish rather than cancelling it.
 
 ## Ship to staging — merge to main
 
@@ -106,14 +107,15 @@ For previewing an unmerged PR on a real URL:
 gh pr edit <n> --add-label deploy:dev
 ```
 
-- **The PR branch must contain `deploy.yml`.** `pull_request`-triggered
-  workflows run from the *PR branch's* copy of the workflow file, so a branch
-  that predates the deploy pipeline won't fire on the label — nothing happens,
-  no error. If it's silent, rebase the branch onto `main` and re-apply the
-  label.
+- **The job is `main`'s, not the PR's.** `pull_request_target` runs `main`'s
+  `deploy.yml`, so a PR that edits the workflow does not change its own preview;
+  the PR tree is used only as the docker build context. Only PRs targeting
+  `main` deploy, and only adding the `deploy:dev` label (not any other label)
+  triggers one.
 - Only **same-repo** PRs deploy (the job guards on `head.repo.full_name ==
   repository`); fork PRs are ignored.
-- It's a single shared slot — labeling a second PR cancels the first's deploy.
+- It's a single shared slot — labeling a second PR deploys over the first once
+  the first's deploy finishes.
   Remove the label when done; the dev world is safe to wipe anytime.
 
 ## Manual redeploy — `workflow_dispatch`
