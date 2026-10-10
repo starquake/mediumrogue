@@ -41,20 +41,21 @@ repo Settings → Environments. On **each**, set:
 
 No application secrets — mediumrogue has none.
 
+On `development`, restrict deployment branches to `main`: previews run on
+`pull_request_target`, which deploys from `main`.
+
 ### 5. GHCR package
 On the first `main` push, CI publishes `ghcr.io/starquake/mediumrogue`.
-Confirm the VPS can `docker login ghcr.io` and pull it (the deploy uses the
-Actions `GITHUB_TOKEN`; check the package's visibility/permissions).
+Keep the package public: deploys do not log the VPS into the registry, so it
+pulls anonymously.
 
 ### 6. Development label
 Create a `deploy:dev` label in the repo (GitHub also auto-creates it on first
 use). Add it to a PR to deploy that PR to development.
 
-**The PR's branch must be current with `main`.** `pull_request`-triggered
-workflows run from the *PR branch's* copy of the workflow file, so a branch
-that predates the deploy pipeline (no `.github/workflows/deploy.yml`) will not
-fire on the label — nothing happens. Merge `main` into the branch first, then
-apply (or re-apply) the label.
+Previews run on `pull_request_target`, so `main`'s copy of `deploy.yml` runs
+and the PR's code is used only as the docker build context. Only same-repo PRs
+targeting `main` deploy.
 
 ## Manual redeploy
 `Actions → Deploy → Run workflow` offers a `staging`/`production` choice
