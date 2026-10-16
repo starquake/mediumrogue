@@ -178,7 +178,9 @@ drift between calls; use absolute paths or `cd` to the repo root before
 - **Merge gate:** only merge a PR carrying the **`ready to merge`** label —
   it *is* the review approval (GitHub won't let the author approve their own
   PR). Check the label immediately before merging; if absent, surface it and
-  wait — adding it is the maintainer's signal.
+  wait — adding it is the maintainer's signal. **Unresolved review
+  conversations also block the merge** — the `main` ruleset enforces it with
+  no bypass actors (#479), so an open thread is a stop, never a retry.
 - **Dependabot PRs are the one exception — they auto-merge on a green build**,
   no label needed (`.github/workflows/dependabot-automerge.yml`): GitHub's native
   auto-merge holds each until the ruleset's required checks (`lint`/`test`/`e2e`)
