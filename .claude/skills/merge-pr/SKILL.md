@@ -43,6 +43,23 @@ on a blocking check. `deploy-*` jobs that show `skipping` are fine (they don't
 run on PRs). If CI is still running, wait or tell the user; never merge red or
 pending.
 
+## Step 2a — No unresolved review conversations
+
+```bash
+gh api graphql -f query='{ repository(owner:"starquake", name:"mediumrogue") { pullRequest(number:<n>) {
+  reviewThreads(first:100) { nodes { isResolved path line comments(first:1) { nodes { url } } } } } } }' \
+  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length'
+```
+
+**Anything above 0 → STOP.** The `main` ruleset requires review-thread
+resolution (#479) and has **no bypass actors**, so GitHub refuses the merge
+anyway — even through the maintainer's token that `gh` uses. Checking first
+turns an opaque refusal into a clear message. List each open thread with its
+link, and leave them: resolving a thread is how its conversation *ends*, so
+resolving one just to unblock a merge fakes the answer. An open thread from the
+self-review step (`build-slice`, "Review the whole diff") is waiting on a
+`fix` / `skip` / `ticket` reply from the maintainer.
+
 ## Step 2b — The title must still describe the diff
 
 A squash merge takes the **PR title** as the commit subject, permanently. Read
@@ -148,11 +165,18 @@ If the label is genuinely absent, that IS a real stop — surface it and wait.
 If a retry with the label present still fails, say so plainly rather than
 routing around the block.
 
+**Do not confuse this with a ruleset refusal.** A merge GitHub itself rejects
+because conversations are unresolved is **not** transient and **not** retried:
+it is Step 2a's hard stop arriving late. Retrying cannot pass it, and there is
+no bypass to reach for.
+
 ## Guardrails
 
 - **Never merge without `ready to merge`.** If the user says "merge it" but the
   label is absent, surface it and let them add it (or explicitly override).
 - **Never merge failing or pending CI.**
+- **Never merge past an unresolved review conversation, and never resolve one
+  to clear the way.** The ruleset enforces the first; the second is on you.
 - **Dependabot merges via `@dependabot squash and merge`, not `gh pr merge`** —
   mixing the two fights dependabot's own automation.
 - Prefer `--force-with-lease` over `--force` when pushing a rebase.
