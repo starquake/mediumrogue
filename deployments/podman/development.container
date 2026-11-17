@@ -1,0 +1,60 @@
+# mediumrogue development (mediumrogue-development.bananajuice.net), as the
+# user mediumrogue-development: the build of whichever pull request carries the
+# deploy:dev label (pr-<n>, unsigned). One slot and one world for all of them,
+# safe to wipe anytime: a radius change just regenerates it (the old snapshot
+# is set aside). The user's slice is capped on the server (it runs code nobody
+# reviewed yet). As production.container otherwise, which explains each setting.
+[Unit]
+Description=mediumrogue (development)
+
+[Container]
+ContainerName=mediumrogue
+Image=@IMAGE@
+Environment=LISTEN_ADDR=0.0.0.0:8080
+Environment=TURN_INTERVAL=4s
+Environment=HEARTBEAT_INTERVAL=15s
+# The big world (#286): radius 120 ≈ 43.6k hexes, ~1 monster per ~44 hexes —
+# the density staging shares (production keeps v0.0.1's small world).
+Environment=WORLD_RADIUS=120
+Environment=WORLD_SEED=42
+Environment=MONSTER_COUNT=1000
+# Worldgen tuning knobs (#458). Every one has a sensible default in code;
+# uncomment and redeploy to retune the world without rebuilding the image.
+# The graph generator is the only generator (#466).
+#
+# Node counts scale with ring AREA (roughly 1:3:5 at radius 120) — flat
+# counts leave the frontier ring almost entirely impassable.
+# Environment=WORLDGEN_NODES_R0=5
+# Environment=WORLDGEN_NODES_R1=15
+# Environment=WORLDGEN_NODES_R2=26
+# Size of the open area at each node:
+# Environment=WORLDGEN_NODE_RADIUS=10
+# Corridor half-width; 4 => ~9 hexes wide:
+# Environment=WORLDGEN_PATH_RADIUS=4
+# Size of a dead-end pocket:
+# Environment=WORLDGEN_SPUR_RADIUS=6
+# Extra links; FEWER means more detour:
+# Environment=WORLDGEN_LOOPS=6
+# Loops must be long: a short one is a shortcut:
+# Environment=WORLDGEN_MIN_LOOP_DIST=30
+# Environment=WORLDGEN_DEAD_ENDS=10
+# Environment=WORLDGEN_SPUR_LEN=16
+# Environment=WORLDGEN_LAKES=5
+Environment=SNAPSHOT_PATH=/data/world.json
+Environment=SNAPSHOT_INTERVAL=60s
+PublishPort=127.0.0.1:8112:8080
+Network=pasta:--host-lo-to-ns-lo
+User=65532:65532
+UserNS=keep-id:uid=65532,gid=65532
+Volume=%h/data/mediumrogue:/data:Z
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+StopTimeout=15
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,53 @@
+# mediumrogue production (mediumrogue.bananajuice.net), a rootless Podman
+# container run by systemd (Quadlet) as the user mediumrogue-production.
+# deploy.sh installs it as ~/.config/containers/systemd/mediumrogue.container
+# with Image= pinned to the digest the deploy verified (deployments/README.md).
+# The world knobs below are this environment's: edit and redeploy to retune.
+[Unit]
+Description=mediumrogue (production)
+
+[Container]
+ContainerName=mediumrogue
+Image=@IMAGE@
+Environment=LISTEN_ADDR=0.0.0.0:8080
+Environment=TURN_INTERVAL=4s
+Environment=HEARTBEAT_INTERVAL=15s
+# Production's world as v0.0.1 made it: the default radius (24) and 40
+# monsters. Staging and development run the big world (#286, radius 120,
+# 1000 monsters). A snapshot only loads with the radius and seed it was made
+# with: changing either sets production's world aside (world.json.rejected-<ts>)
+# and starts a fresh one.
+Environment=WORLD_RADIUS=24
+Environment=MONSTER_COUNT=40
+# The world snapshot lives in ~/data/mediumrogue: the image's own filesystem
+# is thrown away with the container.
+Environment=SNAPSHOT_PATH=/data/world.json
+Environment=SNAPSHOT_INTERVAL=60s
+# Caddy on the host proxies the site to this port, and nothing else reaches
+# it from outside. With --host-lo-to-ns-lo the app sees Caddy as 127.0.0.1.
+# TRUST_PROXY_IP stays off: the players share one address, so there is no
+# per-IP cap to feed (docs/FEATURES.md, #199).
+PublishPort=127.0.0.1:8110:8080
+Network=pasta:--host-lo-to-ns-lo
+# The image runs as root by default; run it as distroless's nonroot (65532)
+# and map that to this user, so the files in ~/data/mediumrogue stay the
+# user's. :Z gives them a label only this container can use.
+User=65532:65532
+UserNS=keep-id:uid=65532,gid=65532
+Volume=%h/data/mediumrogue:/data:Z
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+# No HealthCmd: the image has no shell, no curl and no health flag.
+# deploy.sh checks /healthz from the host after each restart.
+# Above the app's 5s drain plus the final snapshot write.
+StopTimeout=15
+# Logs go to the journal (journalctl --user -u mediumrogue), which bounds
+# their size; the json-file caps of the Compose files (#388) are not needed.
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

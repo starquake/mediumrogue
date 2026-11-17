@@ -4,7 +4,7 @@ description: >
   Use when promoting a build through the environments — "ship to staging",
   "promote to prod", "deploy the latest", "cut a release", "put this on dev",
   "redeploy staging", "roll production back". Encodes this repo's dev → staging
-  → prod promotion flow on the one VPS behind SWAG: what each hop's trigger is,
+  → prod promotion flow on zoot (rootless Podman behind Caddy): what each hop's trigger is,
   which parts are automatic vs. a deliberate human act, how to verify a deploy
   landed, and the (non-first-class) rollback story. Trigger for any
   ship/promote/deploy request even if the user doesn't say "skill".
@@ -24,9 +24,10 @@ verification after. Do not re-drive the YAML by hand; drive the triggers.
 | staging | `mediumrogue-staging.bananajuice.net` | **merge a PR to `main`** | `:edge` (signed) |
 | production | `mediumrogue.bananajuice.net` | **push a `v*.*.*` git tag** | promoted semver (signed) |
 
-All three run on one VPS behind the shared SWAG reverse proxy; each has its own
-container, its own `mediumrogue_<env>_data` volume, and its own independent
-world snapshot. Health endpoint on every env: `GET /healthz`.
+All three run on one server, zoot, behind Caddy; each runs as its own user
+(`mediumrogue-<env>`) with rootless Podman, as the systemd service
+`mediumrogue` written by a Quadlet unit, with its own world snapshot in that
+user's `~/data/mediumrogue`. Health endpoint on every env: `GET /healthz`.
 
 ## How a hop actually fires (so you know what you're waiting on)
 
@@ -35,7 +36,9 @@ world snapshot. Health endpoint on every env: `GET /healthz`.
   job fires on the **`workflow_run: CI completed`** event *only* when that CI run
   was a **push to `main` that concluded success**. It resolves `:edge` → digest,
   **cosign-verifies** the signature against `ci.yml@refs/heads/main`, then
-  `docker compose up -d` over SSH and polls `/healthz` (12×5s). So: **a green
+  installs the Quadlet unit over SSH (`deployments/podman/deploy.sh`, which
+  restarts the service and waits for `/healthz` on its port), then polls the
+  public `/healthz` (12×5s). So: **a green
   merge to main is a staging deploy** — there is no separate staging button to
   press.
 - **production** — pushing a `v*.*.*` tag runs CI, but on a tag CI runs **only
@@ -142,7 +145,7 @@ curl -fsS https://mediumrogue-staging.bananajuice.net/healthz   # or -production
 
 Also: the GitHub **deployment card** (the job's `environment:` shows the env's
 `SERVER_URL`), and — if you have SSH access the workflow uses — container logs
-on the VPS (`cd ~/mediumrogue-<env> && docker compose logs -f`). Combat/identity
+on the server, as `mediumrogue-<env>` (`journalctl --user -u mediumrogue -f`). Combat/identity
 logs carry a category key (`"combat"`, `"identity"`) for grepping.
 
 ## Rollback — not first-class; know the two real paths
@@ -152,9 +155,10 @@ The infra has **no rollback button**. Options, in preference order:
 1. **Roll forward** (usually right): fix on `main`, then cut a new `vX.Y.Z+1`
    tag. This is the clean path and keeps the pipeline's signing/verification
    intact.
-2. **Manual pin** (emergency, needs VPS SSH): on the box, edit the env's
-   `.env` `IMAGE_DIGEST=` to a known-good older digest and `docker compose up -d`
-   in `~/mediumrogue-<env>`. A dispatch-production won't do this for you — it
+2. **Manual pin** (emergency, needs a shell as `mediumrogue-<env>` on zoot):
+   set `Image=` in `~/.config/containers/systemd/mediumrogue.container` to a
+   known-good older digest, then `systemctl --user daemon-reload && systemctl
+   --user restart mediumrogue`. A dispatch-production won't do this for you — it
    only ever deploys `:latest`.
 
    **Snapshot-version caveat:** snapshots are versioned and the loader
@@ -173,12 +177,12 @@ The infra has **no rollback button**. Options, in preference order:
   GitHub-side setting, **not visible in the repo** — don't assert it exists or
   doesn't; if a deploy sits in "Waiting", that's the gate.
 - **Secrets/hosts** (`SSH_HOST`, `SSH_USER`, `SSH_KEY`, `HEALTH_URL`,
-  `SERVER_URL`) live in the GitHub Environments, not the repo. The app itself
-  has **no** application secrets; the deploy `.env` carries only
-  `IMAGE_NAME`/`IMAGE_DIGEST`.
-- **One-time infra setup** (DNS CNAMEs, SWAG TLS/proxy-confs, the `web` docker
-  network, GHCR pull auth) is `deployments/README.md`'s operator checklist — a
-  manual, already-done step, not part of a promotion.
+  `SERVER_URL`) live in the GitHub Environments, not the repo; `SSH_USER` is
+  the environment's own user. The app itself has **no** application secrets;
+  the deploy carries only the unit and the image digest.
+- **Server setup** (users, ports, Caddy sites, DNS) is Ansible in
+  `starquake/linuxeverywhere-infra`; `deployments/README.md` describes it. Not
+  part of a promotion.
 - **Per-environment world knobs** (`TURN_INTERVAL`, `MONSTER_COUNT`, …) are set
-  directly in each `deployments/app/docker-compose.<env>.yml`. Retuning one env
-  = edit that file and redeploy; it is not carried in the deploy `.env`.
+  directly in each `deployments/podman/<env>.container`. Retuning one env
+  = edit that file and redeploy.

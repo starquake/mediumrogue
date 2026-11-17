@@ -1,0 +1,33 @@
+# mediumrogue staging (mediumrogue-staging.bananajuice.net), as the user
+# mediumrogue-staging: main's latest build (:edge). Its own world in its own
+# ~/data/mediumrogue. As production.container otherwise, which explains each
+# setting.
+[Unit]
+Description=mediumrogue (staging)
+
+[Container]
+ContainerName=mediumrogue
+Image=@IMAGE@
+Environment=LISTEN_ADDR=0.0.0.0:8080
+Environment=TURN_INTERVAL=4s
+Environment=HEARTBEAT_INTERVAL=15s
+Environment=WORLD_RADIUS=120
+Environment=MONSTER_COUNT=1000
+Environment=SNAPSHOT_PATH=/data/world.json
+Environment=SNAPSHOT_INTERVAL=60s
+PublishPort=127.0.0.1:8111:8080
+Network=pasta:--host-lo-to-ns-lo
+User=65532:65532
+UserNS=keep-id:uid=65532,gid=65532
+Volume=%h/data/mediumrogue:/data:Z
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+StopTimeout=15
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
