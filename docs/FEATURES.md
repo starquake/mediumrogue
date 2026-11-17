@@ -1682,8 +1682,8 @@ roll, so it is ARPG-legal on jewelry.
   `TestCompressResponsesFlushIsReadableImmediately` (unit, reads the bytes
   mid-handler) and `TestTurnFramesArriveOnAGzippedStream` (integration, real
   socket + real decoder) both fail if it is removed.
-  Behind SWAG this rides on the existing `proxy_buffering off` for
-  `/api/events`; nginx passes an already-coded body through untouched.
+  Behind Caddy this rides on the site's `flush_interval -1`; Caddy passes an
+  already-coded body through untouched.
 - **Per-hit combat moments on the bundle** (#114): `TurnEvent.Hits` is a
   `HitView[]` — `turn`, `attackerId`, `victimId`, `amount`, `crit`, `glance`
   — the crit/glance facts an HP delta alone can't express. Recorded in
@@ -1931,9 +1931,9 @@ roll, so it is ARPG-legal on jewelry.
     An operator enables it **only** for a deployment whose players have
     distinct IPs, by setting an explicit `PER_IP_SSE_STREAMS=<n>` **and**
     `TRUST_PROXY_IP=true`. When on, the client IP is the **last**
-    `X-Forwarded-For` entry — the one the sole trusted proxy (SWAG, nginx
-    `$proxy_add_x_forwarded_for`) appends for the peer that connected to it;
-    earlier entries are client-supplied and spoofable. If the header is
+    `X-Forwarded-For` entry — the one the sole trusted proxy (Caddy) sets for
+    the peer that connected to it; earlier entries, where a proxy keeps them,
+    are client-supplied and spoofable. If the header is
     absent it falls back to `RemoteAddr` (one shared bucket — a stricter cap,
     still safe). With `TRUST_PROXY_IP` off, `X-Forwarded-For` is never read at
     all (behind a proxy `RemoteAddr` is the shared proxy IP, so a per-IP cap
@@ -2033,8 +2033,9 @@ JSON snapshot is the decided interim store).
 
 ## Deployment
 
-Three environments run from one binary image, on one VPS, behind SWAG. See
-`deployments/README.md` for the operator setup checklist.
+Three environments run from one binary image, on one server (zoot), each as
+its own user with rootless Podman (a Quadlet unit), behind Caddy. See
+`deployments/README.md` for how the pieces fit.
 
 | Environment  | Domain                                    | Trigger                     | Image           |
 | ------------ | ----------------------------------------- | --------------------------- | --------------- |
@@ -2045,9 +2046,10 @@ Three environments run from one binary image, on one VPS, behind SWAG. See
 - **Pipeline:** `ci.yml` builds one image per green `main` commit
   (`sha-<commit>` + `:edge`), cosign-signs it, and (on a `v*` tag) `promote`
   retags it to semver. `deploy.yml` resolves the tag to its digest, verifies
-  the signature (staging/production; development skips it), and runs
-  `docker compose up -d` over SSH.
-- **State:** each environment keeps its own JSON world snapshot on its own
-  named volume (`SNAPSHOT_PATH=/data/world.json`); the three worlds are
-  independent.
-- **No secrets:** the deploy `.env` carries only `IMAGE_NAME`/`IMAGE_DIGEST`.
+  the signature (staging/production; development skips it), and installs the
+  environment's Quadlet unit over SSH (`deployments/podman/deploy.sh`), which
+  restarts the service and waits for `/healthz`.
+- **State:** each environment keeps its own JSON world snapshot in its user's
+  `~/data/mediumrogue` (`SNAPSHOT_PATH=/data/world.json` in the container); the
+  three worlds are independent.
+- **No secrets:** the deploy carries only the unit and the image digest.

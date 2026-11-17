@@ -1,5 +1,11 @@
 name: Deploy
 
+# Each environment runs on zoot as its own user, mediumrogue-<env>, with
+# rootless Podman: the jobs install deployments/podman's Quadlet unit there
+# and restart it (deploy-ssh.sh runs deploy.sh on the server). The server side
+# (users, ports, Caddy) is set up by linuxeverywhere-infra; see
+# deployments/README.md.
+
 on:
   workflow_run:
     workflows: ["CI"]
@@ -40,9 +46,10 @@ jobs:
     # One staging deploy at a time. Without this, a burst of merges fires a
     # Deploy per CI completion and they all SSH into the same directory at
     # once — which is how three of six runs for 731a1a7 failed on 2026-08-06
-    # (#387). NOT cancel-in-progress: a cancelled run can stop between
-    # `docker compose pull` and `up -d`, leaving the host on a half-applied
-    # deploy that nothing retries. Queueing is slower and always lands.
+    # (#387). deploy.sh also takes a lock on the host. NOT cancel-in-progress:
+    # a cancelled run can stop between installing the unit and the restart,
+    # leaving the host on a half-applied deploy that nothing retries.
+    # Queueing is slower and always lands.
     concurrency:
       group: deploy-staging
       cancel-in-progress: false
@@ -54,16 +61,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Copy docker-compose file
-        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "deployments/app/docker-compose.staging.yml"
-          target: "~/mediumrogue-staging"
-          strip_components: 2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -101,28 +98,22 @@ jobs:
             --certificate-identity-regexp '^https://github\.com/starquake/mediumrogue/\.github/workflows/ci\.yml@refs/heads/main$' \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 
+      # deploy-ssh.sh sends deploy.sh and the unit to the server over SSH and
+      # runs it there as the environment's own user: it installs the Quadlet
+      # unit, restarts the app and waits for /healthz (deployments/README.md).
       - name: Deploy to staging server
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
-          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          IMAGE_DIGEST: ${{ steps.digest.outputs.digest }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          envs: IMAGE_NAME,IMAGE_DIGEST
-          script: |
-            set -e
-            mkdir -p ~/mediumrogue-staging
-            cd ~/mediumrogue-staging
-            umask 077
-            cat > .env <<EOF
-            IMAGE_NAME='${IMAGE_NAME}'
-            IMAGE_DIGEST='${IMAGE_DIGEST}'
-            EOF
-            cp -f docker-compose.staging.yml docker-compose.yml
-            docker compose pull
-            docker compose up -d
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DEPLOY_ENV: staging
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          upload="$RUNNER_TEMP/upload"
+          mkdir -p "$upload"
+          cp deployments/podman/deploy.sh deployments/podman/staging.container "$upload/"
+          bash deployments/podman/deploy-ssh.sh "$upload"
 
       - name: Verify staging deployment
         env:
@@ -191,16 +182,6 @@ jobs:
           fi
           echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Copy docker-compose file
-        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "deployments/app/docker-compose.production.yml"
-          target: "~/mediumrogue-production"
-          strip_components: 2
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -237,28 +218,22 @@ jobs:
             --certificate-identity-regexp '^https://github\.com/starquake/mediumrogue/\.github/workflows/ci\.yml@refs/heads/main$' \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 
+      # deploy-ssh.sh sends deploy.sh and the unit to the server over SSH and
+      # runs it there as the environment's own user: it installs the Quadlet
+      # unit, restarts the app and waits for /healthz (deployments/README.md).
       - name: Deploy to production server
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
-          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          IMAGE_DIGEST: ${{ steps.digest.outputs.digest }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          envs: IMAGE_NAME,IMAGE_DIGEST
-          script: |
-            set -e
-            mkdir -p ~/mediumrogue-production
-            cd ~/mediumrogue-production
-            umask 077
-            cat > .env <<EOF
-            IMAGE_NAME='${IMAGE_NAME}'
-            IMAGE_DIGEST='${IMAGE_DIGEST}'
-            EOF
-            cp -f docker-compose.production.yml docker-compose.yml
-            docker compose pull
-            docker compose up -d
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DEPLOY_ENV: production
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          upload="$RUNNER_TEMP/upload"
+          mkdir -p "$upload"
+          cp deployments/podman/deploy.sh deployments/podman/production.container "$upload/"
+          bash deployments/podman/deploy-ssh.sh "$upload"
 
       - name: Verify production deployment
         env:
@@ -308,16 +283,6 @@ jobs:
           path: pr
           persist-credentials: false
 
-      - name: Copy docker-compose file
-        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "deployments/app/docker-compose.development.yml"
-          target: "~/mediumrogue-development"
-          strip_components: 2
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -355,28 +320,22 @@ jobs:
           fi
           echo "digest=${BUILD_DIGEST}" >> "$GITHUB_OUTPUT"
 
+      # deploy-ssh.sh sends deploy.sh and the unit to the server over SSH and
+      # runs it there as the environment's own user: it installs the Quadlet
+      # unit, restarts the app and waits for /healthz (deployments/README.md).
       - name: Deploy to development server
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
-          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          IMAGE_DIGEST: ${{ steps.digest.outputs.digest }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          envs: IMAGE_NAME,IMAGE_DIGEST
-          script: |
-            set -e
-            mkdir -p ~/mediumrogue-development
-            cd ~/mediumrogue-development
-            umask 077
-            cat > .env <<EOF
-            IMAGE_NAME='${IMAGE_NAME}'
-            IMAGE_DIGEST='${IMAGE_DIGEST}'
-            EOF
-            cp -f docker-compose.development.yml docker-compose.yml
-            docker compose pull
-            docker compose up -d
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DEPLOY_ENV: development
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          upload="$RUNNER_TEMP/upload"
+          mkdir -p "$upload"
+          cp deployments/podman/deploy.sh deployments/podman/development.container "$upload/"
+          bash deployments/podman/deploy-ssh.sh "$upload"
 
       - name: Verify development deployment
         env:
