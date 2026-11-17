@@ -12,8 +12,13 @@ Image=@IMAGE@
 Environment=LISTEN_ADDR=0.0.0.0:8080
 Environment=TURN_INTERVAL=4s
 Environment=HEARTBEAT_INTERVAL=15s
-Environment=WORLD_RADIUS=120
-Environment=MONSTER_COUNT=1000
+# Production's world as v0.0.1 made it: the default radius (24) and 40
+# monsters. Staging and development run the big world (#286, radius 120,
+# 1000 monsters). A snapshot only loads with the radius and seed it was made
+# with: changing either sets production's world aside (world.json.rejected-<ts>)
+# and starts a fresh one.
+Environment=WORLD_RADIUS=24
+Environment=MONSTER_COUNT=40
 # The world snapshot lives in ~/data/mediumrogue: the image's own filesystem
 # is thrown away with the container.
 Environment=SNAPSHOT_PATH=/data/world.json

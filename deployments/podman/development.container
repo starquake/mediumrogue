@@ -14,7 +14,7 @@ Environment=LISTEN_ADDR=0.0.0.0:8080
 Environment=TURN_INTERVAL=4s
 Environment=HEARTBEAT_INTERVAL=15s
 # The big world (#286): radius 120 ≈ 43.6k hexes, ~1 monster per ~44 hexes —
-# the density all three environments share.
+# the density staging shares (production keeps v0.0.1's small world).
 Environment=WORLD_RADIUS=120
 Environment=WORLD_SEED=42
 Environment=MONSTER_COUNT=1000
