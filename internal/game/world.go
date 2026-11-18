@@ -2535,7 +2535,10 @@ func (w *World) movePhaseLocked(
 		byHex[next] = append(byHex[next], m)
 		m.hex = next
 		m.path = m.path[1:]
-		w.logger.Info(combatLogMsg, logKeyEvent, combatEventMove, logKeyID, m.id, "kind", m.kind, "from", from, "to", next)
+		// Debug, not Info: one line per monster step (millions a day on a busy
+		// world) would flood the server log (#514). The balance sim's handler
+		// accepts every level, so it still sees them.
+		w.logger.Debug(combatLogMsg, logKeyEvent, combatEventMove, logKeyID, m.id, "kind", m.kind, "from", from, "to", next)
 	}
 }
 
