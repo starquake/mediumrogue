@@ -44,7 +44,7 @@ func (w *World) SpawnMonsters(n int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	//nolint:gosec // placement draws from a seeded PCG, not crypto — not security-sensitive.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnStream))
 
 	byRing, ringWeights := w.spawnCandidatesByRingLocked(rng)
@@ -384,7 +384,7 @@ func (w *World) spawnHexLocked() (protocol.Hex, error) {
 
 	slices.SortFunc(candidates, compareHexQR)
 
-	//nolint:gosec // deterministic seeded placement, not security-sensitive.
+	//nolint:gosec // placement draws from a seeded PCG, not crypto — not security-sensitive.
 	rng := mrand.New(mrand.NewPCG(uint64(w.seed), spawnPointStream+uint64(w.nextID)))
 
 	return candidates[rng.IntN(len(candidates))], nil
