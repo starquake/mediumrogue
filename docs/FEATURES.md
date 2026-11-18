@@ -1871,7 +1871,8 @@ roll, so it is ARPG-legal on jewelry.
 - **Combat event log** (item 1, playtest batch 2 — `internal/game`,
   structured `slog`, the milestone-12 analytics seed): every resolution
   path emits `slog.Info("combat", "event",
-  ...)` — `move`, `attack` (attacker, victim, weapon defID, base, dealt),
+  ...)` — `move` (monster steps at `slog.Debug` instead, #514: one line per
+  step would flood the server log, whose handler keeps INFO and up), `attack` (attacker, victim, weapon defID, base, dealt),
   `fizzle` (reasons: `out_of_range`, `unequipped`, `target_gone`,
   `pending_item_action`), `death`, `xp_award`, `pickup` (item defID, count),
   `drop` (item defID, count, hex), `drink` (item defID, resulting hp),
