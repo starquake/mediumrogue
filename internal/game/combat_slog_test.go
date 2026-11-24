@@ -48,7 +48,8 @@ func eventsOfKind(events []map[string]any, kind string) []map[string]any {
 }
 
 // TestCombatSlogMove: a plain step onto an empty walkable hex logs a "move"
-// event carrying id/kind/from/to (item 1: the milestone-12 analytics seed).
+// event carrying id/kind/from/to (item 1: the milestone-12 analytics seed), at
+// DEBUG (#514).
 func TestCombatSlogMove(t *testing.T) {
 	t.Parallel()
 
@@ -56,7 +57,7 @@ func TestCombatSlogMove(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	w.SetLogger(slog.New(slog.NewJSONHandler(&buf, nil)))
+	w.SetLogger(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	from := protocol.Hex{Q: 0, R: 0}
 	to := walkableNeighbor(t, w, from)
@@ -79,6 +80,38 @@ func TestCombatSlogMove(t *testing.T) {
 
 	if got, want := moves[0]["id"], float64(id); got != want {
 		t.Errorf("move event id = %v, want %v", got, want)
+	}
+
+	if got, want := moves[0]["level"], "DEBUG"; got != want {
+		t.Errorf("move event level = %v, want %v", got, want)
+	}
+}
+
+// TestCombatSlogMoveNotAtInfo: a logger at slog's default level (INFO), as the
+// server's, gets no "move" events: one per monster step flooded the log (#514).
+func TestCombatSlogMoveNotAtInfo(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	var buf bytes.Buffer
+
+	w.SetLogger(slog.New(slog.NewJSONHandler(&buf, nil)))
+
+	from := protocol.Hex{Q: 0, R: 0}
+	to := walkableNeighbor(t, w, from)
+
+	if !isWalkable(w, from) {
+		t.Skip("origin is not walkable on this map")
+	}
+
+	id, _ := w.PlaceEntityForTest(from)
+	w.SetPathForTest(id, []protocol.Hex{to})
+
+	w.ResolveCombatOnlyForTest()
+
+	if moves := eventsOfKind(slogEvents(t, &buf), "move"); len(moves) != 0 {
+		t.Errorf("an INFO logger got %d move events, want none", len(moves))
 	}
 }
 
