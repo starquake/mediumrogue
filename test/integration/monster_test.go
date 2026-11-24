@@ -15,6 +15,13 @@ import (
 // TestMonstersAppearInTurnBundle proves MONSTER_COUNT wiring end to end: a
 // server started with monsters spawned exposes them on the wire as
 // protocol.EntityMonster with positive HP, alongside a joined player.
+//
+// The exact count holds only because the harness guarantees every spawned
+// monster is above ground (#516): SpawnMonsters draws its kinds from the
+// per-World tie-break seed rather than the pinned WorldSeed, a skeleton spawns
+// buried (#436), and a buried monster is deliberately absent from the bundle —
+// which made a bare SpawnMonsters(3) fixture fail this assertion ~1.6% of
+// runs. Keep the count assertion exact; do not relax it to a bound.
 func TestMonstersAppearInTurnBundle(t *testing.T) {
 	t.Parallel()
 

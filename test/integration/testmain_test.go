@@ -77,21 +77,90 @@ func startServerWithBubbleTuning(
 ) *httptest.Server {
 	t.Helper()
 
-	ticks := hub.New()
-
-	world := game.NewWorld(game.WorldConfig{
-		Interval:        turnInterval,
-		CombatPatience:  combatPatience,
-		BubblePoll:      bubblePoll,
-		DisconnectGrace: testDisconnectGrace,
-		WorldSeed:       0xC0FFEE,
-		Radius:          12,
-		Ticks:           ticks,
-	})
-
-	world.SpawnMonsters(monsterCount)
+	ticks, world := newWorldWithMonstersAboveGround(
+		t, turnInterval, combatPatience, bubblePoll, monsterCount,
+	)
 
 	return serveWorld(t, world, ticks, server.Deps{HeartbeatInterval: heartbeatInterval})
+}
+
+// monsterSpawnAttempts bounds newWorldWithMonstersAboveGround's re-roll. A
+// single attempt yields an all-above-ground fixture ~98.4% of the time, so the
+// chance of exhausting this many is vanishingly small (~1.6%^50); it exists so
+// a content change that made burial the common case fails loudly here instead
+// of hanging.
+const monsterSpawnAttempts = 50
+
+// newWorldWithMonstersAboveGround builds the integration fixture world and
+// spawns monsterCount monsters that are all ABOVE GROUND, so a test may assert
+// an exact monster count on the wire.
+//
+// The re-roll is the fix for #516. SpawnMonsters draws placement and kind from
+// w.seed — the per-World tie-break seed minted from crypto/rand in NewWorld,
+// NOT the pinned WorldSeed, which seeds only the map and quests — so monster
+// kinds differ on every construction even with WorldSeed pinned. Every
+// skeleton spawns buried (#436), and a buried monster is deliberately never
+// put on the wire (entityViewsLocked), while revealBuriedLocked only runs in
+// the turn pass, which these harnesses pin far out. So ~1.6% of fixtures put
+// n monsters in the world and fewer than n in a turn bundle, which is exactly
+// how TestMonstersAppearInTurnBundle flaked.
+//
+// Re-rolling the whole World is what re-draws the spawn: the tie-break seed is
+// minted per construction. The map itself does not move — that comes from the
+// pinned WorldSeed — so only monster kinds and hexes are redrawn.
+//
+// Burial is visible through the public API alone: SnapshotFor already excludes
+// buried monsters, so counting monsters in the world's own snapshot says
+// whether this draw is usable. monsterCount == 0 (startServer, and so every
+// other integration test) matches on the first attempt and is unaffected.
+func newWorldWithMonstersAboveGround(
+	t *testing.T, turnInterval, combatPatience, bubblePoll time.Duration, monsterCount int,
+) (*hub.Hub, *game.World) {
+	t.Helper()
+
+	for range monsterSpawnAttempts {
+		ticks := hub.New()
+
+		world := game.NewWorld(game.WorldConfig{
+			Interval:        turnInterval,
+			CombatPatience:  combatPatience,
+			BubblePoll:      bubblePoll,
+			DisconnectGrace: testDisconnectGrace,
+			WorldSeed:       0xC0FFEE,
+			Radius:          12,
+			Ticks:           ticks,
+		})
+
+		world.SpawnMonsters(monsterCount)
+
+		if monstersOnWire(world) == monsterCount {
+			return ticks, world
+		}
+	}
+
+	t.Fatalf(
+		"no fixture world in %d attempts spawned %d monsters all above ground"+
+			" (a buried kind has become the common spawn?)",
+		monsterSpawnAttempts, monsterCount,
+	)
+
+	return nil, nil
+}
+
+// monstersOnWire counts the monsters w would put in a turn bundle — which
+// excludes the buried (#436), the whole point of the count. The token-less
+// viewer centres the InterestRadius cull on the origin; every hex of the
+// radius-12 fixture map is well inside it, so the cull drops nothing here.
+func monstersOnWire(w *game.World) int {
+	monsters := 0
+
+	for _, e := range w.SnapshotFor("").Entities {
+		if e.Kind == protocol.EntityMonster {
+			monsters++
+		}
+	}
+
+	return monsters
 }
 
 // startServerWithLimits boots the handler tree with the #199 hardening knobs
